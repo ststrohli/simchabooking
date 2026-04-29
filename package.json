@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "scripts": {
+  "start": "node dist/server.js" 
+}
     "dev": "tsx server.ts",
     "start": "node server.ts",
     "build": "vite build",
