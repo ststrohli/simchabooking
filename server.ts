@@ -1491,8 +1491,12 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  // server.ts - The "Green Light" Fix
+const port = process.env.PORT || 8080;
+
+app.listen(Number(port), '0.0.0.0', () => {
+  console.log(`Server is running and listening on port ${port}`);
+});
     
     // Start the 7-day pre-event check-in automation
     // Runs every 24 hours
