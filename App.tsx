@@ -15,20 +15,20 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, query, where, orderBy, getDocs, addDoc, arrayUnion, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { auth, db, storage } from './firebase';
-import VendorCard from './VendorCard';
-import QuickViewModal from './QuickViewModal';
-import BookingModal from './BookingModal';
-import VendorPortal from './VendorPortal';
-import AdminPanel from './AdminPanel';
-import PayPalButton from './PayPalButton';
-import ContactModal from './ContactModal';
-import PostsPage from './PostsPage';
-import ChatModal from './ChatModal';
-import SuggestionModal from './SuggestionModal';
-import ClientPortal from './ClientPortal';
-import PaymentSuccess from './PaymentSuccess';
-import { VENDORS as INITIAL_VENDORS, MOCK_BOOKINGS } from './mockData';
+import { auth, db, storage } from './services/firebase';
+import VendorCard from './components/VendorCard';
+import QuickViewModal from './components/QuickViewModal';
+import BookingModal from './components/BookingModal';
+import VendorPortal from './components/VendorPortal';
+import AdminPanel from './components/AdminPanel';
+import PayPalButton from './components/PayPalButton';
+import ContactModal from './components/ContactModal';
+import PostsPage from './components/PostsPage';
+import ChatModal from './components/ChatModal';
+import SuggestionModal from './components/SuggestionModal';
+import ClientPortal from './components/ClientPortal';
+import PaymentSuccess from './components/PaymentSuccess';
+import { VENDORS as INITIAL_VENDORS, MOCK_BOOKINGS } from './services/mockData';
 import { Vendor, VendorCategory, CartItem, Booking, Review, Post, Message, UserAccount } from './types';
 
 // Helper to strip undefined values for Firestore

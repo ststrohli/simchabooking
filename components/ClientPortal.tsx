@@ -6,10 +6,10 @@ import {
 } from 'lucide-react';
 import { CartItem, Booking, Message, Vendor, UserAccount, UserFile } from '../types';
 import PayPalButton from './PayPalButton';
-import { storage, db } from './firebase';
+import { storage, db } from '../services/firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { summarizeFile } from './geminiService';
+import { summarizeFile } from '../services/geminiService';
 
 interface ClientPortalProps {
   user: UserAccount;

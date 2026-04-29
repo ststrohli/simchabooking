@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle, ArrowLeft, Loader2 } from 'lucide-react';
-import { db } from './firebase';
+import { db } from '../services/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 interface PaymentSuccessProps {

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Send, X, Loader2, MessageSquare, Bot } from 'lucide-react';
-import { getPlanningAdvice } from './geminiService';
+import { getPlanningAdvice } from '../services/geminiService';
 
 /**
  * AIPlanner component: A floating interactive interface for getting AI-driven planning advice.

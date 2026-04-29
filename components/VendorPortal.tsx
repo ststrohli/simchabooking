@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, Volume2, Camera
 } from 'lucide-react';
 import { Vendor, Booking, Message, SelectedService, VendorService } from '../types';
-import { db, storage } from './firebase';
+import { db, storage } from '../services/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
@@ -635,7 +635,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       setIsOnboarding(true);
       setOnboardingError(null);
       const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
-      const { db } = await import('./firebase');
+      const { db } = await import('../services/firebase');
       
       console.log(`[Onboarding] Attempting client-side update for vendor ${vId}...`);
       
