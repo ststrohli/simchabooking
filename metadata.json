@@ -1,9 +1,0 @@
-{
-  "name": "Simcha Booking",
-  "description": "The premier accessible marketplace for planning Jewish events. WCAG 2.1 AA compliant platform for booking kosher caterers, venues, and more.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone"
-  ],
-  "majorCapabilities": []
-}
