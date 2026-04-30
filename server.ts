@@ -1554,10 +1554,10 @@ async function runDailyCheckIn() {
       }
     }, "Daily Check-In Automation");
     
-    console.log(`[Automation] 7-day pre-event check-in scan complete.`);
-  } catch (err) {
-    console.error(`[Automation] CRITICAL: Daily check-in automation failed:`, err);
-  }
-}
+    console.log(`Server is running on port ${port}`);
+  });
 
-startServer();
+  // Start the 7-day pre-event check-in automation
+  setInterval(runDailyCheckIn, 24 * 60 * 60 * 1000);
+  setTimeout(runDailyCheckIn, 10000);
+}) ; }  // <--- THIS LINE IS THE PROBLEM
