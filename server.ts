@@ -1,4 +1,12 @@
+import express from 'express';
+const diagnosticApp = express();
+const DIAG_PORT = process.env.PORT || 8080;
 
+diagnosticApp.get('/health', (req, res) => res.send('OK'));
+
+diagnosticApp.listen(Number(DIAG_PORT), '0.0.0.0', () => {
+  console.log(`DIAGNOSTIC: Listening on ${DIAG_PORT}`);
+});
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
