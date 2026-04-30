@@ -1,0 +1,106 @@
+{
+  "entities": {
+    "Vendor": {
+      "title": "Vendor",
+      "description": "A service provider on the platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "priceStart": { "type": "number" },
+        "rating": { "type": "number" },
+        "image": { "type": "string" },
+        "location": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "commissionRate": { "type": "number", "description": "Percentage of sales taken as platform fee" },
+        "stripeAccountId": { "type": "string", "description": "Stripe Connect account ID" }
+      },
+      "required": ["id", "name", "category", "description", "priceStart", "location", "commissionRate"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "A visual highlight in the gallery",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["image", "video"] },
+        "url": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "vendorId": { "type": "string" }
+      },
+      "required": ["id", "type", "url", "title", "timestamp"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A reservation for a service",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "vendorId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "eventName": { "type": "string" },
+        "date": { "type": "string" },
+        "status": { "type": "string", "enum": ["confirmed", "pending", "completed", "cancelled"] },
+        "paymentStatus": { "type": "string", "enum": ["pending", "paid"] },
+        "amount": { "type": "number" },
+        "contactEmail": { "type": "string" }
+      },
+      "required": ["vendorId", "clientName", "eventName", "date", "status", "paymentStatus", "amount", "contactEmail"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A chat message between client and vendor",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "clientEmail": { "type": "string" },
+        "clientName": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "isRead": { "type": "boolean" }
+      },
+      "required": ["senderId", "receiverId", "clientEmail", "clientName", "text", "timestamp", "isRead"]
+    },
+    "AppConfig": {
+      "title": "AppConfig",
+      "description": "Global application configuration",
+      "type": "object",
+      "properties": {
+        "categories": { "type": "array", "items": { "type": "string" } },
+        "categoryImages": { "type": "object" },
+        "categorySubCategories": { "type": "object" }
+      }
+    },
+    "User": {
+      "title": "User",
+      "description": "A user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["client", "vendor", "admin"] },
+        "vendorId": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/vendors/{vendorId}": { "schema": "Vendor", "description": "Vendors collection" },
+    "/posts/{postId}": { "schema": "Post", "description": "Gallery posts" },
+    "/bookings/{bookingId}": { "schema": "Booking", "description": "Service bookings" },
+    "/messages/{messageId}": { "schema": "Message", "description": "Chat messages" },
+    "/metadata/app_config": { "schema": "AppConfig", "description": "App configuration" },
+    "/users/{uid}": { "schema": "User", "description": "User profiles" },
+    "/users/{uid}/cart/current": { "schema": "object", "description": "User shopping cart" },
+    "/settings/stripe": { "schema": "object", "description": "Stripe configuration" },
+    "/test/{docId}": { "schema": "object", "description": "Connection testing collection" }
+  }
+}
