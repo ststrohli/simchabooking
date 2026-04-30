@@ -1490,18 +1490,7 @@ async function startServer() {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
-// Catch any sudden crashes so the server stays alive long enough to tell us what went wrong
-process.on('uncaughtException', (err) => {
-  console.error('🔥 CRITICAL STARTUP ERROR:', err);
-});
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('🔥 UNHANDLED PROMISE REJECTION:', reason);
-});
 
-const port = parseInt(process.env.PORT || '8080', 10);
-app.listen(port, '0.0.0.0', () => {
-  console.log(`🚀 Real Server is live on port ${port}`);
-});
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
     
