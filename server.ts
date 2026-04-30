@@ -1,4 +1,8 @@
+import admin from 'firebase-admin';
 
+if (admin.apps.length === 0) {
+  admin.initializeApp();
+}
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -1491,8 +1495,10 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+ const port = process.env.PORT || 8080;
+app.listen(Number(port), '0.0.0.0', () => {
+  console.log(`Server is running on port ${port}`);
+});
     
     // Start the 7-day pre-event check-in automation
     // Runs every 24 hours
