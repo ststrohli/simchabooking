@@ -1491,9 +1491,9 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    
     // Start the 7-day pre-event check-in automation
     // Runs every 24 hours
     setInterval(runDailyCheckIn, 24 * 60 * 60 * 1000);
