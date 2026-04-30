@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Star, MapPin, ShieldCheck, PlayCircle, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react';
-import { Vendor } from '../types';
+import { Vendor } from './types';
 
 interface QuickViewModalProps {
   vendor: Vendor;
