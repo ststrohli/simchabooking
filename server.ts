@@ -1,4 +1,4 @@
-console.log("APP IS STARTING UP...");
+
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -1561,13 +1561,3 @@ async function runDailyCheckIn() {
 }
 
 startServer();
-const port = Number(process.env.PORT) || 8080;
-
-app.listen(port, '0.0.0.0', () => {
-  console.log(`Server is listening on port ${port}`);
-});
-const PORT = parseInt(process.env.PORT || '8080', 10);
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`READY: Server is listening on port ${PORT}`);
-});
