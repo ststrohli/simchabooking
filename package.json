@@ -3,12 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "scripts": {
-    "dev": "tsx server.ts",
-    "start": "node server.ts",
-    "build": "vite build",
-    "preview": "vite preview",
-    "lint": "tsc --noEmit"
+"scripts": {
+  "dev": "tsx server.ts",
+  "start": "tsx server.ts",
+  "build": "vite build",
+  "preview": "vite preview"
+},
   },
   "dependencies": {
     "@google/genai": "^1.35.0",
