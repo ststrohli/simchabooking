@@ -1,5 +1,4 @@
-import fs from 'fs';
-fs.writeFileSync('startup-log.txt', 'The server started at ' + new Date().toISOString());
+
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
