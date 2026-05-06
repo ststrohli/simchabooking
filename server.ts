@@ -1473,7 +1473,17 @@ async function startServer() {
   app.get("/api/firebase-config", (req, res) => {
     const envProjectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.PROJECT_ID || process.env.GCP_PROJECT;
     const targetProjectId = envProjectId || (firebaseConfig.projectId && !firebaseConfig.projectId.includes('TODO') ? firebaseConfig.projectId : undefined);
-    
+app.get('/api/vendors/search', (req, res) => {
+  const userIp = req.ip || 'anonymous';
+  const currentSearches = searchTracker.get(userIp) || 0;
+
+  if (currentSearches > 5) {
+    return res.status(429).json({ error: "Search limit reached. Please try again tomorrow to protect vendor privacy." });
+  }
+
+  searchTracker.set(userIp, currentSearches + 1);
+  // ... rest of your search logic
+});    
     res.json({
       ...firebaseConfig,
       projectId: targetProjectId,
