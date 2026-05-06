@@ -338,7 +338,15 @@ async function getStripe(): Promise<Stripe> {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 8080;
+
+  // Track searches per IP to protect vendor privacy
+  const searchTracker = new Map<string, number>();
+  // Clear tracker every 24 hours
+  setInterval(() => {
+    console.log('[Privacy] Clearing search tracker...');
+    searchTracker.clear();
+  }, 24 * 60 * 60 * 1000);
 
   // 1. IMMEDIATE BYPASS ROUTE - MUST BE AT THE VERY TOP
   // This bypasses any global middleware (including sessions) that might hang on Firestore
@@ -1403,6 +1411,50 @@ async function startServer() {
     }
   });
 
+  // Search endpoint with privacy protection
+  app.get("/api/vendors", async (req, res) => {
+    const ip = req.ip || "unknown";
+    const currentCount = searchTracker.get(ip) || 0;
+    
+    if (currentCount >= 5) {
+      console.warn(`[Privacy] Rate limit exceeded for IP: ${ip}`);
+      return res.status(429).json({ 
+        error: "Search limit exceeded. To protect vendor privacy, we limit searches per day. Please try again tomorrow or sign in for a professional account." 
+      });
+    }
+    
+    searchTracker.set(ip, currentCount + 1);
+    
+    try {
+      const { q, category } = req.query;
+      const vendors = await safeFirestoreOp(async (database) => {
+        let query: any = database.collection('vendors');
+        
+        if (category && category !== 'All') {
+           query = query.where('category', '==', category);
+        }
+        
+        const snapshot = await query.get();
+        let results = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+        
+        if (q) {
+          const searchTerm = (q as string).toLowerCase();
+          results = results.filter((v: any) => 
+            v.name?.toLowerCase().includes(searchTerm) || 
+            v.location?.toLowerCase().includes(searchTerm) ||
+            v.description?.toLowerCase().includes(searchTerm)
+          );
+        }
+        
+        return results;
+      }, "Search Vendors Route");
+      
+      res.json(vendors);
+    } catch (error: any) {
+       res.status(500).json({ error: error.message });
+    }
+  });
+
   // Backend Verification Success Block (Triggered by Firebase redirect)
   app.get("/api/auth/verify-success", async (req, res) => {
     const { email, name } = req.query;
@@ -1491,7 +1543,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
     
     // Start the 7-day pre-event check-in automation
