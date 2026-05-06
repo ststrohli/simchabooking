@@ -10,7 +10,12 @@ import multer from "multer";
 import session from "express-session";
 import crypto from "crypto";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
-import { 
+import {
+  // Memory to track date-search counts (Simple Rate Limiter)
+const searchTracker = new Map<string, number>();
+
+// Helper to reset the tracker every 24 hours
+setInterval(() => searchTracker.clear(), 24 * 60 * 60 * 1000);
   sendTestEmail, 
   sendCustomerReceipt, 
   sendVendorNotification,
