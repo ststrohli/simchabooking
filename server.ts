@@ -339,14 +339,8 @@ async function getStripe(): Promise<Stripe> {
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 8080;
-
-  // Track searches per IP to protect vendor privacy
   const searchTracker = new Map<string, number>();
-  // Clear tracker every 24 hours
-  setInterval(() => {
-    console.log('[Privacy] Clearing search tracker...');
-    searchTracker.clear();
-  }, 24 * 60 * 60 * 1000);
+  setInterval(() => searchTracker.clear(), 24 * 60 * 60 * 1000);
 
   // 1. IMMEDIATE BYPASS ROUTE - MUST BE AT THE VERY TOP
   // This bypasses any global middleware (including sessions) that might hang on Firestore
@@ -1417,10 +1411,7 @@ async function startServer() {
     const currentCount = searchTracker.get(ip) || 0;
     
     if (currentCount >= 5) {
-      console.warn(`[Privacy] Rate limit exceeded for IP: ${ip}`);
-      return res.status(429).json({ 
-        error: "Search limit exceeded. To protect vendor privacy, we limit searches per day. Please try again tomorrow or sign in for a professional account." 
-      });
+      return res.status(429).json({ error: 'Privacy limit reached' });
     }
     
     searchTracker.set(ip, currentCount + 1);
@@ -1543,15 +1534,7 @@ async function startServer() {
     });
   }
 
-  app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    
-    // Start the 7-day pre-event check-in automation
-    // Runs every 24 hours
-    setInterval(runDailyCheckIn, 24 * 60 * 60 * 1000);
-    // Run once on startup after a short delay to ensure DB is ready
-    setTimeout(runDailyCheckIn, 10000);
-  });
+  app.listen(Number(PORT), '0.0.0.0', () => { console.log('Server is live'); });
 }
 
 async function runDailyCheckIn() {
