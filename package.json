@@ -1,14 +1,10 @@
 {
   "name": "simcha-booking",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
-  "engines": {
-    "node": "20"
-  },
   "scripts": {
-    "start": "tsx server.ts",
-    "build": "echo 'Skipping build errors' && vite build || echo 'Build failed but continuing'"
+    "start": "tsx server.ts"
   },
   "dependencies": {
     "express": "^4.18.2",
