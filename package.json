@@ -13,6 +13,7 @@
   "engines": {
     "node": "20"
   },
+  "//": "Sync comment",
   "dependencies": {
     "@google/genai": "^1.35.0",
     "@types/multer": "^2.1.0",

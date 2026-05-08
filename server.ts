@@ -1,5 +1,6 @@
 
 import express from "express";
+// Syncing with GitHub - re-verifying port 8080 and privacy protection
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import Stripe from "stripe";
