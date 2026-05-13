@@ -20,16 +20,18 @@ const dbId = (firebaseConfig.firestoreDatabaseId && !firebaseConfig.firestoreDat
 
 const app = initializeApp({
   ...firebaseConfig,
-  projectId: (firebaseConfig.projectId && !firebaseConfig.projectId.includes('TODO')) ? firebaseConfig.projectId : undefined
+  projectId: targetProjectId
 });
 export const auth = getAuth(app);
 
 // Use a function to allow re-initialization if fallback is needed
 const createFirestore = (id: string) => {
-  console.log(`[Firebase] Initializing Firestore with project: ${firebaseConfig.projectId}, database: ${id}`);
+  console.log(`[Firebase] Initializing Firestore with project: ${targetProjectId}, database: ${id}`);
   return initializeFirestore(app, {
     experimentalForceLongPolling: true,
     experimentalAutoDetectLongPolling: false,
+    host: "firestore.googleapis.com",
+    ssl: true,
   }, id);
 };
 
