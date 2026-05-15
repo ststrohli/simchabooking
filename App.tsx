@@ -175,9 +175,11 @@ function App() {
   useEffect(() => {
     const unsubVendors = onSnapshot(collection(db, 'vendors'), (snapshot) => {
       const vData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vendor));
-      if (vData.length === 0) {
-        // Seed if empty
-        INITIAL_VENDORS.forEach(v => setDoc(doc(db, 'vendors', v.id), clean(v)));
+      if (snapshot.empty && INITIAL_VENDORS.length > 0) {
+        // Seed if empty efficiently
+        console.log("[Firebase] Seeding initial vendors...");
+        Promise.all(INITIAL_VENDORS.map(v => setDoc(doc(db, 'vendors', v.id), clean(v))))
+          .catch(err => console.error("Error seeding vendors:", err));
       } else {
         setVendors(vData);
       }
@@ -300,12 +302,30 @@ function App() {
   // Firebase Auth Observer
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      // Only set the authenticated user if their email is verified
-      if (user && user.emailVerified) {
-        setFbUser(user);
-        await syncUserProfile(user);
-        
-        // Fetch user doc data
+      // Set initializing to false early if not logged in to show guest UI faster
+      if (!user) {
+        setFbUser(null);
+        setUserDocData(null);
+        setUserRole(null);
+        setCurrentUserVendorId(null);
+        setIsInitializing(false);
+        return;
+      }
+
+      // If logged in but email not verified, we also treat it as not fully authenticated for the app
+      if (!user.emailVerified) {
+        setFbUser(null);
+        setIsInitializing(false);
+        return;
+      }
+
+      setFbUser(user);
+      
+      // Non-blocking profile sync
+      syncUserProfile(user).catch(err => console.error("Background profile sync failed:", err));
+      
+      // Fetch user doc data
+      try {
         const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
         if (userDoc.exists()) {
@@ -321,13 +341,11 @@ function App() {
           setUserRole(user.email === hardcodedAdminEmail ? 'admin' : 'client');
           setCurrentUserVendorId(null);
         }
-      } else {
-        setFbUser(null);
-        setUserDocData(null);
-        setUserRole(null);
-        setCurrentUserVendorId(null);
+      } catch (err) {
+        console.error("Error fetching user document:", err);
+      } finally {
+        setIsInitializing(false);
       }
-      setIsInitializing(false);
     });
     return () => unsubscribe();
   }, []);

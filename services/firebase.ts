@@ -28,8 +28,6 @@ export const auth = getAuth(app);
 const createFirestore = (id: string) => {
   console.log(`[Firebase] Initializing Firestore with project: ${targetProjectId}, database: ${id}`);
   return initializeFirestore(app, {
-    experimentalForceLongPolling: true,
-    experimentalAutoDetectLongPolling: false,
     host: "firestore.googleapis.com",
     ssl: true,
   }, id);
