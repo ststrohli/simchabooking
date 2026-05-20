@@ -75,6 +75,7 @@ export interface Vendor {
   stripeAccountId?: string;
   stripeConnected?: boolean;
   allowOffers?: boolean;
+  onboardingComplete?: boolean;
 }
 
 export interface Post {
@@ -131,6 +132,7 @@ export interface UserFile {
 }
 
 export interface Booking {
+  createdAt?: string;
   id: string;
   vendorId: string;
   clientName: string;

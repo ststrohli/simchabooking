@@ -90,7 +90,7 @@ async function initializeFirebase(useEnvFallback: boolean = false) {
     // Forcefully re-initialize ALL apps to ensure no stale configurations
     if (admin.apps.length > 0) {
       console.log(`[Firebase] Found ${admin.apps.length} existing apps. Deleting all...`);
-      await Promise.all(admin.apps.map(app => app.delete().catch(() => {})));
+      await Promise.all(admin.apps.map(app => app?.delete().catch(() => {})));
     }
     
     // Check for service account credentials
@@ -139,7 +139,11 @@ async function initializeFirebase(useEnvFallback: boolean = false) {
     try {
       // If dbId is '(default)', pass undefined to get the default database
       const effectiveDbId = (dbId === '(default)' || !dbId) ? undefined : dbId;
-      db = getFirestore(adminApp, effectiveDbId);
+      if (effectiveDbId) {
+        db = getFirestore(adminApp, effectiveDbId);
+      } else {
+        db = getFirestore(adminApp);
+      }
       applyDbSettings(db);
       console.log(`[Firebase] Admin Firestore initialized with database: ${effectiveDbId || '(default)'}`);
     } catch (e: any) {
@@ -438,7 +442,9 @@ async function startServer() {
       // If the destination is the same as the platform account, Stripe will crash.
       let transferData: any = undefined;
       try {
-        const platformAccount = await stripe.accounts.retrieve();
+        // Retrieve the platform's own account ID to avoid self-transfer
+        // @ts-ignore - Stripe types might vary across versions
+        const platformAccount = await stripe.accounts.retrieve(); 
         if (platformAccount.id === vendorStripeAccountId) {
           console.log(`[Stripe] Self-transfer detected for account ${vendorStripeAccountId}. Skipping transfer_data to avoid crash.`);
         } else {

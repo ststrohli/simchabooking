@@ -1197,7 +1197,7 @@ function App() {
       });
       
       // Update local state to reflect changes immediately
-      setUserDocData(prev => ({
+      setUserDocData((prev: any) => ({
         ...prev,
         name: data.name,
         photoURL: data.photoURL,
@@ -1304,7 +1304,7 @@ function App() {
   />;
   }
 
-  if (!fbUser && view !== 'admin') return <AuthWall />;
+  if (!fbUser) return <AuthWall />;
 
   const currentAuthenticatedUser: UserAccount = {
     id: fbUser?.uid || '',
