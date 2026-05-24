@@ -4,6 +4,7 @@ import { X, Send, User, Mail, MessageSquare, Bot, Image as ImageIcon, Paperclip,
 import { Vendor, Message, UserAccount } from '../types';
 import { storage } from '../services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadFileRobustly } from '../services/uploadService';
 
 interface ChatModalProps {
   isOpen: boolean;
@@ -77,18 +78,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
     setIsUploading(true);
     try {
       const storagePath = `chats/${Date.now()}_${file.name}`;
-      
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('path', storagePath);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-      const { url } = await response.json();
+      const url = await uploadFileRobustly(file, storagePath);
 
       const isImage = file.type.startsWith('image/');
 
@@ -145,18 +135,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
         try {
           const fileExt = mimeType.split('/')[1].split(';')[0];
           const storagePath = `chats/voice_${Date.now()}.${fileExt}`;
-          
-          const formData = new FormData();
-          formData.append('file', audioBlob);
-          formData.append('path', storagePath);
-
-          const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData,
-          });
-
-          if (!response.ok) throw new Error(await response.text());
-          const { url } = await response.json();
+          const url = await uploadFileRobustly(audioBlob, storagePath);
 
           onSendMessage({
             text: 'Voice note',

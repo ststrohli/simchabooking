@@ -8,6 +8,7 @@ import { CartItem, Booking, Message, Vendor, UserAccount, UserFile } from '../ty
 import PayPalButton from './PayPalButton';
 import { storage, db } from '../services/firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { uploadFileRobustly } from '../services/uploadService';
 import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { summarizeFile } from '../services/geminiService';
 
@@ -71,18 +72,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     setIsUploadingPhoto(true);
     try {
       const storagePath = `user_uploads/${user.id}/profile_photo_${Date.now()}`;
-      
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('path', storagePath);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-      const { url: downloadURL } = await response.json();
+      const downloadURL = await uploadFileRobustly(file, storagePath);
       
       // Update local state and call parent update
       setEditPhotoURL(downloadURL);
@@ -156,18 +146,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     try {
       const fileId = Math.random().toString(36).substr(2, 9);
       const storagePath = `user_uploads/${user.id}/${fileId}_${file.name}`;
-      
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('path', storagePath);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-      const { url: downloadURL } = await response.json();
+      const downloadURL = await uploadFileRobustly(file, storagePath);
       
       // Generate AI Summary
       const aiSummary = await summarizeFile(file.name, file.type, fileNotes);

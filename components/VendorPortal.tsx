@@ -8,6 +8,7 @@ import { Vendor, Booking, Message, SelectedService, VendorService } from '../typ
 import { db, storage } from '../services/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { uploadFileRobustly } from '../services/uploadService';
 
 interface VendorPortalProps {
   vendor: Vendor;
@@ -245,18 +246,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     setIsUploadingMedia(true);
     try {
       const storagePath = `vendors/${vendor.id}/gallery/${Date.now()}_${file.name}`;
-      
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('path', storagePath);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-      const { url: downloadURL } = await response.json();
+      const downloadURL = await uploadFileRobustly(file, storagePath);
       
       setEditForm(prev => ({
         ...prev,
@@ -279,18 +269,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     setIsUploadingLogo(true);
     try {
       const storagePath = `vendors/${vendor.id}/logo/${Date.now()}_${file.name}`;
-      
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('path', storagePath);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-      const { url: downloadURL } = await response.json();
+      const downloadURL = await uploadFileRobustly(file, storagePath);
       
       setEditForm(prev => ({
         ...prev,

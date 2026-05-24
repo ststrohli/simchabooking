@@ -16,6 +16,7 @@ import {
 import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, query, where, orderBy, getDocs, addDoc, arrayUnion, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './services/firebase';
+import { uploadFileRobustly } from './services/uploadService';
 import VendorCard from './components/VendorCard';
 import QuickViewModal from './components/QuickViewModal';
 import BookingModal from './components/BookingModal';
@@ -844,23 +845,9 @@ function App() {
         if (photo) {
           try {
             const storagePath = `user_uploads/${user.uid}/profile_photo_${Date.now()}`;
-            
-            const formData = new FormData();
-            formData.append('file', photo);
-            formData.append('path', storagePath);
-
-            const response = await fetch('/api/upload', {
-              method: 'POST',
-              body: formData,
-            });
-
-            if (response.ok) {
-              const { url } = await response.json();
-              photoURL = url;
-              photoStoragePath = storagePath;
-            } else {
-              console.error("Registration photo upload failed:", await response.text());
-            }
+            const url = await uploadFileRobustly(photo, storagePath);
+            photoURL = url;
+            photoStoragePath = storagePath;
           } catch (uploadErr) {
             console.error("Registration photo upload failed:", uploadErr);
           }
