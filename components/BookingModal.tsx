@@ -16,6 +16,7 @@ interface BookingModalProps {
     eventTime: string;
     selectedServices: SelectedService[];
     totalAmount: number;
+    date: string;
   }) => void;
   initialDetails?: { 
     eventName: string; 
@@ -38,9 +39,81 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const [isOfferMode, setIsOfferMode] = useState(false);
   const [offeredPrice, setOfferedPrice] = useState<string>('');
 
+  const [localDate, setLocalDate] = useState(selectedDate || new Date().toISOString().split('T')[0]);
+  const [privacyBlocked, setPrivacyBlocked] = useState(false);
+
   const isVenue = vendor?.category === VendorCategory.VENUE || vendor?.category === 'Venue';
-  const effectiveDate = selectedDate || new Date().toISOString().split('T')[0];
+  const effectiveDate = localDate;
   const isDateBlocked = vendor?.unavailableDates?.includes(effectiveDate);
+
+  // Check if blocked by privacy limit
+  const checkPrivacyStatus = (): boolean => {
+    if (!vendor) return false;
+    const now = Date.now();
+    const maxChecks = vendor.maxDateChecks ?? 5;
+    const resetPeriodMs = (vendor.dateCheckResetHours ?? 24) * 60 * 60 * 1000;
+    
+    const attemptsStr = sessionStorage.getItem(`date_checks_${vendor.id}`);
+    if (!attemptsStr) return false;
+    
+    try {
+      const attempts: number[] = JSON.parse(attemptsStr);
+      const validAttempts = attempts.filter(t => now - t < resetPeriodMs);
+      return validAttempts.length >= maxChecks;
+    } catch {
+      return false;
+    }
+  };
+
+  const registerCheckAttempt = (dateValue: string) => {
+    if (!vendor) return;
+    const now = Date.now();
+    const resetPeriodMs = (vendor.dateCheckResetHours ?? 24) * 60 * 60 * 1000;
+    
+    const attemptsStr = sessionStorage.getItem(`date_checks_${vendor.id}`);
+    let attempts: number[] = [];
+    if (attemptsStr) {
+      try {
+        attempts = JSON.parse(attemptsStr);
+      } catch {}
+    }
+    
+    attempts = attempts.filter(t => now - t < resetPeriodMs);
+    attempts.push(now);
+    
+    sessionStorage.setItem(`date_checks_${vendor.id}`, JSON.stringify(attempts));
+    
+    const maxChecks = vendor.maxDateChecks ?? 5;
+    if (attempts.length >= maxChecks) {
+      setPrivacyBlocked(true);
+    }
+  };
+
+  const handleDateChange = (newDate: string) => {
+    setLocalDate(newDate);
+    
+    if (checkPrivacyStatus()) {
+      setPrivacyBlocked(true);
+      return;
+    }
+    
+    registerCheckAttempt(newDate);
+  };
+
+  // Sync state when opening or closing
+  useEffect(() => {
+    if (isOpen && vendor) {
+      const initialDate = selectedDate || new Date().toISOString().split('T')[0];
+      setLocalDate(initialDate);
+      
+      if (checkPrivacyStatus()) {
+        setPrivacyBlocked(true);
+      } else {
+        setPrivacyBlocked(false);
+        registerCheckAttempt(initialDate);
+      }
+    }
+  }, [isOpen, vendor, selectedDate]);
 
   useEffect(() => {
     if (isOpen) {
@@ -117,7 +190,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isDateBlocked) return;
+    if (privacyBlocked || isDateBlocked) return;
     
     const selectedServices = vendor.services
         ?.filter(s => selectedServiceIds.includes(s.id))
@@ -135,6 +208,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
         eventLocation: finalLocation, 
         selectedServices, 
         totalAmount: isOfferMode ? (parseInt(offeredPrice) || 0) : totalAmount,
+        date: localDate,
         // @ts-ignore - added to internal callback but type checked manually
         isOffer: isOfferMode,
         offeredPrice: isOfferMode ? (parseInt(offeredPrice) || 0) : undefined
@@ -156,11 +230,32 @@ const BookingModal: React.FC<BookingModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div className={`border rounded-lg p-4 flex items-center gap-4 transition-colors ${isDateBlocked ? 'bg-red-500/10 border-red-500/30 text-red-500' : 'bg-[#D4AF37]/10 border-[#D4AF37]/20 text-[#D4AF37]'}`} role="alert">
-            {isDateBlocked ? <AlertTriangle className="w-6 h-6 flex-shrink-0" aria-hidden="true" /> : <Calendar className="w-6 h-6 flex-shrink-0" aria-hidden="true" />}
+          <div className="space-y-3">
+            <label htmlFor="booking-date" className={labelClass}>Event Date</label>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" aria-hidden="true" />
+              <input 
+                id="booking-date" 
+                required 
+                type="date" 
+                className={inputClass + " [color-scheme:dark]"} 
+                value={localDate} 
+                onChange={(e) => handleDateChange(e.target.value)} 
+              />
+            </div>
+          </div>
+
+          <div className={`border rounded-lg p-4 flex items-center gap-4 transition-colors ${privacyBlocked ? 'bg-red-500/10 border-red-500/30 text-red-500' : isDateBlocked ? 'bg-red-500/10 border-red-500/30 text-red-500' : 'bg-[#D4AF37]/10 border-[#D4AF37]/20 text-[#D4AF37]'}`} role="alert">
+            {privacyBlocked || isDateBlocked ? <AlertTriangle className="w-6 h-6 flex-shrink-0" aria-hidden="true" /> : <Calendar className="w-6 h-6 flex-shrink-0" aria-hidden="true" />}
             <div>
-              <p className="text-xs font-black uppercase tracking-widest">Requested Date</p>
-              <p className="text-sm font-bold">{effectiveDate} {isDateBlocked ? '— FULLY BOOKED' : '— AVAILABLE'}</p>
+              <p className="text-xs font-black uppercase tracking-widest">Availability Status</p>
+              <p className="text-sm font-bold">
+                {privacyBlocked 
+                  ? 'Privacy limit reached. Please try again later.' 
+                  : isDateBlocked 
+                    ? `${localDate} — FULLY BOOKED` 
+                    : `${localDate} — AVAILABLE`}
+              </p>
             </div>
           </div>
 
@@ -304,10 +399,10 @@ const BookingModal: React.FC<BookingModalProps> = ({
             <button type="button" onClick={onClose} className="flex-1 py-3 font-bold text-slate-500 hover:text-[#D4AF37] outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] rounded-lg">Cancel</button>
             <button 
                 type="submit" 
-                disabled={isDateBlocked || (isOfferMode && (!offeredPrice || parseInt(offeredPrice) <= 0))} 
-                className={`flex-1 py-3 rounded-xl font-bold transition-all shadow-lg border outline-none focus-visible:ring-2 focus-visible:ring-white ${isDateBlocked || (isOfferMode && !offeredPrice) ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20'}`}
+                disabled={privacyBlocked || isDateBlocked || (isOfferMode && (!offeredPrice || parseInt(offeredPrice) <= 0))} 
+                className={`flex-1 py-3 rounded-xl font-bold transition-all shadow-lg border outline-none focus-visible:ring-2 focus-visible:ring-white ${privacyBlocked || isDateBlocked || (isOfferMode && !offeredPrice) ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20'}`}
             >
-                {isDateBlocked ? 'Unavailable' : (isOfferMode ? 'Send Offer' : 'Add to Plan')}
+                {privacyBlocked ? 'Privacy Blocked' : isDateBlocked ? 'Unavailable' : (isOfferMode ? 'Send Offer' : 'Add to Plan')}
             </button>
           </div>
         </form>

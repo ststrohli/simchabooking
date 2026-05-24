@@ -76,6 +76,8 @@ export interface Vendor {
   stripeConnected?: boolean;
   allowOffers?: boolean;
   onboardingComplete?: boolean;
+  maxDateChecks?: number;
+  dateCheckResetHours?: number;
 }
 
 export interface Post {

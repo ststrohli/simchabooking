@@ -26,7 +26,11 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const [selectedBookingForDetail, setSelectedBookingForDetail] = useState<Booking | null>(null);
   
   // Profile & Media State
-  const [editForm, setEditForm] = useState<Vendor>({...vendor});
+  const [editForm, setEditForm] = useState<Vendor>({
+    ...vendor,
+    maxDateChecks: vendor.maxDateChecks ?? 5,
+    dateCheckResetHours: vendor.dateCheckResetHours ?? 24
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -73,7 +77,11 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
   // Sync edit form with vendor prop changes
   useEffect(() => {
-    setEditForm({...vendor});
+    setEditForm({
+      ...vendor,
+      maxDateChecks: vendor.maxDateChecks ?? 5,
+      dateCheckResetHours: vendor.dateCheckResetHours ?? 24
+    });
   }, [vendor]);
 
   // Group messages by client email for the messaging tab
@@ -1431,6 +1439,62 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             <span className="flex items-center justify-center gap-2"><XCircle className="w-4 h-4" /> Offers Disabled</span>
                           )}
                         </button>
+                      </div>
+                    </div>
+                  )}
+               </div>
+
+               {/* Anti-Spying Privacy Lock Section */}
+               <div className="bg-[#111] rounded-3xl border border-[#D4AF37]/20 shadow-2xl overflow-hidden">
+                  <button 
+                    onClick={() => toggleSection('privacy')}
+                    className="w-full p-8 border-b border-white/5 bg-black/40 flex justify-between items-center group cursor-pointer"
+                  >
+                    <div className="text-left">
+                      <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Privacy Lock Settings</h3>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Protect your availability calendar from competitor spying</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                       <Lock className={`w-8 h-8 transition-all text-[#D4AF37]`} />
+                       <ChevronRight className={`w-6 h-6 text-slate-600 transition-transform ${collapsedSections['privacy'] ? 'rotate-90' : ''}`} />
+                    </div>
+                  </button>
+                  
+                  {!collapsedSections['privacy'] && (
+                    <div className="p-8 space-y-6 animate-in slide-in-from-top-2 duration-300">
+                      <p className="text-xs text-slate-400 leading-relaxed max-w-2xl text-left">
+                        Competitors or bad actors might try to map out your bookings by continuously checking dates in the booking form.
+                        Enable our smart anti-spying block to limit the number of availability checks per user session.
+                      </p>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-3 text-left">
+                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Max Date Checks Allowed</label>
+                          <input 
+                            type="number" 
+                            className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white transition-all" 
+                            style={{appearance: 'textfield'}}
+                            value={editForm.maxDateChecks ?? 5}
+                            onChange={e => setEditForm({...editForm, maxDateChecks: parseInt(e.target.value) || 0})}
+                            placeholder="5"
+                            min="1"
+                          />
+                          <p className="text-[9px] text-slate-500">Maximum date checking attempts allowed per client before blocking them.</p>
+                        </div>
+                        
+                        <div className="space-y-3 text-left">
+                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Reset Period (in hours)</label>
+                          <input 
+                            type="number" 
+                            className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white transition-all" 
+                            style={{appearance: 'textfield'}}
+                            value={editForm.dateCheckResetHours ?? 24}
+                            onChange={e => setEditForm({...editForm, dateCheckResetHours: parseInt(e.target.value) || 0})}
+                            placeholder="24"
+                            min="1"
+                          />
+                          <p className="text-[9px] text-slate-500">How long (in hours) before the check attempts reset for a user.</p>
+                        </div>
                       </div>
                     </div>
                   )}

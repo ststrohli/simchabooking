@@ -1417,11 +1417,6 @@ function App() {
                 <Search className="w-5 h-5 text-[#D4AF37]/50 mr-3 flex-shrink-0" aria-hidden="true" />
                 <input id="search-input" type="text" placeholder="Search elite vendors..." className="flex-1 focus:outline-none text-slate-100 placeholder:text-slate-600 bg-transparent h-10 md:h-14 font-medium" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
               </div>
-              <div className="flex items-center px-6 py-3 border-t md:border-t-0 md:border-l border-[#D4AF37]/10">
-                <label htmlFor="date-input" className="sr-only">Event date</label>
-                <Calendar className="w-5 h-5 text-[#D4AF37]/50 mr-3 flex-shrink-0" aria-hidden="true" />
-                <input id="date-input" type="date" className="focus:outline-none text-slate-300 bg-transparent w-full md:w-auto h-10 md:h-14 font-bold [color-scheme:dark]" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
-              </div>
               <button className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black px-10 py-4 rounded-xl md:rounded-full font-black uppercase tracking-widest text-sm transition-all shadow-xl focus-visible:ring-2 focus-visible:ring-white outline-none">Search</button>
             </div>
           </div>
@@ -1528,7 +1523,7 @@ function App() {
       </footer>
 
       <SuggestionModal isOpen={showSuggestions} onClose={() => setShowSuggestions(false)} sourceVendor={sourceVendorForSuggestions} recommendations={suggestedVendors} onBook={v => setBookingVendor(v)} cartItems={cart.map(i => i.vendor.id)} />
-      <BookingModal isOpen={!!bookingVendor} vendor={bookingVendor} selectedDate={eventDate} onClose={() => setBookingVendor(null)} onConfirm={d => { setCart(prev => [...prev, { vendor: bookingVendor!, date: eventDate || new Date().toISOString().split('T')[0], notes: d.notes, clientName: currentAuthenticatedUser.name || d.clientName, eventName: d.eventName, eventLocation: d.eventLocation, eventTime: d.eventTime, contactEmail: currentAuthenticatedUser.username || d.contactEmail, selectedServices: d.selectedServices, amount: d.totalAmount }]); setBookingVendor(null); showNotification(`${bookingVendor!.name} added to plan!`); }} initialDetails={{ clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} />
+      <BookingModal isOpen={!!bookingVendor} vendor={bookingVendor} selectedDate={eventDate} onClose={() => setBookingVendor(null)} onConfirm={d => { setCart(prev => [...prev, { vendor: bookingVendor!, date: d.date || eventDate || new Date().toISOString().split('T')[0], notes: d.notes, clientName: currentAuthenticatedUser.name || d.clientName, eventName: d.eventName, eventLocation: d.eventLocation, eventTime: d.eventTime, contactEmail: currentAuthenticatedUser.username || d.contactEmail, selectedServices: d.selectedServices, amount: d.totalAmount }]); setBookingVendor(null); showNotification(`${bookingVendor!.name} added to plan!`); }} initialDetails={{ clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} />
       <ChatModal 
         isOpen={!!chatVendor || isAdminChatOpen} 
         vendor={chatVendor} 
