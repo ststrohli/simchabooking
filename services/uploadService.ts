@@ -11,41 +11,15 @@ import { storage } from './firebase';
  * @returns The resolved public download URL of the uploaded file
  */
 export const uploadFileRobustly = async (file: File | Blob, storagePath: string): Promise<string> => {
-  // 1. Try server-side upload first
+  console.log("[Upload] Attempting official Firebase Storage upload for path:", storagePath);
   try {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('path', storagePath);
-
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (response.ok) {
-      const text = await response.text();
-      // Try parsing as JSON to make sure it's valid JSON
-      try {
-        const data = JSON.parse(text);
-        if (data && data.url) {
-          console.log("[Upload] Server-side upload succeeded:", data.url);
-          return data.url;
-        }
-      } catch {
-        console.warn("[Upload] Server-side returned non-JSON/invalid JSON response, falling back to client-side:", text.substring(0, 100));
-      }
-    } else {
-      console.warn("[Upload] Server-side upload response not OK:", response.status, response.statusText);
-    }
-  } catch (err) {
-    console.error("[Upload] Server-side upload failed/errored, falling back to client-side:", err);
+    const storageRef = ref(storage, storagePath);
+    await uploadBytes(storageRef, file);
+    const downloadURL = await getDownloadURL(storageRef);
+    console.log("[Upload] Firebase Storage upload succeeded:", downloadURL);
+    return downloadURL;
+  } catch (err: any) {
+    console.error("[Upload] Direct Firebase Storage upload failed:", err);
+    throw err;
   }
-
-  // 2. Fallback to client-side upload directly to Firebase Storage
-  console.log("[Upload] Attempting client-side fallback upload for path:", storagePath);
-  const storageRef = ref(storage, storagePath);
-  await uploadBytes(storageRef, file);
-  const downloadURL = await getDownloadURL(storageRef);
-  console.log("[Upload] Client-side upload succeeded:", downloadURL);
-  return downloadURL;
 };

@@ -248,10 +248,23 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       const storagePath = `vendors/${vendor.id}/gallery/${Date.now()}_${file.name}`;
       const downloadURL = await uploadFileRobustly(file, storagePath);
       
+      const newGallery = [...(vendor.gallery || []), downloadURL];
+
+      // Save directly to Firestore database document
+      await updateDoc(doc(db, 'vendors', vendor.id), {
+        gallery: newGallery
+      });
+
+      // Update local state and parent to stay in sync
       setEditForm(prev => ({
         ...prev,
-        gallery: [...(prev.gallery || []), downloadURL]
+        gallery: newGallery
       }));
+      onUpdateVendor({
+        ...vendor,
+        gallery: newGallery
+      });
+
       showNotification('Media uploaded successfully!');
     } catch (err: any) {
       console.error("Media upload error:", err);
@@ -271,10 +284,21 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       const storagePath = `vendors/${vendor.id}/logo/${Date.now()}_${file.name}`;
       const downloadURL = await uploadFileRobustly(file, storagePath);
       
+      // Save directly to Firestore database document
+      await updateDoc(doc(db, 'vendors', vendor.id), {
+        image: downloadURL
+      });
+
+      // Update local state and parent to stay in sync
       setEditForm(prev => ({
         ...prev,
         image: downloadURL
       }));
+      onUpdateVendor({
+        ...vendor,
+        image: downloadURL
+      });
+
       showNotification('Business image updated!');
     } catch (err: any) {
       console.error("Logo upload error:", err);
