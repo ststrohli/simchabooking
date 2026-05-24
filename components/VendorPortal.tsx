@@ -851,9 +851,21 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     </div>
                     <div>
                       <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1 text-red-500/80">Location</p>
-                      <div className="flex items-start gap-2">
-                        <MapPin className="w-4 h-4 text-red-500/50 mt-0.5" />
-                        <p className="text-white font-bold">{selectedBookingForDetail.eventLocation || 'Venue address pending'}</p>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-2">
+                          <MapPin className="w-4 h-4 text-red-500/50 mt-0.5" />
+                          <p className="text-white font-bold">{selectedBookingForDetail.eventLocation || 'Venue address pending'}</p>
+                        </div>
+                        {selectedBookingForDetail.status === 'confirmed' && (selectedBookingForDetail.eventAddress || selectedBookingForDetail.eventLocation) && (
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(selectedBookingForDetail.eventAddress || selectedBookingForDetail.eventLocation || '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-black px-3.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-green-500/30 transition-all shrink-0"
+                          >
+                            Go to Event
+                          </a>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1247,12 +1259,24 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           </span>
                         </td>
                         <td className="px-6 py-5 text-right">
-                          <button 
-                            onClick={() => setSelectedBookingForDetail(b)}
-                            className="inline-flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all shadow-lg shadow-[#D4AF37]/0 hover:shadow-[#D4AF37]/20"
-                          >
-                            <Eye className="w-3.5 h-3.5" /> Full Scope
-                          </button>
+                          <div className="flex justify-end items-center gap-2">
+                            {b.status === 'confirmed' && (b.eventAddress || b.eventLocation) && (
+                              <a
+                                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(b.eventAddress || b.eventLocation || '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-black px-3.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-green-500/30 transition-all"
+                              >
+                                Go to Event
+                              </a>
+                            )}
+                            <button 
+                              onClick={() => setSelectedBookingForDetail(b)}
+                              className="inline-flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all shadow-lg shadow-[#D4AF37]/0 hover:shadow-[#D4AF37]/20"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> Full Scope
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

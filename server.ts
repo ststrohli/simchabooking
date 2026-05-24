@@ -18,7 +18,8 @@ import {
   sendAccountVerificationEmail,
   sendPasswordResetEmail,
   sendWelcomeGuideEmail,
-  sendPreEventCheckInEmail
+  sendPreEventCheckInEmail,
+  sendBookingConfirmation
 } from "./services/emailService.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1343,6 +1344,48 @@ async function startServer() {
           response: error.response
         }
       });
+    }
+  });
+
+  // Booking Confirmation Email Endpoint
+  app.post("/api/email/confirm-booking", async (req, res) => {
+    const { 
+      to, 
+      clientName, 
+      eventName, 
+      vendorName, 
+      vendorCategory, 
+      date, 
+      priceStart, 
+      notes, 
+      eventLocation, 
+      eventTime, 
+      selectedServices 
+    } = req.body;
+
+    if (!to) {
+      return res.status(400).json({ error: "Email standard destination 'to' is required" });
+    }
+
+    try {
+      console.log(`[API] Triggering booking confirmation email to: ${to}`);
+      await sendBookingConfirmation({
+        to,
+        clientName,
+        eventName,
+        vendorName,
+        vendorCategory,
+        date,
+        priceStart: Number(priceStart) || 0,
+        notes,
+        eventLocation,
+        eventTime,
+        selectedServices
+      });
+      res.json({ status: "ok", message: "Booking confirmation email sent successfully" });
+    } catch (error: any) {
+      console.error("[API] Booking confirmation email failed:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 

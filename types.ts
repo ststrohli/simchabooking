@@ -147,4 +147,5 @@ export interface Booking {
   paymentMethod?: 'PayPal' | 'Credit Card (Stripe)' | 'Check' | 'Bank Transfer';
   notes?: string;
   selectedServices?: SelectedService[];
+  eventAddress?: string;
 }
