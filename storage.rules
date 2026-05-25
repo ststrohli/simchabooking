@@ -17,7 +17,7 @@ service firebase.storage {
     // But we can check for hardcoded admin email if needed, or just rely on Firebase's standard custom claims if they had them.
     // Since we don't have custom claims, we'll check the email for the main admin.
     function isAdmin() {
-      return isSignedIn() && (request.auth.token.email == "bookingsimcha@gmail.com");
+      return isSignedIn() && (request.auth.token.email == "bookingsimcha@gmail.com" || request.auth.token.email == "ststrohli@gmail.com");
     }
 
     // User Uploads
@@ -39,6 +39,24 @@ service firebase.storage {
     // Chat Media
     match /chats/{allPaths=**} {
       allow read, write: if isSignedIn();
+    }
+
+    // Categories Assets
+    match /categories/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Hero Assets
+    match /hero/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Posts/Gallery Assets
+    match /posts/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() || isSignedIn();
     }
   }
 }

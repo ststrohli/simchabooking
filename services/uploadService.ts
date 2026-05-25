@@ -11,12 +11,47 @@ import { storage } from './firebase';
  * @returns The resolved public download URL of the uploaded file
  */
 export const uploadFileRobustly = async (file: File | Blob, storagePath: string): Promise<string> => {
-  console.log("[Upload] Attempting official Firebase Storage upload for path:", storagePath);
+  console.log("[Upload] Attempting server-side upload bypass for path:", storagePath);
+  try {
+    const formData = new FormData();
+    let uploadFile = file;
+    if (!(file instanceof File) && file instanceof Blob) {
+      // Reconstitute file name if it's a blob
+      uploadFile = new File([file], "blob_upload", { type: file.type });
+    }
+    formData.append('file', uploadFile);
+    formData.append('path', storagePath);
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (response.ok) {
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
+        if (data && data.url) {
+          console.log("[Upload] Server-side bypass upload succeeded:", data.url);
+          return data.url;
+        }
+      } catch (e) {
+        console.warn("[Upload] Received non-JSON response from server-side bypass upload:", text);
+      }
+    } else {
+      const errMsg = await response.text();
+      console.warn("[Upload] Server-side upload bypass returned error status:", response.status, errMsg);
+    }
+  } catch (err) {
+    console.warn("[Upload] Server-side upload bypass failed with exception:", err);
+  }
+
+  console.log("[Upload] Falling back to official Direct Firebase Storage upload for path:", storagePath);
   try {
     const storageRef = ref(storage, storagePath);
     await uploadBytes(storageRef, file);
     const downloadURL = await getDownloadURL(storageRef);
-    console.log("[Upload] Firebase Storage upload succeeded:", downloadURL);
+    console.log("[Upload] Firebase Storage fallback upload succeeded:", downloadURL);
     return downloadURL;
   } catch (err: any) {
     console.error("[Upload] Direct Firebase Storage upload failed:", err);

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send } from 'lucide-react';
-import { auth, db, storage } from '../services/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar } from 'lucide-react';
+import { auth, db } from '../services/firebase';
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { uploadFileRobustly } from '../services/uploadService';
 import { Vendor, VendorCategory, Post, Booking, UserAccount, Message } from '../types';
 
 interface AdminPanelProps {
@@ -40,13 +41,72 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'posts' | 'categories' | 'bookings' | 'stripe' | 'users' | 'messages'>('manage');
+  const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'posts' | 'categories' | 'bookings' | 'stripe' | 'users' | 'messages' | 'analytics'>('manage');
   const [isUploading, setIsUploading] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [selectedPostFile, setSelectedPostFile] = useState<File | null>(null);
   const [selectedVendorFile, setSelectedVendorFile] = useState<File | null>(null);
   const [selectedCategoryFile, setSelectedCategoryFile] = useState<File | null>(null);
   const [selectedHeroFile, setSelectedHeroFile] = useState<File | null>(null);
+
+  const [analyticsLogs, setAnalyticsLogs] = useState<any[]>([]);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+
+  // Analytics calculations
+  const analyticsStats = React.useMemo(() => {
+    let view_vendor = 0;
+    let add_to_plan = 0;
+    let submit_booking_request = 0;
+    let payment_completed = 0;
+
+    analyticsLogs.forEach(log => {
+      if (log.eventName === 'view_vendor') view_vendor++;
+      if (log.eventName === 'add_to_plan') add_to_plan++;
+      if (log.eventName === 'submit_booking_request') submit_booking_request++;
+      if (log.eventName === 'payment_completed') payment_completed++;
+    });
+
+    const planRate = view_vendor > 0 ? (add_to_plan / view_vendor) * 100 : 0;
+    const requestRate = add_to_plan > 0 ? (submit_booking_request / add_to_plan) * 100 : 0;
+    const purchaseRate = submit_booking_request > 0 ? (payment_completed / submit_booking_request) * 100 : 0;
+    const overallRate = view_vendor > 0 ? (payment_completed / view_vendor) * 100 : 0;
+
+    return {
+      view_vendor,
+      add_to_plan,
+      submit_booking_request,
+      payment_completed,
+      planRate,
+      requestRate,
+      purchaseRate,
+      overallRate
+    };
+  }, [analyticsLogs]);
+
+  useEffect(() => {
+    if (activeTab === 'analytics') {
+      setIsLoadingAnalytics(true);
+      const q = query(
+        collection(db, "analytics_logs"),
+        orderBy("timestamp", "desc"),
+        limit(500)
+      );
+      
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const logs = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setAnalyticsLogs(logs);
+        setIsLoadingAnalytics(false);
+      }, (err) => {
+        console.error("Failed to load analytics logs:", err);
+        setIsLoadingAnalytics(false);
+      });
+
+      return () => unsubscribe();
+    }
+  }, [activeTab]);
   
   const postFileInputRef = useRef<HTMLInputElement>(null);
   const vendorFileInputRef = useRef<HTMLInputElement>(null);
@@ -134,9 +194,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const uploadFile = async (file: File, path: string): Promise<string> => {
-    const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
-    await uploadBytes(storageRef, file);
-    return await getDownloadURL(storageRef);
+    return await uploadFileRobustly(file, `${path}/${Date.now()}_${file.name}`);
   };
 
   const handleVendorFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -540,7 +598,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* Tab Navigation */}
         <div className="flex justify-center mb-10 overflow-x-auto pb-2">
             <div className="bg-[#111] p-1 rounded-xl border border-[#D4AF37]/20 flex shrink-0">
-                {['add', 'manage', 'bookings', 'messages', 'stripe', 'users', 'posts', 'categories'].map(tab => (
+                {['add', 'manage', 'bookings', 'messages', 'stripe', 'users', 'posts', 'categories', 'analytics'].map(tab => (
                     <button 
                         key={tab} 
                         onClick={() => {
@@ -549,7 +607,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         }} 
                         className={`px-8 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-[#D4AF37] text-black shadow-lg' : 'text-slate-500 hover:text-white'}`}
                     >
-                        {tab === 'add' ? (editingVendor ? 'Edit Professional' : 'Add Professional') : tab === 'manage' ? 'Professionals' : tab}
+                        {tab === 'add' ? (editingVendor ? 'Edit Professional' : 'Add Professional') : tab === 'manage' ? 'Professionals' : tab === 'analytics' ? 'Funnel Insights' : tab}
                     </button>
                 ))}
             </div>
@@ -1154,6 +1212,245 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <h3 className="text-xl font-bold font-[Cinzel]">No Conversation Selected</h3>
                                 <p className="text-sm max-w-xs">Select an inquiry from the sidebar to view details and respond.</p>
                             </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {activeTab === 'analytics' && (
+            <div className="space-y-8 animate-in fade-in duration-500">
+                {/* Visual Title Header */}
+                <div className="bg-[#111] border border-[#D4AF37]/15 p-8 rounded-3xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-8 opacity-5">
+                        <BarChart3 className="w-36 h-36 text-[#D4AF37]" />
+                    </div>
+                    <div className="relative z-10 max-w-2xl">
+                        <span className="text-[#D4AF37] text-[10px] font-black uppercase tracking-widest bg-[#D4AF37]/10 px-3 py-1 rounded-full border border-[#D4AF37]/20">
+                            Operational Intel
+                        </span>
+                        <h2 className="text-3xl font-bold font-[Cinzel] text-white mt-4 tracking-tight">Booking Funnel Conversion Index</h2>
+                        <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                            Monitor client discovery loops, plan additions, submission conversion rates, and revenue acquisitions. Driven in real-time by integrated Firebase Analytics log streams.
+                        </p>
+                    </div>
+                </div>
+
+                {/* KPI Metrics List */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
+                        <div className="absolute top-4 right-4 bg-blue-500/10 p-2 rounded-lg border border-blue-500/20">
+                            <Search className="w-5 h-5 text-blue-400" />
+                        </div>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">1. Discovery</p>
+                        <h3 className="text-3xl font-bold text-white mt-4 font-mono">{analyticsStats.view_vendor}</h3>
+                        <p className="text-xs text-slate-400 mt-1">Vendor list & profile views</p>
+                    </div>
+                    
+                    <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
+                        <div className="absolute top-4 right-4 bg-[#D4AF37]/10 p-2 rounded-lg border border-[#D4AF37]/25">
+                            <ShoppingBag className="w-5 h-5 text-[#D4AF37]" />
+                        </div>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">2. Plan Intent</p>
+                        <h3 className="text-3xl font-bold text-[#D4AF37] mt-4 font-mono">{analyticsStats.add_to_plan}</h3>
+                        <p className="text-xs text-slate-400 mt-1">{analyticsStats.planRate.toFixed(1)}% loop add-to-plan rate</p>
+                    </div>
+
+                    <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
+                        <div className="absolute top-4 right-4 bg-orange-500/10 p-2 rounded-lg border border-orange-500/20">
+                            <Calendar className="w-5 h-5 text-orange-400" />
+                        </div>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">3. Book Requests</p>
+                        <h3 className="text-3xl font-bold text-white mt-4 font-mono">{analyticsStats.submit_booking_request}</h3>
+                        <p className="text-xs text-slate-400 mt-1">{analyticsStats.requestRate.toFixed(1)}% plan conversion rate</p>
+                    </div>
+
+                    <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
+                        <div className="absolute top-4 right-4 bg-green-500/10 p-2 rounded-lg border border-green-500/20">
+                            <DollarSign className="w-5 h-5 text-green-400" />
+                        </div>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">4. Acquisitions</p>
+                        <h3 className="text-3xl font-bold text-green-400 mt-4 font-mono">{analyticsStats.payment_completed}</h3>
+                        <p className="text-xs text-slate-400 mt-1">{analyticsStats.purchaseRate.toFixed(1)}% booking close rate</p>
+                    </div>
+                </div>
+
+                {/* Funnel Graph Visualizer */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-2 bg-[#111] p-8 rounded-2xl border border-white/5 shadow-2xl flex flex-col justify-between">
+                        <div>
+                            <h3 className="text-lg font-bold font-[Cinzel] text-white">Funnel Leakage & Progress Chart</h3>
+                            <p className="text-xs text-slate-500 mt-1">Mathematical representation of client conversion phases.</p>
+                        </div>
+
+                        {/* Interactive Bars representing Funnel Volume */}
+                        <div className="space-y-6 mt-8">
+                            {/* Discovery step */}
+                            <div>
+                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                                    <span>Step 1: Discovery (Total Card Views)</span>
+                                    <span>{analyticsStats.view_vendor} Views (100%)</span>
+                                </div>
+                                <div className="h-4 bg-slate-900 rounded-full overflow-hidden border border-white/5">
+                                    <div className="h-full bg-blue-500 rounded-full transition-all duration-1000" style={{ width: '105%' }}></div>
+                                </div>
+                            </div>
+
+                            {/* Plan step */}
+                            <div>
+                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                                    <span>Step 2: Micro-Conversion (Added to Event Plan)</span>
+                                    <span>{analyticsStats.add_to_plan} Added ({analyticsStats.planRate.toFixed(1)}%)</span>
+                                </div>
+                                <div className="h-4 bg-slate-900 rounded-full overflow-hidden border border-white/5">
+                                    <div className="h-full bg-[#D4AF37] rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.max(0, analyticsStats.planRate))}%` }}></div>
+                                </div>
+                            </div>
+
+                            {/* Booking requests step */}
+                            <div>
+                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                                    <span>Step 3: Intent (Booking Inquiry Sent)</span>
+                                    <span>{analyticsStats.submit_booking_request} Enquiries ({analyticsStats.view_vendor > 0 ? ((analyticsStats.submit_booking_request / analyticsStats.view_vendor) * 100).toFixed(1) : 0}%)</span>
+                                </div>
+                                <div className="h-4 bg-slate-900 rounded-full overflow-hidden border border-white/5">
+                                    <div className="h-full bg-orange-400 rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.max(0, analyticsStats.view_vendor > 0 ? (analyticsStats.submit_booking_request / analyticsStats.view_vendor) * 100 : 0))}%` }}></div>
+                                </div>
+                            </div>
+
+                            {/* Acquisition/Checkout step */}
+                            <div>
+                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                                    <span>Step 4: Ultimate Acquisition (Securely Paid)</span>
+                                    <span>{analyticsStats.payment_completed} Orders ({analyticsStats.view_vendor > 0 ? ((analyticsStats.payment_completed / analyticsStats.view_vendor) * 100).toFixed(1) : 0}%)</span>
+                                </div>
+                                <div className="h-4 bg-slate-900 rounded-full overflow-hidden border border-white/5">
+                                    <div className="h-full bg-green-500 rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.max(0, analyticsStats.view_vendor > 0 ? (analyticsStats.payment_completed / analyticsStats.view_vendor) * 100 : 0))}%` }}></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-8 pt-6 border-t border-white/5 flex flex-wrap gap-6 items-center justify-between text-xs text-slate-400">
+                            <div>
+                                <span className="text-white font-bold font-mono">Overall Close Target:</span> {analyticsStats.overallRate.toFixed(2)}% of visitors convert to revenue.
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="inline-block w-2.5 h-2.5 bg-blue-500 rounded-full"></span> Discovery
+                                <span className="inline-block w-2.5 h-2.5 bg-[#D4AF37] rounded-full"></span> Interest
+                                <span className="inline-block w-2.5 h-2.5 bg-orange-400 rounded-full"></span> Intent
+                                <span className="inline-block w-2.5 h-2.5 bg-green-500 rounded-full"></span> Purchase
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Circular Conversion Stats */}
+                    <div className="bg-[#111] p-8 rounded-2xl border border-white/5 shadow-2xl flex flex-col justify-between">
+                        <div>
+                            <h3 className="text-lg font-bold font-[Cinzel] text-white">Conversion Funnel Ratios</h3>
+                            <p className="text-xs text-slate-500 mt-1">Leakage between steps & segments.</p>
+                        </div>
+                        
+                        <div className="space-y-6 mt-6">
+                            <div className="p-4 bg-zinc-900/60 rounded-xl border border-white/5 flex items-center justify-between">
+                                <div>
+                                    <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Interest Rate</h4>
+                                    <p className="text-[10px] text-slate-500 mt-1">From viewing cards to adding items to plan</p>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-xl font-bold font-mono text-[#D4AF37]">{analyticsStats.planRate.toFixed(1)}%</span>
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-zinc-900/60 rounded-xl border border-white/5 flex items-center justify-between">
+                                <div>
+                                    <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Plan Commitment</h4>
+                                    <p className="text-[10px] text-slate-500 mt-1">From adding to plan to submitting booking inquiries</p>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-xl font-bold font-mono text-orange-400">{analyticsStats.requestRate.toFixed(1)}%</span>
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-zinc-900/60 rounded-xl border border-white/5 flex items-center justify-between">
+                                <div>
+                                    <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Acquisition Fulfillment</h4>
+                                    <p className="text-[10px] text-slate-500 mt-1">From sent inquiries to fully completed payments</p>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-xl font-bold font-mono text-green-400">{analyticsStats.purchaseRate.toFixed(1)}%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="text-[10px] text-slate-600 font-bold uppercase tracking-widest text-center mt-6">
+                            Secure Zero-Trust ABAC Logging
+                        </div>
+                    </div>
+                </div>
+
+                {/* Tracking Logs Records Table */}
+                <div className="bg-[#111] rounded-2xl border border-white/5 overflow-hidden">
+                    <div className="p-6 border-b border-white/5 bg-black/40 flex justify-between items-center">
+                        <div>
+                            <h3 className="text-lg font-bold font-[Cinzel] text-white">Live Firebase Analytics Logs</h3>
+                            <p className="text-xs text-slate-500 mt-1">Real-time log entries captured through analytics hooks.</p>
+                        </div>
+                        <span className="text-[10px] bg-green-500/10 text-green-500 px-3 py-1 font-bold uppercase tracking-widest border border-green-500/20 rounded-full flex items-center gap-1.5 font-bold">
+                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Live Broadcast
+                        </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        {isLoadingAnalytics ? (
+                            <div className="py-20 text-center flex flex-col items-center justify-center gap-4">
+                                <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Streaming Firebase records...</span>
+                            </div>
+                        ) : analyticsLogs.length === 0 ? (
+                            <div className="py-20 text-center opacity-40">
+                                <BarChart3 className="w-12 h-12 mx-auto text-[#D4AF37]/40 mb-3" />
+                                <p className="text-sm">No live analytics records logged yet.</p>
+                            </div>
+                        ) : (
+                            <table className="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr className="border-b border-white/5 bg-black/20 text-slate-500 font-bold uppercase tracking-widest text-[9px]">
+                                        <th className="p-4 bg-[#111]">Timestamp</th>
+                                        <th className="p-4 bg-[#111]">Event Name</th>
+                                        <th className="p-4 bg-[#111]">User Email</th>
+                                        <th className="p-4 bg-[#111]">Payload Summary</th>
+                                        <th className="p-4 bg-[#111]">Path</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {analyticsLogs.map(log => (
+                                        <tr key={log.id} className="hover:bg-white/[0.02] transition-colors font-mono text-[11px] text-slate-300">
+                                            <td className="p-4 text-slate-500">
+                                                {log.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A'}
+                                            </td>
+                                            <td className="p-4">
+                                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${
+                                                    log.eventName === 'payment_completed' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
+                                                    log.eventName === 'submit_booking_request' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                                                    log.eventName === 'add_to_plan' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' :
+                                                    'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                                }`}>
+                                                    {log.eventName}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-slate-400 text-xs font-sans">
+                                                {log.userEmail || 'Anonymous Guest'}
+                                            </td>
+                                            <td className="p-4 max-w-xs truncate text-[10px]" title={JSON.stringify(log.params)}>
+                                                {log.params ? Object.entries(log.params).map(([k, v]) => `${k}: ${v}`).join(' | ') : 'None'}
+                                            </td>
+                                            <td className="p-4 text-slate-500">
+                                                {log.path || '/'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         )}
                     </div>
                 </div>

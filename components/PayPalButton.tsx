@@ -5,9 +5,10 @@ import { CreditCard, CheckCircle, Loader2 } from 'lucide-react';
 interface PayPalButtonProps {
   amount: number;
   onSuccess: () => void;
+  onClick?: () => void;
 }
 
-const PayPalButton: React.FC<PayPalButtonProps> = ({ amount, onSuccess }) => {
+const PayPalButton: React.FC<PayPalButtonProps> = ({ amount, onSuccess, onClick }) => {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
@@ -77,7 +78,10 @@ const PayPalButton: React.FC<PayPalButtonProps> = ({ amount, onSuccess }) => {
 
   return (
     <button 
-      onClick={() => setShowModal(true)}
+      onClick={() => {
+        if (onClick) onClick();
+        setShowModal(true);
+      }}
       className="bg-[#FFC439] hover:bg-[#F2BA36] text-blue-900 font-bold px-4 py-2 rounded-full shadow-sm flex items-center gap-2 transition-colors text-sm"
     >
       <span className="italic font-extrabold">Pay</span>Pal

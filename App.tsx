@@ -17,6 +17,7 @@ import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, quer
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './services/firebase';
 import { uploadFileRobustly } from './services/uploadService';
+import { trackFunnelStep } from './services/analyticsService';
 import VendorCard from './components/VendorCard';
 import QuickViewModal from './components/QuickViewModal';
 import BookingModal from './components/BookingModal';
@@ -43,6 +44,11 @@ const clean = (obj: any) => {
     console.error("Error cleaning object for Firestore:", e);
     return null;
   }
+};
+
+const ADMIN_EMAILS = ['bookingsimcha@gmail.com', 'ststrohli@gmail.com'];
+const isUserAdmin = (email: string | null | undefined): boolean => {
+  return typeof email === 'string' && ADMIN_EMAILS.includes(email.trim().toLowerCase());
 };
 
 const SimchaLogo = ({ className = "h-10 w-10" }: { className?: string }) => (
@@ -332,14 +338,12 @@ function App() {
         if (userDoc.exists()) {
           const data = userDoc.data();
           setUserDocData(data);
-          const hardcodedAdminEmail = 'bookingsimcha@gmail.com';
-          const role = data.role || (user.email === hardcodedAdminEmail ? 'admin' : 'client');
+          const role = data.role || (isUserAdmin(user.email) ? 'admin' : 'client');
           setUserRole(role);
           setCurrentUserVendorId(data.vendorId || null);
         } else {
           // Default for new users
-          const hardcodedAdminEmail = 'bookingsimcha@gmail.com';
-          setUserRole(user.email === hardcodedAdminEmail ? 'admin' : 'client');
+          setUserRole(isUserAdmin(user.email) ? 'admin' : 'client');
           setCurrentUserVendorId(null);
         }
       } catch (err) {
@@ -380,6 +384,13 @@ function App() {
   const [eventDate, setEventDate] = useState('');
   const [bookingVendor, setBookingVendor] = useState<Vendor | null>(null);
   const [quickViewVendor, setQuickViewVendor] = useState<Vendor | null>(null);
+
+  const handleViewVendor = (v: Vendor | null) => {
+    if (v) {
+      trackFunnelStep.viewVendor(v.id, v.name, v.category);
+    }
+    setQuickViewVendor(v);
+  };
   const [chatVendor, setChatVendor] = useState<Vendor | null>(null);
   const [isAdminChatOpen, setIsAdminChatOpen] = useState(false);
   const [adminInquiryText, setAdminInquiryText] = useState('');
@@ -593,6 +604,11 @@ function App() {
         await sendBookingConfirmation(b);
       }
 
+      if (cart.length > 0) {
+        const totalAmt = cart.reduce((acc, curr) => acc + curr.amount, 0);
+        trackFunnelStep.submitBookingRequest(cart.length, totalAmt);
+      }
+
       setCart([]);
       await deleteDoc(doc(db, 'users', fbUser.uid, 'cart', 'current'));
       showNotification('Requests sent!');
@@ -601,12 +617,43 @@ function App() {
     }
   };
 
+  const handleConfirmBooking = (d: any) => {
+    if (!bookingVendor) return;
+    trackFunnelStep.addToPlan(bookingVendor.id, bookingVendor.name, bookingVendor.category, d.totalAmount);
+    setCart(prev => [...prev, {
+      vendor: bookingVendor,
+      date: d.date || eventDate || new Date().toISOString().split('T')[0],
+      notes: d.notes,
+      clientName: currentAuthenticatedUser.name || d.clientName,
+      eventName: d.eventName,
+      eventLocation: d.eventLocation,
+      eventTime: d.eventTime,
+      contactEmail: currentAuthenticatedUser.username || d.contactEmail,
+      selectedServices: d.selectedServices,
+      amount: d.totalAmount
+    }]);
+    setBookingVendor(null);
+    showNotification(`${bookingVendor.name} added to plan!`);
+  };
+
+  const handleRemoveFromCart = (index: number) => {
+    const item = cart[index];
+    if (item) {
+      trackFunnelStep.removeFromPlan(item.vendor.id, item.vendor.name, item.vendor.category);
+    }
+    setCart(prev => prev.filter((_, idx) => idx !== index));
+  };
+
   const handlePaymentSuccess = async (id: string, method: string) => {
     try {
       await updateDoc(doc(db, 'bookings', id), {
         paymentStatus: 'paid',
         paymentMethod: method
       });
+      const bObj = bookings.find(b => b.id === id);
+      if (bObj) {
+        trackFunnelStep.completedPurchase(id, bObj.vendorId, bObj.amount, method);
+      }
       showNotification('Payment successful!');
     } catch (err) {
       console.error("Error updating payment:", err);
@@ -1259,7 +1306,7 @@ function App() {
   }
 
   if (view === 'admin') {
-    if (fbUser?.email !== 'bookingsimcha@gmail.com') {
+    if (!isUserAdmin(fbUser?.email)) {
       setView('marketplace');
       return null;
     }
@@ -1324,7 +1371,7 @@ function App() {
       bookings={myBookings} 
       messages={myMessages} 
       vendors={vendors} 
-      onRemoveFromCart={i => setCart(prev => prev.filter((_, idx) => idx !== i))} 
+      onRemoveFromCart={handleRemoveFromCart} 
       onProcessCart={handleProcessCart} 
       onPaymentSuccess={handlePaymentSuccess} 
       onLogout={handleSignOut} 
@@ -1466,7 +1513,7 @@ function App() {
                           vendor={v} 
                           onBook={v => setBookingVendor(v)} 
                           onMessage={v => setChatVendor(v)} 
-                          onQuickView={v => setQuickViewVendor(v)}
+                          onQuickView={handleViewVendor}
                           selectedDate={eventDate} 
                           onAddReview={handleAddReview} 
                         />
@@ -1500,7 +1547,7 @@ function App() {
                     </div>
                     <div className="flex flex-col gap-3 items-center md:items-start">
                         <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Access</p>
-                        { fbUser?.email === 'bookingsimcha@gmail.com' && (
+                        { isUserAdmin(fbUser?.email) && (
                           <button onClick={() => setView('admin')} className="text-slate-400 hover:text-[#D4AF37] text-sm flex items-center gap-1.5 transition-colors outline-none focus-visible:underline"><Shield className="w-3.5 h-3.5" aria-hidden="true" /> Administration</button>
                         )}
                     </div>
@@ -1510,7 +1557,7 @@ function App() {
       </footer>
 
       <SuggestionModal isOpen={showSuggestions} onClose={() => setShowSuggestions(false)} sourceVendor={sourceVendorForSuggestions} recommendations={suggestedVendors} onBook={v => setBookingVendor(v)} cartItems={cart.map(i => i.vendor.id)} />
-      <BookingModal isOpen={!!bookingVendor} vendor={bookingVendor} selectedDate={eventDate} onClose={() => setBookingVendor(null)} onConfirm={d => { setCart(prev => [...prev, { vendor: bookingVendor!, date: d.date || eventDate || new Date().toISOString().split('T')[0], notes: d.notes, clientName: currentAuthenticatedUser.name || d.clientName, eventName: d.eventName, eventLocation: d.eventLocation, eventTime: d.eventTime, contactEmail: currentAuthenticatedUser.username || d.contactEmail, selectedServices: d.selectedServices, amount: d.totalAmount }]); setBookingVendor(null); showNotification(`${bookingVendor!.name} added to plan!`); }} initialDetails={{ clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} />
+      <BookingModal isOpen={!!bookingVendor} vendor={bookingVendor} selectedDate={eventDate} onClose={() => setBookingVendor(null)} onConfirm={handleConfirmBooking} initialDetails={{ clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} />
       <ChatModal 
         isOpen={!!chatVendor || isAdminChatOpen} 
         vendor={chatVendor} 

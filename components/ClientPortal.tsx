@@ -9,6 +9,7 @@ import PayPalButton from './PayPalButton';
 import { storage, db } from '../services/firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly } from '../services/uploadService';
+import { trackFunnelStep } from '../services/analyticsService';
 import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { summarizeFile } from '../services/geminiService';
 
@@ -31,6 +32,14 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   user, cart, bookings, messages, vendors, onRemoveFromCart, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile' | 'documents'>('overview');
+
+  const handleTabChange = (tab: typeof activeTab) => {
+    setActiveTab(tab);
+    if (tab === 'plan') {
+      const totalAmt = cart.reduce((acc, curr) => acc + curr.amount, 0);
+      trackFunnelStep.beginCheckout(cart.length, totalAmt);
+    }
+  };
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedThreadVendorId, setSelectedThreadVendorId] = useState<string | null>(null);
 
@@ -117,6 +126,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
   const handlePay = async (bookingId: string, vendorId: string, amount: number) => {
     try {
+      trackFunnelStep.initiatePayment(bookingId, vendorId, amount, 'Stripe');
       const response = await fetch(`/api/stripe/create-checkout-session?vendorId=${vendorId}&amount=${amount}&bookingId=${bookingId}`);
       if (!response.ok) {
         const errorText = await response.text();
@@ -284,7 +294,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
   const NavItem = ({ id, icon: Icon, label, badge }: { id: typeof activeTab, icon: any, label: string, badge?: number }) => (
     <button 
-      onClick={() => { setActiveTab(id); setIsSidebarOpen(false); }} 
+      onClick={() => { handleTabChange(id); setIsSidebarOpen(false); }} 
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === id ? 'bg-[#D4AF37] text-black font-bold shadow-lg' : 'text-slate-500 hover:text-[#D4AF37] hover:bg-white/5'}`}
     >
       <Icon className="w-5 h-5" />
@@ -579,7 +589,11 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                     <p className="text-3xl font-bold text-[#D4AF37]">${booking.amount.toLocaleString()}</p>
                     {booking.status === 'confirmed' && booking.paymentStatus === 'pending' && (
                       <div className="flex flex-col gap-3 mt-6">
-                        <PayPalButton amount={booking.amount} onSuccess={() => onPaymentSuccess(booking.id, 'PayPal')} />
+                        <PayPalButton 
+                          amount={booking.amount} 
+                          onSuccess={() => onPaymentSuccess(booking.id, 'PayPal')} 
+                          onClick={() => trackFunnelStep.initiatePayment(booking.id, booking.vendorId, booking.amount, 'PayPal')}
+                        />
                         {(vendor.stripeConnected || vendor.stripeAccountId) && (
                           <button 
                             onClick={() => handlePay(
