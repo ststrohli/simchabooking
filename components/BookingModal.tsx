@@ -48,7 +48,16 @@ const BookingModal: React.FC<BookingModalProps> = ({
   });
 
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [checkedDates, setCheckedDates] = useState<Record<string, 'Available' | 'Unavailable'>>({});
+  const [checkedDates, setCheckedDates] = useState<Record<string, 'Available' | 'Unavailable'>>(() => {
+    if (!vendor?.id) return {};
+    const sessionKey = `checked_dates_${vendor.id}`;
+    try {
+      const stored = sessionStorage.getItem(sessionKey);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
 
   const isVenue = vendor?.category === VendorCategory.VENUE || vendor?.category === 'Venue';
   const effectiveDate = localDate;
@@ -134,10 +143,14 @@ const BookingModal: React.FC<BookingModalProps> = ({
     // 3. Register attempt and perform the verification
     registerCheckAttempt(newDate);
     const isBlocked = vendor.unavailableDates?.includes(newDate);
-    setCheckedDates(prev => ({
-      ...prev,
-      [newDate]: isBlocked ? 'Unavailable' : 'Available'
-    }));
+    const updated = {
+      ...checkedDates,
+      [newDate]: (isBlocked ? 'Unavailable' : 'Available') as 'Available' | 'Unavailable'
+    };
+    setCheckedDates(updated);
+    
+    const sessionKey = `checked_dates_${vendor.id}`;
+    sessionStorage.setItem(sessionKey, JSON.stringify(updated));
 
     setLocalDate(newDate);
     setIsCalendarOpen(false);
@@ -201,16 +214,39 @@ const BookingModal: React.FC<BookingModalProps> = ({
         setCurrentCalendarMonth(parsedDate);
       }
       
+      // Load checked dates from sessionStorage
+      const sessionKey = `checked_dates_${vendor.id}`;
+      const storedStr = sessionStorage.getItem(sessionKey);
+      let loadedDates: Record<string, 'Available' | 'Unavailable'> = {};
+      if (storedStr) {
+        try {
+          loadedDates = JSON.parse(storedStr);
+        } catch {}
+      }
+
+      // Check if limit is reached
+      const isBlocked = checkPrivacyStatus();
+      setPrivacyBlocked(isBlocked);
+
       const initialBlockedStatus = vendor.unavailableDates?.includes(initialDate);
-      
-      if (checkPrivacyStatus()) {
-        setPrivacyBlocked(true);
-        // If already blocked, add initial selection to checked state based on vendor details so they can still proceed with it
-        setCheckedDates({ [initialDate]: initialBlockedStatus ? 'Unavailable' : 'Available' });
+
+      if (loadedDates[initialDate]) {
+        // Already checked, use the existing state loaded from sessionStorage
+        setCheckedDates(loadedDates);
       } else {
-        setPrivacyBlocked(false);
-        registerCheckAttempt(initialDate);
-        setCheckedDates({ [initialDate]: initialBlockedStatus ? 'Unavailable' : 'Available' });
+        // Not checked yet, check if we are already blocked
+        if (isBlocked) {
+          loadedDates[initialDate] = initialBlockedStatus ? 'Unavailable' : 'Available';
+          setCheckedDates(loadedDates);
+          sessionStorage.setItem(sessionKey, JSON.stringify(loadedDates));
+        } else {
+          registerCheckAttempt(initialDate);
+          loadedDates[initialDate] = initialBlockedStatus ? 'Unavailable' : 'Available';
+          setCheckedDates(loadedDates);
+          sessionStorage.setItem(sessionKey, JSON.stringify(loadedDates));
+          // Re-evaluate privacy block status
+          setPrivacyBlocked(checkPrivacyStatus());
+        }
       }
     }
   }, [isOpen, vendor, selectedDate]);
@@ -473,18 +509,13 @@ const BookingModal: React.FC<BookingModalProps> = ({
             <button
               type="button"
               onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-              className="w-full flex items-center justify-between gap-3 p-3 bg-black hover:bg-neutral-900 border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 rounded-xl transition-all outline-none focus:ring-1 focus:ring-[#D4AF37] text-left"
+              className="w-full flex items-center gap-3 p-3 bg-black hover:bg-neutral-900 border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 rounded-xl transition-all outline-none focus:ring-1 focus:ring-[#D4AF37] text-left cursor-pointer"
             >
-              <div className="flex items-center gap-3">
-                <Calendar className="w-5 h-5 text-[#D4AF37] flex-shrink-0" />
-                <div className="flex-1">
-                  <span className="text-[10px] uppercase font-bold tracking-wider text-[#D4AF37]/60 block" style={{ textShadow: "0 0 4px rgba(212,175,55,0.1)" }}>Selected Celebration Date</span>
-                  <span className="text-sm font-black text-slate-100 font-[Cinzel] tracking-wide">{getReadableLocalDate()}</span>
-                </div>
+              <Calendar className="w-5 h-5 text-[#D4AF37] flex-shrink-0" />
+              <div className="flex-1">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-[#D4AF37]/60 block" style={{ textShadow: "0 0 4px rgba(212,175,55,0.1)" }}>Selected Celebration Date</span>
+                <span className="text-sm font-black text-slate-100 font-[Cinzel] tracking-wide">{getReadableLocalDate()}</span>
               </div>
-              <span className="text-[10px] font-bold text-[#D4AF37] bg-black/40 border border-[#D4AF37]/25 px-2 py-1 rounded-md">
-                {isCalendarOpen ? 'Hide' : 'Change'}
-              </span>
             </button>
             
             {/* Interactive premium calendar picker inside an animated container */}

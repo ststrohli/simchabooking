@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { Vendor, Booking, Message, SelectedService, VendorService } from '../types';
 import { db, storage } from '../services/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly } from '../services/uploadService';
 
@@ -203,6 +203,26 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       return () => clearTimeout(timer);
     }
   }, [bookings]);
+
+  // Automatically mark unread messages as read when viewing a thread
+  useEffect(() => {
+    if (selectedThreadEmail && activeTab === 'messages') {
+      const thread = messageThreads.find(t => t[0] === selectedThreadEmail);
+      if (thread) {
+        const unreadMessages = thread[1].messages.filter(m => m.receiverId === vendor.id && !m.isRead);
+        if (unreadMessages.length > 0) {
+          const batch = writeBatch(db);
+          unreadMessages.forEach(msg => {
+            const msgRef = doc(db, 'messages', msg.id);
+            batch.update(msgRef, { isRead: true });
+          });
+          batch.commit().catch(err => {
+            console.error("Error marking messages as read in batch:", err);
+          });
+        }
+      }
+    }
+  }, [selectedThreadEmail, activeTab, messageThreads, vendor.id]);
 
   const totalRevenue = bookings.filter(b => b.status === 'confirmed' && b.paymentStatus === 'paid').reduce((sum, b) => sum + b.amount, 0);
   const pendingRequests = bookings.filter(b => b.status === 'pending').length;
@@ -1016,7 +1036,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
           <NavItem id="overview" icon={LayoutDashboard} label="Dashboard" />
           <NavItem id="bookings" icon={Users} label="Requests" badge={pendingRequests} />
-          <NavItem id="messages" icon={MessageSquare} label="Inquiries" badge={messages.filter(m => m.receiverId === vendor.id && !m.isRead).length || undefined} />
+          <NavItem id="messages" icon={MessageSquare} label="Messages" badge={messages.filter(m => m.receiverId === vendor.id && !m.isRead).length || undefined} />
           <NavItem id="calendar" icon={CalendarDays} label="Calendar" />
           <NavItem id="profile" icon={Settings} label="Business Profile" />
         </nav>
@@ -1065,7 +1085,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
         <div className="p-4 md:p-10 max-w-7xl mx-auto space-y-8">
           {activeTab === 'overview' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
               <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-[#D4AF37]/20 transition-all">
                 <div className="bg-[#D4AF37]/10 p-3 w-fit rounded-2xl group-hover:bg-[#D4AF37]/20 transition-colors"><DollarSign className="w-6 h-6 text-[#D4AF37]" /></div>
                 <div><p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">Earnings</p><h3 className="text-3xl font-bold text-white">${totalRevenue.toLocaleString()}</h3></div>
@@ -1080,6 +1100,20 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                 <div>
                   <p className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Action Required</p>
                   <h3 className={`text-3xl font-bold ${pendingRequests > 0 ? 'text-red-500' : 'text-white'}`}>{pendingRequests} Requests</h3>
+                </div>
+              </div>
+              <div 
+                onClick={() => setActiveTab('messages')}
+                className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-[#D4AF37]/25 transition-all cursor-pointer"
+              >
+                <div className={`p-3 w-fit rounded-2xl transition-colors ${messages.filter(m => m.receiverId === vendor.id && !m.isRead).length > 0 ? 'bg-red-500/10 group-hover:bg-red-500/20' : 'bg-[#D4AF37]/10'}`}>
+                  <MessageSquare className={`w-6 h-6 ${messages.filter(m => m.receiverId === vendor.id && !m.isRead).length > 0 ? 'text-red-500' : 'text-[#D4AF37]'}`} />
+                </div>
+                <div>
+                  <p className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Client Inquiries</p>
+                  <h3 className="text-3xl font-bold text-white font-mono">
+                    {messages.filter(m => m.receiverId === vendor.id && !m.isRead).length || 0} Unread
+                  </h3>
                 </div>
               </div>
               <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4">
@@ -1339,20 +1373,30 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       <MessageSquare className="w-10 h-10 mx-auto mb-4" />
                       <p className="text-[10px] font-black uppercase tracking-widest">No Active Inquiries</p>
                     </div>
-                  ) : messageThreads.map(([email, data]) => (
-                    <button 
-                      key={email}
-                      onClick={() => setSelectedThreadEmail(email)}
-                      className={`w-full p-6 text-left border-b border-white/5 transition-all hover:bg-white/5 ${selectedThreadEmail === email ? 'bg-[#D4AF37]/5 border-l-4 border-l-[#D4AF37]' : ''}`}
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="font-bold text-white text-sm truncate">{data.name}</span>
-                        <span className="text-[8px] text-slate-500">{new Date(data.lastMessage.timestamp).toLocaleDateString()}</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 truncate mb-2">{email}</p>
-                      <p className="text-xs text-slate-400 line-clamp-1 italic">"{data.lastMessage.text}"</p>
-                    </button>
-                  ))}
+                  ) : messageThreads.map(([email, data]) => {
+                    const unreadInThread = data.messages.filter(m => m.receiverId === vendor.id && !m.isRead).length;
+                    return (
+                      <button 
+                        key={email}
+                        onClick={() => setSelectedThreadEmail(email)}
+                        className={`w-full p-6 text-left border-b border-white/5 transition-all hover:bg-white/5 relative ${selectedThreadEmail === email ? 'bg-[#D4AF37]/5 border-l-4 border-l-[#D4AF37]' : ''}`}
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <div className="flex items-center gap-1.5 truncate max-w-[70%]">
+                            <span className="font-bold text-white text-sm truncate">{data.name}</span>
+                            {unreadInThread > 0 && (
+                              <span className="bg-red-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full animate-pulse flex-shrink-0">
+                                {unreadInThread}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[8px] text-slate-500 flex-shrink-0">{new Date(data.lastMessage.timestamp).toLocaleDateString()}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 truncate mb-2">{email}</p>
+                        <p className="text-xs text-slate-400 line-clamp-1 italic">"{data.lastMessage.text}"</p>
+                      </button>
+                    );
+                  })}
                </div>
 
                {/* Chat Pane */}
