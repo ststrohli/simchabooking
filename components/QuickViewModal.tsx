@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import { X, Star, MapPin, ShieldCheck, PlayCircle, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react';
 import { Vendor } from '../types';
 
@@ -36,8 +37,20 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
   const prevMedia = () => { setIsPlaying(false); setCurrentMediaIndex((prev) => (prev - 1 + mediaItems.length) % mediaItems.length); };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-[#111] w-full max-w-4xl rounded-3xl border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative animate-in zoom-in-95 duration-300">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
+    >
+      <motion.div 
+        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 30, scale: 0.95 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+        className="bg-[#111] w-full max-w-4xl rounded-3xl border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative"
+      >
         <button 
           onClick={onClose}
           className="absolute top-4 right-4 z-[110] p-2 bg-black/60 hover:bg-black rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
@@ -168,8 +181,8 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 

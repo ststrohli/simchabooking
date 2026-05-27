@@ -1418,6 +1418,17 @@ async function startServer() {
 
       res.json({ status: "ok", message: "Verification email sent successfully" });
     } catch (error: any) {
+      const isRateLimit = error.code === 'auth/quota-exceeded' || 
+                          error.message?.includes('TOO_MANY_ATTEMPTS') || 
+                          error.message?.includes('too-many-requests') ||
+                          error.code?.includes('too-many-requests');
+      if (isRateLimit) {
+        console.warn(`[Auth] Rate limit hit for verification email for ${email}. Message: ${error.message}`);
+        return res.status(429).json({ 
+          error: "TOO_MANY_ATTEMPTS", 
+          message: "You have requested too many verification emails. Please check your inbox or try again in a few minutes." 
+        });
+      }
       console.error("[Auth] Failed to send verification email:", error);
       res.status(500).json({ error: error.message });
     }
@@ -1451,6 +1462,12 @@ async function startServer() {
       res.json({ status: "ok", message: "Password reset email sent successfully" });
     } catch (error: any) {
       console.error("[Auth] Failed to send password reset email:", error);
+      if (error.code === 'auth/quota-exceeded' || error.message?.includes('TOO_MANY_ATTEMPTS') || error.code?.includes('too-many-requests')) {
+        return res.status(429).json({ 
+          error: "TOO_MANY_ATTEMPTS", 
+          message: "You have requested too many password reset attempts. Please try again in vertical minutes." 
+        });
+      }
       res.status(500).json({ error: error.message });
     }
   });

@@ -69,9 +69,11 @@ service cloud.firestore {
     match /messages/{messageId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
-        (resource.data.clientEmail == request.auth.token.email) || 
+        (request.auth.token != null && 'email' in request.auth.token && resource.data.clientEmail == request.auth.token.email) || 
         (resource.data.senderId == request.auth.uid) || 
         (resource.data.receiverId == request.auth.uid) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == resource.data.clientEmail) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vendorId != null &&
          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vendorId == resource.data.receiverId ||
@@ -82,6 +84,8 @@ service cloud.firestore {
         isAdmin() ||
         resource.data.senderId == request.auth.uid || 
         resource.data.receiverId == request.auth.uid ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == resource.data.clientEmail) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vendorId != null &&
          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vendorId == resource.data.receiverId ||
@@ -96,6 +100,11 @@ service cloud.firestore {
       match /{allSubcollections=**} {
         allow read, write: if isOwner(uid) || isAdmin();
       }
+    }
+
+    match /analytics_logs/{logId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
     }
 
     // Global Admin Access (as fallback)

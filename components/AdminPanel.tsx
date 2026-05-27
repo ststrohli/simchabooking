@@ -2,8 +2,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar } from 'lucide-react';
 import { auth, db } from '../services/firebase';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { getApps, initializeApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import firebaseConfig from '../firebase-applet-config.json';
 import { uploadFileRobustly } from '../services/uploadService';
 import { Vendor, VendorCategory, Post, Booking, UserAccount, Message } from '../types';
+
+const getSecondaryAuth = () => {
+  const apps = getApps();
+  const existingSecondary = apps.find(a => a.name === 'secondary-vendor-auth');
+  if (existingSecondary) {
+    return getAuth(existingSecondary);
+  }
+  const secondaryApp = initializeApp(firebaseConfig, 'secondary-vendor-auth');
+  return getAuth(secondaryApp);
+};
 
 interface AdminPanelProps {
   vendors: Vendor[];
@@ -217,7 +230,49 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         imageUrl = await uploadFile(selectedVendorFile, 'vendors');
       }
 
-      const vendorId = editingVendor ? editingVendor.id : Math.random().toString(36).substr(2, 9);
+      let vendorId = editingVendor ? editingVendor.id : '';
+
+      // For new vendors, automatically create their login credentials in Firebase Auth
+      if (!editingVendor) {
+        if (!formData.contactEmail.trim()) {
+          showNotification('A contact email is required to create vendor credentials.', 'info');
+          setIsUploading(false);
+          return;
+        }
+        if (!formData.password || formData.password.length < 6) {
+          showNotification('A temporary portal password of at least 6 characters is required.', 'info');
+          setIsUploading(false);
+          return;
+        }
+
+        try {
+          const secAuth = getSecondaryAuth();
+          const userCredential = await createUserWithEmailAndPassword(
+            secAuth,
+            formData.contactEmail.trim(),
+            formData.password
+          );
+          
+          vendorId = userCredential.user.uid;
+          
+          // Sign out of the secondary auth session right away to keep it clean
+          await signOut(secAuth);
+        } catch (authErr: any) {
+          console.error("Firebase Authentication Vendor creation failed:", authErr);
+          let errMsg = authErr.message || "Failed to create vendor login credentials.";
+          if (authErr.code === 'auth/email-already-in-use') {
+            errMsg = "The email is already registered in Firebase Authentication.";
+          } else if (authErr.code === 'auth/invalid-email') {
+            errMsg = "The provided contact email starts with or contains invalid characters.";
+          } else if (authErr.code === 'auth/weak-password') {
+            errMsg = "The password is too weak. Must be at least 6 characters.";
+          }
+          showNotification(errMsg, 'info');
+          setIsUploading(false);
+          return;
+        }
+      }
+
       const newVendor: Vendor = {
         ...formData,
         id: vendorId, 

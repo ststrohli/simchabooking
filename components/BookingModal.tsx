@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, AlertTriangle, Hash } from 'lucide-react';
+import { motion } from 'motion/react';
+import { X, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, AlertTriangle, Hash, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Vendor, SelectedService, VendorCategory } from '../types';
 
 interface BookingModalProps {
@@ -41,6 +42,13 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
   const [localDate, setLocalDate] = useState(selectedDate || new Date().toISOString().split('T')[0]);
   const [privacyBlocked, setPrivacyBlocked] = useState(false);
+  const [currentCalendarMonth, setCurrentCalendarMonth] = useState<Date>(() => {
+    const d = selectedDate ? new Date(selectedDate) : new Date();
+    return isNaN(d.getTime()) ? new Date() : d;
+  });
+
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [checkedDates, setCheckedDates] = useState<Record<string, 'Available' | 'Unavailable'>>({});
 
   const isVenue = vendor?.category === VendorCategory.VENUE || vendor?.category === 'Venue';
   const effectiveDate = localDate;
@@ -62,6 +70,24 @@ const BookingModal: React.FC<BookingModalProps> = ({
       return validAttempts.length >= maxChecks;
     } catch {
       return false;
+    }
+  };
+
+  const getRemainingAttempts = (): number => {
+    if (!vendor) return 0;
+    const now = Date.now();
+    const maxChecks = vendor.maxDateChecks ?? 5;
+    const resetPeriodMs = (vendor.dateCheckResetHours ?? 24) * 60 * 60 * 1000;
+    
+    const attemptsStr = sessionStorage.getItem(`date_checks_${vendor.id}`);
+    if (!attemptsStr) return maxChecks;
+    
+    try {
+      const attempts: number[] = JSON.parse(attemptsStr);
+      const validAttempts = attempts.filter(t => now - t < resetPeriodMs);
+      return Math.max(0, maxChecks - validAttempts.length);
+    } catch {
+      return maxChecks;
     }
   };
 
@@ -90,14 +116,78 @@ const BookingModal: React.FC<BookingModalProps> = ({
   };
 
   const handleDateChange = (newDate: string) => {
-    setLocalDate(newDate);
-    
+    if (!vendor) return;
+
+    // 1. If it's already in checkedDates, we can just switch back directly!
+    if (checkedDates[newDate]) {
+      setLocalDate(newDate);
+      setIsCalendarOpen(false);
+      return;
+    }
+
+    // 2. If limit reached, block checking new dates
     if (checkPrivacyStatus()) {
       setPrivacyBlocked(true);
       return;
     }
-    
+
+    // 3. Register attempt and perform the verification
     registerCheckAttempt(newDate);
+    const isBlocked = vendor.unavailableDates?.includes(newDate);
+    setCheckedDates(prev => ({
+      ...prev,
+      [newDate]: isBlocked ? 'Unavailable' : 'Available'
+    }));
+
+    setLocalDate(newDate);
+    setIsCalendarOpen(false);
+  };
+
+  const handleSelectCheckedDate = (date: string) => {
+    setLocalDate(date);
+    setIsCalendarOpen(false);
+  };
+
+  const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+  const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
+
+  const isPastDate = (date: Date): boolean => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const compareDate = new Date(date);
+    compareDate.setHours(0, 0, 0, 0);
+    return compareDate < today;
+  };
+
+  const formatDateString = (date: Date): string => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const prevMonth = () => {
+    setCurrentCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const getReadableLocalDate = () => {
+    try {
+      const parts = localDate.split('-');
+      if (parts.length === 3) {
+        const year = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1;
+        const day = parseInt(parts[2]);
+        const dObj = new Date(year, month, day);
+        if (!isNaN(dObj.getTime())) {
+          return dObj.toLocaleDateString('default', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        }
+      }
+    } catch {}
+    return localDate;
   };
 
   // Sync state when opening or closing
@@ -106,11 +196,21 @@ const BookingModal: React.FC<BookingModalProps> = ({
       const initialDate = selectedDate || new Date().toISOString().split('T')[0];
       setLocalDate(initialDate);
       
+      const parsedDate = new Date(initialDate);
+      if (!isNaN(parsedDate.getTime())) {
+        setCurrentCalendarMonth(parsedDate);
+      }
+      
+      const initialBlockedStatus = vendor.unavailableDates?.includes(initialDate);
+      
       if (checkPrivacyStatus()) {
         setPrivacyBlocked(true);
+        // If already blocked, add initial selection to checked state based on vendor details so they can still proceed with it
+        setCheckedDates({ [initialDate]: initialBlockedStatus ? 'Unavailable' : 'Available' });
       } else {
         setPrivacyBlocked(false);
         registerCheckAttempt(initialDate);
+        setCheckedDates({ [initialDate]: initialBlockedStatus ? 'Unavailable' : 'Available' });
       }
     }
   }, [isOpen, vendor, selectedDate]);
@@ -190,7 +290,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (privacyBlocked || isDateBlocked) return;
+    if (checkedDates[localDate] !== 'Available') return;
     
     const selectedServices = vendor.services
         ?.filter(s => selectedServiceIds.includes(s.id))
@@ -215,12 +315,143 @@ const BookingModal: React.FC<BookingModalProps> = ({
     } as any);
   };
 
+  const renderInteractiveCalendar = () => {
+    const year = currentCalendarMonth.getFullYear();
+    const month = currentCalendarMonth.getMonth();
+    const daysInMonth = getDaysInMonth(year, month);
+    const firstDay = getFirstDayOfMonth(year, month);
+    const monthName = currentCalendarMonth.toLocaleString('default', { month: 'long' });
+
+    const days = [];
+
+    // Padding empty cells
+    for (let i = 0; i < firstDay; i++) {
+      days.push(
+        <div key={`empty-${i}`} className="aspect-square opacity-0 pointer-events-none" />
+      );
+    }
+
+    // Days list
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateObj = new Date(year, month, day);
+      const dateStr = formatDateString(dateObj);
+      const isSelected = dateStr === localDate;
+      const isPast = isPastDate(dateObj);
+      
+      // Stop pre-loading vendor's schedule:
+      // Real isBlocked (unavailable date status) is only shown IF they have already checked it this session!
+      // Otherwise, we do not show any red indicator or grayed-out layout for standard un-checked future dates.
+      const isKnownUnavailable = checkedDates[dateStr] === 'Unavailable';
+
+      // If the client has hit their max limit, we block them from checking NEW (unchecked) dates on the calendar.
+      const isUncheckedAndLimitReached = !checkedDates[dateStr] && privacyBlocked;
+
+      // Disable state is determined by past date, known unavailable date, or if it's unchecked when limit is reached.
+      const isDisabled = isPast || isKnownUnavailable || isUncheckedAndLimitReached;
+
+      let buttonStyle = "";
+      if (isSelected) {
+        buttonStyle = "bg-[#D4AF37] text-black font-black shadow-[0_0_15px_rgba(212,175,55,0.45)] scale-105 border border-[#D4AF37]";
+      } else if (isPast || isKnownUnavailable) {
+        buttonStyle = "text-slate-600 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95";
+      } else if (isUncheckedAndLimitReached) {
+        buttonStyle = "text-slate-600 bg-transparent opacity-20 cursor-not-allowed";
+      } else {
+        // Standard selectable future date has crisp white text, with elegant soft-gold hover/active states.
+        buttonStyle = "text-slate-100 bg-black/40 border border-white/5 hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 hover:scale-105 hover:shadow-[0_0_12px_rgba(212,175,55,0.25)] active:scale-95";
+      }
+
+      days.push(
+        <button
+          key={`day-${day}`}
+          type="button"
+          disabled={isDisabled}
+          onClick={() => handleDateChange(dateStr)}
+          className={`aspect-square rounded-xl flex flex-col items-center justify-center text-xs font-bold transition-all outline-none relative group ${buttonStyle}`}
+        >
+          <span>{day}</span>
+          {!isSelected && !isDisabled && (
+            <span className="w-1 h-1 rounded-full bg-[#D4AF37] opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 animate-pulse" />
+          )}
+          {isKnownUnavailable && (
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 mt-0.5" title="Previously Verified Unavailable" />
+          )}
+          {checkedDates[dateStr] === 'Available' && !isSelected && (
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 mt-0.5" title="Verified Available" />
+          )}
+        </button>
+      );
+    }
+
+    const weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+    return (
+      <div className="bg-[#050505] border border-[#D4AF37]/20 rounded-2xl p-4 shadow-xl select-none relative overflow-hidden w-full">
+        <div className="absolute inset-0 border border-white/5 pointer-events-none rounded-2xl" />
+        
+        {/* Header with Navigation */}
+        <div className="flex items-center justify-between mb-4 border-b border-[#D4AF37]/10 pb-3">
+          <button
+            type="button"
+            onClick={prevMonth}
+            className="p-1.5 rounded-lg border border-[#D4AF37]/10 hover:border-[#D4AF37]/40 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37]"
+            aria-label="Previous Month"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          
+          <span className="font-[Cinzel] text-[#D4AF37] font-black uppercase tracking-widest text-xs flex items-center gap-1">
+            {monthName} <span className="text-white">{year}</span>
+          </span>
+
+          <button
+            type="button"
+            onClick={nextMonth}
+            className="p-1.5 rounded-lg border border-[#D4AF37]/10 hover:border-[#D4AF37]/40 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37]"
+            aria-label="Next Month"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Weekdays */}
+        <div className="grid grid-cols-7 gap-1 text-center mb-1">
+          {weekdays.map((wd, idx) => (
+            <div key={`wd-${idx}`} className="text-[10px] text-slate-500 font-bold uppercase tracking-widest py-1">
+              {wd}
+            </div>
+          ))}
+        </div>
+
+        {/* Days */}
+        <div className="grid grid-cols-7 gap-1.5">
+          {days}
+        </div>
+      </div>
+    );
+  };
+
   const inputClass = "w-full pl-10 pr-4 py-2.5 bg-black border border-[#D4AF37]/30 rounded-lg text-slate-100 placeholder:text-slate-600 focus:ring-2 focus:ring-[#D4AF37] focus:border-[#D4AF37] outline-none transition-all";
   const labelClass = "block text-xs font-bold text-[#D4AF37]/70 uppercase tracking-widest mb-1.5";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <div className="bg-[#0a0a0a] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto border border-[#D4AF37]/20">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md" 
+      role="dialog" 
+      aria-modal="true" 
+      aria-labelledby="modal-title"
+    >
+      <motion.div 
+        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 30, scale: 0.95 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+        className="bg-[#0a0a0a] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto border border-[#D4AF37]/20"
+      >
         <div className="bg-black p-6 text-white flex justify-between items-start sticky top-0 z-10 border-b border-[#D4AF37]/20">
           <div>
             <h2 id="modal-title" className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">{initialDetails ? 'Update Your Selection' : 'Reserve Service'}</h2>
@@ -231,30 +462,101 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div className="space-y-3">
-            <label htmlFor="booking-date" className={labelClass}>Event Date</label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" aria-hidden="true" />
-              <input 
-                id="booking-date" 
-                required 
-                type="date" 
-                className={inputClass + " [color-scheme:dark]"} 
-                value={localDate} 
-                onChange={(e) => handleDateChange(e.target.value)} 
-              />
-            </div>
+            {/* Blinking/pulsing gold warning */}
+            <p className="text-[11px] font-bold text-[#D4AF37] animate-pulse leading-relaxed tracking-wide mb-2 text-center" style={{ textShadow: "0 0 10px rgba(212,175,55,0.4)" }}>
+              Note: For vendor privacy, you may only check availability for {vendor.maxDateChecks ?? 5} dates every {vendor.dateCheckResetHours ?? 24} hours.
+            </p>
+
+            <label className={labelClass}>Event Date</label>
+            
+            {/* Elegant luxury display of Selected Date as action picker */}
+            <button
+              type="button"
+              onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+              className="w-full flex items-center justify-between gap-3 p-3 bg-black hover:bg-neutral-900 border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 rounded-xl transition-all outline-none focus:ring-1 focus:ring-[#D4AF37] text-left"
+            >
+              <div className="flex items-center gap-3">
+                <Calendar className="w-5 h-5 text-[#D4AF37] flex-shrink-0" />
+                <div className="flex-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-[#D4AF37]/60 block" style={{ textShadow: "0 0 4px rgba(212,175,55,0.1)" }}>Selected Celebration Date</span>
+                  <span className="text-sm font-black text-slate-100 font-[Cinzel] tracking-wide">{getReadableLocalDate()}</span>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold text-[#D4AF37] bg-black/40 border border-[#D4AF37]/25 px-2 py-1 rounded-md">
+                {isCalendarOpen ? 'Hide' : 'Change'}
+              </span>
+            </button>
+            
+            {/* Interactive premium calendar picker inside an animated container */}
+            {isCalendarOpen && (
+              <div className="animate-in fade-in slide-in-from-top-2 duration-200 mt-2 relative z-20">
+                {renderInteractiveCalendar()}
+              </div>
+            )}
+
+            {/* List of checked dates this session */}
+            {Object.keys(checkedDates).length > 0 && (
+              <div className="bg-black/50 border border-[#D4AF37]/15 rounded-xl p-3 space-y-2 mt-2">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[10px] uppercase font-black tracking-widest text-[#D4AF37]/60">session checked dates</span>
+                  <span className="text-[9px] text-[#D4AF37] font-mono px-1.5 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/15">
+                    Checks used: {vendor.maxDateChecks ?? 5 - getRemainingAttempts()} / {vendor.maxDateChecks ?? 5}
+                  </span>
+                </div>
+                <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                  {Object.entries(checkedDates).map(([date, status]) => {
+                    const isSelected = date === localDate;
+                    return (
+                      <div 
+                        key={date}
+                        onClick={() => handleSelectCheckedDate(date)}
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border text-xs 
+                          ${isSelected 
+                            ? 'bg-[#D4AF37]/20 border-[#D4AF37] text-white font-bold' 
+                            : 'bg-[#050505] border-white/5 hover:border-[#D4AF37]/40 text-slate-300'
+                          }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Calendar className={`w-3.5 h-3.5 ${isSelected ? 'text-[#D4AF37]' : 'text-slate-500'}`} />
+                          <span className="font-mono">{date}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] uppercase font-black tracking-wider
+                            ${status === 'Available' 
+                              ? 'bg-green-500/10 text-green-400 border border-green-500/20' 
+                              : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                            }`}
+                          >
+                            {status}
+                          </span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-[#D4AF37]" />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className={`border rounded-lg p-4 flex items-center gap-4 transition-colors ${privacyBlocked ? 'bg-red-500/10 border-red-500/30 text-red-500' : isDateBlocked ? 'bg-red-500/10 border-red-500/30 text-red-500' : 'bg-[#D4AF37]/10 border-[#D4AF37]/20 text-[#D4AF37]'}`} role="alert">
-            {privacyBlocked || isDateBlocked ? <AlertTriangle className="w-6 h-6 flex-shrink-0" aria-hidden="true" /> : <Calendar className="w-6 h-6 flex-shrink-0" aria-hidden="true" />}
+          <div className={`border rounded-lg p-4 flex items-center gap-4 transition-colors 
+            ${checkedDates[localDate] === 'Unavailable' 
+              ? 'bg-red-500/10 border-red-500/30 text-red-500' 
+              : checkedDates[localDate] === 'Available'
+                ? 'bg-[#D4AF37]/10 border-[#D4AF37]/20 text-[#D4AF37]'
+                : 'bg-slate-955 border-white/5 text-slate-400'
+            }`} 
+            role="alert"
+          >
+            {checkedDates[localDate] === 'Unavailable' ? <AlertTriangle className="w-6 h-6 flex-shrink-0" aria-hidden="true" /> : <Calendar className="w-6 h-6 flex-shrink-0" aria-hidden="true" />}
             <div>
               <p className="text-xs font-black uppercase tracking-widest">Availability Status</p>
               <p className="text-sm font-bold">
-                {privacyBlocked 
-                  ? 'Privacy limit reached. Please try again later.' 
-                  : isDateBlocked 
-                    ? `${localDate} — FULLY BOOKED` 
-                    : `${localDate} — AVAILABLE`}
+                {checkedDates[localDate] === 'Unavailable' 
+                  ? 'Selected date is Booked/Unavailable.' 
+                  : checkedDates[localDate] === 'Available'
+                    ? 'Selected date is AVAILABLE — Add to Plan'
+                    : 'Please select and verify availability.'}
               </p>
             </div>
           </div>
@@ -399,15 +701,15 @@ const BookingModal: React.FC<BookingModalProps> = ({
             <button type="button" onClick={onClose} className="flex-1 py-3 font-bold text-slate-500 hover:text-[#D4AF37] outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] rounded-lg">Cancel</button>
             <button 
                 type="submit" 
-                disabled={privacyBlocked || isDateBlocked || (isOfferMode && (!offeredPrice || parseInt(offeredPrice) <= 0))} 
-                className={`flex-1 py-3 rounded-xl font-bold transition-all shadow-lg border outline-none focus-visible:ring-2 focus-visible:ring-white ${privacyBlocked || isDateBlocked || (isOfferMode && !offeredPrice) ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20'}`}
+                disabled={checkedDates[localDate] !== 'Available' || (isOfferMode && (!offeredPrice || parseInt(offeredPrice) <= 0))} 
+                className={`flex-1 py-3 rounded-xl font-bold transition-all shadow-lg border outline-none focus-visible:ring-2 focus-visible:ring-white ${checkedDates[localDate] !== 'Available' || (isOfferMode && !offeredPrice) ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20'}`}
             >
-                {privacyBlocked ? 'Privacy Blocked' : isDateBlocked ? 'Unavailable' : (isOfferMode ? 'Send Offer' : 'Add to Plan')}
+                {checkedDates[localDate] !== 'Available' ? 'Verify Availability' : (isOfferMode ? 'Send Offer' : 'Add to Plan')}
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 

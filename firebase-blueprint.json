@@ -90,6 +90,21 @@
         "role": { "type": "string", "enum": ["client", "vendor", "admin"] },
         "vendorId": { "type": "string" }
       }
+    },
+    "AnalyticsLog": {
+      "title": "AnalyticsLog",
+      "description": "An event tracked for booking funnels & click paths",
+      "type": "object",
+      "properties": {
+        "eventName": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "path": { "type": "string" },
+        "params": { "type": "object" },
+        "firestoreTimestamp": { "type": "object" }
+      },
+      "required": ["eventName", "timestamp", "path"]
     }
   },
   "firestore": {
@@ -101,6 +116,7 @@
     "/users/{uid}": { "schema": "User", "description": "User profiles" },
     "/users/{uid}/cart/current": { "schema": "object", "description": "User shopping cart" },
     "/settings/stripe": { "schema": "object", "description": "Stripe configuration" },
-    "/test/{docId}": { "schema": "object", "description": "Connection testing collection" }
+    "/test/{docId}": { "schema": "object", "description": "Connection testing collection" },
+    "/analytics_logs/{logId}": { "schema": "AnalyticsLog", "description": "Funnel analytics logging" }
   }
 }

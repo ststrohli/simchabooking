@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
@@ -127,7 +128,8 @@ const handleFirestoreError = (error: unknown, operationType: OperationType, path
 };
 
 function App() {
-  const [view, setView] = useState<'marketplace' | 'vendor-portal' | 'admin' | 'posts' | 'client-portal' | 'payment-success' | 'verify-account'>('marketplace');
+  const [view, setView] = useState<'marketplace' | 'vendor-portal' | 'admin' | 'posts' | 'client-portal' | 'payment-success' | 'verify-account' | 'portal'>('marketplace');
+  const [portalTab, setPortalTab] = useState<'client' | 'vendor'>('client');
   const welcomeScheduled = React.useRef(false);
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
   const [userDocData, setUserDocData] = useState<any>(null);
@@ -142,6 +144,21 @@ function App() {
   const [currentUserVendorId, setCurrentUserVendorId] = useState<string | null>(null);
   const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
   const [paymentVendorId, setPaymentVendorId] = useState<string | null>(null);
+
+  const isActuallyVendor = useMemo(() => {
+    if (!fbUser?.email) return false;
+    return userRole === 'vendor' || 
+           userDocData?.role === 'vendor' || 
+           vendors.some(v => v.username?.toLowerCase() === fbUser.email?.toLowerCase());
+  }, [fbUser, userRole, userDocData, vendors]);
+
+  const vendorProfileId = useMemo(() => {
+    if (!fbUser?.email) return null;
+    if (currentUserVendorId) return currentUserVendorId;
+    if (userDocData?.vendorId) return userDocData.vendorId;
+    const matchedVendor = vendors.find(v => v.username?.toLowerCase() === fbUser.email?.toLowerCase());
+    return matchedVendor ? matchedVendor.id : null;
+  }, [fbUser, currentUserVendorId, userDocData, vendors]);
   
   const [activeCategories, setActiveCategories] = useState<string[]>(Object.values(VendorCategory));
   const [categoryImages, setCategoryImages] = useState<Record<string, string>>(INITIAL_CATEGORY_IMAGES);
@@ -177,6 +194,17 @@ function App() {
       console.error("Error syncing user profile:", err);
     }
   };
+
+  // Sync legacy portal views to unified portal
+  useEffect(() => {
+    if (view === 'vendor-portal') {
+      setPortalTab('vendor');
+      setView('portal');
+    } else if (view === 'client-portal') {
+      setPortalTab('client');
+      setView('portal');
+    }
+  }, [view]);
 
   // Firestore Sync - Global Data
   useEffect(() => {
@@ -319,11 +347,35 @@ function App() {
         return;
       }
 
-      // If logged in but email not verified, we also treat it as not fully authenticated for the app
+      // If logged in but email not verified, we also treat it as not fully authenticated for the app, EXCEPT if they are a vendor!
       if (!user.emailVerified) {
-        setFbUser(null);
-        setIsInitializing(false);
-        return;
+        let isVendor = false;
+        try {
+          const vendorDoc = await getDoc(doc(db, 'vendors', user.uid));
+          if (vendorDoc.exists()) {
+            isVendor = true;
+          } else if (user.email) {
+            const q = query(collection(db, 'vendors'), where('contactEmail', '==', user.email));
+            const snapshot = await getDocs(q);
+            if (!snapshot.empty) {
+              isVendor = true;
+            } else {
+              const q2 = query(collection(db, 'vendors'), where('username', '==', user.email));
+              const snapshot2 = await getDocs(q2);
+              if (!snapshot2.empty) {
+                isVendor = true;
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Error checking vendor status during auth state change:", err);
+        }
+
+        if (!isVendor) {
+          setFbUser(null);
+          setIsInitializing(false);
+          return;
+        }
       }
 
       setFbUser(user);
@@ -452,25 +504,29 @@ function App() {
     const checkStripe = params.get('check_stripe');
 
     if (onboardStatus === 'success') {
-      setView('vendor-portal');
+      setPortalTab('vendor');
+      setView('portal');
       showNotification('Stripe account connected successfully!', 'success');
       // Only clean up if we don't need the bypass in VendorPortal
       if (!params.get('stripeAccountId') && !params.get('stripe_acc_id')) {
         window.history.replaceState({}, '', window.location.pathname);
       }
     } else if (onboardStatus === 'pending') {
-      setView('vendor-portal');
+      setPortalTab('vendor');
+      setView('portal');
       showNotification('Stripe account is pending. Please complete all requirements in the Stripe dashboard.', 'info');
       if (!params.get('stripeAccountId') && !params.get('stripe_acc_id')) {
         window.history.replaceState({}, '', window.location.pathname);
       }
     } else if (onboardStatus === 'refresh') {
-      setView('vendor-portal');
+      setPortalTab('vendor');
+      setView('portal');
       showNotification('Stripe onboarding session refreshed.', 'info');
       window.history.replaceState({}, '', window.location.pathname);
     } else if (onboardStatus === 'error') {
       const msg = params.get('message');
-      setView('vendor-portal');
+      setPortalTab('vendor');
+      setView('portal');
       showNotification(msg ? `Stripe Error: ${msg}` : 'There was an error connecting your Stripe account.', 'info');
       window.history.replaceState({}, '', window.location.pathname);
     }
@@ -683,6 +739,19 @@ function App() {
   const handleAdminAddVendor = async (vendor: Vendor) => {
     try {
       await setDoc(doc(db, 'vendors', vendor.id), clean(vendor));
+      
+      // Also precheck/create their linked system user document so their role is mapped instantly
+      const userDocRef = doc(db, 'users', vendor.id);
+      await setDoc(userDocRef, {
+        uid: vendor.id,
+        email: vendor.contactEmail?.trim() || '',
+        name: vendor.name,
+        role: 'vendor',
+        vendorId: vendor.id,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
       showNotification('Vendor added!');
     } catch (err) {
       console.error("Error adding vendor:", err);
@@ -816,27 +885,67 @@ function App() {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        if (!user.emailVerified) {
-          await sendEmailVerification(user);
+        // Determine if this user corresponds to a vendor
+        let isVendor = false;
+        let matchedVendor = null;
+        try {
+          const vendorDoc = await getDoc(doc(db, 'vendors', user.uid));
+          if (vendorDoc.exists()) {
+            isVendor = true;
+            matchedVendor = { id: vendorDoc.id, ...vendorDoc.data() } as Vendor;
+          } else {
+            const q = query(collection(db, 'vendors'), where('contactEmail', '==', email.trim()));
+            const qSnap = await getDocs(q);
+            if (!qSnap.empty) {
+              isVendor = true;
+              matchedVendor = { id: qSnap.docs[0].id, ...qSnap.docs[0].data() } as Vendor;
+            } else {
+              const q2 = query(collection(db, 'vendors'), where('username', '==', email.trim()));
+              const qSnap2 = await getDocs(q2);
+              if (!qSnap2.empty) {
+                isVendor = true;
+                matchedVendor = { id: qSnap2.docs[0].id, ...qSnap2.docs[0].data() } as Vendor;
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Error checking vendor status on login:", err);
+        }
+
+        if (!user.emailVerified && !isVendor) {
           setUnverifiedEmail(email);
           setStep('verification');
           await signOut(auth);
           return;
         }
 
-        if (targetRole === 'vendor') {
-           const vendor = vendors.find(v => v.username === email);
+        if (targetRole === 'vendor' || isVendor) {
+           const vendor = matchedVendor || vendors.find(v => 
+             v.username?.toLowerCase() === email.toLowerCase() || 
+             v.contactEmail?.toLowerCase() === email.toLowerCase()
+           );
            if (vendor) {
              setCurrentUserVendorId(vendor.id);
              setUserRole('vendor');
+             setView('marketplace');
+             // Put role and vendorId inside the update so it's fully persistent in firestore
+             await setDoc(doc(db, 'users', user.uid), {
+               uid: user.uid,
+               email: user.email,
+               name: vendor.name,
+               role: 'vendor',
+               vendorId: vendor.id,
+               updatedAt: new Date().toISOString()
+             }, { merge: true });
            } else {
-             setUserRole('client'); 
+             setUserRole('client');
+             setView('marketplace');
            }
         } else {
           setUserRole('client');
+          setView('marketplace');
         }
         await syncUserProfile(user);
-        setView('marketplace');
       } catch (err: any) {
         setError('Password or email incorrect, or account requires verification.');
       } finally {
@@ -854,18 +963,32 @@ function App() {
 
         // For Google sign-in, we assume email is verified by Google
         if (targetRole === 'vendor') {
-          const vendor = vendors.find(v => v.username === user.email);
+          const vendor = vendors.find(v => 
+            v.username?.toLowerCase() === user.email?.toLowerCase() || 
+            v.contactEmail?.toLowerCase() === user.email?.toLowerCase()
+          );
           if (vendor) {
             setCurrentUserVendorId(vendor.id);
             setUserRole('vendor');
+            setView('marketplace');
+            // Put role and vendorId inside the update so it's fully persistent in firestore
+            await setDoc(doc(db, 'users', user.uid), {
+              uid: user.uid,
+              email: user.email,
+              name: vendor.name,
+              role: 'vendor',
+              vendorId: vendor.id,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
           } else {
             setUserRole('client');
+            setView('marketplace');
           }
         } else {
           setUserRole('client');
+          setView('marketplace');
         }
         await syncUserProfile(user);
-        setView('marketplace');
         showNotification(`Welcome, ${user.displayName || 'User'}!`);
       } catch (err: any) {
         setError(err.message || 'An error occurred during Google Sign-In.');
@@ -906,6 +1029,13 @@ function App() {
         });
 
         await syncUserProfile(user, { fullName, photoURL, photoStoragePath });
+
+        // Trigger official Firebase Email Verification as well!
+        try {
+          await sendEmailVerification(user);
+        } catch (fbVerifErr: any) {
+          console.warn("Firebase Auth SDK sendEmailVerification failed or rate-limited during registration:", fbVerifErr?.message || fbVerifErr);
+        }
 
         // Use custom verification email via server SMTP
         try {
@@ -962,6 +1092,37 @@ function App() {
       }
     };
 
+    const handleResendVerification = async () => {
+      if (!unverifiedEmail) {
+        showNotification('No unverified email set. Please log in first.', 'info');
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/auth/send-verification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: unverifiedEmail })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+          if (response.status === 429 || data.error === 'TOO_MANY_ATTEMPTS') {
+            showNotification('Rate limit exceeded. Please wait a few minutes before resending.', 'info');
+          } else {
+            showNotification(data.message || data.error || 'Failed to send verification email.', 'info');
+          }
+        } else {
+          showNotification('Verification email resent successfully!', 'success');
+        }
+      } catch (err: any) {
+        console.error("Resend error:", err);
+        showNotification('Failed to connect to verification service.', 'info');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     if (step === 'verification') {
       return (
         <div className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden">
@@ -975,12 +1136,21 @@ function App() {
               We have sent a verification email to <span className="text-white font-bold">{unverifiedEmail}</span>. 
               Please verify your account via the link in your inbox and then log in.
             </p>
-            <button 
-              onClick={() => setStep('login')}
-              className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2"
-            >
-              <LogIn className="w-4 h-4" /> Return to Login
-            </button>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={handleResendVerification}
+                disabled={isLoading}
+                className="w-full bg-[#111] border border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black py-4 rounded-xl transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /> Resend Verification Email
+              </button>
+              <button 
+                onClick={() => setStep('login')}
+                className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <LogIn className="w-4 h-4" /> Return to Login
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -1016,7 +1186,7 @@ function App() {
         <div className="bg-[#111] rounded-3xl p-8 md:p-12 max-w-lg w-full border border-[#D4AF37]/20 shadow-2xl animate-in zoom-in-95 duration-500 relative z-10">
           <header className="text-center mb-10">
             <div className="flex items-center justify-center mx-auto mb-6"><SimchaLogo className="w-20 h-20" /></div>
-            <h1 className="text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">Simcha Sign-Up</h1>
+            <h1 className="text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">WELCOME TO SIMCHA BOOKING</h1>
             <p className="text-[10px] text-slate-500 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
           </header>
 
@@ -1024,8 +1194,8 @@ function App() {
             <nav className="flex flex-col gap-6" aria-label="Account Type Selection">
               <button onClick={() => { setTargetRole('client'); setStep('login'); }} className="group bg-black/40 border border-[#D4AF37]/20 p-10 rounded-3xl hover:border-[#D4AF37] focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all text-center outline-none">
                 <div className="w-16 h-16 bg-[#D4AF37]/10 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-[#D4AF37] transition-colors" aria-hidden="true"><User className="w-8 h-8 text-[#D4AF37] group-hover:text-black" /></div>
-                <h2 className="text-white font-bold uppercase tracking-[0.3em] text-lg mb-2">Simcha Planner</h2>
-                <p className="text-xs text-slate-500 font-light px-4">I am planning a celebration and need professional help</p>
+                <h2 className="text-white font-bold uppercase tracking-[0.3em] text-lg mb-2">simcha sign in</h2>
+                <p className="text-xs text-slate-400 font-light px-4 leading-relaxed">The perfect platform to book and manage your simcha</p>
               </button>
             </nav>
           ) : step === 'login' ? (
@@ -1050,7 +1220,7 @@ function App() {
               )}
 
               <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2">
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : `Sign In as ${targetRole}`}
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign In'}
               </button>
 
               <div className="relative my-6">
@@ -1207,11 +1377,7 @@ function App() {
             </form>
           )}
           
-          <div className="mt-12 pt-8 border-t border-white/5 text-center flex flex-col items-center gap-4">
-             <button onClick={() => { setTargetRole('vendor'); setStep('login'); }} className="text-[#D4AF37]/40 hover:text-[#D4AF37] text-[8px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-colors outline-none border border-[#D4AF37]/10 px-3 py-1 rounded-full bg-black/40">
-               <Shield className="w-2.5 h-2.5" /> Vendor Access
-             </button>
-          </div>
+          {/* Dual portal routing is now implicit. Vendors and clients use the main sign in form above. */}
         </div>
       </div>
     );
@@ -1348,37 +1514,87 @@ function App() {
     photoStoragePath: userDocData?.photoStoragePath || ''
   };
 
-  if (view === 'vendor-portal' && currentUserVendorId) {
-    const v = vendors.find(v => v.id === currentUserVendorId);
-    return v ? <VendorPortal 
-      vendor={v} 
-      bookings={bookings.filter(b => b.vendorId === v.id)} 
-      messages={messages.filter(m => m.receiverId === v.id || m.senderId === v.id)} 
-      onUpdateVendor={handleUpdateVendor} 
-      onUpdateBookingStatus={handleUpdateBookingStatus} 
-      onReplyMessage={handleReplyMessage} 
-      onLogout={handleSignOut} 
-      showNotification={showNotification}
-    /> : <AuthWall />;
-  }
+  if (view === 'portal' && fbUser) {
+    const isVendor = isActuallyVendor;
 
-  if (view === 'client-portal' && fbUser && userRole === 'client') {
+    const renderVendorToggle = () => {
+      if (!isVendor) return null;
+      return (
+        <div className="bg-[#111] border-b border-[#D4AF37]/20 py-4 px-4 flex justify-center gap-4 sticky top-0 z-50">
+          <div className="flex bg-black border border-[#D4AF37]/30 p-1.5 rounded-full items-center">
+            <button 
+              onClick={() => setPortalTab('client')}
+              className={`px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all ${
+                portalTab === 'client'
+                  ? 'bg-[#D4AF37] text-black shadow-lg font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Client Portal
+            </button>
+            <button 
+              onClick={() => setPortalTab('vendor')}
+              className={`px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all ${
+                portalTab === 'vendor'
+                  ? 'bg-[#D4AF37] text-black shadow-lg font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Vendor Portal
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    if (portalTab === 'vendor' && isVendor && currentUserVendorId) {
+      const v = vendors.find(v => v.id === currentUserVendorId);
+      if (v) {
+        return (
+          <div className="min-h-screen bg-black flex flex-col">
+            {renderVendorToggle()}
+            <div className="flex-grow flex flex-col">
+              <VendorPortal 
+                vendor={v} 
+                bookings={bookings.filter(b => b.vendorId === v.id)} 
+                messages={messages.filter(m => m.receiverId === v.id || m.senderId === v.id)} 
+                onUpdateVendor={handleUpdateVendor} 
+                onUpdateBookingStatus={handleUpdateBookingStatus} 
+                onReplyMessage={handleReplyMessage} 
+                onLogout={handleSignOut} 
+                showNotification={showNotification}
+                onSwitchToClientView={() => setView('marketplace')}
+              />
+            </div>
+          </div>
+        );
+      }
+    }
+
+    // Otherwise render client portal
     const myBookings = bookings.filter(b => b.contactEmail === fbUser.email);
     const myMessages = messages.filter(m => m.clientEmail === fbUser.email);
-    return <ClientPortal 
-      user={currentAuthenticatedUser} 
-      cart={cart} 
-      bookings={myBookings} 
-      messages={myMessages} 
-      vendors={vendors} 
-      onRemoveFromCart={handleRemoveFromCart} 
-      onProcessCart={handleProcessCart} 
-      onPaymentSuccess={handlePaymentSuccess} 
-      onLogout={handleSignOut} 
-      onClose={() => setView('marketplace')} 
-      onUpdateProfile={handleUpdateProfile} 
-      onDeleteAccount={handleDeleteAccount} 
-    />;
+    return (
+      <div className="min-h-screen bg-black flex flex-col">
+        {renderVendorToggle()}
+        <div className="flex-grow flex flex-col">
+          <ClientPortal 
+            user={currentAuthenticatedUser} 
+            cart={cart} 
+            bookings={myBookings} 
+            messages={myMessages} 
+            vendors={vendors} 
+            onRemoveFromCart={handleRemoveFromCart} 
+            onProcessCart={handleProcessCart} 
+            onPaymentSuccess={handlePaymentSuccess} 
+            onLogout={handleSignOut} 
+            onClose={() => setView('marketplace')} 
+            onUpdateProfile={handleUpdateProfile} 
+            onDeleteAccount={handleDeleteAccount} 
+          />
+        </div>
+      </div>
+    );
   }
 
   if (view === 'posts') return <PostsPage posts={posts} vendors={vendors} onBack={() => setView('marketplace')} onViewVendor={navigateToVendor} />;
@@ -1387,7 +1603,7 @@ function App() {
     return <PaymentSuccess 
       bookingId={paymentBookingId || ''} 
       vendorId={paymentVendorId || ''} 
-      onReturn={() => setView('client-portal')} 
+      onReturn={() => { setPortalTab('client'); setView('portal'); }} 
     />;
   }
 
@@ -1427,8 +1643,20 @@ function App() {
             </button>
             <div className="flex items-center gap-6">
                 <button onClick={() => setView('posts')} className="hidden md:block text-slate-300 hover:text-[#D4AF37] transition-colors text-sm font-bold uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded p-1">Moments</button>
-                <button onClick={() => setView(userRole === 'client' ? 'client-portal' : 'vendor-portal')} className="flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/20 px-4 py-2 rounded-full transition-all text-[10px] font-black uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-white outline-none" aria-label="Open My Dashboard">
-                  <LayoutDashboard className="w-4 h-4" aria-hidden="true" /><span>My Portal</span>
+                <button 
+                  onClick={() => {
+                    if (isActuallyVendor) {
+                      setPortalTab('vendor');
+                    } else {
+                      setPortalTab('client');
+                    }
+                    setView('portal');
+                  }} 
+                  className="flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/20 px-4 py-2 rounded-full transition-all text-[10px] font-black uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-white outline-none" 
+                  aria-label="Open My Portal"
+                >
+                  <LayoutDashboard className="w-4 h-4" aria-hidden="true" />
+                  <span>My Portal</span>
                 </button>
                 <button onClick={handleSignOut} className="text-slate-500 hover:text-red-500 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-lg p-1" aria-label="Sign Out"><LogOut className="w-5 h-5" /></button>
             </div>
@@ -1557,7 +1785,11 @@ function App() {
       </footer>
 
       <SuggestionModal isOpen={showSuggestions} onClose={() => setShowSuggestions(false)} sourceVendor={sourceVendorForSuggestions} recommendations={suggestedVendors} onBook={v => setBookingVendor(v)} cartItems={cart.map(i => i.vendor.id)} />
-      <BookingModal isOpen={!!bookingVendor} vendor={bookingVendor} selectedDate={eventDate} onClose={() => setBookingVendor(null)} onConfirm={handleConfirmBooking} initialDetails={{ clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} />
+      <AnimatePresence>
+        {bookingVendor && (
+          <BookingModal isOpen={!!bookingVendor} vendor={bookingVendor} selectedDate={eventDate} onClose={() => setBookingVendor(null)} onConfirm={handleConfirmBooking} initialDetails={{ clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} />
+        )}
+      </AnimatePresence>
       <ChatModal 
         isOpen={!!chatVendor || isAdminChatOpen} 
         vendor={chatVendor} 
@@ -1583,14 +1815,16 @@ function App() {
         </button>
       )}
 
-      {quickViewVendor && (
-        <QuickViewModal 
-          vendor={quickViewVendor} 
-          onClose={() => setQuickViewVendor(null)} 
-          onBook={(v) => { setQuickViewVendor(null); setBookingVendor(v); }}
-          onMessage={(v) => { setQuickViewVendor(null); setChatVendor(v); }}
-        />
-      )}
+      <AnimatePresence>
+        {quickViewVendor && (
+          <QuickViewModal 
+            vendor={quickViewVendor} 
+            onClose={() => setQuickViewVendor(null)} 
+            onBook={(v) => { setQuickViewVendor(null); setBookingVendor(v); }}
+            onMessage={(v) => { setQuickViewVendor(null); setChatVendor(v); }}
+          />
+        )}
+      </AnimatePresence>
 
       {notification && (
         <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300 w-full max-w-sm px-4 pointer-events-none">

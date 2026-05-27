@@ -19,9 +19,10 @@ interface VendorPortalProps {
   onReplyMessage: (clientEmail: string, clientName: string, text: string) => void;
   showNotification: (message: string, type?: 'success' | 'info') => void;
   onLogout: () => void;
+  onSwitchToClientView?: () => void;
 }
 
-const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout }) => {
+const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'history' | 'calendar' | 'profile' | 'messages'>('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedBookingForDetail, setSelectedBookingForDetail] = useState<Booking | null>(null);
@@ -983,9 +984,19 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           <div className="w-8 h-8 bg-[#D4AF37] rounded-lg flex items-center justify-center text-black font-bold font-[Cinzel]">V</div>
           <h2 className="text-[#D4AF37] font-bold font-[Cinzel] tracking-widest uppercase text-sm">Portal</h2>
         </div>
-        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-[#D4AF37] p-2 bg-white/5 rounded-lg transition-all">
-          {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
+        <div className="flex items-center gap-2">
+          {onSwitchToClientView && (
+            <button 
+              onClick={onSwitchToClientView}
+              className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black px-3 py-1.5 rounded-lg text-[9px] uppercase tracking-wider transition-all shadow-md flex items-center gap-1"
+            >
+              <Eye className="w-3.5 h-3.5" /> Client View
+            </button>
+          )}
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-[#D4AF37] p-2 bg-white/5 rounded-lg transition-all">
+            {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
       </div>
 
       {/* Sidebar Overlay */}
@@ -1009,7 +1020,18 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           <NavItem id="calendar" icon={CalendarDays} label="Calendar" />
           <NavItem id="profile" icon={Settings} label="Business Profile" />
         </nav>
-        <div className="p-6 border-t border-white/5 bg-black">
+        <div className="p-6 border-t border-white/5 bg-black space-y-3">
+          {onSwitchToClientView && (
+            <div className="flex bg-[#111] border border-[#D4AF37]/30 p-1.5 rounded-xl items-center w-full justify-between">
+              <span className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest pl-1.5">View Selector</span>
+              <button 
+                onClick={onSwitchToClientView}
+                className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-wider transition-all shadow-md flex items-center gap-1 font-bold"
+              >
+                <Eye className="w-3.5 h-3.5" /> Client View
+              </button>
+            </div>
+          )}
           <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-red-500 transition-colors text-xs font-black uppercase tracking-widest"><LogOut className="w-5 h-5" /> Terminate Session</button>
         </div>
       </aside>
@@ -1023,6 +1045,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               <p className="text-[#D4AF37]/60 text-[10px] font-black uppercase tracking-[0.4em] mt-1.5">{vendor.name}</p>
             </div>
             <div className="flex items-center gap-4">
+               {onSwitchToClientView && (
+                 <button 
+                   onClick={onSwitchToClientView}
+                   className="hidden md:flex items-center gap-2 bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black px-4 py-2 rounded-full text-[10px] uppercase tracking-widest transition-all shadow-lg font-bold"
+                 >
+                   <Eye className="w-4 h-4" /> Client View
+                 </button>
+               )}
                {pendingRequests > 0 && (
                  <div className="hidden sm:flex items-center gap-2 bg-red-600/10 border border-red-600/30 px-3 py-1.5 rounded-full animate-pulse">
                    <Bell className="w-3.5 h-3.5 text-red-500" />
