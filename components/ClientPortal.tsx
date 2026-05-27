@@ -10,7 +10,7 @@ import { storage, db } from '../services/firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly } from '../services/uploadService';
 import { trackFunnelStep } from '../services/analyticsService';
-import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 import { summarizeFile } from '../services/geminiService';
 
 interface ClientPortalProps {
@@ -42,6 +42,14 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   };
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedThreadVendorId, setSelectedThreadVendorId] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Automatically scroll to the bottom of the chat pane when thread changes or new message is received
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [selectedThreadVendorId, messages]);
+
+
 
   const [editName, setEditName] = useState(user.name);
   const [editPhotoURL, setEditPhotoURL] = useState(user.photoURL || ''); 
@@ -289,6 +297,26 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
       new Date(b[1].lastMessage.timestamp).getTime() - new Date(a[1].lastMessage.timestamp).getTime()
     );
   }, [messages, vendors]);
+
+  // Automatically mark unread messages as read when viewing a thread
+  useEffect(() => {
+    if (selectedThreadVendorId && activeTab === 'chats') {
+      const thread = chatThreads.find(t => t[0] === selectedThreadVendorId);
+      if (thread) {
+        const unreadMessages = thread[1].messages.filter(m => m.receiverId === 'client' && !m.isRead);
+        if (unreadMessages.length > 0) {
+          const batch = writeBatch(db);
+          unreadMessages.forEach(msg => {
+            const msgRef = doc(db, 'messages', msg.id);
+            batch.update(msgRef, { isRead: true });
+          });
+          batch.commit().catch(err => {
+            console.error("Error marking messages as read in batch for client:", err);
+          });
+        }
+      }
+    }
+  }, [selectedThreadVendorId, activeTab, chatThreads]);
 
   const subtotal = cart.reduce((sum, item) => sum + item.amount, 0);
 
@@ -663,17 +691,44 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                        </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-8 space-y-6">
+                    <div className="flex-1 overflow-y-auto p-8 space-y-6" id="client-chat-scroll-container">
                       {chatThreads.find(t => t[0] === selectedThreadVendorId)?.[1].messages.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map(m => (
                         <div key={m.id} className={`flex ${m.senderId === 'client' ? 'justify-end' : 'justify-start'}`}>
                           <div className={`max-w-[75%] p-4 rounded-2xl ${m.senderId === 'client' ? 'bg-[#D4AF37] text-black rounded-tr-none' : 'bg-[#1a1a1a] text-slate-200 border border-white/5 rounded-tl-none'}`}>
-                             <p className="text-sm">{m.text}</p>
+                             {m.type === 'image' || m.imageUrl ? (
+                                <div className="space-y-2">
+                                  <img 
+                                    src={m.imageUrl || m.fileUrl} 
+                                    onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })} 
+                                    className="rounded-lg w-full max-h-60 object-cover border border-white/5 shadow-lg" 
+                                    alt="Sent" 
+                                  />
+                                  {m.text && m.text !== 'Sent an image' && <p className="text-sm">{m.text}</p>}
+                                </div>
+                              ) : m.type === 'voice' || m.audioUrl ? (
+                                <div className="space-y-2 min-w-[200px] sm:min-w-[240px]">
+                                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Voice note</p>
+                                  <audio controls src={m.audioUrl || m.fileUrl} className="w-full text-black" />
+                                </div>
+                              ) : m.type === 'file' ? (
+                                <a href={m.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-black/10 p-2 rounded-lg hover:bg-black/20 transition-all">
+                                  <FileText className="w-8 h-8 opacity-50" />
+                                  <div className="flex-1 min-w-0">
+                                     <p className="truncate font-bold text-xs">{m.fileName}</p>
+                                     <p className="text-[10px] opacity-50">Click to download</p>
+                                  </div>
+                                  <Download className="w-4 h-4 opacity-50" />
+                                </a>
+                              ) : (
+                                <p className="text-sm">{m.text}</p>
+                              )}
                              <span className={`text-[8px] block mt-2 opacity-50 ${m.senderId === 'client' ? 'text-black' : 'text-slate-500'}`}>
                                {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                              </span>
                           </div>
                         </div>
                       ))}
+                      <div ref={messagesEndRef} />
                     </div>
                     
                     <div className="p-6 bg-black/40 border-t border-white/5 italic text-[10px] text-slate-500 text-center">

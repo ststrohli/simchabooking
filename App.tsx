@@ -14,7 +14,7 @@ import {
   deleteUser,
   User as FirebaseUser 
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, query, where, orderBy, getDocs, addDoc, arrayUnion, limit } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, query, where, orderBy, getDocs, addDoc, arrayUnion, limit, or } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './services/firebase';
 import { uploadFileRobustly } from './services/uploadService';
@@ -301,7 +301,13 @@ function App() {
     if (userRole === 'admin') {
       messagesQuery = collection(db, 'messages');
     } else if (userRole === 'vendor' && currentUserVendorId) {
-      messagesQuery = query(collection(db, 'messages'), where('receiverId', '==', currentUserVendorId));
+      messagesQuery = query(
+        collection(db, 'messages'),
+        or(
+          where('receiverId', '==', currentUserVendorId),
+          where('senderId', '==', currentUserVendorId)
+        )
+      );
     } else {
       messagesQuery = query(collection(db, 'messages'), where('clientEmail', '==', fbUser.email));
     }

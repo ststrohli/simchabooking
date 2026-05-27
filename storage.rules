@@ -38,7 +38,7 @@ service firebase.storage {
 
     // Chat Media
     match /chats/{allPaths=**} {
-      allow read, write: if isSignedIn();
+      allow read, write: if true;
     }
 
     // Categories Assets

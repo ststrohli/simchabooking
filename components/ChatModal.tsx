@@ -25,6 +25,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
   const [isUploading, setIsUploading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -90,6 +91,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
         isAdminInquiry: isAdminMode,
         type: isImage ? 'image' : 'file',
         fileUrl: url,
+        imageUrl: isImage ? url : undefined,
         fileName: file.name,
         fileType: file.type
       });
@@ -102,14 +104,19 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
   };
 
   const startRecording = async () => {
+    setMicPermissionError(null);
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      showNotification("Your browser does not support audio recording or you are in an insecure context.", "info");
+      const msg = "Your browser does not support audio recording or you are in an insecure context.";
+      setMicPermissionError(msg);
+      showNotification(msg, "info");
       return;
     }
 
     try {
       if (!window.isSecureContext) {
-        showNotification("Audio recording requires a secure (HTTPS) connection.", "info");
+        const msg = "Audio recording requires a secure (HTTPS) connection.";
+        setMicPermissionError(msg);
+        showNotification(msg, "info");
         return;
       }
       
@@ -144,7 +151,8 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
             receiverId: isAdminMode ? 'admin' : (vendor?.id || ''),
             isAdminInquiry: isAdminMode,
             type: 'voice',
-            fileUrl: url
+            fileUrl: url,
+            audioUrl: url
           });
         } catch (err: any) {
           console.error("Voice upload failed:", err);
@@ -165,16 +173,17 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
     } catch (err: any) {
       console.error("Microphone access denied detail:", err);
       
-      let errorMessage = "Microphone access denied. Try opening the app in a new tab if you're in the preview.";
+      const originalDetail = err?.message || err?.name || String(err) || "Permission denied";
+      let errorMessage = `Microphone access was blocked by the browser (${originalDetail}). Since this application runs in a sandboxed preview iframe, browsers reject microphone access by default. Please click the "Open in new window" button in the top-right of the preview title bar to load the application in a new tab, where microphone permissions can be granted.`;
+      const errStr = originalDetail.toLowerCase();
       
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.message?.includes('denied')) {
-        errorMessage = "Microphone permission was denied. Please allow microphone access in your browser settings and try again.";
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        errorMessage = "No microphone found on your device.";
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-        errorMessage = "Your microphone is already in use by another application.";
+      if (err?.name === 'NotFoundError' || err?.name === 'DevicesNotFoundError' || errStr.includes('notfound') || errStr.includes('device')) {
+        errorMessage = `No microphone found on your device (${originalDetail}). Please connect a microphone and try again.`;
+      } else if (err?.name === 'NotReadableError' || err?.name === 'TrackStartError' || errStr.includes('readable') || errStr.includes('in use')) {
+        errorMessage = `Your microphone is already in use by another application (${originalDetail}). Please close other apps and try again.`;
       }
       
+      setMicPermissionError(errorMessage);
       showNotification(errorMessage, "info");
     }
   };
@@ -267,9 +276,9 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
                         ? 'bg-[#D4AF37] text-black rounded-tr-none' 
                         : 'bg-[#1a1a1a] text-slate-200 border border-[#D4AF37]/10 rounded-tl-none'
                     }`}>
-                      {msg.type === 'image' ? (
+                      {msg.type === 'image' || msg.imageUrl ? (
                         <div className="space-y-2">
-                           <img src={msg.fileUrl} className="rounded-lg w-full max-h-60 object-cover border border-black/10" alt="Sent" />
+                           <img src={msg.imageUrl || msg.fileUrl} onLoad={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })} className="rounded-lg w-full max-h-60 object-cover border border-[#D4AF37]/20 shadow-lg" alt="Sent" />
                            {msg.text && msg.text !== 'Sent an image' && <p>{msg.text}</p>}
                         </div>
                       ) : msg.type === 'file' ? (
@@ -281,15 +290,10 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
                           </div>
                           <Download className="w-4 h-4 opacity-50" />
                         </a>
-                      ) : msg.type === 'voice' ? (
-                        <div className="flex items-center gap-3 min-w-[120px]">
-                           <div className="p-2 bg-black/10 rounded-full cursor-pointer hover:bg-black/20">
-                             <Play className="w-4 h-4" />
-                           </div>
-                           <div className="flex-1 h-1 bg-black/20 rounded-full overflow-hidden">
-                              <div className="w-1/2 h-full bg-current opacity-30"></div>
-                           </div>
-                           <Volume2 className="w-4 h-4 opacity-50" />
+                      ) : msg.type === 'voice' || msg.audioUrl ? (
+                        <div className="space-y-2 min-w-[200px] sm:min-w-[240px]">
+                           <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Voice note</p>
+                           <audio controls src={msg.audioUrl || msg.fileUrl} className="w-full" />
                         </div>
                       ) : (
                         <p>{msg.text}</p>
@@ -307,6 +311,26 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
             {/* Input Footer */}
             <div className="p-4 border-t border-[#D4AF37]/20 bg-black space-y-3">
               <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+              
+              {micPermissionError && (
+                <div id="mic-perm-error-alert" className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-100 text-xs flex items-start gap-2.5 shadow-md">
+                  <span className="text-red-400 font-bold mt-0.5" aria-hidden="true">⚠️</span>
+                  <div className="flex-1 space-y-1">
+                    <p className="font-semibold text-red-400">Microphone Access Needed</p>
+                    <p className="opacity-90 leading-relaxed text-[11px]">{micPermissionError}</p>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      💡 **Alternative:** You can record audio on your device and attach the file using the paperclip icon (📎) instead!
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setMicPermissionError(null)}
+                    className="text-slate-500 hover:text-white transition-colors text-sm px-1.5 focus:outline-none"
+                    aria-label="Dismiss"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               
               <div className="flex items-center gap-2">
                 {!isRecording ? (

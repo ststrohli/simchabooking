@@ -55,6 +55,9 @@ export const uploadFileRobustly = async (file: File | Blob, storagePath: string)
     return downloadURL;
   } catch (err: any) {
     console.error("[Upload] Direct Firebase Storage upload failed:", err);
+    if (err && (err.code === 'storage/unauthorized' || String(err.message || '').includes('unauthorized'))) {
+      throw new Error("Upload has been blocked by Firebase Storage safety check. Please ensure you are logged in with correct account permissions, or retry in a new tab.");
+    }
     throw err;
   }
 };

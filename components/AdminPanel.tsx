@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar } from 'lucide-react';
+import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download } from 'lucide-react';
 import { auth, db } from '../services/firebase';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { getApps, initializeApp } from 'firebase/app';
@@ -164,6 +164,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [selectedInquiryEmail, setSelectedInquiryEmail] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Automatically scroll to bottom of active message thread
+  useEffect(() => {
+    if (messagesEndRef.current) {
+        messagesEndRef.current.scrollTop = messagesEndRef.current.scrollHeight;
+    }
+  }, [selectedInquiryEmail, messages]);
 
   const handleSendReply = () => {
     if (!replyText.trim() || !selectedInquiryEmail) return;
@@ -1204,7 +1212,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     </div>
                                 </div>
                                 
-                                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                <div className="flex-1 overflow-y-auto p-6 space-y-6" id="admin-chat-scroll-container" ref={messagesEndRef}>
                                     {messages
                                         .filter(m => m.clientEmail === selectedInquiryEmail && m.isAdminInquiry)
                                         .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
@@ -1215,19 +1223,30 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                         ? 'bg-[#D4AF37] text-black rounded-tr-none' 
                                                         : 'bg-black/50 text-slate-200 border border-white/5 rounded-tl-none'
                                                 }`}>
-                                                    {msg.type === 'image' ? (
+                                                    {msg.type === 'image' || msg.imageUrl ? (
                                                         <div className="space-y-2">
-                                                            <img src={msg.fileUrl} className="rounded-lg w-full max-h-80 object-cover border border-black/10 shadow-lg" alt="" />
-                                                            {msg.text && msg.text !== 'Sent an image' && <p className="mt-2">{msg.text}</p>}
+                                                            <img 
+                                                              src={msg.imageUrl || msg.fileUrl} 
+                                                              onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })} 
+                                                              className="rounded-lg w-full max-h-80 object-cover border border-white/5 shadow-lg" 
+                                                              alt="Sent" 
+                                                            />
+                                                            {msg.text && msg.text !== 'Sent an image' && <p className="mt-2 text-sm leading-relaxed">{msg.text}</p>}
                                                         </div>
-                                                    ) : msg.type === 'voice' ? (
-                                                        <div className="flex items-center gap-3 min-w-[200px]">
-                                                            <div className="w-10 h-10 bg-black/20 rounded-full flex items-center justify-center cursor-pointer hover:bg-black/40 transition-all">
-                                                                <Play className="w-4 h-4" />
+                                                    ) : msg.type === 'voice' || msg.audioUrl ? (
+                                                        <div className="space-y-2 min-w-[200px] sm:min-w-[240px]">
+                                                            <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Voice note</p>
+                                                            <audio controls src={msg.audioUrl || msg.fileUrl} className="w-full text-black" />
+                                                        </div>
+                                                    ) : msg.type === 'file' ? (
+                                                        <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-black/10 p-2 rounded-lg hover:bg-black/20 transition-all text-sm">
+                                                            <FileText className="w-8 h-8 opacity-50" />
+                                                            <div className="flex-1 min-w-0">
+                                                               <p className="truncate font-bold text-xs">{msg.fileName}</p>
+                                                               <p className="text-[10px] opacity-50">Click to download</p>
                                                             </div>
-                                                            <div className="flex-1 h-1 bg-black/10 rounded-full"><div className="w-1/3 h-full bg-current opacity-30 rounded-full"></div></div>
-                                                            <Volume2 className="w-4 h-4 opacity-50" />
-                                                        </div>
+                                                            <Download className="w-4 h-4 opacity-50" />
+                                                        </a>
                                                     ) : (
                                                         <p className="leading-relaxed">{msg.text}</p>
                                                     )}

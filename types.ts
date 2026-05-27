@@ -101,6 +101,8 @@ export interface Message {
   isRead: boolean;
   type?: 'text' | 'image' | 'voice' | 'file';
   fileUrl?: string;
+  imageUrl?: string;
+  audioUrl?: string;
   fileName?: string;
   fileType?: string;
   isAdminInquiry?: boolean;

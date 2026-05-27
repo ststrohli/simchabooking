@@ -689,8 +689,8 @@ async function startServer() {
   const upload = multer({ storage: multer.memoryStorage() });
   app.post("/api/upload", upload.single('file'), async (req, res) => {
     try {
-      if (!isServerFirestoreAvailable || !adminApp) {
-        throw new Error("Server-side Firebase is not available.");
+      if (!adminApp) {
+        throw new Error("Server-side Firebase Admin SDK is not initialized.");
       }
       
       const file = req.file;
