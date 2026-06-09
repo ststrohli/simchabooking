@@ -2,9 +2,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, User, Mail, MessageSquare, Bot, Image as ImageIcon, Paperclip, Mic, StopCircle, Play, Volume2, FileText, Download, Loader2, Shield } from 'lucide-react';
 import { Vendor, Message, UserAccount } from '../types';
-import { storage } from '../services/firebase';
+import { storage, auth, db, handleFirestoreError, OperationType } from '../services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { uploadFileRobustly } from '../services/uploadService';
+import { CustomAudioPlayer } from './CustomAudioPlayer';
 
 interface ChatModalProps {
   isOpen: boolean;
@@ -15,17 +17,35 @@ interface ChatModalProps {
   showNotification: (message: string, type?: 'success' | 'info') => void;
   messages: Message[];
   user: UserAccount;
+  recipientUid?: string;
+  recipientName?: string;
+  recipientEmail?: string;
+  isAdminReplying?: boolean;
 }
 
-const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onClose, onSendMessage, showNotification, messages, user }) => {
+const ChatModal: React.FC<ChatModalProps> = ({ 
+  isOpen, 
+  vendor, 
+  isAdminMode, 
+  onClose, 
+  onSendMessage, 
+  showNotification, 
+  messages, 
+  user,
+  recipientUid,
+  recipientName,
+  recipientEmail,
+  isAdminReplying
+}) => {
   const [text, setText] = useState('');
-  const [clientName, setClientName] = useState(user?.name || '');
-  const [clientEmail, setClientEmail] = useState(user?.username || '');
-  const [isIdentityVerified, setIsIdentityVerified] = useState(!!(user?.name && user?.username));
+  const [clientName, setClientName] = useState(isAdminReplying ? (recipientName || '') : (user?.name || ''));
+  const [clientEmail, setClientEmail] = useState(isAdminReplying ? (recipientEmail || '') : (user?.username || ''));
+  const [isIdentityVerified, setIsIdentityVerified] = useState(isAdminReplying ? true : !!(user?.name && user?.username));
   const [isUploading, setIsUploading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
+  const [activeMessages, setActiveMessages] = useState<Message[]>([]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -33,19 +53,97 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<any>(null);
 
-  useEffect(() => {
-    if (user?.name && user?.username) {
-      setClientName(user.name);
-      setClientEmail(user.username);
-      setIsIdentityVerified(true);
-    }
-  }, [user]);
+  const myUid = isAdminReplying ? 'admin' : (user?.id || auth.currentUser?.uid || '');
+  const targetUid = isAdminReplying ? (recipientUid || '') : (isAdminMode ? 'admin' : (vendor?.id || ''));
+  const isSupportChat = !!(isAdminMode || isAdminReplying);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (isAdminReplying) {
+      setClientEmail(recipientEmail || '');
+      setClientName(recipientName || 'User');
+      setIsIdentityVerified(true);
+    } else if (user?.username) {
+      setClientEmail(user.username);
+      setClientName(user.name || user.username.split('@')[0] || 'Guest');
+      setIsIdentityVerified(true);
     }
-  }, [messages, isOpen]);
+  }, [user, isAdminReplying, recipientEmail, recipientName]);
+
+  // Real-time onSnapshot listener querying the messages collection by activeConversationId
+  useEffect(() => {
+    if (!isOpen || !myUid || !targetUid) {
+      setActiveMessages([]);
+      return;
+    }
+
+    const activeConversationId = [myUid, targetUid].sort().join('_');
+    const q = query(
+      collection(db, 'messages'),
+      where('conversationId', '==', activeConversationId),
+      where('participants', 'array-contains', myUid),
+      orderBy('timestamp', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Message));
+      setActiveMessages(msgs);
+    }, (err) => {
+      console.warn("Firestore ordered messages query failed (composite index might be building), falling back to client-side sort:", err);
+      const fallbackQ = query(
+        collection(db, 'messages'),
+        where('conversationId', '==', activeConversationId),
+        where('participants', 'array-contains', myUid)
+      );
+      return onSnapshot(fallbackQ, (snapshot) => {
+        const msgs = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Message));
+        msgs.sort((a, b) => {
+          const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+          const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+          return (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
+        });
+        setActiveMessages(msgs);
+      }, (err2) => {
+        handleFirestoreError(err2, OperationType.LIST, 'messages');
+      });
+    });
+
+    return () => unsubscribe();
+  }, [isOpen, myUid, targetUid]);
+
+  useEffect(() => {
+    if (scrollRef.current && isOpen) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      const timer = setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTo({
+            top: scrollRef.current.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [messages, activeMessages, isOpen]);
+
+  // Auto-read incoming messages within the open modal
+  useEffect(() => {
+    if (isOpen && activeMessages.length > 0) {
+      const incomingUnread = activeMessages.filter(m => m.senderId !== myUid && !m.isRead);
+      incomingUnread.forEach(async (m) => {
+        try {
+          await updateDoc(doc(db, 'messages', m.id), { isRead: true });
+        } catch (err) {
+          console.error("Auto mark read in ChatModal failed", err);
+        }
+      });
+    }
+  }, [isOpen, activeMessages, myUid]);
 
   if (!isOpen) return null;
 
@@ -61,12 +159,16 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
       }
     }
 
+    const conversationId = [myUid, targetUid].sort().join('_');
+
     onSendMessage({
       text,
       clientName,
       clientEmail,
-      receiverId: isAdminMode ? 'admin' : (vendor?.id || ''),
-      isAdminInquiry: isAdminMode,
+      senderId: myUid,
+      receiverId: targetUid,
+      conversationId,
+      isAdminInquiry: isSupportChat,
       type: 'text'
     });
     setText('');
@@ -82,13 +184,16 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
       const url = await uploadFileRobustly(file, storagePath);
 
       const isImage = file.type.startsWith('image/');
+      const conversationId = [myUid, targetUid].sort().join('_');
 
       onSendMessage({
         text: isImage ? 'Sent an image' : `Sent a file: ${file.name}`,
         clientName,
         clientEmail,
-        receiverId: isAdminMode ? 'admin' : (vendor?.id || ''),
-        isAdminInquiry: isAdminMode,
+        senderId: myUid,
+        receiverId: targetUid,
+        conversationId,
+        isAdminInquiry: isSupportChat,
         type: isImage ? 'image' : 'file',
         fileUrl: url,
         imageUrl: isImage ? url : undefined,
@@ -105,7 +210,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
 
   const startRecording = async () => {
     setMicPermissionError(null);
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
       const msg = "Your browser does not support audio recording or you are in an insecure context.";
       setMicPermissionError(msg);
       showNotification(msg, "info");
@@ -120,9 +225,6 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
         return;
       }
       
-      // Some browsers require explicit user gesture for first permission request
-      // which we have here (button click).
-      
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
@@ -136,20 +238,25 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
 
       mediaRecorder.onstop = async () => {
         const mimeTypes = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'];
-        const mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'audio/webm';
+        const mimeType = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported
+          ? (mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'audio/webm')
+          : 'audio/webm';
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         setIsUploading(true);
         try {
           const fileExt = mimeType.split('/')[1].split(';')[0];
           const storagePath = `chats/voice_${Date.now()}.${fileExt}`;
           const url = await uploadFileRobustly(audioBlob, storagePath);
+          const conversationId = [myUid, targetUid].sort().join('_');
 
           onSendMessage({
             text: 'Voice note',
             clientName,
             clientEmail,
-            receiverId: isAdminMode ? 'admin' : (vendor?.id || ''),
-            isAdminInquiry: isAdminMode,
+            senderId: myUid,
+            receiverId: targetUid,
+            conversationId,
+            isAdminInquiry: isSupportChat,
             type: 'voice',
             fileUrl: url,
             audioUrl: url
@@ -202,10 +309,46 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
     return `${min}:${sec.toString().padStart(2, '0')}`;
   };
 
-  const chatMessages = messages.filter(m => {
-    if (isAdminMode) return m.isAdminInquiry && m.clientEmail === clientEmail;
-    return !m.isAdminInquiry && m.clientEmail === clientEmail && (m.receiverId === vendor?.id || m.senderId === vendor?.id);
-  });
+  const checkIfSent = (msg: Message) => {
+    if (!msg) return false;
+    if (isAdminReplying) {
+      return msg.senderId === 'admin';
+    }
+    const loggedInUid = user?.id || auth.currentUser?.uid;
+    
+    if (loggedInUid && msg.senderId === loggedInUid) {
+      return true;
+    }
+    
+    if (msg.senderId === 'client') {
+      return true;
+    }
+    
+    return false;
+  };
+
+  const formatMsgTime = (timestampString: string) => {
+    if (!timestampString) return '';
+    const d = new Date(timestampString);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const chatMessages = activeMessages.length > 0 ? activeMessages : (messages || [])
+    .filter(m => {
+      if (!m) return false;
+      const conversationId = [myUid, targetUid].sort().join('_');
+      if (m.conversationId === conversationId) return true;
+
+      const mEmail = m.clientEmail || '';
+      if (isAdminMode) return !!m.isAdminInquiry && mEmail === clientEmail;
+      return !m.isAdminInquiry && mEmail === clientEmail && (m.receiverId === vendor?.id || m.senderId === vendor?.id);
+    })
+    .sort((a, b) => {
+      const timeA = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
+    });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
@@ -213,7 +356,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
         {/* Header */}
         <div className="bg-black p-4 border-b border-[#D4AF37]/20 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            {isAdminMode ? (
+            {isAdminMode || isAdminReplying ? (
               <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center border border-[#D4AF37]/30">
                 <Shield className="w-5 h-5 text-[#D4AF37]" />
               </div>
@@ -221,8 +364,12 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
               <img src={vendor?.image} className="w-10 h-10 rounded-full object-cover border border-[#D4AF37]/30" alt="" />
             )}
             <div>
-              <h3 className="font-bold text-[#D4AF37] font-[Cinzel] text-sm">{isAdminMode ? 'System Concierge' : vendor?.name}</h3>
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest">{isAdminMode ? 'Direct Support' : 'In-App Messaging'}</p>
+              <h3 className="font-bold text-[#D4AF37] font-[Cinzel] text-sm">
+                {isAdminReplying ? `Chat with ${clientName}` : (isAdminMode ? 'System Concierge' : vendor?.name)}
+              </h3>
+              <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+                {isAdminReplying ? `${clientEmail}` : (isAdminMode ? 'Direct Support' : 'In-App Messaging')}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white p-2 transition-colors"><X className="w-5 h-5" /></button>
@@ -266,45 +413,57 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, vendor, isAdminMode, onCl
               {chatMessages.length === 0 ? (
                 <div className="text-center py-10 opacity-30">
                   <MessageSquare className="w-12 h-12 mx-auto mb-2 text-[#D4AF37]" />
-                  <p className="text-xs font-[Cinzel]">{isAdminMode ? 'Have a question? We are here to help.' : 'Send a message to inquire about services.'}</p>
+                  <p className="text-xs font-[Cinzel]">
+                    {isAdminReplying ? "Send a message to start this discussion." : (isAdminMode ? 'Have a question? We are here to help.' : 'Send a message to inquire about services.')}
+                  </p>
                 </div>
               ) : (
-                chatMessages.map((msg) => (
-                  <div key={msg.id} className={`flex ${msg.senderId === 'client' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-lg ${
-                      msg.senderId === 'client' 
-                        ? 'bg-[#D4AF37] text-black rounded-tr-none' 
-                        : 'bg-[#1a1a1a] text-slate-200 border border-[#D4AF37]/10 rounded-tl-none'
-                    }`}>
-                      {msg.type === 'image' || msg.imageUrl ? (
-                        <div className="space-y-2">
-                           <img src={msg.imageUrl || msg.fileUrl} onLoad={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })} className="rounded-lg w-full max-h-60 object-cover border border-[#D4AF37]/20 shadow-lg" alt="Sent" />
-                           {msg.text && msg.text !== 'Sent an image' && <p>{msg.text}</p>}
-                        </div>
-                      ) : msg.type === 'file' ? (
-                        <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-black/10 p-2 rounded-lg hover:bg-black/20 transition-all">
-                          <FileText className="w-8 h-8 opacity-50" />
-                          <div className="flex-1 min-w-0">
-                             <p className="truncate font-bold text-xs">{msg.fileName}</p>
-                             <p className="text-[10px] opacity-50">Click to download</p>
+                chatMessages.map((msg) => {
+                  const isSent = checkIfSent(msg);
+                  return (
+                    <div key={msg.id} className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative shadow-md ${
+                        isSent 
+                          ? 'bg-[#D4AF37] text-black' 
+                          : 'bg-zinc-900 border border-zinc-800 text-white'
+                      }`}>
+                        {msg.type === 'image' || msg.imageUrl ? (
+                          <div className="space-y-2">
+                             <img src={msg.imageUrl || msg.fileUrl} onLoad={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })} className="rounded-lg w-full max-h-60 object-cover border border-[#D4AF37]/20 shadow-lg" alt="Sent" />
+                             {msg.text && msg.text !== 'Sent an image' && <p className="text-sm">{msg.text}</p>}
                           </div>
-                          <Download className="w-4 h-4 opacity-50" />
-                        </a>
-                      ) : msg.type === 'voice' || msg.audioUrl ? (
-                        <div className="space-y-2 min-w-[200px] sm:min-w-[240px]">
-                           <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Voice note</p>
-                           <audio controls src={msg.audioUrl || msg.fileUrl} className="w-full" />
+                        ) : msg.type === 'file' ? (
+                          <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl transition-all text-sm ${isSent ? 'bg-black/10 hover:bg-black/20 text-black' : 'bg-black/30 hover:bg-black/40 text-white'}`}>
+                            <FileText className="w-8 h-8 opacity-60 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                               <p className="truncate font-bold text-xs">{msg.fileName || 'Document'}</p>
+                               <p className="text-[10px] opacity-60">Click to download</p>
+                            </div>
+                            <Download className="w-4 h-4 opacity-60 flex-shrink-0" />
+                          </a>
+                        ) : msg.type === 'voice' || msg.audioUrl ? (
+                          <div className="space-y-1">
+                             <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isSent ? 'text-black/60' : 'text-zinc-400'}`}>Voice Note</p>
+                             <CustomAudioPlayer src={msg.audioUrl || msg.fileUrl || ''} theme={isSent ? 'sent' : 'received'} />
+                          </div>
+                        ) : (
+                          <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{msg.text}</p>
+                        )}
+                        
+                        <div className="flex justify-end items-center gap-1 mt-2 select-none leading-none">
+                          <span className={`text-[9px] font-medium opacity-65 ${isSent ? 'text-black/75' : 'text-zinc-400'}`}>
+                            {formatMsgTime(msg.timestamp)}
+                          </span>
+                          {isSent && (
+                            <span className={`text-[10px] ${msg.isRead ? 'text-blue-600' : 'text-black/40'}`}>
+                              ✓✓
+                            </span>
+                          )}
                         </div>
-                      ) : (
-                        <p>{msg.text}</p>
-                      )}
-                      
-                      <span className={`text-[8px] block mt-1.5 opacity-50 font-medium ${msg.senderId === 'client' ? 'text-black' : 'text-slate-500'}`}>
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 

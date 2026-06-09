@@ -299,23 +299,51 @@ function App() {
     // Messages
     let messagesQuery;
     if (userRole === 'admin') {
-      messagesQuery = collection(db, 'messages');
-    } else if (userRole === 'vendor' && currentUserVendorId) {
+      messagesQuery = query(collection(db, 'messages'), orderBy('timestamp', 'asc'));
+    } else if (userRole === 'vendor') {
       messagesQuery = query(
         collection(db, 'messages'),
-        or(
-          where('receiverId', '==', currentUserVendorId),
-          where('senderId', '==', currentUserVendorId)
-        )
+        where('vendorEmail', '==', fbUser.email),
+        orderBy('timestamp', 'asc')
       );
     } else {
-      messagesQuery = query(collection(db, 'messages'), where('clientEmail', '==', fbUser.email));
+      messagesQuery = query(
+        collection(db, 'messages'),
+        where('clientEmail', '==', fbUser.email),
+        orderBy('timestamp', 'asc')
+      );
     }
 
-    const unsubMessages = onSnapshot(messagesQuery, (snapshot) => {
-      const mData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-      setMessages(mData);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'messages'));
+    let unsubMessages = () => {};
+    const subscribeToMessages = (q: any, useFallbackOnErr: boolean) => {
+      return onSnapshot(q, (snapshot: any) => {
+        const mData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Message));
+        mData.sort((a: Message, b: Message) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        setMessages(mData);
+      }, (err: any) => {
+        console.warn("Firestore messages query subscription warning/error:", err);
+        if (useFallbackOnErr) {
+          console.warn("Falling back to local-sort query because of indexing status.");
+          let fallbackQ;
+          if (userRole === 'admin') {
+            fallbackQ = collection(db, 'messages');
+          } else if (userRole === 'vendor') {
+            fallbackQ = query(
+              collection(db, 'messages'),
+              where('vendorEmail', '==', fbUser.email)
+            );
+          } else {
+            fallbackQ = query(collection(db, 'messages'), where('clientEmail', '==', fbUser.email));
+          }
+          unsubMessages();
+          unsubMessages = subscribeToMessages(fallbackQ, false);
+        } else {
+          handleFirestoreError(err, OperationType.LIST, 'messages');
+        }
+      });
+    };
+
+    unsubMessages = subscribeToMessages(messagesQuery, true);
 
     const unsubCart = onSnapshot(doc(db, 'users', fbUser.uid, 'cart', 'current'), (docSnap) => {
       if (docSnap.exists()) {
@@ -624,12 +652,28 @@ function App() {
     }
   };
 
+  const getClientUidSync = (email: string): string => {
+    if (!email) return '';
+    const foundUser = users.find(u => u.username?.toLowerCase() === email.toLowerCase());
+    if (foundUser) return foundUser.id;
+    const msgFromClient = messages.find(m => m.clientEmail?.toLowerCase() === email.toLowerCase() && m.senderId && m.senderId !== 'admin');
+    if (msgFromClient) return msgFromClient.senderId;
+    return '';
+  };
+
   const handleReplyMessage = async (email: string, name: string, text: string) => {
     if (!currentUserVendorId) return;
     try {
+      const clientUid = getClientUidSync(email) || 'client_legacy';
+      const senderId = currentUserVendorId;
+      const receiverId = clientUid;
+      const conversationId = [senderId, receiverId].sort().join('_');
+
       await addDoc(collection(db, 'messages'), {
-        senderId: currentUserVendorId,
-        receiverId: 'client',
+        senderId,
+        receiverId,
+        conversationId,
+        participants: [senderId, receiverId],
         clientEmail: email,
         clientName: name,
         text,
@@ -849,15 +893,67 @@ function App() {
 
   const handleSendMessage = async (payload: Partial<Message>) => {
     try {
+      const currentUid = fbUser?.uid || '';
+      
+      let senderId = currentUid;
+      let receiverId = payload.receiverId || '';
+
+      // If sending from Admin panel
+      if (payload.senderId === 'admin' || userRole === 'admin') {
+        senderId = 'admin';
+        // Resolve client's actual UID
+        if (payload.clientEmail) {
+          receiverId = getClientUidSync(payload.clientEmail) || 'client_legacy';
+        }
+      }
+      
+      // If sending from Vendor portal
+      if (userRole === 'vendor' && currentUserVendorId) {
+        senderId = currentUserVendorId;
+      }
+
+      // Overwrite with payload sender/receiver if specifically provided and valid
+      if (payload.senderId) senderId = payload.senderId;
+      if (payload.receiverId) receiverId = payload.receiverId;
+
+      // Fix admin routing: Ensure that when a Client or Vendor initiates a chat with the Admin, 
+      // the system targets a specific, globally recognized Admin UID ('admin')—not the user's own UID.
+      if (payload.isAdminInquiry || payload.receiverId === 'admin') {
+        if (senderId !== 'admin') {
+          // Client or Vendor sending to Admin
+          receiverId = 'admin';
+        } else {
+          // Admin replying to client; receiverId is resolved to the client
+          if (payload.clientEmail) {
+            receiverId = getClientUidSync(payload.clientEmail) || 'client_legacy';
+          }
+        }
+      }
+
+      const conversationId = [senderId, receiverId].sort().join('_');
+
+      let resolvedVendorEmail = '';
+      if (userRole === 'vendor') {
+        resolvedVendorEmail = fbUser?.email || '';
+      } else {
+        const targetVendor = vendors.find(v => v.id === senderId || v.id === receiverId);
+        if (targetVendor) {
+          resolvedVendorEmail = targetVendor.contactEmail || '';
+        }
+      }
+
       const msgData = {
-        senderId: (userRole === 'vendor' ? currentUserVendorId : 'client') || 'client',
+        clientEmail: payload.clientEmail || fbUser?.email || '',
+        clientName: payload.clientName || fbUser?.displayName || fbUser?.email?.split('@')[0] || 'Guest',
         isRead: false,
         timestamp: new Date().toISOString(),
-        ...payload
+        ...payload,
+        senderId, // ensure locked
+        receiverId, // ensure locked
+        conversationId, // ensure locked
+        participants: [senderId, receiverId],
+        vendorEmail: resolvedVendorEmail
       };
-      
-      // If payload already has a senderId (like 'admin'), respect it
-      if (payload.senderId) msgData.senderId = payload.senderId;
 
       await addDoc(collection(db, 'messages'), msgData);
       

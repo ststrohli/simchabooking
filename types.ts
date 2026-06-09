@@ -106,6 +106,9 @@ export interface Message {
   fileName?: string;
   fileType?: string;
   isAdminInquiry?: boolean;
+  conversationId?: string;
+  participants?: string[];
+  vendorEmail?: string;
 }
 
 export interface CartItem {

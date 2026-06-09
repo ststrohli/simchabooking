@@ -15,8 +15,13 @@ service cloud.firestore {
         (request.auth.token.email == "bookingsimcha@gmail.com" || 
          request.auth.token.email == "ststrohli@gmail.com" || 
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
-          request.auth.token.email_verified == true));
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin'));
+    }
+
+    function isPresetAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "bookingsimcha@gmail.com" || 
+         request.auth.token.email == "ststrohli@gmail.com");
     }
 
     function isOwner(userId) {
@@ -67,30 +72,48 @@ service cloud.firestore {
     }
 
     match /messages/{messageId} {
-      allow read: if isAuthenticated() && (
+      allow get: if isAuthenticated() && (
         isAdmin() ||
-        (request.auth.token != null && 'email' in request.auth.token && resource.data.clientEmail == request.auth.token.email) || 
-        (resource.data.senderId == request.auth.uid) || 
-        (resource.data.receiverId == request.auth.uid) ||
+        (resource.data.get('participants', null) != null && request.auth.uid in resource.data.get('participants', [])) ||
+        (request.auth.token != null && 'email' in request.auth.token && resource.data.get('clientEmail', '') == request.auth.token.email) || 
+        (request.auth.token != null && 'email' in request.auth.token && resource.data.get('vendorEmail', '') == request.auth.token.email) || 
+        (resource.data.get('senderId', '') == request.auth.uid) || 
+        (resource.data.get('receiverId', '') == request.auth.uid) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == resource.data.clientEmail) ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('email', '') == resource.data.get('clientEmail', '')) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vendorId != null &&
-         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vendorId == resource.data.receiverId ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vendorId == resource.data.senderId))
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('vendorId', null) != null &&
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('vendorId', '') == resource.data.get('receiverId', '') ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('vendorId', '') == resource.data.get('senderId', '')))
       );
+      
+      allow list: if isAuthenticated() && (
+        isPresetAdmin() ||
+        isAdmin() ||
+        (resource.data.get('participants', null) != null && request.auth.uid in resource.data.get('participants', [])) ||
+        (request.auth.token != null && 'email' in request.auth.token && resource.data.get('clientEmail', '') == request.auth.token.email) || 
+        (request.auth.token != null && 'email' in request.auth.token && resource.data.get('vendorEmail', '') == request.auth.token.email) || 
+        (resource.data.get('senderId', '') == request.auth.uid) || 
+        (resource.data.get('receiverId', '') == request.auth.uid)
+      );
+
       allow create: if isAuthenticated();
+      
       allow update: if isAuthenticated() && (
         isAdmin() ||
-        resource.data.senderId == request.auth.uid || 
-        resource.data.receiverId == request.auth.uid ||
+        (resource.data.get('participants', null) != null && request.auth.uid in resource.data.get('participants', [])) ||
+        resource.data.get('senderId', '') == request.auth.uid || 
+        resource.data.get('receiverId', '') == request.auth.uid ||
+        (request.auth.token != null && 'email' in request.auth.token && resource.data.get('clientEmail', '') == request.auth.token.email) || 
+        (request.auth.token != null && 'email' in request.auth.token && resource.data.get('vendorEmail', '') == request.auth.token.email) || 
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == resource.data.clientEmail) ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('email', '') == resource.data.get('clientEmail', '')) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vendorId != null &&
-         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vendorId == resource.data.receiverId ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vendorId == resource.data.senderId))
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('vendorId', null) != null &&
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('vendorId', '') == resource.data.get('receiverId', '') ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('vendorId', '') == resource.data.get('senderId', '')))
       );
+      
       allow delete: if isAdmin();
     }
 

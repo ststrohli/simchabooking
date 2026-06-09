@@ -9,6 +9,7 @@ import PayPalButton from './PayPalButton';
 import { storage, db } from '../services/firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly } from '../services/uploadService';
+import { CustomAudioPlayer } from './CustomAudioPlayer';
 import { trackFunnelStep } from '../services/analyticsService';
 import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 import { summarizeFile } from '../services/geminiService';
@@ -281,7 +282,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   const chatThreads = useMemo(() => {
     const groups: Record<string, { vendor: Vendor, messages: Message[], lastMessage: Message }> = {};
     messages.forEach(m => {
-      const vendorId = m.senderId === 'client' ? m.receiverId : m.senderId;
+      const vendorId = m.senderId === user.id ? m.receiverId : m.senderId;
       const vendor = vendors.find(v => v.id === vendorId);
       if (vendor) {
         if (!groups[vendorId]) {
@@ -303,7 +304,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     if (selectedThreadVendorId && activeTab === 'chats') {
       const thread = chatThreads.find(t => t[0] === selectedThreadVendorId);
       if (thread) {
-        const unreadMessages = thread[1].messages.filter(m => m.receiverId === 'client' && !m.isRead);
+        const unreadMessages = thread[1].messages.filter(m => m.receiverId === user.id && !m.isRead);
         if (unreadMessages.length > 0) {
           const batch = writeBatch(db);
           unreadMessages.forEach(msg => {
@@ -376,7 +377,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           <NavItem id="overview" icon={LayoutDashboard} label="Dashboard" />
           <NavItem id="plan" icon={ShoppingBag} label="My Plan" badge={cart.length > 0 ? cart.length : undefined} />
           <NavItem id="events" icon={Calendar} label="My Events" badge={clientBookings.filter(b => b.status === 'pending').length || undefined} />
-          <NavItem id="chats" icon={MessageSquare} label="Chats" badge={messages.filter(m => m.receiverId === 'client' && !m.isRead).length || undefined} />
+          <NavItem id="chats" icon={MessageSquare} label="Chats" badge={messages.filter(m => m.receiverId === user.id && !m.isRead).length || undefined} />
           <NavItem id="documents" icon={FileText} label="Documents" />
           <NavItem id="profile" icon={CheckCircle} label="Profile" />
         </nav>
@@ -692,42 +693,57 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-8 space-y-6" id="client-chat-scroll-container">
-                      {chatThreads.find(t => t[0] === selectedThreadVendorId)?.[1].messages.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map(m => (
-                        <div key={m.id} className={`flex ${m.senderId === 'client' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[75%] p-4 rounded-2xl ${m.senderId === 'client' ? 'bg-[#D4AF37] text-black rounded-tr-none' : 'bg-[#1a1a1a] text-slate-200 border border-white/5 rounded-tl-none'}`}>
-                             {m.type === 'image' || m.imageUrl ? (
-                                <div className="space-y-2">
-                                  <img 
-                                    src={m.imageUrl || m.fileUrl} 
-                                    onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })} 
-                                    className="rounded-lg w-full max-h-60 object-cover border border-white/5 shadow-lg" 
-                                    alt="Sent" 
-                                  />
-                                  {m.text && m.text !== 'Sent an image' && <p className="text-sm">{m.text}</p>}
-                                </div>
-                              ) : m.type === 'voice' || m.audioUrl ? (
-                                <div className="space-y-2 min-w-[200px] sm:min-w-[240px]">
-                                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Voice note</p>
-                                  <audio controls src={m.audioUrl || m.fileUrl} className="w-full text-black" />
-                                </div>
-                              ) : m.type === 'file' ? (
-                                <a href={m.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-black/10 p-2 rounded-lg hover:bg-black/20 transition-all">
-                                  <FileText className="w-8 h-8 opacity-50" />
-                                  <div className="flex-1 min-w-0">
-                                     <p className="truncate font-bold text-xs">{m.fileName}</p>
-                                     <p className="text-[10px] opacity-50">Click to download</p>
+                      {chatThreads.find(t => t[0] === selectedThreadVendorId)?.[1].messages.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map(m => {
+                        const isSent = m.senderId === user.id;
+                        return (
+                          <div key={m.id} className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative ${
+                              isSent 
+                                ? 'bg-[#D4AF37] text-black shadow-md' 
+                                : 'bg-zinc-900 text-white border border-zinc-800 shadow-md'
+                            }`}>
+                               {m.type === 'image' || m.imageUrl ? (
+                                  <div className="space-y-2">
+                                    <img 
+                                      src={m.imageUrl || m.fileUrl} 
+                                      onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })} 
+                                      className="rounded-lg w-full max-h-60 object-cover border border-white/5 shadow-lg" 
+                                      alt="Sent" 
+                                    />
+                                    {m.text && m.text !== 'Sent an image' && <p className="text-sm">{m.text}</p>}
                                   </div>
-                                  <Download className="w-4 h-4 opacity-50" />
-                                </a>
-                              ) : (
-                                <p className="text-sm">{m.text}</p>
-                              )}
-                             <span className={`text-[8px] block mt-2 opacity-50 ${m.senderId === 'client' ? 'text-black' : 'text-slate-500'}`}>
-                               {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                             </span>
+                                ) : m.type === 'voice' || m.audioUrl ? (
+                                  <div className="space-y-1">
+                                    <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isSent ? 'text-black/60' : 'text-zinc-400'}`}>Voice Note</p>
+                                    <CustomAudioPlayer src={m.audioUrl || m.fileUrl || ''} theme={isSent ? 'sent' : 'received'} />
+                                  </div>
+                                ) : m.type === 'file' ? (
+                                  <a href={m.fileUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl transition-all text-sm ${isSent ? 'bg-black/10 hover:bg-black/20 text-black' : 'bg-black/30 hover:bg-black/40 text-white'}`}>
+                                    <FileText className="w-8 h-8 opacity-60 flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                       <p className="truncate font-bold text-xs">{m.fileName || 'Document'}</p>
+                                       <p className="text-[10px] opacity-60">Click to download</p>
+                                    </div>
+                                    <Download className="w-4 h-4 opacity-60 flex-shrink-0" />
+                                  </a>
+                                ) : (
+                                  <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{m.text}</p>
+                                )}
+
+                               <div className="flex justify-end items-center gap-1 mt-2 select-none leading-none">
+                                 <span className={`text-[9px] font-medium opacity-65 ${isSent ? 'text-black/75' : 'text-zinc-400'}`}>
+                                   {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                 </span>
+                                 {isSent && (
+                                   <span className={`text-[10px] ${m.isRead ? 'text-blue-600' : 'text-black/40'}`}>
+                                     ✓✓
+                                   </span>
+                                 )}
+                               </div>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                       <div ref={messagesEndRef} />
                     </div>
                     

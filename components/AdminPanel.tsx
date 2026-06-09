@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download } from 'lucide-react';
-import { auth, db } from '../services/firebase';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff } from 'lucide-react';
+import { auth, db, handleFirestoreError, OperationType } from '../services/firebase';
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
 import { uploadFileRobustly } from '../services/uploadService';
+import { CustomAudioPlayer } from './CustomAudioPlayer';
+import ChatModal from './ChatModal';
 import { Vendor, VendorCategory, Post, Booking, UserAccount, Message } from '../types';
 
 const getSecondaryAuth = () => {
@@ -163,7 +165,117 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [onboardingVendorId, setOnboardingVendorId] = useState<string | null>(null);
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [selectedInquiryEmail, setSelectedInquiryEmail] = useState<string | null>(null);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+  
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatRecipient, setChatRecipient] = useState<{
+    id: string;
+    name: string;
+    email: string;
+    role: 'client' | 'vendor';
+  } | null>(null);
+
+  const getOtherUserId = (msg: Message) => {
+    if (msg.senderId === 'admin') return msg.receiverId;
+    return msg.senderId;
+  };
+
+  const getOtherUserDetails = (otherId: string, lastMsg: Message) => {
+    // Try to find in vendors first if they are a vendor
+    const vendor = vendors.find(v => v.id === otherId || v.contactEmail === lastMsg.vendorEmail);
+    if (vendor) {
+      return {
+        id: vendor.id,
+        name: vendor.name,
+        email: vendor.contactEmail || lastMsg.vendorEmail || '',
+        role: 'vendor' as 'vendor' | 'client',
+        avatar: vendor.image || ''
+      };
+    }
+
+    // Try to find in users
+    const user = users.find(u => u.id === otherId || u.username?.toLowerCase() === lastMsg.clientEmail?.toLowerCase());
+    if (user) {
+      return {
+        id: user.id,
+        name: user.name || user.username?.split('@')[0] || 'Client',
+        email: user.username || lastMsg.clientEmail || '',
+        role: 'client' as 'vendor' | 'client',
+        avatar: user.photoURL || ''
+      };
+    }
+
+    // Fallback to message info
+    return {
+      id: otherId,
+      name: lastMsg.clientName || 'User',
+      email: lastMsg.clientEmail || '',
+      role: (lastMsg.vendorEmail ? 'vendor' : 'client') as 'vendor' | 'client',
+      avatar: ''
+    };
+  };
+
+  const handleOpenChat = (conversationId: string, lastMsg: Message) => {
+    const otherId = getOtherUserId(lastMsg);
+    const otherUser = getOtherUserDetails(otherId, lastMsg);
+    setChatRecipient(otherUser);
+    setChatOpen(true);
+  };
+
+  const toggleMessageReadStatus = async (messageId: string, currentStatus: boolean, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    try {
+      await updateDoc(doc(db, 'messages', messageId), {
+        isRead: !currentStatus
+      });
+      showNotification(`Marked message as ${!currentStatus ? 'read' : 'unread'}`, 'success');
+    } catch (err) {
+      console.error('Error updating message read status:', err);
+      handleFirestoreError(err, OperationType.UPDATE, `messages/${messageId}`);
+    }
+  };
+
+  const toggleConversationReadStatus = async (conversationId: string, otherEmail: string, hasUnread: boolean, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    try {
+      const incomingMsgs = messages.filter(m => {
+        const isThisConversation = m.conversationId === conversationId || 
+          (m.clientEmail === otherEmail && m.isAdminInquiry);
+        const isIncoming = m.senderId !== 'admin';
+        return isThisConversation && isIncoming;
+      });
+
+      if (incomingMsgs.length === 0) {
+        showNotification('No incoming messages to mark', 'info');
+        return;
+      }
+
+      if (hasUnread) {
+        const unreadMsgs = incomingMsgs.filter(m => !m.isRead);
+        for (const m of unreadMsgs) {
+          await updateDoc(doc(db, 'messages', m.id), { isRead: true });
+        }
+        showNotification('Conversation marked as read', 'success');
+      } else {
+        const sorted = [...incomingMsgs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        if (sorted[0]) {
+          await updateDoc(doc(db, 'messages', sorted[0].id), { isRead: false });
+        }
+        showNotification('Conversation marked as unread', 'success');
+      }
+    } catch (err) {
+      console.error('Error toggling conversation read status:', err);
+      handleFirestoreError(err, OperationType.UPDATE, 'messages');
+    }
+  };
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Automatically scroll to bottom of active message thread
@@ -171,21 +283,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (messagesEndRef.current) {
         messagesEndRef.current.scrollTop = messagesEndRef.current.scrollHeight;
     }
-  }, [selectedInquiryEmail, messages]);
+  }, [selectedInquiryEmail, selectedConversationId, messages]);
 
   const handleSendReply = () => {
     if (!replyText.trim() || !selectedInquiryEmail) return;
     
-    const lastMsg = messages.find(m => m.clientEmail === selectedInquiryEmail && m.isAdminInquiry);
+    // Find matching message in this conversation to determine recipient ID
+    const conversationMessages = messages.filter(m => 
+      m.conversationId === selectedConversationId || 
+      [m.senderId, m.receiverId].sort().join('_') === selectedConversationId ||
+      m.clientEmail === selectedInquiryEmail || 
+      m.vendorEmail === selectedInquiryEmail
+    );
+    
+    const lastMsg = conversationMessages[conversationMessages.length - 1];
+    const otherId = lastMsg ? getOtherUserId(lastMsg) : 'client_legacy';
+    const otherDetails = lastMsg ? getOtherUserDetails(otherId, lastMsg) : { name: 'Client', email: selectedInquiryEmail, role: 'client' as const };
     
     onSendMessage({
         text: replyText,
-        receiverId: 'client', // In this context, receiver is the client
-        clientEmail: selectedInquiryEmail,
-        clientName: lastMsg?.clientName || 'Client',
+        receiverId: otherId,
+        clientEmail: otherDetails.role === 'client' ? otherDetails.email : undefined,
+        clientName: otherDetails.role === 'client' ? otherDetails.name : undefined,
         senderId: 'admin',
         isAdminInquiry: true,
-        type: 'text'
+        type: 'text',
+        conversationId: selectedConversationId || lastMsg?.conversationId || [ 'admin', otherId ].sort().join('_'),
+        vendorEmail: otherDetails.role === 'vendor' ? otherDetails.email : undefined
     });
     
     setReplyText('');
@@ -1152,41 +1276,130 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="bg-[#111] rounded-2xl border border-white/5 overflow-hidden flex flex-col">
                         <div className="p-6 border-b border-white/5 bg-black/40">
                              <h3 className="font-bold text-[#D4AF37] font-[Cinzel] flex items-center gap-2">
-                                <MessageSquare className="w-4 h-4" /> System Inquiries
+                                <MessageSquare className="w-4 h-4" /> Message Inbox
                              </h3>
                         </div>
                         <div className="flex-1 overflow-y-auto">
                             {(() => {
-                                const inquiries: Message[] = messages.filter(m => m.isAdminInquiry);
-                                const lastMessages: Record<string, Message> = {};
-                                inquiries.forEach(m => {
-                                    if (!lastMessages[m.clientEmail] || new Date(m.timestamp) > new Date(lastMessages[m.clientEmail].timestamp)) {
-                                        lastMessages[m.clientEmail] = m;
+                                const lastMessagesByConversation: Record<string, Message> = {};
+                                const allMessagesByConversation: Record<string, Message[]> = {};
+                                messages.forEach(m => {
+                                    if (!m) return;
+                                    const isPart = m.senderId === 'admin' || m.receiverId === 'admin' || m.participants?.includes('admin') || m.isAdminInquiry;
+                                    if (isPart) {
+                                        const cid = m.conversationId || (m.senderId === 'admin' ? `admin_${m.receiverId || 'unknown'}` : `${m.senderId || 'unknown'}_admin`);
+                                        if (!lastMessagesByConversation[cid] || new Date(m.timestamp) > new Date(lastMessagesByConversation[cid].timestamp)) {
+                                            const msgCopy = { ...m, conversationId: cid };
+                                            lastMessagesByConversation[cid] = msgCopy;
+                                        }
+                                        if (!allMessagesByConversation[cid]) {
+                                            allMessagesByConversation[cid] = [];
+                                        }
+                                        allMessagesByConversation[cid].push(m);
                                     }
                                 });
 
-                                const conversationList = Object.values(lastMessages).sort((a, b) => 
+                                const conversationList = Object.values(lastMessagesByConversation).sort((a, b) => 
                                     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
                                 );
 
                                 if (conversationList.length === 0) {
-                                    return <div className="p-12 text-center opacity-30"><Bot className="w-12 h-12 mx-auto mb-2" /><p className="text-xs font-[Cinzel]">No direct inquiries yet.</p></div>;
+                                    return (
+                                        <div className="p-12 text-center opacity-30 flex flex-col items-center justify-center">
+                                            <Bot className="w-12 h-12 mx-auto mb-2 text-[#D4AF37]" />
+                                            <p className="text-xs font-[Cinzel] font-bold text-[#D4AF37] uppercase tracking-wider">No active chats</p>
+                                            <p className="text-[10px] mt-1 text-slate-400">All Client & Vendor messages will appear here.</p>
+                                        </div>
+                                    );
                                 }
 
-                                return conversationList.map(msg => (
-                                    <button 
-                                        key={msg.clientEmail}
-                                        onClick={() => setSelectedInquiryEmail(msg.clientEmail)}
-                                        className={`w-full p-6 text-left border-b border-white/5 transition-all hover:bg-white/5 ${selectedInquiryEmail === msg.clientEmail ? 'bg-[#D4AF37]/5 border-r-2 border-r-[#D4AF37]' : ''}`}
-                                    >
-                                        <div className="flex justify-between items-start mb-1">
-                                            <h4 className="font-bold text-white text-sm truncate">{msg.clientName}</h4>
-                                            <span className="text-[8px] text-slate-500">{new Date(msg.timestamp).toLocaleDateString()}</span>
+                                return conversationList.map(msg => {
+                                    const otherId = getOtherUserId(msg);
+                                    const otherUser = getOtherUserDetails(otherId, msg);
+                                    const cid = msg.conversationId || '';
+                                    const hasUnread = (allMessagesByConversation[cid] || []).some(m => m.senderId !== 'admin' && !m.isRead);
+                                    const isSelected = selectedConversationId === cid || selectedInquiryEmail === otherUser.email;
+                                    const itemBgClass = isSelected 
+                                        ? 'bg-[#D4AF37]/5 border-r-2 border-r-[#D4AF37]' 
+                                        : (hasUnread ? 'bg-white/[0.04] border-l-2 border-l-[#D4AF37]' : '');
+                                    
+                                    return (
+                                        <div 
+                                            key={cid || otherId}
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => {
+                                                setSelectedInquiryEmail(otherUser.email);
+                                                setSelectedConversationId(cid);
+                                                handleOpenChat(cid, msg);
+                                                
+                                                // Auto mark unread incoming messages as read when opening conversation
+                                                const incomingUnread = (allMessagesByConversation[cid] || []).filter(m => m.senderId !== 'admin' && !m.isRead);
+                                                incomingUnread.forEach(async (unm) => {
+                                                    try {
+                                                        await updateDoc(doc(db, 'messages', unm.id), { isRead: true });
+                                                    } catch (err) {
+                                                        console.error('Error on auto marking read:', err);
+                                                    }
+                                                });
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    setSelectedInquiryEmail(otherUser.email);
+                                                    setSelectedConversationId(cid);
+                                                    handleOpenChat(cid, msg);
+                                                    
+                                                    // Auto mark unread incoming messages as read when opening conversation
+                                                    const incomingUnread = (allMessagesByConversation[cid] || []).filter(m => m.senderId !== 'admin' && !m.isRead);
+                                                    incomingUnread.forEach(async (unm) => {
+                                                        try {
+                                                            await updateDoc(doc(db, 'messages', unm.id), { isRead: true });
+                                                        } catch (err) {
+                                                            console.error('Error on auto marking read:', err);
+                                                        }
+                                                    });
+                                                }
+                                            }}
+                                            className={`w-full p-6 text-left border-b border-white/5 transition-all hover:bg-white/5 flex flex-col gap-1.5 cursor-pointer outline-none focus-visible:bg-white/5 ${itemBgClass}`}
+                                        >
+                                            <div className="flex justify-between items-center w-full gap-2">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    {hasUnread && (
+                                                        <span className="w-2 h-2 rounded-full bg-[#D4AF37] animate-pulse shadow-[0_0_8px_rgba(212,175,55,0.6)] flex-shrink-0"></span>
+                                                    )}
+                                                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${otherUser.role === 'vendor' ? 'bg-[#D4AF37]' : 'bg-blue-400'}`}></span>
+                                                    <h4 className={`text-white text-sm truncate max-w-[120px] ${hasUnread ? 'font-bold text-[#D4AF37]' : 'font-semibold'}`}>
+                                                        {otherUser.name}
+                                                    </h4>
+                                                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${otherUser.role === 'vendor' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'}`}>
+                                                        {otherUser.role}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                    <span className="text-[9px] text-slate-500">
+                                                        {msg.timestamp ? new Date(msg.timestamp).toLocaleDateString() : ''}
+                                                    </span>
+                                                    <button
+                                                        onClick={(e) => toggleConversationReadStatus(cid, otherUser.email, hasUnread, e)}
+                                                        title={hasUnread ? "Mark as Read" : "Mark as Unread"}
+                                                        className="p-1 hover:bg-white/10 rounded transition-all"
+                                                    >
+                                                        {hasUnread ? (
+                                                            <Mail className="w-3.5 h-3.5 text-[#D4AF37]" />
+                                                        ) : (
+                                                            <MailOpen className="w-3.5 h-3.5 text-slate-500 hover:text-white" />
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <p className="text-[10px] text-slate-500 truncate">{otherUser.email}</p>
+                                            <p className={`text-xs line-clamp-1 ${hasUnread ? 'text-white font-medium' : 'text-slate-300 italic'}`}>
+                                                {msg.text || 'Shared attachment'}
+                                            </p>
                                         </div>
-                                        <p className="text-[10px] text-slate-500 truncate mb-1">{msg.clientEmail}</p>
-                                        <p className="text-xs text-slate-400 line-clamp-1">{msg.text}</p>
-                                    </button>
-                                ));
+                                    );
+                                });
                             })()}
                         </div>
                     </div>
@@ -1195,68 +1408,115 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="lg:col-span-2 bg-[#111] rounded-2xl border border-white/5 overflow-hidden flex flex-col">
                         {selectedInquiryEmail ? (
                             <>
-                                <div className="p-6 border-b border-white/5 bg-black/40 flex justify-between items-center">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] border border-[#D4AF37]/20 font-bold">
-                                            {messages.find(m => m.clientEmail === selectedInquiryEmail)?.clientName[0]}
-                                        </div>
-                                        <div>
-                                            <h3 className="font-bold text-white text-sm">
-                                                {messages.find(m => m.clientEmail === selectedInquiryEmail)?.clientName}
-                                            </h3>
-                                            <p className="text-[10px] text-slate-500">{selectedInquiryEmail}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => setSelectedInquiryEmail(null)} className="p-2 text-slate-500 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
-                                    </div>
-                                </div>
-                                
-                                <div className="flex-1 overflow-y-auto p-6 space-y-6" id="admin-chat-scroll-container" ref={messagesEndRef}>
-                                    {messages
-                                        .filter(m => m.clientEmail === selectedInquiryEmail && m.isAdminInquiry)
-                                        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                                        .map((msg, idx) => (
-                                            <div key={idx} className={`flex ${msg.senderId === 'admin' ? 'justify-end' : 'justify-start'}`}>
-                                                <div className={`max-w-[80%] rounded-2xl px-5 py-3 text-sm shadow-xl ${
-                                                    msg.senderId === 'admin' 
-                                                        ? 'bg-[#D4AF37] text-black rounded-tr-none' 
-                                                        : 'bg-black/50 text-slate-200 border border-white/5 rounded-tl-none'
-                                                }`}>
-                                                    {msg.type === 'image' || msg.imageUrl ? (
-                                                        <div className="space-y-2">
-                                                            <img 
-                                                              src={msg.imageUrl || msg.fileUrl} 
-                                                              onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })} 
-                                                              className="rounded-lg w-full max-h-80 object-cover border border-white/5 shadow-lg" 
-                                                              alt="Sent" 
-                                                            />
-                                                            {msg.text && msg.text !== 'Sent an image' && <p className="mt-2 text-sm leading-relaxed">{msg.text}</p>}
-                                                        </div>
-                                                    ) : msg.type === 'voice' || msg.audioUrl ? (
-                                                        <div className="space-y-2 min-w-[200px] sm:min-w-[240px]">
-                                                            <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Voice note</p>
-                                                            <audio controls src={msg.audioUrl || msg.fileUrl} className="w-full text-black" />
-                                                        </div>
-                                                    ) : msg.type === 'file' ? (
-                                                        <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-black/10 p-2 rounded-lg hover:bg-black/20 transition-all text-sm">
-                                                            <FileText className="w-8 h-8 opacity-50" />
-                                                            <div className="flex-1 min-w-0">
-                                                               <p className="truncate font-bold text-xs">{msg.fileName}</p>
-                                                               <p className="text-[10px] opacity-50">Click to download</p>
-                                                            </div>
-                                                            <Download className="w-4 h-4 opacity-50" />
-                                                        </a>
-                                                    ) : (
-                                                        <p className="leading-relaxed">{msg.text}</p>
-                                                    )}
-                                                    <span className={`text-[8px] block mt-2 opacity-50 font-bold uppercase tracking-widest ${msg.senderId === 'admin' ? 'text-black' : 'text-slate-500 text-right'}`}>
-                                                        {new Date(msg.timestamp).toLocaleString()}
-                                                    </span>
+                                {(() => {
+                                    // Find matching messages in this conversation
+                                    const conversationMessages = messages.filter(m => 
+                                        m.conversationId === selectedConversationId || 
+                                        [m.senderId, m.receiverId].sort().join('_') === selectedConversationId ||
+                                        m.clientEmail === selectedInquiryEmail || 
+                                        m.vendorEmail === selectedInquiryEmail
+                                    );
+                                    const lastMsg = conversationMessages[conversationMessages.length - 1];
+                                    const otherId = lastMsg ? getOtherUserId(lastMsg) : '';
+                                    const otherUser = lastMsg ? getOtherUserDetails(otherId, lastMsg) : { name: 'User', email: selectedInquiryEmail, role: 'client' as const, avatar: '' };
+                                    
+                                    return (
+                                        <>
+                                            <div className="p-6 border-b border-white/5 bg-black/40 flex justify-between items-center">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] border border-[#D4AF37]/20 font-bold">
+                                                        {otherUser.name?.[0] || 'U'}
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="font-bold text-white text-sm">
+                                                            {otherUser.name || 'User'}
+                                                        </h3>
+                                                        <p className="text-[10px] text-slate-500">{otherUser.email}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => { setSelectedInquiryEmail(null); setSelectedConversationId(null); }} className="p-2 text-slate-500 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
                                                 </div>
                                             </div>
-                                        ))}
-                                </div>
+                                            
+                                            <div className="flex-1 overflow-y-auto p-6 space-y-6" id="admin-chat-scroll-container" ref={messagesEndRef}>
+                                                {conversationMessages
+                                                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                                                    .map((msg, idx) => (
+                                                        <div key={idx} className={`flex ${msg.senderId === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                                                            <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative shadow-md ${
+                                                                msg.senderId === 'admin' 
+                                                                    ? 'bg-[#D4AF37] text-black' 
+                                                                    : 'bg-zinc-900 text-white border border-zinc-800'
+                                                            }`}>
+                                                                {msg.type === 'image' || msg.imageUrl ? (
+                                                                    <div className="space-y-2">
+                                                                        <img 
+                                                                          src={msg.imageUrl || msg.fileUrl} 
+                                                                          onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })} 
+                                                                          className="rounded-lg w-full max-h-80 object-cover border border-white/5 shadow-lg" 
+                                                                          alt="Sent" 
+                                                                        />
+                                                                        {msg.text && msg.text !== 'Sent an image' && <p className="mt-2 text-sm leading-relaxed">{msg.text}</p>}
+                                                                    </div>
+                                                                ) : msg.type === 'voice' || msg.audioUrl ? (
+                                                                    <div className="space-y-2 min-w-[200px] sm:min-w-[240px]">
+                                                                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Voice note</p>
+                                                                        <CustomAudioPlayer src={msg.audioUrl || msg.fileUrl || ''} theme={msg.senderId === 'admin' ? 'sent' : 'received'} />
+                                                                    </div>
+                                                                ) : msg.type === 'file' ? (
+                                                                    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-black/10 p-2 rounded-lg hover:bg-black/20 transition-all text-sm">
+                                                                        <FileText className="w-8 h-8 opacity-50" />
+                                                                        <div className="flex-1 min-w-0">
+                                                                           <p className="truncate font-bold text-xs">{msg.fileName}</p>
+                                                                           <p className="text-[10px] opacity-50">Click to download</p>
+                                                                        </div>
+                                                                        <Download className="w-4 h-4 opacity-50" />
+                                                                    </a>
+                                                                ) : (
+                                                                    <p className="leading-relaxed">{msg.text}</p>
+                                                                )}
+                                                                
+                                                                <div className="flex justify-between items-center gap-2 mt-2 select-none leading-none w-full">
+                                                                    {msg.senderId !== 'admin' ? (
+                                                                        <button
+                                                                            onClick={(e) => toggleMessageReadStatus(msg.id, msg.isRead, e)}
+                                                                            title={msg.isRead ? "Mark as Unread" : "Mark as Read"}
+                                                                            className="flex items-center gap-1.5 text-[9px] text-[#D4AF37] hover:text-[#E2C562] transition-colors py-0.5 px-2 bg-black/40 rounded border border-[#D4AF37]/10"
+                                                                        >
+                                                                            {msg.isRead ? (
+                                                                                <>
+                                                                                    <Eye className="w-3 h-3 text-[#D4AF37]" />
+                                                                                    <span>Read</span>
+                                                                                </>
+                                                                            ) : (
+                                                                                <>
+                                                                                    <EyeOff className="w-3 h-3 text-red-400 animate-pulse" />
+                                                                                    <span className="text-red-400 font-bold">Unread</span>
+                                                                                </>
+                                                                            )}
+                                                                        </button>
+                                                                    ) : (
+                                                                        <div />
+                                                                    )}
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className={`text-[9px] text-zinc-400`}>
+                                                                            {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                                        </span>
+                                                                        {msg.senderId === 'admin' && (
+                                                                            <span className={`text-[10px] ${msg.isRead ? 'text-blue-600' : 'text-black/40'}`}>
+                                                                                ✓✓
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                            </div>
+                                        </>
+                                    );
+                                })()}
 
                                 <div className="p-6 border-t border-white/5 bg-black/20">
                                     <div className="flex gap-4">
@@ -1531,6 +1791,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
         )}
       </main>
+
+      {chatRecipient && (
+        <ChatModal
+          isOpen={chatOpen}
+          vendor={chatRecipient.role === 'vendor' ? (vendors.find(v => v.id === chatRecipient.id) || null) : null}
+          recipientUid={chatRecipient.id}
+          recipientName={chatRecipient.name}
+          recipientEmail={chatRecipient.email}
+          isAdminReplying={true}
+          onClose={() => {
+            setChatOpen(false);
+            setChatRecipient(null);
+          }}
+          onSendMessage={onSendMessage}
+          showNotification={showNotification}
+          messages={messages}
+          user={{
+            id: auth.currentUser?.uid || 'admin',
+            name: 'Admin',
+            username: auth.currentUser?.email || 'admin@admin.com'
+          }}
+        />
+      )}
     </div>
   );
 };
