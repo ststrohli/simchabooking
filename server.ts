@@ -689,10 +689,6 @@ async function startServer() {
   const upload = multer({ storage: multer.memoryStorage() });
   app.post("/api/upload", upload.single('file'), async (req, res) => {
     try {
-      if (!adminApp) {
-        throw new Error("Server-side Firebase Admin SDK is not initialized.");
-      }
-      
       const file = req.file;
       const { path: storagePath } = req.body;
       
@@ -701,41 +697,78 @@ async function startServer() {
 
       console.log(`[Upload] Processing: ${storagePath} (${file.size} bytes)`);
 
-      const bucket = adminApp.storage().bucket();
-      const blob = bucket.file(storagePath);
-      
-      // Use the standard Firebase Storage metadata if possible, but makePublic is easiest for immediate URL
-      const blobStream = blob.createWriteStream({
-        metadata: {
-          contentType: file.mimetype,
-          firebaseStorageDownloadTokens: crypto.randomUUID() // Optional: for firebasestorage style URLs
-        }
-      });
-
-      blobStream.on('error', (err) => {
-        console.error("[Upload] Blob stream error:", err);
-        res.status(500).send(err.message);
-      });
-
-      blobStream.on('finish', async () => {
+      // 1. Attempt upload to Firebase Cloud Storage via Admin SDK
+      if (adminApp) {
         try {
-          // Make public so we can use a direct link
-          await blob.makePublic().catch(e => console.warn("[Upload] makePublic failed (might already be public):", e.message));
+          const bucket = adminApp.storage().bucket();
+          const blob = bucket.file(storagePath);
+          const downloadToken = crypto.randomUUID();
           
-          // Direct GCS Public URL
-          const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
-          
-          console.log(`[Upload] Success: ${publicUrl}`);
-          res.json({ url: publicUrl });
-        } catch (e: any) {
-          console.error("[Upload] Post-finish error:", e);
-          res.status(500).send(e.message);
-        }
-      });
+          await new Promise<void>((resolve, reject) => {
+            const blobStream = blob.createWriteStream({
+              metadata: {
+                contentType: file.mimetype,
+                metadata: {
+                  firebaseStorageDownloadTokens: downloadToken
+                }
+              }
+            });
 
-      blobStream.end(file.buffer);
+            blobStream.on('error', (err) => {
+              reject(err);
+            });
+
+            blobStream.on('finish', () => {
+              resolve();
+            });
+
+            blobStream.end(file.buffer);
+          });
+
+          const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${downloadToken}`;
+          console.log(`[Upload] Firebase Cloud Storage upload succeeded: ${publicUrl}`);
+          return res.json({ url: publicUrl });
+
+        } catch (firebaseErr: any) {
+          console.warn("[Upload] Firebase Cloud Storage failed. Switching to Local Container Fallback Storage. Reason:", firebaseErr.message || firebaseErr);
+        }
+      } else {
+        console.warn("[Upload] Firebase Admin SDK not initialized. Switching to Local Container Fallback Storage.");
+      }
+
+      // 2. Fallback: Save file inside local server filesystem and serve relative URL
+      try {
+        const fs = await import('fs');
+        const fsPromises = fs.promises;
+        const uploadDir = path.join(process.cwd(), 'uploads');
+        
+        // Ensure uploads directory exists
+        if (!fs.existsSync(uploadDir)) {
+          await fsPromises.mkdir(uploadDir, { recursive: true });
+        }
+
+        // Generate safe unique filename
+        const ext = path.extname(storagePath) || path.extname(file.originalname) || '';
+        const base = path.basename(storagePath, ext) || 'file';
+        const cleanBase = base.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const uniqueFilename = `${Date.now()}_${cleanBase}${ext}`;
+        const localPath = path.join(uploadDir, uniqueFilename);
+
+        console.log(`[Upload] Saving locally to container: ${localPath}`);
+        await fsPromises.writeFile(localPath, file.buffer);
+
+        // Serve URL as `/uploads/uniqueFilename`
+        const publicUrl = `/uploads/${uniqueFilename}`;
+        console.log(`[Upload] Local Storage fallback upload succeeded: ${publicUrl}`);
+        return res.json({ url: publicUrl });
+
+      } catch (localErr: any) {
+        console.error("[Upload] Critical Error - Both GCS and local container fallback failed:", localErr);
+        return res.status(500).send(`All upload mechanisms failed: ${localErr.message}`);
+      }
+
     } catch (error: any) {
-      console.error("[Upload] Route Error:", error);
+      console.error("[Upload] Route error handler:", error);
       res.status(500).send(error.message);
     }
   });
@@ -1585,6 +1618,9 @@ async function startServer() {
       firestoreDatabaseId: dbId || firebaseConfig.firestoreDatabaseId
     });
   });
+
+  // Serve the local uploads folder as statically accessible files
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

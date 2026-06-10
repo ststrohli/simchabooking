@@ -1,12 +1,42 @@
-
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, User, Mail, MessageSquare, Bot, Image as ImageIcon, Paperclip, Mic, StopCircle, Play, Volume2, FileText, Download, Loader2, Shield } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { X, Send, User, Mail, MessageSquare, Bot, Image as ImageIcon, Paperclip, Mic, StopCircle, Play, Volume2, FileText, Download, Loader2, Shield, ArrowLeft } from 'lucide-react';
 import { Vendor, Message, UserAccount } from '../types';
 import { storage, auth, db, handleFirestoreError, OperationType } from '../services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, limit, startAfter, getDocs } from 'firebase/firestore';
 import { uploadFileRobustly } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
+
+interface ImageWithPlaceholderProps {
+  src: string;
+  alt: string;
+  onLoadCompletes: () => void;
+  isSent: boolean;
+}
+
+const ImageWithPlaceholder: React.FC<ImageWithPlaceholderProps> = ({ src, alt, onLoadCompletes, isSent }) => {
+  const [loaded, setLoaded] = useState(false);
+  
+  return (
+    <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-[#D4AF37]/20 bg-zinc-950">
+      {!loaded && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-zinc-900 to-zinc-950 animate-pulse">
+          <ImageIcon className="w-8 h-8 text-[#D4AF37]/40 mb-2" />
+          <span className="text-[9px] uppercase tracking-widest text-[#D4AF37]/50 font-bold font-mono">Loading Image...</span>
+        </div>
+      )}
+      <img 
+        src={src} 
+        alt={alt} 
+        onLoad={() => {
+          setLoaded(true);
+          onLoadCompletes();
+        }} 
+        className={`w-full h-full object-cover shadow-lg transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`} 
+      />
+    </div>
+  );
+};
 
 interface ChatModalProps {
   isOpen: boolean;
@@ -47,15 +77,34 @@ const ChatModal: React.FC<ChatModalProps> = ({
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
   const [activeMessages, setActiveMessages] = useState<Message[]>([]);
   
+  // Historical, Optimistic, and Pagination-related States
+  const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
+  const [historicalMessages, setHistoricalMessages] = useState<Message[]>([]);
+  const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<any>(null);
+  const lastMessageCountRef = useRef(0);
 
   const myUid = isAdminReplying ? 'admin' : (user?.id || auth.currentUser?.uid || '');
   const targetUid = isAdminReplying ? (recipientUid || '') : (isAdminMode ? 'admin' : (vendor?.id || ''));
   const isSupportChat = !!(isAdminMode || isAdminReplying);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.classList.add('overflow-hidden');
+    } else {
+      document.body.classList.remove('overflow-hidden');
+    }
+    return () => {
+      document.body.classList.remove('overflow-hidden');
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (isAdminReplying) {
@@ -73,6 +122,12 @@ const ChatModal: React.FC<ChatModalProps> = ({
   useEffect(() => {
     if (!isOpen || !myUid || !targetUid) {
       setActiveMessages([]);
+      setOptimisticMessages([]);
+      setHistoricalMessages([]);
+      setLastVisibleDoc(null);
+      setHasMore(true);
+      setIsLoadingMore(false);
+      lastMessageCountRef.current = 0;
       return;
     }
 
@@ -81,33 +136,78 @@ const ChatModal: React.FC<ChatModalProps> = ({
       collection(db, 'messages'),
       where('conversationId', '==', activeConversationId),
       where('participants', 'array-contains', myUid),
-      orderBy('timestamp', 'asc')
+      orderBy('timestamp', 'desc'),
+      limit(30)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({
+      const seenIds = new Set<string>();
+      const msgsRaw = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       } as Message));
-      setActiveMessages(msgs);
+
+      // Client-Side Deduplication: Filter out any duplicates based on message.id
+      const cleanMsgs: Message[] = [];
+      msgsRaw.forEach(m => {
+        if (m.id && !seenIds.has(m.id)) {
+          seenIds.add(m.id);
+          cleanMsgs.push(m);
+        }
+      });
+
+      // Reverse messages to chronological order for UI array representation
+      cleanMsgs.reverse();
+      setActiveMessages(cleanMsgs);
+
+      // Save cursor for Pagination / Lazy Loading previous messages
+      if (snapshot.docs.length > 0) {
+        setLastVisibleDoc(snapshot.docs[snapshot.docs.length - 1]);
+      }
+      if (snapshot.docs.length < 30) {
+        setHasMore(false);
+      } else {
+        setHasMore(true);
+      }
     }, (err) => {
       console.warn("Firestore ordered messages query failed (composite index might be building), falling back to client-side sort:", err);
       const fallbackQ = query(
         collection(db, 'messages'),
         where('conversationId', '==', activeConversationId),
-        where('participants', 'array-contains', myUid)
+        where('participants', 'array-contains', myUid),
+        limit(30)
       );
       return onSnapshot(fallbackQ, (snapshot) => {
-        const msgs = snapshot.docs.map(doc => ({
+        const msgsRaw = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         } as Message));
-        msgs.sort((a, b) => {
+
+        const seenIds = new Set<string>();
+        const cleanMsgs: Message[] = [];
+        msgsRaw.forEach(m => {
+          if (m.id && !seenIds.has(m.id)) {
+            seenIds.add(m.id);
+            cleanMsgs.push(m);
+          }
+        });
+
+        cleanMsgs.sort((a, b) => {
           const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
           const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
           return (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
         });
-        setActiveMessages(msgs);
+        
+        setActiveMessages(cleanMsgs);
+
+        if (snapshot.docs.length > 0) {
+          setLastVisibleDoc(snapshot.docs[snapshot.docs.length - 1]);
+        }
+        if (snapshot.docs.length < 30) {
+          setHasMore(false);
+        } else {
+          setHasMore(true);
+        }
       }, (err2) => {
         handleFirestoreError(err2, OperationType.LIST, 'messages');
       });
@@ -116,20 +216,16 @@ const ChatModal: React.FC<ChatModalProps> = ({
     return () => unsubscribe();
   }, [isOpen, myUid, targetUid]);
 
+  // Clean resolved local optimistic messages once they appear in the real-time database state
   useEffect(() => {
-    if (scrollRef.current && isOpen) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      const timer = setTimeout(() => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTo({
-            top: scrollRef.current.scrollHeight,
-            behavior: 'smooth'
-          });
-        }
-      }, 80);
-      return () => clearTimeout(timer);
+    if (activeMessages.length > 0 && optimisticMessages.length > 0) {
+      const dbTempIds = new Set(activeMessages.map(m => m.tempId).filter(Boolean));
+      const stillPending = optimisticMessages.filter(om => !dbTempIds.has(om.tempId));
+      if (stillPending.length !== optimisticMessages.length) {
+        setOptimisticMessages(stillPending);
+      }
     }
-  }, [messages, activeMessages, isOpen]);
+  }, [activeMessages, optimisticMessages]);
 
   // Auto-read incoming messages within the open modal
   useEffect(() => {
@@ -145,7 +241,181 @@ const ChatModal: React.FC<ChatModalProps> = ({
     }
   }, [isOpen, activeMessages, myUid]);
 
-  if (!isOpen) return null;
+  // Merge, format and client-side deduplicate all messages
+  const chatMessages = useMemo(() => {
+    const seenIds = new Set<string>();
+    const uniqueMessages: Message[] = [];
+
+    // 1. Append older historical messages (loaded via startAfter pagination)
+    historicalMessages.forEach(m => {
+      if (m.id && !seenIds.has(m.id)) {
+        seenIds.add(m.id);
+        uniqueMessages.push(m);
+      }
+    });
+
+    // 2. Append active real-time messages
+    activeMessages.forEach(m => {
+      if (m.id && !seenIds.has(m.id)) {
+        seenIds.add(m.id);
+        uniqueMessages.push(m);
+      }
+    });
+
+    // 3. Mark database matched optimistic records as 'sent'
+    const dbTempIds = new Set(uniqueMessages.map(m => m.tempId).filter(Boolean));
+    const resolvedDbMessages = uniqueMessages.map(m => {
+      if (m.tempId) {
+        return { ...m, status: 'sent' as const };
+      }
+      return m;
+    });
+
+    // 4. Append outstanding pending optimistic updates
+    const pendingOptimistic = optimisticMessages
+      .filter(om => !dbTempIds.has(om.tempId))
+      .map(om => ({ ...om, isOptimistic: true, status: 'sending' as const }));
+
+    return [...resolvedDbMessages, ...pendingOptimistic];
+  }, [historicalMessages, activeMessages, optimisticMessages]);
+
+  const loadMoreMessages = async () => {
+    if (isLoadingMore || !hasMore || !lastVisibleDoc || !myUid || !targetUid) return;
+    
+    setIsLoadingMore(true);
+    const container = scrollRef.current;
+    
+    // Save scroll dimensions prior to insertion to prevent jumping
+    const previousScrollHeight = container ? container.scrollHeight : 0;
+    const previousScrollTop = container ? container.scrollTop : 0;
+
+    try {
+      const activeConversationId = [myUid, targetUid].sort().join('_');
+      const q = query(
+        collection(db, 'messages'),
+        where('conversationId', '==', activeConversationId),
+        where('participants', 'array-contains', myUid),
+        orderBy('timestamp', 'desc'),
+        startAfter(lastVisibleDoc),
+        limit(30)
+      );
+
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.docs.length > 0) {
+        const olderMsgs = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Message));
+        
+        olderMsgs.reverse();
+
+        setHistoricalMessages(prev => [...olderMsgs, ...prev]);
+        setLastVisibleDoc(querySnapshot.docs[querySnapshot.docs.length - 1]);
+        
+        if (querySnapshot.docs.length < 30) {
+          setHasMore(false);
+        }
+        
+        // Retain scroll height offset so the visual presentation remains persistent
+        setTimeout(() => {
+          if (container) {
+            const newHeight = container.scrollHeight;
+            container.scrollTop = previousScrollTop + (newHeight - previousScrollHeight);
+          }
+        }, 30);
+      } else {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error("Error loading historical messages:", err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  const scrollToBottomSmart = (force = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    
+    // Checks if current viewport is within 100px of scrollable bottom
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 100;
+    
+    if (force || isNearBottom) {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  // Scroll handler for paging older history
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollTop <= 50 && hasMore && !isLoadingMore) {
+      loadMoreMessages();
+    }
+  };
+
+  // Monitor total messages for auto-scrolling
+  useEffect(() => {
+    if (isOpen) {
+      if (lastMessageCountRef.current === 0 && chatMessages.length > 0) {
+        scrollToBottomSmart(true);
+      } else if (chatMessages.length > lastMessageCountRef.current) {
+        scrollToBottomSmart(false);
+      }
+      lastMessageCountRef.current = chatMessages.length;
+    } else {
+      lastMessageCountRef.current = 0;
+    }
+  }, [chatMessages, isOpen]);
+
+  // Handle forcing to bottom on registration / opening modal
+  useEffect(() => {
+    if (isOpen && isIdentityVerified) {
+      const timer1 = setTimeout(() => scrollToBottomSmart(true), 50);
+      const timer2 = setTimeout(() => scrollToBottomSmart(true), 150);
+      return () => {
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+      };
+    }
+  }, [isOpen, isIdentityVerified]);
+
+  const sendOptimisticMessage = (payload: Partial<Message>) => {
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const optMsg: Message = {
+      id: tempId,
+      tempId,
+      text: payload.text || '',
+      clientName: payload.clientName || clientName,
+      clientEmail: payload.clientEmail || clientEmail,
+      senderId: payload.senderId || myUid,
+      receiverId: payload.receiverId || targetUid,
+      conversationId: payload.conversationId || [myUid, targetUid].sort().join('_'),
+      isAdminInquiry: payload.isAdminInquiry || isSupportChat,
+      type: payload.type || 'text',
+      timestamp: new Date().toISOString(),
+      isOptimistic: true,
+      status: 'sending',
+      isRead: false,
+      fileUrl: payload.fileUrl,
+      imageUrl: payload.imageUrl,
+      audioUrl: payload.audioUrl,
+      fileName: payload.fileName,
+      fileType: payload.fileType,
+    };
+
+    setOptimisticMessages(prev => [...prev, optMsg]);
+    
+    // Call the parent sendMessage function, passing payload with a tracking tempId
+    onSendMessage({
+      ...payload,
+      tempId,
+    });
+  };
 
   const handleSend = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -161,7 +431,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
 
     const conversationId = [myUid, targetUid].sort().join('_');
 
-    onSendMessage({
+    sendOptimisticMessage({
       text,
       clientName,
       clientEmail,
@@ -186,7 +456,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
       const isImage = file.type.startsWith('image/');
       const conversationId = [myUid, targetUid].sort().join('_');
 
-      onSendMessage({
+      sendOptimisticMessage({
         text: isImage ? 'Sent an image' : `Sent a file: ${file.name}`,
         clientName,
         clientEmail,
@@ -249,7 +519,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
           const url = await uploadFileRobustly(audioBlob, storagePath);
           const conversationId = [myUid, targetUid].sort().join('_');
 
-          onSendMessage({
+          sendOptimisticMessage({
             text: 'Voice note',
             clientName,
             clientEmail,
@@ -334,28 +604,21 @@ const ChatModal: React.FC<ChatModalProps> = ({
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const chatMessages = activeMessages.length > 0 ? activeMessages : (messages || [])
-    .filter(m => {
-      if (!m) return false;
-      const conversationId = [myUid, targetUid].sort().join('_');
-      if (m.conversationId === conversationId) return true;
-
-      const mEmail = m.clientEmail || '';
-      if (isAdminMode) return !!m.isAdminInquiry && mEmail === clientEmail;
-      return !m.isAdminInquiry && mEmail === clientEmail && (m.receiverId === vendor?.id || m.senderId === vendor?.id);
-    })
-    .sort((a, b) => {
-      const timeA = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const timeB = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
-    });
+  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-[#0a0a0a] w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border border-[#D4AF37]/20 flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="fixed inset-0 z-50 w-full h-[100svh] bg-black rounded-none md:relative md:max-w-xl md:h-[80vh] md:rounded-xl md:border md:border-zinc-800 md:shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="bg-black p-4 border-b border-[#D4AF37]/20 flex justify-between items-center">
           <div className="flex items-center gap-3">
+            <button 
+              onClick={onClose} 
+              className="md:hidden flex items-center justify-center text-[#D4AF37] hover:text-[#E5C76B] transition-colors p-2 -ml-2 h-11 w-11"
+              title="Back"
+            >
+              <ArrowLeft className="w-6 h-6 stroke-[2.5]" />
+            </button>
             {isAdminMode || isAdminReplying ? (
               <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center border border-[#D4AF37]/30">
                 <Shield className="w-5 h-5 text-[#D4AF37]" />
@@ -372,7 +635,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white p-2 transition-colors"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="hidden md:block text-slate-500 hover:text-white p-2 transition-colors"><X className="w-5 h-5" /></button>
         </div>
 
         {/* Identity Verification */}
@@ -387,20 +650,20 @@ const ChatModal: React.FC<ChatModalProps> = ({
               <input 
                 type="text" 
                 placeholder="Your Name" 
-                className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-lg px-4 py-2.5 text-sm text-white outline-none focus:border-[#D4AF37]" 
+                className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-lg px-4 py-2.5 text-base text-white outline-none focus:border-[#D4AF37]" 
                 value={clientName} 
                 onChange={e => setClientName(e.target.value)} 
               />
               <input 
                 type="email" 
                 placeholder="Your Email" 
-                className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-lg px-4 py-2.5 text-sm text-white outline-none focus:border-[#D4AF37]" 
+                className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-lg px-4 py-2.5 text-base text-white outline-none focus:border-[#D4AF37]" 
                 value={clientEmail} 
                 onChange={e => setClientEmail(e.target.value)} 
               />
               <button 
                 onClick={() => clientName && clientEmail && setIsIdentityVerified(true)}
-                className="w-full bg-[#D4AF37] text-black font-bold py-2.5 rounded-lg hover:bg-[#E5C76B] transition-all text-sm uppercase tracking-widest"
+                className="w-full bg-[#D4AF37] text-black font-bold h-11 rounded-lg hover:bg-[#E5C76B] transition-all text-sm uppercase tracking-widest"
               >
                 Start Chatting
               </button>
@@ -409,7 +672,25 @@ const ChatModal: React.FC<ChatModalProps> = ({
         ) : (
           <>
             {/* Chat Body */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-black/40">
+            <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 space-y-4 bg-black/40">
+              {/* Pagination Loader */}
+              {hasMore && (
+                <div className="flex justify-center py-2 border-b border-white/5 bg-zinc-950/20 rounded-lg mb-2">
+                  {isLoadingMore ? (
+                    <div className="flex items-center gap-2 text-xs text-[#D4AF37] tracking-wider uppercase font-mono animate-pulse">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Loading History...
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={loadMoreMessages} 
+                      className="text-[10px] text-zinc-500 hover:text-[#D4AF37] transition-colors font-mono uppercase tracking-widest"
+                    >
+                      Scroll up or click to load history
+                    </button>
+                  )}
+                </div>
+              )}
+
               {chatMessages.length === 0 ? (
                 <div className="text-center py-10 opacity-30">
                   <MessageSquare className="w-12 h-12 mx-auto mb-2 text-[#D4AF37]" />
@@ -429,7 +710,12 @@ const ChatModal: React.FC<ChatModalProps> = ({
                       }`}>
                         {msg.type === 'image' || msg.imageUrl ? (
                           <div className="space-y-2">
-                             <img src={msg.imageUrl || msg.fileUrl} onLoad={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })} className="rounded-lg w-full max-h-60 object-cover border border-[#D4AF37]/20 shadow-lg" alt="Sent" />
+                             <ImageWithPlaceholder 
+                               src={msg.imageUrl || msg.fileUrl || ''} 
+                               alt="Sent" 
+                               isSent={isSent}
+                               onLoadCompletes={() => scrollToBottomSmart(false)} 
+                             />
                              {msg.text && msg.text !== 'Sent an image' && <p className="text-sm">{msg.text}</p>}
                           </div>
                         ) : msg.type === 'file' ? (
@@ -444,7 +730,19 @@ const ChatModal: React.FC<ChatModalProps> = ({
                         ) : msg.type === 'voice' || msg.audioUrl ? (
                           <div className="space-y-1">
                              <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isSent ? 'text-black/60' : 'text-zinc-400'}`}>Voice Note</p>
-                             <CustomAudioPlayer src={msg.audioUrl || msg.fileUrl || ''} theme={isSent ? 'sent' : 'received'} />
+                             {msg.isOptimistic ? (
+                               <div className="flex items-center gap-3 bg-zinc-950 border border-[#D4AF37]/20 rounded-xl p-3 w-[240px] animate-pulse">
+                                 <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center border border-[#D4AF37]/20">
+                                   <Play className="w-4 h-4 text-[#D4AF37]/40" />
+                                 </div>
+                                 <div className="flex-1 space-y-1.5">
+                                   <div className="h-1.5 w-24 bg-[#D4AF37]/20 rounded" />
+                                   <div className="h-1 w-16 bg-[#D4AF37]/10 rounded" />
+                                 </div>
+                               </div>
+                             ) : (
+                               <CustomAudioPlayer src={msg.audioUrl || msg.fileUrl || ''} theme={isSent ? 'sent' : 'received'} />
+                             )}
                           </div>
                         ) : (
                           <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{msg.text}</p>
@@ -452,12 +750,16 @@ const ChatModal: React.FC<ChatModalProps> = ({
                         
                         <div className="flex justify-end items-center gap-1 mt-2 select-none leading-none">
                           <span className={`text-[9px] font-medium opacity-65 ${isSent ? 'text-black/75' : 'text-zinc-400'}`}>
-                            {formatMsgTime(msg.timestamp)}
+                            {msg.status === 'sending' ? 'Sending...' : formatMsgTime(msg.timestamp)}
                           </span>
                           {isSent && (
-                            <span className={`text-[10px] ${msg.isRead ? 'text-blue-600' : 'text-black/40'}`}>
-                              ✓✓
-                            </span>
+                            msg.status === 'sending' ? (
+                              <Loader2 className="w-2.5 h-2.5 animate-spin text-black/50" />
+                            ) : (
+                              <span className={`text-[10px] ${msg.isRead ? 'text-blue-600' : 'text-black/40'}`}>
+                                ✓✓
+                              </span>
+                            )
                           )}
                         </div>
                       </div>
@@ -468,7 +770,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
             </div>
 
             {/* Input Footer */}
-            <div className="p-4 border-t border-[#D4AF37]/20 bg-black space-y-3">
+            <div className="p-4 border-t border-[#D4AF37]/20 bg-black space-y-3 sticky bottom-0 pb-safe pb-[calc(env(safe-area-inset-bottom)+1rem)]">
               <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
               
               {micPermissionError && (
@@ -496,7 +798,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                   <>
                     <button 
                       onClick={() => fileInputRef.current?.click()}
-                      className="p-2 text-slate-500 hover:text-[#D4AF37] transition-all"
+                      className="flex items-center justify-center h-11 w-11 text-slate-500 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
                       title="Attach file"
                     >
                       <Paperclip className="w-5 h-5" />
@@ -508,34 +810,34 @@ const ChatModal: React.FC<ChatModalProps> = ({
                         onChange={e => setText(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                         placeholder="Type a message..."
-                        className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-xl pl-4 pr-10 py-2.5 text-sm text-white focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all"
+                        className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-xl pl-4 pr-10 h-11 text-base text-white focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all"
                       />
                     </div>
                     {text.trim() ? (
                       <button 
                         onClick={() => handleSend()}
-                        className="p-2.5 bg-[#D4AF37] text-black rounded-xl hover:bg-[#E5C76B] transition-all shadow-lg shadow-[#D4AF37]/10"
+                        className="flex items-center justify-center h-11 w-11 bg-[#D4AF37] text-black rounded-xl hover:bg-[#E5C76B] transition-all shadow-lg shadow-[#D4AF37]/10 flex-shrink-0"
                       >
-                        <Send className="w-4 h-4" />
+                        <Send className="w-5 h-5" />
                       </button>
                     ) : (
                       <button 
                          onClick={startRecording}
-                         className="p-2.5 bg-slate-800 text-[#D4AF37] rounded-xl hover:bg-slate-700 transition-all"
+                         className="flex items-center justify-center h-11 w-11 bg-slate-800 text-[#D4AF37] rounded-xl hover:bg-slate-700 transition-all flex-shrink-0"
                       >
                          <Mic className="w-5 h-5" />
                       </button>
                     )}
                   </>
                 ) : (
-                  <div className="flex-1 flex items-center justify-between bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2 animate-pulse">
+                  <div className="flex-1 flex items-center justify-between bg-red-500/10 border border-red-500/20 rounded-xl px-4 h-11 animate-pulse">
                     <div className="flex items-center gap-3">
                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
                        <span className="text-red-500 text-xs font-bold font-mono">{formatDuration(recordingDuration)}</span>
                     </div>
                     <button 
                       onClick={stopRecording}
-                      className="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 transition-all"
+                      className="bg-red-500 text-white h-9 w-9 flex items-center justify-center rounded-lg hover:bg-red-600 transition-all flex-shrink-0"
                     >
                       <StopCircle className="w-4 h-4" />
                     </button>

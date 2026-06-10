@@ -109,6 +109,9 @@ export interface Message {
   conversationId?: string;
   participants?: string[];
   vendorEmail?: string;
+  tempId?: string;
+  isOptimistic?: boolean;
+  status?: 'sending' | 'sent' | 'error';
 }
 
 export interface CartItem {
