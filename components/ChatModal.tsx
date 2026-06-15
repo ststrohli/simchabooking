@@ -3,7 +3,7 @@ import { X, Send, User, Mail, MessageSquare, Bot, Image as ImageIcon, Paperclip,
 import { Vendor, Message, UserAccount } from '../types';
 import { storage, auth, db, handleFirestoreError, OperationType } from '../services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, limit, startAfter, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, limit, startAfter, getDocs, setDoc } from 'firebase/firestore';
 import { uploadFileRobustly } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 
@@ -83,6 +83,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
   const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [otherIsTyping, setOtherIsTyping] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -90,6 +91,8 @@ const ChatModal: React.FC<ChatModalProps> = ({
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<any>(null);
   const lastMessageCountRef = useRef(0);
+  const typingTimeoutRef = useRef<any>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   const myUid = isAdminReplying ? 'admin' : (user?.id || auth.currentUser?.uid || '');
   const targetUid = isAdminReplying ? (recipientUid || '') : (isAdminMode ? 'admin' : (vendor?.id || ''));
@@ -227,19 +230,55 @@ const ChatModal: React.FC<ChatModalProps> = ({
     }
   }, [activeMessages, optimisticMessages]);
 
-  // Auto-read incoming messages within the open modal
+  // Listening to the conversation typing status in real-time
+  useEffect(() => {
+    if (!isOpen || !myUid || !targetUid) {
+      setOtherIsTyping(false);
+      return;
+    }
+    const activeConversationId = [myUid, targetUid].sort().join('_');
+    const unsub = onSnapshot(doc(db, 'conversations', activeConversationId), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const typing = data?.typing || {};
+        const otherTyping = typing[targetUid] || false;
+        setOtherIsTyping(otherTyping);
+      } else {
+        setOtherIsTyping(false);
+      }
+    }, (err) => {
+      console.warn("Error listening to conversation document:", err);
+    });
+    return () => unsub();
+  }, [isOpen, myUid, targetUid]);
+
+  // Auto-read incoming messages within the open modal and reset DB unread count
   useEffect(() => {
     if (isOpen && activeMessages.length > 0) {
+      const activeConversationId = [myUid, targetUid].sort().join('_');
       const incomingUnread = activeMessages.filter(m => m.senderId !== myUid && !m.isRead);
-      incomingUnread.forEach(async (m) => {
+      if (incomingUnread.length > 0) {
+        incomingUnread.forEach(async (m) => {
+          try {
+            await updateDoc(doc(db, 'messages', m.id), { isRead: true, status: 'read' });
+          } catch (err) {
+            console.error("Auto mark read in ChatModal failed", err);
+          }
+        });
+      }
+      
+      const resetUnread = async () => {
         try {
-          await updateDoc(doc(db, 'messages', m.id), { isRead: true });
+          await setDoc(doc(db, 'conversations', activeConversationId), {
+            [`unreadCount.${myUid}`]: 0
+          }, { merge: true });
         } catch (err) {
-          console.error("Auto mark read in ChatModal failed", err);
+          console.warn("Reset unread count in conversations failed:", err);
         }
-      });
+      };
+      resetUnread();
     }
-  }, [isOpen, activeMessages, myUid]);
+  }, [isOpen, activeMessages, myUid, targetUid]);
 
   // Merge, format and client-side deduplicate all messages
   const chatMessages = useMemo(() => {
@@ -274,7 +313,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
     // 4. Append outstanding pending optimistic updates
     const pendingOptimistic = optimisticMessages
       .filter(om => !dbTempIds.has(om.tempId))
-      .map(om => ({ ...om, isOptimistic: true, status: 'sending' as const }));
+      .map(om => ({ ...om, isOptimistic: true, status: om.status || ('sending' as const) }));
 
     return [...resolvedDbMessages, ...pendingOptimistic];
   }, [historicalMessages, activeMessages, optimisticMessages]);
@@ -338,14 +377,13 @@ const ChatModal: React.FC<ChatModalProps> = ({
     const el = scrollRef.current;
     if (!el) return;
     
-    // Checks if current viewport is within 100px of scrollable bottom
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 100;
+    // Checks if current viewport is within 150px of scrollable bottom
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 150;
     
     if (force || isNearBottom) {
-      el.scrollTo({
-        top: el.scrollHeight,
-        behavior: 'smooth'
-      });
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 50);
     }
   };
 
@@ -384,7 +422,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
     }
   }, [isOpen, isIdentityVerified]);
 
-  const sendOptimisticMessage = (payload: Partial<Message>) => {
+  const sendOptimisticMessage = async (payload: Partial<Message>) => {
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const optMsg: Message = {
       id: tempId,
@@ -411,10 +449,60 @@ const ChatModal: React.FC<ChatModalProps> = ({
     setOptimisticMessages(prev => [...prev, optMsg]);
     
     // Call the parent sendMessage function, passing payload with a tracking tempId
-    onSendMessage({
-      ...payload,
-      tempId,
-    });
+    try {
+      await onSendMessage({
+        ...payload,
+        tempId,
+      });
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      setOptimisticMessages(prev =>
+        prev.map(m => m.tempId === tempId ? { ...m, status: 'error' } : m)
+      );
+    }
+  };
+
+  const handleRetryMessage = async (msg: Message) => {
+    setOptimisticMessages(prev =>
+      prev.map(m => m.tempId === msg.tempId ? { ...m, status: 'sending' as const } : m)
+    );
+    try {
+      await onSendMessage({
+        text: msg.text,
+        clientName: msg.clientName,
+        clientEmail: msg.clientEmail,
+        senderId: msg.senderId,
+        receiverId: msg.receiverId,
+        conversationId: msg.conversationId,
+        isAdminInquiry: msg.isAdminInquiry,
+        type: msg.type,
+        fileUrl: msg.fileUrl,
+        imageUrl: msg.imageUrl,
+        audioUrl: msg.audioUrl,
+        fileName: msg.fileName,
+        fileType: msg.fileType,
+        tempId: msg.tempId
+      });
+    } catch (err) {
+      console.error("Failed retry of message send:", err);
+      setOptimisticMessages(prev =>
+        prev.map(m => m.tempId === msg.tempId ? { ...m, status: 'error' as const } : m)
+      );
+    }
+  };
+
+  const handleTypingStatus = async (isTyping: boolean) => {
+    if (!myUid || !targetUid) return;
+    const activeConversationId = [myUid, targetUid].sort().join('_');
+    try {
+      await setDoc(doc(db, 'conversations', activeConversationId), {
+        typing: {
+          [myUid]: isTyping
+        }
+      }, { merge: true });
+    } catch (err) {
+      console.warn("Error updating typing status:", err);
+    }
   };
 
   const handleSend = (e?: React.FormEvent) => {
@@ -604,6 +692,41 @@ const ChatModal: React.FC<ChatModalProps> = ({
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const lastSenderMessageId = useMemo(() => {
+    for (let i = chatMessages.length - 1; i >= 0; i--) {
+      if (checkIfSent(chatMessages[i])) {
+        return chatMessages[i].id;
+      }
+    }
+    return null;
+  }, [chatMessages]);
+
+  const getDynamicTimestamp = (timestampString: string) => {
+    if (!timestampString) return '';
+    const date = new Date(timestampString);
+    if (isNaN(date.getTime())) return '';
+    
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) {
+      if (now.getDate() === date.getDate()) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+      return 'Yesterday';
+    }
+    
+    const options: Intl.DateTimeFormatOptions = { weekday: 'short', hour: '2-digit', minute: '2-digit' };
+    if (diffMs < 7 * 24 * 60 * 60 * 1000) {
+      return date.toLocaleDateString([], options);
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric', ...options });
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -702,7 +825,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                 chatMessages.map((msg) => {
                   const isSent = checkIfSent(msg);
                   return (
-                    <div key={msg.id} className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}>
+                    <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
                       <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative shadow-md ${
                         isSent 
                           ? 'bg-[#D4AF37] text-black' 
@@ -739,7 +862,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                                    <div className="h-1.5 w-24 bg-[#D4AF37]/20 rounded" />
                                    <div className="h-1 w-16 bg-[#D4AF37]/10 rounded" />
                                  </div>
-                               </div>
+                                </div>
                              ) : (
                                <CustomAudioPlayer src={msg.audioUrl || msg.fileUrl || ''} theme={isSent ? 'sent' : 'received'} />
                              )}
@@ -750,23 +873,60 @@ const ChatModal: React.FC<ChatModalProps> = ({
                         
                         <div className="flex justify-end items-center gap-1 mt-2 select-none leading-none">
                           <span className={`text-[9px] font-medium opacity-65 ${isSent ? 'text-black/75' : 'text-zinc-400'}`}>
-                            {msg.status === 'sending' ? 'Sending...' : formatMsgTime(msg.timestamp)}
+                            {msg.status === 'sending' ? 'Sending...' : getDynamicTimestamp(msg.timestamp)}
                           </span>
                           {isSent && (
                             msg.status === 'sending' ? (
                               <Loader2 className="w-2.5 h-2.5 animate-spin text-black/50" />
+                            ) : msg.status === 'error' ? (
+                              <span className="text-red-600 text-[10px] font-bold font-mono">⚠️</span>
                             ) : (
-                              <span className={`text-[10px] ${msg.isRead ? 'text-blue-600' : 'text-black/40'}`}>
+                              <span className={`text-[10px] ${msg.isRead ? 'text-blue-500' : 'text-black/40'}`}>
                                 ✓✓
                               </span>
                             )
                           )}
                         </div>
+
+                        {/* Failed sending state with Retry */}
+                        {isSent && msg.status === 'error' && (
+                          <div className="mt-2 pt-2 border-t border-red-500/10 flex items-center justify-end gap-1.5">
+                            <span className="text-red-600 text-[9px] font-bold uppercase tracking-wider font-mono">Failed</span>
+                            <button 
+                              onClick={() => handleRetryMessage(msg)}
+                              className="bg-black/80 hover:bg-black text-red-500 font-bold px-2 py-0.5 rounded text-[9px] border border-red-500/20 uppercase tracking-widest transition-all"
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        )}
                       </div>
+
+                      {/* Seen / Delivered receipts below last message bubble */}
+                      {isSent && msg.id === lastSenderMessageId && (
+                        <div className="text-[9px] mt-1 pr-2 opacity-60 text-slate-400 tracking-wider font-mono">
+                          {msg.status === 'sending' ? 'Sending...' : (msg.status === 'error' ? 'Not Sent' : (msg.isRead ? 'Seen' : 'Delivered'))}
+                        </div>
+                      )}
                     </div>
                   );
                 })
               )}
+
+              {/* Typing Indicator */}
+              {otherIsTyping && (
+                <div className="flex justify-start px-2 py-1">
+                  <div className="bg-zinc-900 border border-[#D4AF37]/10 text-[#D4AF37] px-4 py-2.5 rounded-full text-[11px] flex items-center gap-2 shadow-lg animate-pulse">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span className="font-semibold">
+                      {(isAdminReplying ? clientName : (isAdminMode ? 'System Concierge' : vendor?.name)) || 'Someone'} is typing...
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Scroll anchor */}
+              <div ref={bottomRef} className="h-2" />
             </div>
 
             {/* Input Footer */}
@@ -798,36 +958,58 @@ const ChatModal: React.FC<ChatModalProps> = ({
                   <>
                     <button 
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center justify-center h-11 w-11 text-slate-500 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
+                      className="flex items-center justify-center h-11 w-11 text-slate-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
                       title="Attach file"
                     >
                       <Paperclip className="w-5 h-5" />
+                    </button>
+                    <button 
+                       onClick={startRecording}
+                       className="flex items-center justify-center h-11 w-11 text-slate-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
+                       title="Record voice note"
+                    >
+                       <Mic className="w-5 h-5" />
                     </button>
                     <div className="relative flex-1 flex items-center">
                       <input 
                         type="text" 
                         value={text}
-                        onChange={e => setText(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                        onChange={e => {
+                          setText(e.target.value);
+                          handleTypingStatus(true);
+                          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                          typingTimeoutRef.current = setTimeout(() => {
+                            handleTypingStatus(false);
+                          }, 2000);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (text.trim()) {
+                              handleSend();
+                              handleTypingStatus(false);
+                            }
+                          }
+                        }}
                         placeholder="Type a message..."
-                        className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-xl pl-4 pr-10 h-11 text-base text-white focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all"
+                        className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-xl pl-4 pr-10 h-11 text-base text-white focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-zinc-600"
                       />
                     </div>
-                    {text.trim() ? (
-                      <button 
-                        onClick={() => handleSend()}
-                        className="flex items-center justify-center h-11 w-11 bg-[#D4AF37] text-black rounded-xl hover:bg-[#E5C76B] transition-all shadow-lg shadow-[#D4AF37]/10 flex-shrink-0"
-                      >
-                        <Send className="w-5 h-5" />
-                      </button>
-                    ) : (
-                      <button 
-                         onClick={startRecording}
-                         className="flex items-center justify-center h-11 w-11 bg-slate-800 text-[#D4AF37] rounded-xl hover:bg-slate-700 transition-all flex-shrink-0"
-                      >
-                         <Mic className="w-5 h-5" />
-                      </button>
-                    )}
+                    <button 
+                      onClick={() => {
+                        handleSend();
+                        handleTypingStatus(false);
+                      }}
+                      disabled={!text.trim()}
+                      className={`flex items-center justify-center h-11 w-11 rounded-xl transition-all shadow-lg flex-shrink-0 ${
+                        text.trim() 
+                          ? 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] shadow-[#D4AF37]/10 cursor-pointer' 
+                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed shadow-none'
+                      }`}
+                      title="Send message"
+                    >
+                      <Send className="w-5 h-5" />
+                    </button>
                   </>
                 ) : (
                   <div className="flex-1 flex items-center justify-between bg-red-500/10 border border-red-500/20 rounded-xl px-4 h-11 animate-pulse">
