@@ -53,21 +53,36 @@
       },
       "required": ["vendorId", "clientName", "eventName", "date", "status", "paymentStatus", "amount", "contactEmail"]
     },
-    "Message": {
-      "title": "Message",
-      "description": "A chat message between client and vendor",
+    "Conversation": {
+      "title": "Conversation",
+      "description": "A conversation between multiple participants",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "senderId": { "type": "string" },
-        "receiverId": { "type": "string" },
-        "clientEmail": { "type": "string" },
-        "clientName": { "type": "string" },
-        "text": { "type": "string" },
-        "timestamp": { "type": "string" },
-        "isRead": { "type": "boolean" }
+        "type": { "type": "string", "enum": ["booking", "admin_support"] },
+        "booking_id": { "type": "string" },
+        "client_id": { "type": "string" },
+        "vendor_id": { "type": "string" },
+        "participant_ids": { "type": "array", "items": { "type": "string" } },
+        "last_message": { "type": "string" },
+        "last_message_at": { "type": "object" },
+        "created_at": { "type": "object" }
       },
-      "required": ["senderId", "receiverId", "clientEmail", "clientName", "text", "timestamp", "isRead"]
+      "required": ["type", "participant_ids", "last_message", "last_message_at", "created_at"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A chat message stored inside a conversation subcollection",
+      "type": "object",
+      "properties": {
+        "sender_id": { "type": "string" },
+        "sender_role": { "type": "string", "enum": ["client", "vendor", "admin"] },
+        "text": { "type": "string" },
+        "read_by": { "type": "object" },
+        "is_deleted": { "type": "boolean" },
+        "sent_at": { "type": "object" }
+      },
+      "required": ["sender_id", "sender_role", "text", "read_by", "is_deleted", "sent_at"]
     },
     "AppConfig": {
       "title": "AppConfig",
@@ -111,7 +126,9 @@
     "/vendors/{vendorId}": { "schema": "Vendor", "description": "Vendors collection" },
     "/posts/{postId}": { "schema": "Post", "description": "Gallery posts" },
     "/bookings/{bookingId}": { "schema": "Booking", "description": "Service bookings" },
-    "/messages/{messageId}": { "schema": "Message", "description": "Chat messages" },
+    "/conversations/{conversationId}": { "schema": "Conversation", "description": "User conversations" },
+    "/conversations/{conversationId}/messages/{messageId}": { "schema": "Message", "description": "Nested chat messages" },
+    "/conversations/{conversationId}/members/{userId}": { "schema": "object", "description": "Conversation participant details" },
     "/metadata/app_config": { "schema": "AppConfig", "description": "App configuration" },
     "/users/{uid}": { "schema": "User", "description": "User profiles" },
     "/users/{uid}/cart/current": { "schema": "object", "description": "User shopping cart" },

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff } from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType } from '../services/firebase';
+import { markChatAsRead } from '../services/messagingService';
 import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
@@ -229,13 +230,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       e.preventDefault();
     }
     try {
-      await updateDoc(doc(db, 'messages', messageId), {
-        isRead: !currentStatus
-      });
-      showNotification(`Marked message as ${!currentStatus ? 'read' : 'unread'}`, 'success');
+      const msg = messages.find(m => m.id === messageId);
+      if (msg && msg.conversationId) {
+        await markChatAsRead(msg.conversationId, 'admin');
+        showNotification(`Marked conversation as read`, 'success');
+      } else {
+        showNotification('Unable to resolve conversation', 'info');
+      }
     } catch (err) {
       console.error('Error updating message read status:', err);
-      handleFirestoreError(err, OperationType.UPDATE, `messages/${messageId}`);
     }
   };
 
@@ -245,34 +248,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       e.preventDefault();
     }
     try {
-      const incomingMsgs = messages.filter(m => {
-        const isThisConversation = m.conversationId === conversationId || 
-          (m.clientEmail === otherEmail && m.isAdminInquiry);
-        const isIncoming = m.senderId !== 'admin';
-        return isThisConversation && isIncoming;
-      });
-
-      if (incomingMsgs.length === 0) {
-        showNotification('No incoming messages to mark', 'info');
-        return;
-      }
-
-      if (hasUnread) {
-        const unreadMsgs = incomingMsgs.filter(m => !m.isRead);
-        for (const m of unreadMsgs) {
-          await updateDoc(doc(db, 'messages', m.id), { isRead: true });
-        }
+      if (conversationId) {
+        await markChatAsRead(conversationId, 'admin');
         showNotification('Conversation marked as read', 'success');
       } else {
-        const sorted = [...incomingMsgs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        if (sorted[0]) {
-          await updateDoc(doc(db, 'messages', sorted[0].id), { isRead: false });
-        }
-        showNotification('Conversation marked as unread', 'success');
+        showNotification('Invalid conversation ID', 'info');
       }
     } catch (err) {
       console.error('Error toggling conversation read status:', err);
-      handleFirestoreError(err, OperationType.UPDATE, 'messages');
     }
   };
 
@@ -761,7 +744,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="bg-[#111] p-6 rounded-2xl border border-[#D4AF37]/10 shadow-xl">
                 <p className="text-[10px] font-black text-[#D4AF37]/60 uppercase tracking-widest mb-2">Total Volume</p>
                 <div className="flex items-center justify-between">
-                    <h3 className="text-3xl font-bold text-white">${totalPaidVolume.toLocaleString()}</h3>
+                    <h3 className="text-3xl font-bold text-white">${totalPaidVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
                     <BarChart3 className="w-8 h-8 text-[#D4AF37]/20" />
                 </div>
             </div>
@@ -769,7 +752,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="absolute top-0 right-0 w-24 h-24 bg-[#D4AF37]/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110"></div>
                 <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest mb-2">Platform Revenue (Dynamic)</p>
                 <div className="flex items-center justify-between">
-                    <h3 className="text-3xl font-bold text-[#D4AF37]">${totalCommission.toLocaleString()}</h3>
+                    <h3 className="text-3xl font-bold text-[#D4AF37]">${totalCommission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
                     <Wallet className="w-8 h-8 text-[#D4AF37]/40" />
                 </div>
             </div>
@@ -783,8 +766,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex justify-center mb-10 overflow-x-auto pb-2">
-            <div className="bg-[#111] p-1 rounded-xl border border-[#D4AF37]/20 flex shrink-0">
+        <div className="mb-10 w-full flex overflow-x-auto whitespace-nowrap hide-scrollbar space-x-4 pb-2 justify-start md:justify-center">
+            <div className="bg-[#111] p-1 rounded-xl border border-[#D4AF37]/20 flex shrink-0 md:flex-wrap gap-1.5 md:gap-1">
                 {['add', 'manage', 'bookings', 'messages', 'stripe', 'users', 'posts', 'categories', 'analytics'].map(tab => (
                     <button 
                         key={tab} 
@@ -1172,7 +1155,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </div>
                                 <div className="flex items-center gap-6">
                                     <div className="text-right">
-                                        <p className="text-xl font-bold text-white">${b.amount.toLocaleString()}</p>
+                                        <p className="text-xl font-bold text-white">${b.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                         <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${b.paymentStatus === 'paid' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
                                             {b.paymentStatus}
                                         </span>
@@ -1209,7 +1192,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                         <div className="bg-black/40 p-6 rounded-2xl border border-white/5">
                             <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">Platform Revenue</p>
-                            <h4 className="text-3xl font-bold text-[#D4AF37]">${totalCommission.toLocaleString()}</h4>
+                            <h4 className="text-3xl font-bold text-[#D4AF37]">${totalCommission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h4>
                         </div>
                     </div>
 
@@ -1334,14 +1317,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 handleOpenChat(cid, msg);
                                                 
                                                 // Auto mark unread incoming messages as read when opening conversation
-                                                const incomingUnread = (allMessagesByConversation[cid] || []).filter(m => m.senderId !== 'admin' && !m.isRead);
-                                                incomingUnread.forEach(async (unm) => {
-                                                    try {
-                                                        await updateDoc(doc(db, 'messages', unm.id), { isRead: true });
-                                                    } catch (err) {
-                                                        console.error('Error on auto marking read:', err);
-                                                    }
-                                                });
+                                                if (cid) {
+                                                    markChatAsRead(cid, 'admin').catch(console.error);
+                                                }
                                             }}
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter' || e.key === ' ') {
@@ -1351,14 +1329,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     handleOpenChat(cid, msg);
                                                     
                                                     // Auto mark unread incoming messages as read when opening conversation
-                                                    const incomingUnread = (allMessagesByConversation[cid] || []).filter(m => m.senderId !== 'admin' && !m.isRead);
-                                                    incomingUnread.forEach(async (unm) => {
-                                                        try {
-                                                            await updateDoc(doc(db, 'messages', unm.id), { isRead: true });
-                                                        } catch (err) {
-                                                            console.error('Error on auto marking read:', err);
-                                                        }
-                                                    });
+                                                    if (cid) {
+                                                        markChatAsRead(cid, 'admin').catch(console.error);
+                                                    }
                                                 }
                                             }}
                                             className={`w-full p-6 text-left border-b border-white/5 transition-all hover:bg-white/5 flex flex-col gap-1.5 cursor-pointer outline-none focus-visible:bg-white/5 ${itemBgClass}`}

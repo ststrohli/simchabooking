@@ -7,6 +7,7 @@ import {
 import { CartItem, Booking, Message, Vendor, UserAccount, UserFile } from '../types';
 import PayPalButton from './PayPalButton';
 import { storage, db } from '../services/firebase';
+import { markChatAsRead } from '../services/messagingService';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
@@ -304,15 +305,11 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     if (selectedThreadVendorId && activeTab === 'chats') {
       const thread = chatThreads.find(t => t[0] === selectedThreadVendorId);
       if (thread) {
-        const unreadMessages = thread[1].messages.filter(m => m.receiverId === user.id && !m.isRead);
-        if (unreadMessages.length > 0) {
-          const batch = writeBatch(db);
-          unreadMessages.forEach(msg => {
-            const msgRef = doc(db, 'messages', msg.id);
-            batch.update(msgRef, { isRead: true });
-          });
-          batch.commit().catch(err => {
-            console.error("Error marking messages as read in batch for client:", err);
+        const firstMsg = thread[1].messages[0];
+        if (firstMsg) {
+          const conId = firstMsg.conversationId || [user.id, selectedThreadVendorId].sort().filter(Boolean).join('_');
+          markChatAsRead(conId, user.id).catch(err => {
+            console.error("Error setting thread as read:", err);
           });
         }
       }

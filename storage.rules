@@ -44,13 +44,13 @@ service firebase.storage {
     // Categories Assets
     match /categories/{allPaths=**} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isSignedIn();
     }
 
     // Hero Assets
     match /hero/{allPaths=**} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isSignedIn();
     }
 
     // Posts/Gallery Assets

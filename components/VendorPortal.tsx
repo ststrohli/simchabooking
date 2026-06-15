@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Vendor, Booking, Message, SelectedService, VendorService } from '../types';
 import { db, storage } from '../services/firebase';
+import { markChatAsRead } from '../services/messagingService';
 import { doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly } from '../services/uploadService';
@@ -342,15 +343,11 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     if (selectedThreadEmail && activeTab === 'messages') {
       const thread = messageThreads.find(t => t[0] === selectedThreadEmail);
       if (thread) {
-        const unreadMessages = thread[1].messages.filter(m => m.receiverId === vendor.id && !m.isRead);
-        if (unreadMessages.length > 0) {
-          const batch = writeBatch(db);
-          unreadMessages.forEach(msg => {
-            const msgRef = doc(db, 'messages', msg.id);
-            batch.update(msgRef, { isRead: true });
-          });
-          batch.commit().catch(err => {
-            console.error("Error marking messages as read in batch:", err);
+        const firstMsg = thread[1].messages[0];
+        if (firstMsg) {
+          const conId = firstMsg.conversationId || [vendor.id, firstMsg.senderId === vendor.id ? firstMsg.receiverId : firstMsg.senderId].sort().filter(Boolean).join('_');
+          markChatAsRead(conId, vendor.id).catch(err => {
+            console.error("Error setting thread as read:", err);
           });
         }
       }

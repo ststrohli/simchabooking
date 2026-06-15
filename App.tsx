@@ -19,6 +19,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './services/firebase';
 import { uploadFileRobustly } from './services/uploadService';
 import { trackFunnelStep } from './services/analyticsService';
+import { sendNewMessage, subscribeToUserInbox, ensureAdminSupportConversation } from './services/messagingService';
 import VendorCard from './components/VendorCard';
 import QuickViewModal from './components/QuickViewModal';
 import BookingModal from './components/BookingModal';
@@ -53,8 +54,8 @@ const isUserAdmin = (email: string | null | undefined): boolean => {
 };
 
 const SimchaLogo = ({ className = "h-10 w-10" }: { className?: string }) => (
-  <svg className={`${className}`} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <text x="50" y="75" fontFamily="'Cinzel', serif" fontSize="85" fill="#D4AF37" textAnchor="middle" fontWeight="bold" letterSpacing="-5">SB</text>
+  <svg className={`${className}`} viewBox="0 0 100 80" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <text x="50" y="65" fontFamily="'Cinzel', serif" fontSize="76" fill="#D4AF37" textAnchor="middle" fontWeight="bold" letterSpacing="-4" transform="scale(1, 0.82)" style={{ transformOrigin: '50px 65px' }}>SB</text>
   </svg>
 );
 
@@ -296,54 +297,125 @@ function App() {
       setBookings(bData);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'bookings'));
 
-    // Messages
-    let messagesQuery;
+    // Messages (Subcollection aggregation to keep existing UI fully intact without deep structural rewrite of all panels)
+    let unsubMessages = () => {};
+    
+    // First, determine conversation query based on role
+    let convoQuery;
     if (userRole === 'admin') {
-      messagesQuery = query(collection(db, 'messages'), orderBy('timestamp', 'asc'));
-    } else if (userRole === 'vendor') {
-      messagesQuery = query(
-        collection(db, 'messages'),
-        where('vendorEmail', '==', fbUser.email),
-        orderBy('timestamp', 'asc')
-      );
+      convoQuery = collection(db, 'conversations');
     } else {
-      messagesQuery = query(
-        collection(db, 'messages'),
-        where('clientEmail', '==', fbUser.email),
-        orderBy('timestamp', 'asc')
+      convoQuery = query(
+        collection(db, 'conversations'),
+        where('participant_ids', 'array-contains', fbUser.uid)
       );
     }
 
-    let unsubMessages = () => {};
-    const subscribeToMessages = (q: any, useFallbackOnErr: boolean) => {
-      return onSnapshot(q, (snapshot: any) => {
-        const mData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Message));
-        mData.sort((a: Message, b: Message) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-        setMessages(mData);
-      }, (err: any) => {
-        console.warn("Firestore messages query subscription warning/error:", err);
-        if (useFallbackOnErr) {
-          console.warn("Falling back to local-sort query because of indexing status.");
-          let fallbackQ;
-          if (userRole === 'admin') {
-            fallbackQ = collection(db, 'messages');
-          } else if (userRole === 'vendor') {
-            fallbackQ = query(
-              collection(db, 'messages'),
-              where('vendorEmail', '==', fbUser.email)
-            );
-          } else {
-            fallbackQ = query(collection(db, 'messages'), where('clientEmail', '==', fbUser.email));
-          }
-          unsubMessages();
-          unsubMessages = subscribeToMessages(fallbackQ, false);
-        } else {
-          handleFirestoreError(err, OperationType.LIST, 'messages');
-        }
+    const activeListeners = new Map<string, () => void>();
+    const allConvoMessages = new Map<string, Message[]>();
+
+    const rebuildMergedMessages = () => {
+      const merged: Message[] = [];
+      for (const msgs of allConvoMessages.values()) {
+        merged.push(...msgs);
+      }
+      // Chronological sort
+      merged.sort((a, b) => {
+        const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return timeA - timeB;
       });
+      setMessages(merged);
     };
 
-    unsubMessages = subscribeToMessages(messagesQuery, true);
+    const unsubConvos = onSnapshot(convoQuery, (snapshot) => {
+      // For each conversation, subscribe to its subcollection message list
+      const currentConversations = snapshot.docs.map(doc => doc.id);
+      
+      // Clean up listeners for conversations that are no longer active
+      for (const cid of activeListeners.keys()) {
+        if (!currentConversations.includes(cid)) {
+          activeListeners.get(cid)?.();
+          activeListeners.delete(cid);
+          allConvoMessages.delete(cid);
+        }
+      }
+
+      snapshot.docs.forEach((convoDoc) => {
+        const cid = convoDoc.id;
+        if (!activeListeners.has(cid)) {
+          const msgQuery = query(
+            collection(db, 'conversations', cid, 'messages'),
+            orderBy('sent_at', 'asc')
+          );
+          
+          const unsubMsg = onSnapshot(msgQuery, (msgSnap) => {
+            const msgs = msgSnap.docs.map(docSnap => {
+              const data = docSnap.data();
+              let timestampStr = new Date().toISOString();
+              if (data.sent_at) {
+                if (typeof data.sent_at.toDate === 'function') {
+                  timestampStr = data.sent_at.toDate().toISOString();
+                } else {
+                  timestampStr = new Date(data.sent_at).toISOString();
+                }
+              }
+              return {
+                id: docSnap.id,
+                ...data,
+                senderId: data.sender_id || data.senderId,
+                timestamp: timestampStr,
+              } as Message;
+            });
+            allConvoMessages.set(cid, msgs);
+            rebuildMergedMessages();
+          }, (err) => {
+            console.warn(`Fallback for message listener on ${cid}:`, err);
+            // Fallback without ordering
+            const fallbackQuery = collection(db, 'conversations', cid, 'messages');
+            const unsubFallback = onSnapshot(fallbackQuery, (msgSnap) => {
+              const msgs = msgSnap.docs.map(docSnap => {
+                const data = docSnap.data();
+                let timestampStr = new Date().toISOString();
+                if (data.sent_at) {
+                  if (typeof data.sent_at.toDate === 'function') {
+                    timestampStr = data.sent_at.toDate().toISOString();
+                  } else {
+                    timestampStr = new Date(data.sent_at).toISOString();
+                  }
+                }
+                return {
+                  id: docSnap.id,
+                  ...data,
+                  senderId: data.sender_id || data.senderId,
+                  timestamp: timestampStr,
+                } as Message;
+              });
+              allConvoMessages.set(cid, msgs);
+              rebuildMergedMessages();
+            }, (err2) => {
+              console.error(`Fallback failed on conversation messages query for ${cid}:`, err2);
+            });
+            activeListeners.set(cid + '_fallback', unsubFallback);
+          });
+          activeListeners.set(cid, unsubMsg);
+        }
+      });
+      
+      if (snapshot.docs.length === 0) {
+        setMessages([]);
+      } else {
+        rebuildMergedMessages();
+      }
+    }, (err) => {
+      console.error("Error subscribing to user conversations:", err);
+    });
+
+    unsubMessages = () => {
+      unsubConvos();
+      activeListeners.forEach(unsub => unsub());
+      activeListeners.clear();
+    };
 
     const unsubCart = onSnapshot(doc(db, 'users', fbUser.uid, 'cart', 'current'), (docSnap) => {
       if (docSnap.exists()) {
@@ -669,7 +741,7 @@ function App() {
       const receiverId = clientUid;
       const conversationId = [senderId, receiverId].sort().join('_');
 
-      await addDoc(collection(db, 'messages'), {
+      await sendNewMessage({
         senderId,
         receiverId,
         conversationId,
@@ -677,8 +749,7 @@ function App() {
         clientEmail: email,
         clientName: name,
         text,
-        timestamp: new Date().toISOString(),
-        isRead: false
+        senderRole: 'vendor'
       });
       showNotification('Reply sent!');
     } catch (err) {
@@ -945,17 +1016,16 @@ function App() {
       const msgData = {
         clientEmail: payload.clientEmail || fbUser?.email || '',
         clientName: payload.clientName || fbUser?.displayName || fbUser?.email?.split('@')[0] || 'Guest',
-        isRead: false,
-        timestamp: new Date().toISOString(),
         ...payload,
         senderId, // ensure locked
         receiverId, // ensure locked
         conversationId, // ensure locked
         participants: [senderId, receiverId],
-        vendorEmail: resolvedVendorEmail
+        vendorEmail: resolvedVendorEmail,
+        senderRole: userRole || 'client',
       };
 
-      await addDoc(collection(db, 'messages'), msgData);
+      await sendNewMessage(msgData);
       
       if (!payload.receiverId?.startsWith('admin') && !isAdminChatOpen) {
           showNotification('Message sent!', 'success');
@@ -1546,7 +1616,28 @@ function App() {
     
     try {
       const uid = fbUser.uid;
-      await deleteDoc(doc(db, 'users', uid));
+      
+      // Delete Firestore documents first
+      try {
+        await deleteDoc(doc(db, 'users', uid));
+      } catch (firestoreErr) {
+        console.warn("Could not delete user document from Firestore:", firestoreErr);
+      }
+      
+      try {
+        await deleteDoc(doc(db, 'vendors', uid));
+      } catch (firestoreErr) {
+        console.warn("Could not delete vendor document from Firestore:", firestoreErr);
+      }
+      
+      if (currentUserVendorId && currentUserVendorId !== uid) {
+        try {
+          await deleteDoc(doc(db, 'vendors', currentUserVendorId));
+        } catch (firestoreErr) {
+          console.warn("Could not delete linked vendor document from Firestore:", firestoreErr);
+        }
+      }
+
       await deleteUser(fbUser);
       setFbUser(null);
       setUserRole(null);
@@ -1735,11 +1826,11 @@ function App() {
       <nav className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
-            <button className="flex items-center gap-3 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-lg p-1" onClick={() => { setView('marketplace'); setActiveCategory('All'); }} aria-label="Simcha Booking Home">
-                <SimchaLogo className="h-9 w-9 group-hover:scale-110 transition-transform" />
-                <div className="text-left">
-                    <h1 className="text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
-                      <span className="block md:inline">Simcha</span><span className="block md:inline md:ml-1.5">Booking</span>
+            <button className="flex flex-col items-center justify-center cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-lg p-1" onClick={() => { setView('marketplace'); setActiveCategory('All'); }} aria-label="Simcha Booking Home">
+                <SimchaLogo className="h-8 w-8 group-hover:scale-110 transition-transform mb-[-3px]" />
+                <div className="text-center leading-none mt-0">
+                    <h1 className="text-xs font-bold font-[Cinzel] tracking-[0.16em] uppercase leading-none">
+                      <span className="text-white">Simcha</span> <span className="text-[#D4AF37]">Booking</span>
                     </h1>
                 </div>
             </button>
@@ -1773,7 +1864,7 @@ function App() {
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
           </div>
           <div className="relative max-w-7xl mx-auto px-4 py-16 md:py-32 text-center">
-            <h2 id="hero-title" className="text-4xl md:text-7xl font-bold font-[Cinzel] mb-6 tracking-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)]">Celebrate Your <span className="text-[#D4AF37]">Simcha.</span> <br /> <span className="text-3xl md:text-5xl opacity-90">Book Perfection.</span></h2>
+            <h2 id="hero-title" className="text-4xl md:text-7xl font-bold font-[Cinzel] mb-6 tracking-[0.06em] text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)]">CELEBRATE YOUR <span className="text-[#D4AF37]">SIMCHA.</span> <br /> <span className="text-3xl md:text-5xl opacity-90 tracking-[0.06em]">BOOK PERFECTION.</span></h2>
             <p className="mb-10 text-slate-300 text-base md:text-lg font-light max-w-2xl mx-auto leading-relaxed">From world-class kosher caterers to soulful bands, curate your complete simcha in one place.</p>
             <div className="max-w-4xl mx-auto bg-[#111] rounded-2xl md:rounded-full p-2 flex flex-col md:flex-row items-stretch md:items-center shadow-2xl border border-[#D4AF37]/20 gap-2 md:gap-0">
               <div className="flex-1 flex items-center px-6 py-3">
@@ -1789,7 +1880,7 @@ function App() {
         {activeCategory === 'All' && !searchTerm ? (
             <section className="py-12 bg-black flex-1" aria-labelledby="categories-heading">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="text-center mb-10"><h2 id="categories-heading" className="text-3xl font-bold font-[Cinzel] mb-4 text-[#D4AF37]">Explore Signature Categories</h2></div>
+                    <div className="text-center mb-10"><h2 id="categories-heading" className="text-3xl font-bold font-[Cinzel] mb-4 text-[#D4AF37] tracking-[0.08em] uppercase">EXPLORE SIGNATURE CATEGORIES</h2></div>
                     <nav className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4" aria-label="Category Browser">
                         {activeCategories.map((cat) => (
                             <button key={cat} onClick={() => setActiveCategory(cat)} className="group relative h-40 rounded-xl overflow-hidden border border-[#D4AF37]/20 hover:border-[#D4AF37]/50 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-all">
@@ -1906,7 +1997,12 @@ function App() {
       {/* Floating Support Button */}
       {view === 'marketplace' && !isAdminChatOpen && !chatVendor && (
         <button 
-          onClick={() => setIsAdminChatOpen(true)}
+          onClick={() => {
+            if (fbUser) {
+              ensureAdminSupportConversation(fbUser.uid, 'admin').catch(console.error);
+            }
+            setIsAdminChatOpen(true);
+          }}
           className="fixed bottom-8 right-8 z-40 w-14 h-14 bg-[#D4AF37] text-black rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all group shadow-[#D4AF37]/20"
           aria-label="Contact Support"
         >

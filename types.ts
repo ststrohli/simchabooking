@@ -99,9 +99,10 @@ export interface Message {
   text: string;
   timestamp: string;
   isRead: boolean;
-  type?: 'text' | 'image' | 'voice' | 'file';
+  type?: 'text' | 'image' | 'voice' | 'file' | 'video';
   fileUrl?: string;
   imageUrl?: string;
+  videoUrl?: string;
   audioUrl?: string;
   fileName?: string;
   fileType?: string;
