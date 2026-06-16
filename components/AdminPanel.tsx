@@ -744,7 +744,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="bg-[#111] p-6 rounded-2xl border border-[#D4AF37]/10 shadow-xl">
                 <p className="text-[10px] font-black text-[#D4AF37]/60 uppercase tracking-widest mb-2">Total Volume</p>
                 <div className="flex items-center justify-between">
-                    <h3 className="text-3xl font-bold text-white">${totalPaidVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+                    <h3 className="text-3xl font-bold text-white">${totalPaidVolume.toLocaleString()}</h3>
                     <BarChart3 className="w-8 h-8 text-[#D4AF37]/20" />
                 </div>
             </div>
@@ -752,7 +752,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="absolute top-0 right-0 w-24 h-24 bg-[#D4AF37]/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110"></div>
                 <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest mb-2">Platform Revenue (Dynamic)</p>
                 <div className="flex items-center justify-between">
-                    <h3 className="text-3xl font-bold text-[#D4AF37]">${totalCommission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+                    <h3 className="text-3xl font-bold text-[#D4AF37]">${totalCommission.toLocaleString()}</h3>
                     <Wallet className="w-8 h-8 text-[#D4AF37]/40" />
                 </div>
             </div>
@@ -766,8 +766,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="mb-10 w-full flex overflow-x-auto whitespace-nowrap hide-scrollbar space-x-4 pb-2 justify-start md:justify-center">
-            <div className="bg-[#111] p-1 rounded-xl border border-[#D4AF37]/20 flex shrink-0 md:flex-wrap gap-1.5 md:gap-1">
+        <div className="flex justify-center mb-10 overflow-x-auto pb-2">
+            <div className="bg-[#111] p-1 rounded-xl border border-[#D4AF37]/20 flex shrink-0">
                 {['add', 'manage', 'bookings', 'messages', 'stripe', 'users', 'posts', 'categories', 'analytics'].map(tab => (
                     <button 
                         key={tab} 
@@ -1155,7 +1155,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </div>
                                 <div className="flex items-center gap-6">
                                     <div className="text-right">
-                                        <p className="text-xl font-bold text-white">${b.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                        <p className="text-xl font-bold text-white">${b.amount.toLocaleString()}</p>
                                         <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${b.paymentStatus === 'paid' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
                                             {b.paymentStatus}
                                         </span>
@@ -1192,7 +1192,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                         <div className="bg-black/40 p-6 rounded-2xl border border-white/5">
                             <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">Platform Revenue</p>
-                            <h4 className="text-3xl font-bold text-[#D4AF37]">${totalCommission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h4>
+                            <h4 className="text-3xl font-bold text-[#D4AF37]">${totalCommission.toLocaleString()}</h4>
                         </div>
                     </div>
 

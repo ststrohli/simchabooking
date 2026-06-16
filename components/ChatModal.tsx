@@ -566,37 +566,19 @@ const ChatModal: React.FC<ChatModalProps> = ({
       const url = await uploadFileRobustly(file, storagePath);
 
       const isImage = file.type.startsWith('image/');
-      const isVideo = file.type.startsWith('video/');
-      const isAudio = file.type.startsWith('audio/');
       const conversationId = [myUid, targetUid].sort().join('_');
 
-      let type: 'image' | 'video' | 'voice' | 'file' = 'file';
-      let text = `Sent a file: ${file.name}`;
-      
-      if (isImage) {
-        type = 'image';
-        text = 'Sent an image';
-      } else if (isVideo) {
-        type = 'video';
-        text = 'Sent a video';
-      } else if (isAudio) {
-        type = 'voice';
-        text = 'Voice note';
-      }
-
       sendOptimisticMessage({
-        text,
+        text: isImage ? 'Sent an image' : `Sent a file: ${file.name}`,
         clientName,
         clientEmail,
         senderId: myUid,
         receiverId: targetUid,
         conversationId,
         isAdminInquiry: isSupportChat,
-        type,
+        type: isImage ? 'image' : 'file',
         fileUrl: url,
         imageUrl: isImage ? url : undefined,
-        videoUrl: isVideo ? url : undefined,
-        audioUrl: (isAudio || type === 'voice') ? url : undefined,
         fileName: file.name,
         fileType: file.type
       });
@@ -864,121 +846,95 @@ const ChatModal: React.FC<ChatModalProps> = ({
                   </p>
                 </div>
               ) : (
-                <>
-                  {chatMessages.map((msg) => {
-                    const isSent = checkIfSent(msg);
-                    const isAttachment = msg.type && msg.type !== 'text';
-                    return (
-                      <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
-                        <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative shadow-md ${
-                          isAttachment
-                            ? 'bg-black border border-[#D4AF37]/35 text-white shadow-lg'
-                            : isSent 
-                              ? 'bg-[#D4AF37] text-black' 
-                              : 'bg-zinc-900 border border-zinc-800 text-white'
-                        }`}>
-                          {msg.type === 'video' || msg.videoUrl ? (
-                            <div className="space-y-2 w-[240px] md:w-[320px]">
-                              <video 
-                                src={msg.videoUrl || msg.fileUrl} 
-                                controls 
-                                className="w-full rounded-lg border border-[#D4AF37]/20 bg-black max-h-[220px]" 
-                              />
-                              {msg.text && msg.text !== 'Sent a video' && <p className="text-sm text-slate-100">{msg.text}</p>}
-                            </div>
-                          ) : msg.type === 'image' || msg.imageUrl ? (
-                            <div className="space-y-2">
-                               <ImageWithPlaceholder 
-                                 src={msg.imageUrl || msg.fileUrl || ''} 
-                                 alt="Sent" 
-                                 isSent={isSent}
-                                 onLoadCompletes={() => scrollToBottomSmart(false)} 
-                               />
-                               {msg.text && msg.text !== 'Sent an image' && <p className="text-sm text-slate-100">{msg.text}</p>}
-                            </div>
-                          ) : msg.type === 'file' ? (
-                            <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl transition-all text-sm bg-black hover:bg-black/80 text-white border border-[#D4AF37]/20`}>
-                              <FileText className="w-8 h-8 opacity-60 flex-shrink-0 text-[#D4AF37]" />
-                              <div className="flex-1 min-w-0">
-                                 <p className="truncate font-bold text-xs text-[#D4AF37]">{msg.fileName || 'Document'}</p>
-                                 <p className="text-[10px] opacity-60 text-slate-400">Click to download</p>
-                              </div>
-                              <Download className="w-4 h-4 opacity-60 flex-shrink-0 text-[#D4AF37]" />
-                            </a>
-                          ) : msg.type === 'voice' || msg.audioUrl ? (
-                            <div className="space-y-1">
-                               <p className="text-[9px] font-bold uppercase tracking-wider mb-1 text-[#D4AF37]/80">Voice Note</p>
-                               {msg.isOptimistic ? (
-                                 <div className="flex items-center gap-3 bg-black border border-[#D4AF37]/25 rounded-xl p-3 w-[240px] animate-pulse">
-                                   <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center border border-[#D4AF37]/20">
-                                     <Play className="w-4 h-4 text-[#D4AF37]/45" />
-                                   </div>
-                                   <div className="flex-1 space-y-1.5">
-                                     <div className="h-1.5 w-24 bg-[#D4AF37]/25 rounded" />
-                                     <div className="h-1 w-16 bg-[#D4AF37]/15 rounded" />
-                                   </div>
-                                  </div>
-                               ) : (
-                                 <CustomAudioPlayer src={msg.audioUrl || msg.fileUrl || ''} theme="received" />
-                               )}
-                            </div>
-                          ) : (
-                            <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{msg.text}</p>
-                          )}
-                          
-                          <div className="flex justify-end items-center gap-1 mt-2 select-none leading-none">
-                            <span className={`text-[9px] font-medium opacity-65 ${isSent && !isAttachment ? 'text-black/75' : 'text-zinc-500'}`}>
-                              {msg.status === 'sending' ? 'Sending...' : getDynamicTimestamp(msg.timestamp)}
-                            </span>
-                            {isSent && (
-                              msg.status === 'sending' ? (
-                                <Loader2 className={`w-2.5 h-2.5 animate-spin ${isAttachment ? 'text-[#D4AF37]' : 'text-black/50'}`} />
-                              ) : msg.status === 'error' ? (
-                                <span className="text-red-600 text-[10px] font-bold font-mono">⚠️</span>
-                              ) : (
-                                <span className={`text-[10px] ${msg.isRead ? 'text-blue-500' : (isAttachment ? 'text-[#D4AF37]/60' : 'text-black/40')}`}>
-                                  ✓✓
-                                </span>
-                              )
-                            )}
+                chatMessages.map((msg) => {
+                  const isSent = checkIfSent(msg);
+                  return (
+                    <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
+                      <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative shadow-md ${
+                        isSent 
+                          ? 'bg-[#D4AF37] text-black' 
+                          : 'bg-zinc-900 border border-zinc-800 text-white'
+                      }`}>
+                        {msg.type === 'image' || msg.imageUrl ? (
+                          <div className="space-y-2">
+                             <ImageWithPlaceholder 
+                               src={msg.imageUrl || msg.fileUrl || ''} 
+                               alt="Sent" 
+                               isSent={isSent}
+                               onLoadCompletes={() => scrollToBottomSmart(false)} 
+                             />
+                             {msg.text && msg.text !== 'Sent an image' && <p className="text-sm">{msg.text}</p>}
                           </div>
-  
-                          {/* Failed sending state with Retry */}
-                          {isSent && msg.status === 'error' && (
-                            <div className="mt-2 pt-2 border-t border-red-500/10 flex items-center justify-end gap-1.5">
-                              <span className="text-red-600 text-[9px] font-bold uppercase tracking-wider font-mono">Failed</span>
-                              <button 
-                                onClick={() => handleRetryMessage(msg)}
-                                className="bg-black/80 hover:bg-black text-red-500 font-bold px-2 py-0.5 rounded text-[9px] border border-red-500/20 uppercase tracking-widest transition-all"
-                              >
-                                Retry
-                              </button>
+                        ) : msg.type === 'file' ? (
+                          <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl transition-all text-sm ${isSent ? 'bg-black/10 hover:bg-black/20 text-black' : 'bg-black/30 hover:bg-black/40 text-white'}`}>
+                            <FileText className="w-8 h-8 opacity-60 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                               <p className="truncate font-bold text-xs">{msg.fileName || 'Document'}</p>
+                               <p className="text-[10px] opacity-60">Click to download</p>
                             </div>
+                            <Download className="w-4 h-4 opacity-60 flex-shrink-0" />
+                          </a>
+                        ) : msg.type === 'voice' || msg.audioUrl ? (
+                          <div className="space-y-1">
+                             <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isSent ? 'text-black/60' : 'text-zinc-400'}`}>Voice Note</p>
+                             {msg.isOptimistic ? (
+                               <div className="flex items-center gap-3 bg-zinc-950 border border-[#D4AF37]/20 rounded-xl p-3 w-[240px] animate-pulse">
+                                 <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center border border-[#D4AF37]/20">
+                                   <Play className="w-4 h-4 text-[#D4AF37]/40" />
+                                 </div>
+                                 <div className="flex-1 space-y-1.5">
+                                   <div className="h-1.5 w-24 bg-[#D4AF37]/20 rounded" />
+                                   <div className="h-1 w-16 bg-[#D4AF37]/10 rounded" />
+                                 </div>
+                                </div>
+                             ) : (
+                               <CustomAudioPlayer src={msg.audioUrl || msg.fileUrl || ''} theme={isSent ? 'sent' : 'received'} />
+                             )}
+                          </div>
+                        ) : (
+                          <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{msg.text}</p>
+                        )}
+                        
+                        <div className="flex justify-end items-center gap-1 mt-2 select-none leading-none">
+                          <span className={`text-[9px] font-medium opacity-65 ${isSent ? 'text-black/75' : 'text-zinc-400'}`}>
+                            {msg.status === 'sending' ? 'Sending...' : getDynamicTimestamp(msg.timestamp)}
+                          </span>
+                          {isSent && (
+                            msg.status === 'sending' ? (
+                              <Loader2 className="w-2.5 h-2.5 animate-spin text-black/50" />
+                            ) : msg.status === 'error' ? (
+                              <span className="text-red-600 text-[10px] font-bold font-mono">⚠️</span>
+                            ) : (
+                              <span className={`text-[10px] ${msg.isRead ? 'text-blue-500' : 'text-black/40'}`}>
+                                ✓✓
+                              </span>
+                            )
                           )}
                         </div>
-  
-                        {/* Seen / Delivered receipts below last message bubble */}
-                        {isSent && msg.id === lastSenderMessageId && (
-                          <div className="text-[9px] mt-1 pr-2 opacity-60 text-slate-400 tracking-wider font-mono">
-                            {msg.status === 'sending' ? 'Sending...' : (msg.status === 'error' ? 'Not Sent' : (msg.isRead ? 'Seen' : 'Delivered'))}
+
+                        {/* Failed sending state with Retry */}
+                        {isSent && msg.status === 'error' && (
+                          <div className="mt-2 pt-2 border-t border-red-500/10 flex items-center justify-end gap-1.5">
+                            <span className="text-red-600 text-[9px] font-bold uppercase tracking-wider font-mono">Failed</span>
+                            <button 
+                              onClick={() => handleRetryMessage(msg)}
+                              className="bg-black/80 hover:bg-black text-red-500 font-bold px-2 py-0.5 rounded text-[9px] border border-red-500/20 uppercase tracking-widest transition-all"
+                            >
+                              Retry
+                            </button>
                           </div>
                         )}
                       </div>
-                    );
-                  })}
-                  
-                  {isUploading && (
-                    <div className="flex flex-col items-end animate-pulse">
-                      <div className="max-w-[70%] p-4 rounded-[20px] bg-black border border-[#D4AF37]/40 text-[#D4AF37] shadow-lg flex items-center gap-3">
-                        <Loader2 className="w-5 h-5 animate-spin text-[#D4AF37]" />
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold uppercase tracking-widest text-[#D4AF37]">Uploading Media...</p>
-                          <p className="text-[10px] text-zinc-500">Storing securely in Simcha storage</p>
+
+                      {/* Seen / Delivered receipts below last message bubble */}
+                      {isSent && msg.id === lastSenderMessageId && (
+                        <div className="text-[9px] mt-1 pr-2 opacity-60 text-slate-400 tracking-wider font-mono">
+                          {msg.status === 'sending' ? 'Sending...' : (msg.status === 'error' ? 'Not Sent' : (msg.isRead ? 'Seen' : 'Delivered'))}
                         </div>
-                      </div>
+                      )}
                     </div>
-                  )}
-                </>
+                  );
+                })
               )}
 
               {/* Typing Indicator */}

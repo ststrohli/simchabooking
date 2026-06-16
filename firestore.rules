@@ -28,6 +28,15 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isParticipantOfId(conversationId) {
+      return isAuthenticated() && (
+        conversationId == request.auth.uid ||
+        conversationId.matches('^' + request.auth.uid + '_.*') ||
+        conversationId.matches('.*_' + request.auth.uid + '$') ||
+        (isAdmin() && (conversationId == 'admin' || conversationId.matches('^admin_.*') || conversationId.matches('.*_admin$')))
+      );
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -74,6 +83,7 @@ service cloud.firestore {
     match /conversations/{conversationId} {
       allow read, write: if isAuthenticated() && (
         isAdmin() ||
+        isParticipantOfId(conversationId) ||
         (resource != null && request.auth.uid in resource.data.get('participant_ids', [])) ||
         (request.resource != null && request.auth.uid in request.resource.data.get('participant_ids', []))
       );
@@ -81,14 +91,18 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read, write: if isAuthenticated() && (
           isAdmin() ||
-          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('participant_ids', [])
+          isParticipantOfId(conversationId) ||
+          (exists(/databases/$(database)/documents/conversations/$(conversationId)) &&
+           request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('participant_ids', []))
         );
       }
       
       match /members/{userId} {
         allow read, write: if isAuthenticated() && (
           isAdmin() ||
-          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('participant_ids', [])
+          isParticipantOfId(conversationId) ||
+          (exists(/databases/$(database)/documents/conversations/$(conversationId)) &&
+           request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('participant_ids', []))
         );
       }
     }

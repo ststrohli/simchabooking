@@ -134,7 +134,6 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
     type: payload.type || 'text',
     fileUrl: payload.fileUrl || null,
     imageUrl: payload.imageUrl || null,
-    videoUrl: payload.videoUrl || null,
     audioUrl: payload.audioUrl || null,
     fileName: payload.fileName || null,
     fileType: payload.fileType || null,
