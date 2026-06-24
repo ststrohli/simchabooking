@@ -1,39 +1,68 @@
 
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDocFromServer } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import firebaseConfig from "../firebase-applet-config.json";
+import appletConfig from "../firebase-applet-config.json";
 
-// Use values from firebase-applet-config.json as the source of truth,
-// but fall back to environment variables if config is missing or likely stale.
-// In AI Studio, we should prefer the environment project ID if it exists.
-const envProjectId = process.env.GOOGLE_CLOUD_PROJECT;
-const targetProjectId = envProjectId || (firebaseConfig.projectId && !firebaseConfig.projectId.includes('TODO') ? firebaseConfig.projectId : undefined);
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyDNobx7D28xdpn83FzroTeBeD0f0R-8uU4",
+  authDomain: "simcha-booking-2748d.firebaseapp.com",
+  projectId: "simcha-booking-2748d",
+  storageBucket: "simcha-booking-2748d.firebasestorage.app",
+  messagingSenderId: "404525970453",
+  appId: "1:404525970453:web:7ae47f8cd51a208e554a1c",
+  measurementId: "G-SP3MFEZFYP"
+};
+
+const targetProjectId = firebaseConfig.projectId;
 
 // Use the database ID from config if available, but allow override
 // In AI Studio, we should prefer the named database if it's in the config,
 // but fallback to (default) if it's missing or a placeholder.
-const dbId = (firebaseConfig.firestoreDatabaseId && !firebaseConfig.firestoreDatabaseId.includes('TODO')) 
-  ? firebaseConfig.firestoreDatabaseId 
+const dbId = (appletConfig as any).firestoreDatabaseId && !(appletConfig as any).firestoreDatabaseId.includes('TODO')
+  ? (appletConfig as any).firestoreDatabaseId 
   : '(default)';
 
-const app = initializeApp({
-  ...firebaseConfig,
-  projectId: targetProjectId
-});
+const app = initializeApp(firebaseConfig);
+
 export const auth = getAuth(app);
+export const provider = new GoogleAuthProvider();
+
+// Configure the Google Auth Provider with Google Calendar scopes to allow integration
+provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+provider.addScope('https://www.googleapis.com/auth/calendar.events');
 
 // Use a function to allow re-initialization if fallback is needed
 const createFirestore = (id: string) => {
   console.log(`[Firebase] Initializing Firestore with project: ${targetProjectId}, database: ${id}`);
-  return initializeFirestore(app, {
-    host: "firestore.googleapis.com",
-    ssl: true,
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager()
-    })
-  }, id);
+  try {
+    const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+    if (isIframe) {
+      console.log("[Firebase] Running inside iframe - using memory/default cache to avoid iframe storage partitioning offline lock.");
+      return initializeFirestore(app, {
+        host: "firestore.googleapis.com",
+        ssl: true,
+        experimentalForceLongPolling: true
+      }, id);
+    }
+    return initializeFirestore(app, {
+      host: "firestore.googleapis.com",
+      ssl: true,
+      experimentalForceLongPolling: true,
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    }, id);
+  } catch (err: any) {
+    console.warn("[Firebase] Failed to initialize Firestore with persistent local cache. Falling back to default cache:", err.message);
+    return initializeFirestore(app, {
+      host: "firestore.googleapis.com",
+      ssl: true,
+      experimentalForceLongPolling: true
+    }, id);
+  }
 };
 
 export let db = createFirestore(dbId);
@@ -55,10 +84,24 @@ async function testConnection() {
       console.log("[Firebase] Firestore connection test successful");
       return;
     } catch (error: any) {
-      console.error(`[Firebase] Firestore connection attempt failed:`, error.message);
+      if (
+        error.message?.includes('offline') || 
+        error.message?.includes('Failed to get document') || 
+        error.code === 'unavailable' || 
+        error.message?.includes('unavailable')
+      ) {
+        console.warn(`[Firebase] Firestore connection check: Client is offline or Firestore is temporarily unavailable.`);
+      } else {
+        console.error(`[Firebase] Firestore connection attempt failed:`, error.message);
+      }
       
       // If we are using a named database and it's unavailable, try falling back to (default)
-      if (currentDbId !== '(default)' && (error.code === 'unavailable' || error.message?.includes('unavailable'))) {
+      if (currentDbId !== '(default)' && (
+        error.code === 'unavailable' || 
+        error.message?.includes('unavailable') || 
+        error.message?.includes('offline') || 
+        error.message?.includes('Failed to get document')
+      )) {
         console.warn(`[Firebase] Named database ${currentDbId} is unavailable. Attempting fallback to (default)...`);
         currentDbId = '(default)';
         db = createFirestore('(default)');

@@ -191,8 +191,12 @@ function App() {
       } else {
         await updateDoc(userDocRef, userData);
       }
-    } catch (err) {
-      console.error("Error syncing user profile:", err);
+    } catch (err: any) {
+      if (err.message?.includes('offline') || err.message?.includes('Failed to get document')) {
+        console.warn("User profile sync paused (offline mode):", err.message);
+      } else {
+        console.error("Error syncing user profile:", err);
+      }
     }
   };
 
@@ -473,8 +477,15 @@ function App() {
               }
             }
           }
-        } catch (err) {
-          console.error("Error checking vendor status during auth state change:", err);
+        } catch (err: any) {
+          if (err.message?.includes('offline') || err.message?.includes('Failed to get document')) {
+            console.warn("Vendor status check paused (offline mode) during auth state change:", err.message);
+            if (user.email && INITIAL_VENDORS.some(v => v.username?.toLowerCase() === user.email?.toLowerCase())) {
+              isVendor = true;
+            }
+          } else {
+            console.error("Error checking vendor status during auth state change:", err);
+          }
         }
 
         if (!isVendor) {
@@ -504,8 +515,12 @@ function App() {
           setUserRole(isUserAdmin(user.email) ? 'admin' : 'client');
           setCurrentUserVendorId(null);
         }
-      } catch (err) {
-        console.error("Error fetching user document:", err);
+      } catch (err: any) {
+        if (err.message?.includes('offline') || err.message?.includes('Failed to get document')) {
+          console.warn("User document fetch paused (offline mode):", err.message);
+        } else {
+          console.error("Error fetching user document:", err);
+        }
       } finally {
         setIsInitializing(false);
       }
@@ -1080,8 +1095,15 @@ function App() {
               }
             }
           }
-        } catch (err) {
-          console.error("Error checking vendor status on login:", err);
+        } catch (err: any) {
+          if (err.message?.includes('offline') || err.message?.includes('Failed to get document')) {
+            console.warn("Vendor status check paused (offline mode) on login:", err.message);
+            if (email && INITIAL_VENDORS.some(v => v.username?.toLowerCase() === email.toLowerCase())) {
+              isVendor = true;
+            }
+          } else {
+            console.error("Error checking vendor status on login:", err);
+          }
         }
 
         if (!user.emailVerified && !isVendor) {

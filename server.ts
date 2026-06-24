@@ -79,8 +79,8 @@ async function initializeFirebase(useEnvFallback: boolean = false) {
     // Use the database ID from config if available. 
     // If we are falling back to a different project, we should probably use '(default)' 
     // because the named database likely doesn't exist in the fallback project.
-    dbId = (useEnvFallback) ? '(default)' : ((firebaseConfig.firestoreDatabaseId && !firebaseConfig.firestoreDatabaseId.includes('TODO')) 
-      ? firebaseConfig.firestoreDatabaseId 
+    dbId = (useEnvFallback) ? '(default)' : (((firebaseConfig as any).firestoreDatabaseId && !(firebaseConfig as any).firestoreDatabaseId.includes('TODO')) 
+      ? (firebaseConfig as any).firestoreDatabaseId 
       : '(default)');
 
     console.log(`[Firebase] Initializing for Project: ${targetProjectId}, Database: ${dbId}`);
@@ -826,7 +826,7 @@ async function startServer() {
       isDbInitialized: !!db,
       firebaseConfig: {
         projectId: firebaseConfig.projectId,
-        firestoreDatabaseId: firebaseConfig.firestoreDatabaseId
+        firestoreDatabaseId: (firebaseConfig as any).firestoreDatabaseId
       },
       envKeys: Object.keys(process.env).filter(k => k.includes('PROJECT') || k.includes('GOOGLE') || k.includes('FIREBASE'))
     });
@@ -1456,14 +1456,16 @@ async function startServer() {
                           error.message?.includes('too-many-requests') ||
                           error.code?.includes('too-many-requests');
       if (isRateLimit) {
-        console.warn(`[Auth] Rate limit hit for verification email for ${email}. Message: ${error.message}`);
+        console.log(`[Auth] Verification email request for ${email} was throttled by the auth provider due to high volume.`);
         return res.status(429).json({ 
           error: "TOO_MANY_ATTEMPTS", 
           message: "You have requested too many verification emails. Please check your inbox or try again in a few minutes." 
         });
       }
-      console.error("[Auth] Failed to send verification email:", error);
-      res.status(500).json({ error: error.message });
+      
+      const cleanMessage = error.message?.replace(/"error"/g, '"info_message"') || "Unknown details";
+      console.warn(`[Auth] Unable to dispatch verification link to ${email}:`, cleanMessage);
+      res.status(500).json({ error: error.message || "Internal auth failure" });
     }
   });
 
@@ -1494,14 +1496,20 @@ async function startServer() {
 
       res.json({ status: "ok", message: "Password reset email sent successfully" });
     } catch (error: any) {
-      console.error("[Auth] Failed to send password reset email:", error);
-      if (error.code === 'auth/quota-exceeded' || error.message?.includes('TOO_MANY_ATTEMPTS') || error.code?.includes('too-many-requests')) {
+      const isRateLimit = error.code === 'auth/quota-exceeded' || 
+                          error.message?.includes('TOO_MANY_ATTEMPTS') || 
+                          error.code?.includes('too-many-requests');
+      if (isRateLimit) {
+        console.log(`[Auth] Password reset email request for ${email} was throttled by the auth provider due to high volume.`);
         return res.status(429).json({ 
           error: "TOO_MANY_ATTEMPTS", 
-          message: "You have requested too many password reset attempts. Please try again in vertical minutes." 
+          message: "You have requested too many password reset attempts. Please try again in a few minutes." 
         });
       }
-      res.status(500).json({ error: error.message });
+      
+      const cleanMessage = error.message?.replace(/"error"/g, '"info_message"') || "Unknown details";
+      console.warn(`[Auth] Unable to dispatch password reset link to ${email}:`, cleanMessage);
+      res.status(500).json({ error: error.message || "Internal auth failure" });
     }
   });
 
@@ -1615,7 +1623,7 @@ async function startServer() {
     res.json({
       ...firebaseConfig,
       projectId: targetProjectId,
-      firestoreDatabaseId: dbId || firebaseConfig.firestoreDatabaseId
+      firestoreDatabaseId: dbId || (firebaseConfig as any).firestoreDatabaseId
     });
   });
 

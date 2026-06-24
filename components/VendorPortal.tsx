@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   LayoutDashboard, CalendarDays, Settings, LogOut, DollarSign, Users, User, TrendingUp, CheckCircle, XCircle, Clock, Save, Trash2, 
   ImageIcon, Menu, X, Plus, Tag, CreditCard, ArrowRight, Video, Film, ShieldCheck, MapPin, Eye, Upload, Mail, AlertTriangle, 
-  ChevronLeft, ChevronRight, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, Volume2, Camera, FileText, Download, Search
+  ChevronLeft, ChevronRight, RefreshCw, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, Volume2, Camera, FileText, Download, Search
 } from 'lucide-react';
 import { Vendor, Booking, Message, SelectedService, VendorService } from '../types';
-import { db, storage } from '../services/firebase';
+import { db, storage, auth } from '../services/firebase';
+import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { markChatAsRead } from '../services/messagingService';
 import { doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -205,6 +206,52 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
   // Calendar State
   const [viewDate, setViewDate] = useState(new Date());
+  const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'week'>('month');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [calendarSyncError, setCalendarSyncError] = useState<string | null>(null);
+
+  const handleCalendarSync = () => {
+    if (isSyncing) {
+      showNotification("Calendar authentication is already in progress.", "info");
+      return;
+    }
+    
+    setIsSyncing(true);
+    setCalendarSyncError(null);
+    showNotification("Syncing with Google Calendar... Opening authentication popup.", "info");
+    const firebaseAuth = auth || getAuth();
+    const provider = new GoogleAuthProvider();
+    provider.addScope('https://www.googleapis.com/auth/calendar.events');
+
+    signInWithPopup(firebaseAuth, provider)
+      .then((result) => {
+        console.log('Successfully authenticated and received calendar permissions', result);
+        showNotification('Successfully authenticated and received calendar permissions!', 'success');
+        setCalendarSyncError(null);
+      })
+      .catch((error: any) => {
+        console.error('Error during Google Calendar authentication:', error);
+        
+        let userMessage = 'Authentication failed. Please try again.';
+        if (error.code === 'auth/popup-closed-by-user') {
+          userMessage = 'The sign-in window was closed before completion. Try opening the app in a new tab if the popup was blocked.';
+        } else if (error.code === 'auth/popup-blocked') {
+          userMessage = 'The auth popup was blocked by your browser. Please allow popups or open the app in a new tab.';
+        } else if (error.code === 'auth/cancelled-popup-request') {
+          userMessage = 'Another login popup is already open or the request was cancelled. Please complete the sign-in in that window.';
+        } else if (error.message && error.message.includes('popup')) {
+          userMessage = 'Authentication popup closed or blocked. Try opening the application in a new tab.';
+        } else {
+          userMessage = error.message || userMessage;
+        }
+        
+        setCalendarSyncError(userMessage);
+        showNotification(userMessage, 'info');
+      })
+      .finally(() => {
+        setIsSyncing(false);
+      });
+  };
 
   // Notification State
   const [newBookingAlert, setNewBookingAlert] = useState<Booking | null>(null);
@@ -385,7 +432,11 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
   const changeMonth = (offset: number) => {
     const newDate = new Date(viewDate);
-    newDate.setMonth(newDate.getMonth() + offset);
+    if (calendarViewMode === 'month') {
+      newDate.setMonth(newDate.getMonth() + offset);
+    } else {
+      newDate.setDate(newDate.getDate() + offset * 7);
+    }
     setViewDate(newDate);
   };
 
@@ -837,10 +888,21 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     const monthName = viewDate.toLocaleString('default', { month: 'long' });
     const todayStr = new Date().toISOString().split('T')[0];
 
+    // Calculate start and end dates for Week View
+    const startOfWeek = new Date(viewDate);
+    startOfWeek.setDate(viewDate.getDate() - viewDate.getDay());
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+    const weekStartName = startOfWeek.toLocaleString('default', { month: 'short', day: 'numeric' });
+    const weekEndName = endOfWeek.toLocaleString('default', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    // Render Month days
     const calendarDays = [];
-    // Padding for first day
     for (let i = 0; i < firstDay; i++) {
-      calendarDays.push(<div key={`pad-${i}`} className="h-24 md:h-32 bg-black/10 border border-white/5 opacity-20"></div>);
+      calendarDays.push(
+        <div key={`pad-${i}`} className="min-h-[120px] md:min-h-[140px] bg-black border border-white/5 opacity-10"></div>
+      );
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
@@ -848,86 +910,281 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       const dateStr = date.toISOString().split('T')[0];
       const isBlocked = vendor.unavailableDates?.includes(dateStr);
       const isToday = dateStr === todayStr;
-      const hasBooking = bookings.some(b => b.date === dateStr && b.status === 'confirmed');
+      
+      const dailyBookings = bookings.filter(b => b.date === dateStr);
 
       calendarDays.push(
         <div 
           key={dateStr}
           onClick={() => handleToggleDate(dateStr)}
-          className={`h-24 md:h-32 border p-2 md:p-4 transition-all cursor-pointer relative group ${
+          className={`min-h-[120px] md:min-h-[140px] border p-2 md:p-3 transition-all cursor-pointer relative group flex flex-col justify-between ${
             isBlocked 
-              ? 'bg-red-900/10 border-red-500/30' 
-              : 'bg-black/20 border-white/5 hover:border-[#D4AF37]/50'
-          } ${isToday ? 'ring-1 ring-[#D4AF37] ring-inset' : ''}`}
+              ? 'bg-red-950/5 border-red-500/10 hover:border-red-500/30' 
+              : 'bg-black border-white/5 hover:border-[#D4AF37]/30'
+          } ${isToday ? 'ring-1 ring-[#D4AF37] ring-inset bg-[#D4AF37]/5' : ''}`}
         >
-          <div className="flex justify-between items-start">
-            <span className={`text-xs font-black ${isBlocked ? 'text-red-500' : 'text-slate-400'}`}>{day}</span>
-            {isBlocked && <Lock className="w-3 h-3 text-red-500" />}
+          <div className="flex justify-between items-center mb-1">
+            <span className={`text-xs font-black ${isToday ? 'text-[#D4AF37] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full' : isBlocked ? 'text-red-500/70' : 'text-slate-400'}`}>{day}</span>
+            {isBlocked && <Lock className="w-3 h-3 text-red-500/60" />}
           </div>
 
-          <div className="mt-2 space-y-1">
-             {hasBooking && (
-                <div className="bg-green-500/10 border border-green-500/20 text-green-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded truncate">
-                  Confirmed Event
-                </div>
-             )}
-             {isBlocked && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded truncate">
-                  Unavailable
-                </div>
+          <div className="flex-1 overflow-y-auto space-y-1.5 py-1 z-10 custom-scrollbar max-h-[80px]">
+             {dailyBookings.map(b => {
+               return (
+                 <div 
+                   key={b.id}
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     setSelectedBookingForDetail(b);
+                   }}
+                   className="bg-[#1a1a1a]/80 backdrop-blur-md border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 p-1.5 rounded-lg text-left text-[10px] leading-tight transition-all duration-300"
+                 >
+                   <div className="font-extrabold text-white truncate">{b.eventName || 'Event'}</div>
+                   <div className="text-[8px] text-[#D4AF37] truncate font-semibold">{b.clientName}</div>
+                   {b.eventTime && <div className="text-[7px] text-slate-400 font-mono mt-0.5">{b.eventTime}</div>}
+                 </div>
+               );
+             })}
+             {isBlocked && dailyBookings.length === 0 && (
+               <div className="text-[8px] text-red-500/40 font-semibold uppercase tracking-wider text-center py-2">
+                 Blocked
+               </div>
              )}
           </div>
 
-          <div className="absolute inset-0 bg-[#D4AF37]/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <div className="absolute inset-0 bg-[#D4AF37]/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
         </div>
       );
     }
 
+    // Render Week columns
+    const weekDays = [];
+    for (let i = 0; i < 7; i++) {
+      const dayDate = new Date(startOfWeek);
+      dayDate.setDate(startOfWeek.getDate() + i);
+      weekDays.push(dayDate);
+    }
+
+    const weekDaysGrid = weekDays.map((dayDate) => {
+      const dateStr = dayDate.toISOString().split('T')[0];
+      const isBlocked = vendor.unavailableDates?.includes(dateStr);
+      const isToday = dateStr === todayStr;
+      const dayBookings = bookings.filter(b => b.date === dateStr);
+      const dayName = dayDate.toLocaleString('default', { weekday: 'short' });
+      const dayNum = dayDate.getDate();
+
+      return (
+        <div 
+          key={dateStr}
+          onClick={() => handleToggleDate(dateStr)}
+          className={`min-h-[400px] border-r border-white/5 flex flex-col transition-all cursor-pointer relative group ${
+            isToday ? 'bg-[#D4AF37]/2' : 'bg-black'
+          } hover:bg-white/[0.01]`}
+        >
+          {/* Weekday Column Header */}
+          <div className="p-4 border-b border-white/5 text-center flex flex-col items-center justify-center sticky top-0 bg-[#0c0c0c] z-20">
+            <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">{dayName}</span>
+            <span className={`w-8 h-8 flex items-center justify-center text-sm font-black rounded-full transition-all ${
+              isToday ? 'bg-[#D4AF37] text-black font-black' : 'text-white'
+            }`}>
+              {dayNum}
+            </span>
+          </div>
+
+          {/* Weekday Body */}
+          <div className="flex-1 p-3 space-y-3 relative flex flex-col justify-start min-h-[300px]">
+            {isBlocked && (
+              <div className="absolute inset-0 bg-red-950/5 flex flex-col items-center justify-center pointer-events-none p-4">
+                <Lock className="w-5 h-5 text-red-500/40 mb-2" />
+                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-red-500/50">Unavailable</span>
+              </div>
+            )}
+
+            <div className="space-y-3 z-10 w-full">
+              {dayBookings.length > 0 ? (
+                dayBookings.map(b => (
+                  <div 
+                    key={b.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedBookingForDetail(b);
+                    }}
+                    className="bg-[#1a1a1a]/80 backdrop-blur-md border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 p-3 rounded-xl shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 group/card text-left"
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37]">
+                        {b.status === 'confirmed' ? 'Confirmed' : 'Pending'}
+                      </span>
+                      {b.eventTime && <span className="text-[8px] font-mono text-slate-400">{b.eventTime}</span>}
+                    </div>
+                    <h5 className="text-xs font-bold text-white mb-0.5 group-hover/card:text-[#D4AF37] transition-colors truncate">{b.eventName}</h5>
+                    <p className="text-[10px] text-slate-400 truncate">{b.clientName}</p>
+                    {b.eventLocation && (
+                      <p className="text-[8px] text-slate-500 truncate mt-1.5 flex items-center gap-1">
+                        <MapPin className="w-2.5 h-2.5 text-[#D4AF37]" /> {b.eventLocation}
+                      </p>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="py-12 flex flex-col items-center justify-center border border-dashed border-white/5 rounded-2xl opacity-10 group-hover:opacity-30 transition-opacity">
+                  <Plus className="w-6 h-6 text-slate-400 mb-1" />
+                  <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">Available Slot</span>
+                </div>
+              )}
+            </div>
+
+            <div className="text-center opacity-0 group-hover:opacity-100 transition-opacity mt-auto pt-2">
+              <span className="text-[7px] font-black uppercase tracking-[0.2em] text-[#D4AF37]/60">
+                {isBlocked ? 'Click to Unlock' : 'Click to Block'}
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    });
+
     return (
-      <div className="bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden animate-in fade-in duration-500">
-        <div className="p-6 md:p-8 bg-black/40 border-b border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div>
-            <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">{monthName} {year}</h3>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Manage Availability</p>
+      <div className="bg-black rounded-3xl border border-white/5 shadow-2xl overflow-hidden animate-in fade-in duration-500">
+        {/* Upper Toolbar */}
+        <div className="p-6 md:p-8 bg-black/40 border-b border-white/5 flex flex-col xl:flex-row justify-between items-center gap-6">
+          <div className="flex flex-col items-center xl:items-start text-center xl:text-left">
+            <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider">
+              {calendarViewMode === 'month' ? `${monthName} ${year}` : `${weekStartName} - ${weekEndName}`}
+            </h3>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Availability & Custom Bookings</p>
           </div>
-          <div className="flex gap-2">
-             <button onClick={() => changeMonth(-1)} className="p-3 bg-white/5 hover:bg-[#D4AF37] hover:text-black rounded-xl border border-white/10 transition-all">
-                <ChevronLeft className="w-5 h-5" />
-             </button>
-             <button onClick={() => setViewDate(new Date())} className="px-6 py-2 bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest rounded-xl border border-white/10">
+
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            {/* Monthly / Weekly Selector */}
+            <div className="flex bg-black/60 rounded-xl p-1 border border-white/10">
+              <button 
+                onClick={() => setCalendarViewMode('month')}
+                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                  calendarViewMode === 'month' 
+                    ? 'bg-[#D4AF37] text-black font-black' 
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Month
+              </button>
+              <button 
+                onClick={() => setCalendarViewMode('week')}
+                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                  calendarViewMode === 'week' 
+                    ? 'bg-[#D4AF37] text-black font-black' 
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Week
+              </button>
+            </div>
+
+            {/* Navigation buttons */}
+            <div className="flex gap-2 items-center">
+              <button onClick={() => changeMonth(-1)} className="p-3 bg-white/5 hover:bg-[#D4AF37] hover:text-black rounded-xl border border-white/10 transition-all">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button onClick={() => setViewDate(new Date())} className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest rounded-xl border border-white/10">
                 Today
-             </button>
-             <button onClick={() => changeMonth(1)} className="p-3 bg-white/5 hover:bg-[#D4AF37] hover:text-black rounded-xl border border-white/10 transition-all">
-                <ChevronRight className="w-5 h-5" />
-             </button>
+              </button>
+              <button onClick={() => changeMonth(1)} className="p-3 bg-white/5 hover:bg-[#D4AF37] hover:text-black rounded-xl border border-white/10 transition-all">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Merge Google Calendar Integration Button */}
+            <button 
+              onClick={handleCalendarSync}
+              disabled={isSyncing}
+              className={`bg-[#D4AF37] hover:bg-[#b8952d] text-black font-black flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] uppercase tracking-wider shadow-lg shadow-[#D4AF37]/10 hover:shadow-[#D4AF37]/20 transition-all duration-300 transform hover:-translate-y-0.5 group ${
+                isSyncing ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : 'group-hover:rotate-180'} transition-transform duration-500`} />
+              {isSyncing ? 'Connecting...' : 'Merge Google Calendar'}
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-7 border-b border-white/5">
-           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-             <div key={d} className="py-4 text-center text-[10px] font-black uppercase text-[#D4AF37]/50 tracking-[0.2em]">{d}</div>
-           ))}
+        {/* Google Calendar Integration Notice / Iframe Helper */}
+        {(calendarSyncError || (typeof window !== 'undefined' && window.self !== window.top)) && (
+          <div className="mx-6 md:mx-8 mt-6 p-5 bg-white/[0.02] border border-[#D4AF37]/10 rounded-2xl flex flex-col sm:flex-row items-start gap-4 animate-in slide-in-from-top duration-300">
+            <div className="p-2.5 bg-[#D4AF37]/10 text-[#D4AF37] rounded-xl shrink-0">
+              <Info className="w-4 h-4 animate-pulse" />
+            </div>
+            <div className="flex-1 space-y-1.5">
+              <h4 className="text-xs font-black uppercase tracking-widest text-[#D4AF37]">
+                Google Calendar Integration Notice
+              </h4>
+              <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
+                {calendarSyncError ? (
+                  <span>
+                    <strong className="text-[#D4AF37]">Authentication notice:</strong> {calendarSyncError}
+                  </span>
+                ) : (
+                  "Since this application is running inside a preview frame (iframe), some browsers may block Google authentication popups or restrict third-party storage cookies."
+                )}
+                {" For the best experience, please open the application in a new browser tab to complete authentication smoothly."}
+              </p>
+              <div className="pt-2.5 flex flex-wrap items-center gap-3">
+                <button 
+                  onClick={() => window.open(window.location.href, '_blank')}
+                  className="bg-[#D4AF37] hover:bg-[#b8952d] text-black px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 group shadow-lg shadow-[#D4AF37]/5"
+                >
+                  <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                  Open App in New Tab
+                </button>
+                {calendarSyncError && (
+                  <button 
+                    onClick={() => setCalendarSyncError(null)}
+                    className="text-slate-500 hover:text-slate-300 px-3 py-2 text-[9px] font-black uppercase tracking-widest transition-all"
+                  >
+                    Dismiss Notice
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Calendar Grid Container */}
+        <div className="overflow-x-auto custom-scrollbar">
+          <div className={calendarViewMode === 'week' ? "min-w-[800px] lg:min-w-0" : ""}>
+            
+            {/* Week Days Headers for Month View */}
+            {calendarViewMode === 'month' && (
+              <div className="grid grid-cols-7 border-b border-white/5">
+                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+                   <div key={d} className="py-4 text-center text-[10px] font-black uppercase text-[#D4AF37]/50 tracking-[0.2em]">{d}</div>
+                 ))}
+              </div>
+            )}
+
+            {/* Actual Days Render */}
+            <div className={calendarViewMode === 'month' ? "grid grid-cols-7" : "grid grid-cols-7 border-b border-white/5"}>
+               {calendarViewMode === 'month' ? calendarDays : weekDaysGrid}
+            </div>
+
+          </div>
         </div>
 
-        <div className="grid grid-cols-7">
-           {calendarDays}
-        </div>
-
+        {/* Legend / Footer */}
         <div className="p-6 bg-black/60 flex flex-wrap gap-6 items-center border-t border-white/5">
            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-black/20 border border-white/5"></div>
+              <div className="w-3 h-3 rounded bg-black border border-white/10"></div>
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Available</span>
            </div>
            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-red-900/20 border border-red-500/30"></div>
+              <div className="w-3 h-3 rounded bg-red-950/40 border border-red-500/20"></div>
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Blocked / Unavailable</span>
            </div>
            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-green-500/20 border border-green-500/30"></div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Confirmed Bookings</span>
+              <div className="w-3 h-3 rounded bg-[#1a1a1a] border border-[#D4AF37]/30"></div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Confirmed Booking</span>
            </div>
            <div className="ml-auto text-[10px] text-slate-600 italic">
-             * Click any date to toggle your availability.
+             * Click any date or empty slot to toggle availability.
            </div>
         </div>
       </div>
