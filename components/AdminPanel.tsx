@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff } from 'lucide-react';
-import { auth, db, handleFirestoreError, OperationType } from '../services/firebase';
+import { auth, db, handleFirestoreError, OperationType, firebaseConfig } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
 import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import firebaseConfig from '../firebase-applet-config.json';
 import { uploadFileRobustly } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import ChatModal from './ChatModal';
@@ -360,31 +359,73 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           return;
         }
 
-        try {
-          const secAuth = getSecondaryAuth();
-          const userCredential = await createUserWithEmailAndPassword(
-            secAuth,
-            formData.contactEmail.trim(),
-            formData.password
-          );
-          
-          vendorId = userCredential.user.uid;
-          
-          // Sign out of the secondary auth session right away to keep it clean
-          await signOut(secAuth);
-        } catch (authErr: any) {
-          console.error("Firebase Authentication Vendor creation failed:", authErr);
-          let errMsg = authErr.message || "Failed to create vendor login credentials.";
-          if (authErr.code === 'auth/email-already-in-use') {
-            errMsg = "The email is already registered in Firebase Authentication.";
-          } else if (authErr.code === 'auth/invalid-email') {
-            errMsg = "The provided contact email starts with or contains invalid characters.";
-          } else if (authErr.code === 'auth/weak-password') {
-            errMsg = "The password is too weak. Must be at least 6 characters.";
+        const emailLower = formData.contactEmail.trim().toLowerCase();
+        const existingUserInUsers = users?.find(u => ((u as any).email || (u as any).username)?.trim().toLowerCase() === emailLower);
+        const existingUserInVendors = vendors?.find(v => v.contactEmail?.trim().toLowerCase() === emailLower);
+        let reusedUid = existingUserInUsers?.id || existingUserInVendors?.id;
+
+        if (!reusedUid) {
+          try {
+            const lookupResp = await fetch(`/api/auth/lookup-uid?email=${encodeURIComponent(emailLower)}`);
+            if (lookupResp.ok) {
+              const lookupData = await lookupResp.json();
+              if (lookupData.uid) {
+                reusedUid = lookupData.uid;
+              }
+            }
+          } catch (lookupErr) {
+            console.warn("Could not query backend UID lookup for registered email:", lookupErr);
           }
-          showNotification(errMsg, 'info');
-          setIsUploading(false);
-          return;
+        }
+
+        if (reusedUid) {
+          vendorId = reusedUid;
+          showNotification('Reusing existing account registered under this email.', 'success');
+        } else {
+          try {
+            const secAuth = getSecondaryAuth();
+            const userCredential = await createUserWithEmailAndPassword(
+              secAuth,
+              formData.contactEmail.trim(),
+              formData.password
+            );
+            
+            vendorId = userCredential.user.uid;
+            
+            // Sign out of the secondary auth session right away to keep it clean
+            await signOut(secAuth);
+          } catch (authErr: any) {
+            console.error("Firebase Authentication Vendor creation failed:", authErr);
+            let errMsg = authErr.message || "Failed to create vendor login credentials.";
+            let recovered = false;
+
+            if (authErr.code === 'auth/email-already-in-use') {
+              try {
+                const lookupResp = await fetch(`/api/auth/lookup-uid?email=${encodeURIComponent(emailLower)}`);
+                if (lookupResp.ok) {
+                  const lookupData = await lookupResp.json();
+                  if (lookupData.uid) {
+                    vendorId = lookupData.uid;
+                    showNotification('Reusing existing auth account with this email.', 'success');
+                    recovered = true;
+                  }
+                }
+              } catch (fallbackErr) {
+                console.error("Fallback UID lookup failed:", fallbackErr);
+              }
+              errMsg = "The email is already registered in Firebase Authentication.";
+            } else if (authErr.code === 'auth/invalid-email') {
+              errMsg = "The provided contact email starts with or contains invalid characters.";
+            } else if (authErr.code === 'auth/weak-password') {
+              errMsg = "The password is too weak. Must be at least 6 characters.";
+            }
+
+            if (!recovered) {
+              showNotification(errMsg, 'info');
+              setIsUploading(false);
+              return;
+            }
+          }
         }
       }
 

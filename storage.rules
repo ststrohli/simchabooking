@@ -27,7 +27,7 @@ service firebase.storage {
     }
 
     // Vendor Media
-    match /vendors/{vendorId}/{allPaths=**} {
+    match /vendors/{allPaths=**} {
       allow read: if true; // Publicly viewable
       // Ideally we would check if the user is the owner of the vendor in Firestore,
       // but Storage rules bridge to Firestore is possible but expensive: firestore.get(...)

@@ -29,6 +29,10 @@ const __dirname = path.dirname(__filename);
 let adminApp: admin.app.App;
 let dbId: string | undefined;
 
+const uploadDir = process.platform === 'win32'
+  ? path.join(process.cwd(), 'uploads')
+  : '/tmp/uploads';
+
 // Try to get the project ID from config, but fall back to environment if it looks like a placeholder
 const configProjectId = firebaseConfig.projectId && !firebaseConfig.projectId.includes('TODO') 
   ? firebaseConfig.projectId 
@@ -129,7 +133,7 @@ async function initializeFirebase(useEnvFallback: boolean = false) {
     adminApp = admin.initializeApp({ 
       credential,
       projectId: targetProjectId,
-      storageBucket: firebaseConfig.storageBucket
+      storageBucket: "simcha-booking-2748d.firebasestorage.app"
     });
     
     console.log(`[Firebase] Admin initialized for project: ${adminApp.options.projectId}`);
@@ -740,7 +744,6 @@ async function startServer() {
       try {
         const fs = await import('fs');
         const fsPromises = fs.promises;
-        const uploadDir = path.join(process.cwd(), 'uploads');
         
         // Ensure uploads directory exists
         if (!fs.existsSync(uploadDir)) {
@@ -1616,6 +1619,23 @@ async function startServer() {
     }
   });
 
+  // Lookup Firebase Auth user UID by email to handle auth/email-already-in-use gracefully
+  app.get("/api/auth/lookup-uid", async (req, res) => {
+    const { email } = req.query;
+    if (!email) {
+      return res.status(400).json({ error: "Email parameter is required" });
+    }
+    try {
+      const user = await admin.auth().getUserByEmail(email as string);
+      res.json({ uid: user.uid });
+    } catch (error: any) {
+      if (error.code === 'auth/user-not-found' || error.message?.includes('user-not-found')) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/firebase-config", (req, res) => {
     const envProjectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.PROJECT_ID || process.env.GCP_PROJECT;
     const targetProjectId = envProjectId || (firebaseConfig.projectId && !firebaseConfig.projectId.includes('TODO') ? firebaseConfig.projectId : undefined);
@@ -1628,7 +1648,7 @@ async function startServer() {
   });
 
   // Serve the local uploads folder as statically accessible files
-  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+  app.use('/uploads', express.static(uploadDir));
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

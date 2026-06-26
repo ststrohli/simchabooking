@@ -208,49 +208,224 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const [viewDate, setViewDate] = useState(new Date());
   const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'week'>('month');
   const [isSyncing, setIsSyncing] = useState(false);
+  const isSyncingRef = useRef(false);
+  const [syncStep, setSyncStep] = useState<'idle' | 'auth' | 'fetching' | 'saving' | 'success'>('idle');
   const [calendarSyncError, setCalendarSyncError] = useState<string | null>(null);
 
-  const handleCalendarSync = () => {
-    if (isSyncing) {
+  const handleCalendarSync = async () => {
+    if (isSyncingRef.current || isSyncing) {
       showNotification("Calendar authentication is already in progress.", "info");
       return;
     }
     
+    isSyncingRef.current = true;
     setIsSyncing(true);
+    setSyncStep('auth');
     setCalendarSyncError(null);
-    showNotification("Syncing with Google Calendar... Opening authentication popup.", "info");
-    const firebaseAuth = auth || getAuth();
-    const provider = new GoogleAuthProvider();
-    provider.addScope('https://www.googleapis.com/auth/calendar.events');
+    showNotification("Authenticating... Opening Google sign-in popup.", "info");
 
-    signInWithPopup(firebaseAuth, provider)
-      .then((result) => {
-        console.log('Successfully authenticated and received calendar permissions', result);
-        showNotification('Successfully authenticated and received calendar permissions!', 'success');
-        setCalendarSyncError(null);
-      })
-      .catch((error: any) => {
-        console.error('Error during Google Calendar authentication:', error);
+    try {
+      const firebaseAuth = auth || getAuth();
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/calendar.events');
+      provider.setCustomParameters({ prompt: 'consent', access_type: 'offline' });
+
+      // Cleanly await sign-in popup
+      const result = await signInWithPopup(firebaseAuth, provider);
+      
+      setSyncStep('fetching');
+      showNotification('Authenticated! Connecting to Google Calendar API...', 'info');
+      
+      // Extract Google Access Token
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const token = credential?.accessToken;
+      
+      if (!token) {
+        throw new Error("Could not retrieve Google Access Token from login credential.");
+      }
+      
+      // Fetch primary calendar events from today onwards
+      const timeMin = new Date().toISOString();
+      const response = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&singleEvents=true&orderBy=startTime&maxResults=250`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Google Calendar API error: ${response.status} - ${errorText}`);
+      }
+      
+      const data = await response.json();
+      const events = data.items || [];
+      const activeEvents = events.filter((e: any) => e.status !== 'cancelled');
+      
+      setSyncStep('saving');
+      showNotification(`Found ${activeEvents.length} events on Google. Syncing Simcha Bookings...`, 'info');
+
+      // TWO-WAY SYNC: Push native confirmed Simcha bookings to Google Calendar
+      const confirmedGigs = bookings.filter(b => b.status === 'confirmed');
+      const gigsToPush = confirmedGigs.filter(gig => {
+        const alreadyExists = activeEvents.some((ge: any) => {
+          const hasId = ge.description && ge.description.includes(gig.id);
+          const hasTitle = ge.summary && (ge.summary.includes(gig.eventName) || ge.summary.includes(gig.id));
+          return hasId || (hasTitle && (ge.start?.dateTime?.startsWith(gig.date) || ge.start?.date === gig.date));
+        });
+        return !alreadyExists;
+      });
+
+      let pushedCount = 0;
+      if (gigsToPush.length > 0) {
+        showNotification(`Syncing ${gigsToPush.length} confirmed bookings back to Google Calendar...`, 'info');
+        for (const gig of gigsToPush) {
+          let startVal: any = { date: gig.date };
+          let endVal: any = { date: gig.date };
+
+          if (gig.eventTime && /^\d{2}:\d{2}/.test(gig.eventTime)) {
+            try {
+              const [hours, minutes] = gig.eventTime.split(':');
+              const startD = new Date(`${gig.date}T${hours}:${minutes}:00`);
+              startVal = { dateTime: startD.toISOString() };
+              const endD = new Date(startD.getTime() + 4 * 60 * 60 * 1000); // 4 hours duration
+              endVal = { dateTime: endD.toISOString() };
+            } catch (e) {
+              console.warn("Error parsing event time, falling back to all-day event", e);
+            }
+          }
+
+          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              summary: `Simcha Booking: ${gig.eventName}`,
+              description: `Simcha Booking Gig Detail\nClient: ${gig.clientName}\nBooking ID: ${gig.id}\nLocation: ${gig.eventLocation || 'Not specified'}\nNotes: ${gig.notes || ''}`,
+              start: startVal,
+              end: endVal
+            })
+          });
+
+          if (res.ok) {
+            pushedCount++;
+          } else {
+            console.error(`Failed to push gig ${gig.id} to Google Calendar:`, await res.text());
+          }
+        }
+      }
+
+      // ONE-WAY SYNC: Build detailed list of googleEvents to save to Firestore
+      const parsedGoogleEvents = activeEvents.map((e: any) => ({
+        id: e.id,
+        summary: e.summary || 'Busy (Google Calendar)',
+        start: e.start?.dateTime || e.start?.date || '',
+        end: e.end?.dateTime || e.end?.date || '',
+      }));
+      
+      const currentUnavailable = vendor.unavailableDates || [];
+      const googleDates: string[] = [];
+      
+      // Helper function to extract YYYY-MM-DD local dates for an event
+      const getDatesForEvent = (event: any): string[] => {
+        const dates: string[] = [];
+        const startVal = event.start?.dateTime || event.start?.date;
+        const endVal = event.end?.dateTime || event.end?.date;
         
-        let userMessage = 'Authentication failed. Please try again.';
-        if (error.code === 'auth/popup-closed-by-user') {
-          userMessage = 'The sign-in window was closed before completion. Try opening the app in a new tab if the popup was blocked.';
-        } else if (error.code === 'auth/popup-blocked') {
-          userMessage = 'The auth popup was blocked by your browser. Please allow popups or open the app in a new tab.';
-        } else if (error.code === 'auth/cancelled-popup-request') {
-          userMessage = 'Another login popup is already open or the request was cancelled. Please complete the sign-in in that window.';
-        } else if (error.message && error.message.includes('popup')) {
-          userMessage = 'Authentication popup closed or blocked. Try opening the application in a new tab.';
-        } else {
-          userMessage = error.message || userMessage;
+        if (!startVal) return [];
+        
+        const start = new Date(startVal);
+        let end = endVal ? new Date(endVal) : new Date(start);
+        
+        if (event.start?.date && event.end?.date) {
+          // All day event end is exclusive, subtract 1 day to make inclusive
+          end = new Date(end.getTime() - 1000 * 60 * 60 * 24);
         }
         
-        setCalendarSyncError(userMessage);
-        showNotification(userMessage, 'info');
-      })
-      .finally(() => {
-        setIsSyncing(false);
+        const formatDate = (d: Date) => {
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+        
+        const startStr = formatDate(start);
+        const endStr = formatDate(end);
+        
+        let cur = new Date(startStr + 'T00:00:00');
+        const targetEnd = new Date(endStr + 'T00:00:00');
+        
+        while (cur <= targetEnd) {
+          dates.push(formatDate(cur));
+          cur.setDate(cur.getDate() + 1);
+        }
+        
+        return dates;
+      };
+      
+      activeEvents.forEach((event: any) => {
+        const eventDates = getDatesForEvent(event);
+        googleDates.push(...eventDates);
       });
+      
+      // Deduplicate and sort dates
+      const mergedDates = Array.from(new Set([...currentUnavailable, ...googleDates])).sort();
+      const newDatesCount = mergedDates.length - currentUnavailable.length;
+      
+      // Ensure we use the exact vendor ID from current session
+      const sessionVendorId = vendor.id || firebaseAuth.currentUser?.uid;
+      if (!sessionVendorId) {
+        throw new Error("No active session or vendor ID found.");
+      }
+
+      // Save to Firestore using verified vendor ID in current session
+      onUpdateVendor({
+        ...vendor,
+        id: sessionVendorId,
+        unavailableDates: mergedDates,
+        googleEvents: parsedGoogleEvents
+      });
+      
+      setSyncStep('success');
+      
+      let successMsg = `Two-way sync complete! Imported ${activeEvents.length} events from Google.`;
+      if (pushedCount > 0) {
+        successMsg += ` Exported ${pushedCount} gigs to Google Calendar.`;
+      }
+      if (newDatesCount > 0) {
+        successMsg += ` Blocked ${newDatesCount} new dates.`;
+      }
+      
+      showNotification(successMsg, 'success');
+      setCalendarSyncError(null);
+    } catch (error: any) {
+      console.error('Error during Google Calendar authentication/fetch:', error);
+      
+      let userMessage = 'Authentication failed. Please try again.';
+      if (error.code === 'auth/popup-closed-by-user') {
+        userMessage = 'The sign-in window was closed before completion. Try opening the app in a new tab if the popup was blocked.';
+      } else if (error.code === 'auth/popup-blocked') {
+        userMessage = 'The auth popup was blocked by your browser. Please allow popups or open the app in a new tab.';
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        userMessage = 'Another login popup is already open or the request was cancelled. Please complete the sign-in in that window.';
+      } else if (error.message && error.message.includes('popup')) {
+        userMessage = 'Authentication popup closed or blocked. Try opening the application in a new tab.';
+      } else {
+        userMessage = error.message || userMessage;
+      }
+      
+      setCalendarSyncError(userMessage);
+      showNotification(userMessage, 'info');
+      setSyncStep('idle');
+    } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
+      setTimeout(() => setSyncStep('idle'), 3000);
+    }
   };
 
   // Notification State
@@ -418,6 +593,59 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   // Calendar Helper Functions
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
+
+  const getDatesForEventRange = (startVal: string, endVal: string): string[] => {
+    if (!startVal) return [];
+    const start = new Date(startVal);
+    let end = endVal ? new Date(endVal) : new Date(start);
+    
+    const isAllDay = startVal.length <= 10 && (!endVal || endVal.length <= 10);
+    if (isAllDay && endVal) {
+      // Subtract 1 day for end date since Google end dates for all day are exclusive
+      end = new Date(end.getTime() - 1000 * 60 * 60 * 24);
+    }
+
+    const formatDate = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const startStr = formatDate(start);
+    const endStr = formatDate(end);
+    
+    const dates: string[] = [];
+    let cur = new Date(startStr + 'T00:00:00');
+    const targetEnd = new Date(endStr + 'T00:00:00');
+    
+    while (cur <= targetEnd) {
+      dates.push(formatDate(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+    return dates;
+  };
+
+  const formatGoogleEventTime = (startStr: string, endStr: string) => {
+    if (!startStr) return '';
+    if (startStr.length <= 10) return 'All Day';
+    
+    try {
+      const start = new Date(startStr);
+      const end = new Date(endStr);
+      const formatTime = (d: Date) => {
+        let hours = d.getHours();
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        return `${hours}:${minutes} ${ampm}`;
+      };
+      return `${formatTime(start)} - ${formatTime(end)}`;
+    } catch (err) {
+      return '';
+    }
+  };
 
   const handleToggleDate = (dateStr: string) => {
     const currentUnavailable = vendor.unavailableDates || [];
@@ -912,6 +1140,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       const isToday = dateStr === todayStr;
       
       const dailyBookings = bookings.filter(b => b.date === dateStr);
+      const dailyGoogleEvents = (vendor.googleEvents || []).filter(e => {
+        const eventDates = getDatesForEventRange(e.start, e.end);
+        return eventDates.includes(dateStr);
+      });
 
       calendarDays.push(
         <div 
@@ -945,7 +1177,29 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                  </div>
                );
              })}
-             {isBlocked && dailyBookings.length === 0 && (
+             {dailyGoogleEvents.map(e => {
+               const timeLabel = formatGoogleEventTime(e.start, e.end);
+               return (
+                 <div 
+                   key={e.id}
+                   onClick={(ev) => {
+                     ev.stopPropagation();
+                     showNotification(`Google Event: ${e.summary} (${timeLabel})`, 'info');
+                   }}
+                   className="bg-[#0e0e0e] border border-white/10 hover:border-[#D4AF37]/40 p-1.5 rounded-lg text-left text-[10px] leading-tight transition-all duration-300 relative overflow-hidden group/gcal"
+                 >
+                   <div className="absolute top-0 left-0 bottom-0 w-0.5 bg-[#D4AF37]"></div>
+                   <div className="pl-1.5">
+                     <div className="font-extrabold text-slate-200 truncate group-hover/gcal:text-[#D4AF37] transition-colors">{e.summary || 'Busy (Google Calendar)'}</div>
+                     <div className="text-[7px] text-[#D4AF37]/80 truncate font-semibold flex items-center gap-1">
+                       <span className="w-1 h-1 rounded-full bg-[#D4AF37] inline-block animate-pulse"></span> Google Calendar
+                     </div>
+                     {timeLabel && <div className="text-[7px] text-slate-400 font-mono mt-0.5">{timeLabel}</div>}
+                   </div>
+                 </div>
+               );
+             })}
+             {isBlocked && dailyBookings.length === 0 && dailyGoogleEvents.length === 0 && (
                <div className="text-[8px] text-red-500/40 font-semibold uppercase tracking-wider text-center py-2">
                  Blocked
                </div>
@@ -970,6 +1224,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       const isBlocked = vendor.unavailableDates?.includes(dateStr);
       const isToday = dateStr === todayStr;
       const dayBookings = bookings.filter(b => b.date === dateStr);
+      const dailyGoogleEvents = (vendor.googleEvents || []).filter(e => {
+        const eventDates = getDatesForEventRange(e.start, e.end);
+        return eventDates.includes(dateStr);
+      });
       const dayName = dayDate.toLocaleString('default', { weekday: 'short' });
       const dayNum = dayDate.getDate();
 
@@ -993,7 +1251,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
           {/* Weekday Body */}
           <div className="flex-1 p-3 space-y-3 relative flex flex-col justify-start min-h-[300px]">
-            {isBlocked && (
+            {isBlocked && dayBookings.length === 0 && dailyGoogleEvents.length === 0 && (
               <div className="absolute inset-0 bg-red-950/5 flex flex-col items-center justify-center pointer-events-none p-4">
                 <Lock className="w-5 h-5 text-red-500/40 mb-2" />
                 <span className="text-[9px] font-black uppercase tracking-[0.2em] text-red-500/50">Unavailable</span>
@@ -1001,31 +1259,59 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             )}
 
             <div className="space-y-3 z-10 w-full">
-              {dayBookings.length > 0 ? (
-                dayBookings.map(b => (
-                  <div 
-                    key={b.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedBookingForDetail(b);
-                    }}
-                    className="bg-[#1a1a1a]/80 backdrop-blur-md border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 p-3 rounded-xl shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 group/card text-left"
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37]">
-                        {b.status === 'confirmed' ? 'Confirmed' : 'Pending'}
-                      </span>
-                      {b.eventTime && <span className="text-[8px] font-mono text-slate-400">{b.eventTime}</span>}
+              {dayBookings.length > 0 || dailyGoogleEvents.length > 0 ? (
+                <>
+                  {dayBookings.map(b => (
+                    <div 
+                      key={b.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedBookingForDetail(b);
+                      }}
+                      className="bg-[#1a1a1a]/80 backdrop-blur-md border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 p-3 rounded-xl shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 group/card text-left"
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37]">
+                          {b.status === 'confirmed' ? 'Confirmed' : 'Pending'}
+                        </span>
+                        {b.eventTime && <span className="text-[8px] font-mono text-slate-400">{b.eventTime}</span>}
+                      </div>
+                      <h5 className="text-xs font-bold text-white mb-0.5 group-hover/card:text-[#D4AF37] transition-colors truncate">{b.eventName}</h5>
+                      <p className="text-[10px] text-slate-400 truncate">{b.clientName}</p>
+                      {b.eventLocation && (
+                        <p className="text-[8px] text-slate-500 truncate mt-1.5 flex items-center gap-1">
+                          <MapPin className="w-2.5 h-2.5 text-[#D4AF37]" /> {b.eventLocation}
+                        </p>
+                      )}
                     </div>
-                    <h5 className="text-xs font-bold text-white mb-0.5 group-hover/card:text-[#D4AF37] transition-colors truncate">{b.eventName}</h5>
-                    <p className="text-[10px] text-slate-400 truncate">{b.clientName}</p>
-                    {b.eventLocation && (
-                      <p className="text-[8px] text-slate-500 truncate mt-1.5 flex items-center gap-1">
-                        <MapPin className="w-2.5 h-2.5 text-[#D4AF37]" /> {b.eventLocation}
-                      </p>
-                    )}
-                  </div>
-                ))
+                  ))}
+
+                  {dailyGoogleEvents.map(e => {
+                    const timeLabel = formatGoogleEventTime(e.start, e.end);
+                    return (
+                      <div 
+                        key={e.id}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          showNotification(`Google Event: ${e.summary} (${timeLabel})`, 'info');
+                        }}
+                        className="bg-[#0c0c0c] border border-white/10 hover:border-[#D4AF37]/50 p-3 rounded-xl shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 group/gcard text-left relative overflow-hidden"
+                      >
+                        <div className="absolute top-0 left-0 bottom-0 w-1 bg-[#D4AF37]"></div>
+                        <div className="pl-2">
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37] flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] inline-block animate-pulse"></span> Google Cal
+                            </span>
+                            {timeLabel && <span className="text-[8px] font-mono text-slate-400">{timeLabel}</span>}
+                          </div>
+                          <h5 className="text-xs font-bold text-slate-200 mb-0.5 group-hover/gcard:text-[#D4AF37] transition-colors truncate">{e.summary || 'Busy (Google Calendar)'}</h5>
+                          <p className="text-[10px] text-slate-500">Imported Calendar Event</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
               ) : (
                 <div className="py-12 flex flex-col items-center justify-center border border-dashed border-white/5 rounded-2xl opacity-10 group-hover:opacity-30 transition-opacity">
                   <Plus className="w-6 h-6 text-slate-400 mb-1" />
@@ -1097,12 +1383,24 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             <button 
               onClick={handleCalendarSync}
               disabled={isSyncing}
-              className={`bg-[#D4AF37] hover:bg-[#b8952d] text-black font-black flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] uppercase tracking-wider shadow-lg shadow-[#D4AF37]/10 hover:shadow-[#D4AF37]/20 transition-all duration-300 transform hover:-translate-y-0.5 group ${
-                isSyncing ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
-              }`}
+              className={`text-black font-black flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] uppercase tracking-wider transition-all duration-300 transform hover:-translate-y-0.5 group ${
+                syncStep === 'success'
+                  ? 'bg-green-500 hover:bg-green-600 shadow-lg shadow-green-500/20 text-white'
+                  : 'bg-[#D4AF37] hover:bg-[#b8952d] shadow-lg shadow-[#D4AF37]/10 hover:shadow-[#D4AF37]/20'
+              } ${isSyncing ? 'animate-pulse cursor-not-allowed pointer-events-none' : ''}`}
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : 'group-hover:rotate-180'} transition-transform duration-500`} />
-              {isSyncing ? 'Connecting...' : 'Merge Google Calendar'}
+              {isSyncing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-black" />
+              ) : syncStep === 'success' ? (
+                <Check className="w-3.5 h-3.5 text-white" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-500" />
+              )}
+              {syncStep === 'idle' && 'Merge Google Calendar'}
+              {syncStep === 'auth' && 'Authenticating...'}
+              {syncStep === 'fetching' && 'Fetching Events...'}
+              {syncStep === 'saving' && 'Merging Dates...'}
+              {syncStep === 'success' && 'Calendar Merged!'}
             </button>
           </div>
         </div>

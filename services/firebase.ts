@@ -6,7 +6,7 @@ import { getStorage } from "firebase/storage";
 import appletConfig from "../firebase-applet-config.json";
 
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyDNobx7D28xdpn83FzroTeBeD0f0R-8uU4",
   authDomain: "simcha-booking-2748d.firebaseapp.com",
   projectId: "simcha-booking-2748d",
@@ -18,12 +18,8 @@ const firebaseConfig = {
 
 const targetProjectId = firebaseConfig.projectId;
 
-// Use the database ID from config if available, but allow override
-// In AI Studio, we should prefer the named database if it's in the config,
-// but fallback to (default) if it's missing or a placeholder.
-const dbId = (appletConfig as any).firestoreDatabaseId && !(appletConfig as any).firestoreDatabaseId.includes('TODO')
-  ? (appletConfig as any).firestoreDatabaseId 
-  : '(default)';
+// Explicitly use the database ID requested by the user for this AI Studio environment
+const dbId = 'ai-studio-b85c10e8-0729-4d1f-841b-60b5c119be28';
 
 const app = initializeApp(firebaseConfig);
 
@@ -33,10 +29,11 @@ export const provider = new GoogleAuthProvider();
 // Configure the Google Auth Provider with Google Calendar scopes to allow integration
 provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
 provider.addScope('https://www.googleapis.com/auth/calendar.events');
+provider.setCustomParameters({ prompt: 'consent', access_type: 'offline' });
 
 // Use a function to allow re-initialization if fallback is needed
-const createFirestore = (id: string) => {
-  console.log(`[Firebase] Initializing Firestore with project: ${targetProjectId}, database: ${id}`);
+const createFirestore = (id?: string) => {
+  console.log(`[Firebase] Initializing Firestore with project: ${targetProjectId}, database: ${id || '(default)'}`);
   try {
     const isIframe = typeof window !== 'undefined' && window.self !== window.top;
     if (isIframe) {
@@ -70,11 +67,11 @@ export const storage = getStorage(app, `gs://${firebaseConfig.storageBucket}`);
 
 async function testConnection() {
   let retries = 3;
-  let currentDbId = dbId;
+  let currentDbId: string | undefined = dbId;
   
   while (retries > 0) {
     try {
-      console.log(`[Firebase] Testing Firestore connection (Attempt ${4 - retries}/3, DB: ${currentDbId})...`);
+      console.log(`[Firebase] Testing Firestore connection (Attempt ${4 - retries}/3, DB: ${currentDbId || '(default)'})...`);
       // Use getDocFromServer to bypass local cache and test actual connectivity
       await getDocFromServer(doc(db, 'test', 'connection')).catch(e => {
         // We only care about network errors, "not found" is actually a success for connectivity
@@ -96,15 +93,15 @@ async function testConnection() {
       }
       
       // If we are using a named database and it's unavailable, try falling back to (default)
-      if (currentDbId !== '(default)' && (
+      if (currentDbId && (
         error.code === 'unavailable' || 
         error.message?.includes('unavailable') || 
         error.message?.includes('offline') || 
         error.message?.includes('Failed to get document')
       )) {
-        console.warn(`[Firebase] Named database ${currentDbId} is unavailable. Attempting fallback to (default)...`);
-        currentDbId = '(default)';
-        db = createFirestore('(default)');
+        console.warn(`[Firebase] Named database ${currentDbId} is unavailable. Attempting fallback to default database...`);
+        currentDbId = undefined;
+        db = createFirestore(undefined);
         // Reset retries for the fallback attempt
         retries = 2; 
         continue;

@@ -68,6 +68,12 @@ export interface Vendor {
   username?: string; 
   password?: string; 
   unavailableDates?: string[];
+  googleEvents?: Array<{
+    id: string;
+    summary: string;
+    start: string;
+    end: string;
+  }>;
   reviews?: Review[];
   services?: VendorService[];
   paymentMethods?: string[];
