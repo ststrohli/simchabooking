@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, CalendarDays, Settings, LogOut, DollarSign, Users, User, TrendingUp, CheckCircle, XCircle, Clock, Save, Trash2, 
   ImageIcon, Menu, X, Plus, Tag, CreditCard, ArrowRight, Video, Film, ShieldCheck, MapPin, Eye, Upload, Mail, AlertTriangle, 
@@ -29,6 +30,22 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'history' | 'calendar' | 'profile' | 'messages'>('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedBookingForDetail, setSelectedBookingForDetail] = useState<Booking | null>(null);
+  const [selectedCalendarEvent, setSelectedCalendarEvent] = useState<{
+    type: 'google' | 'simcha';
+    id: string;
+    title: string;
+    start: string;
+    end: string;
+    location?: string;
+    notes?: string;
+    badge: 'Google Calendar Event' | 'Simcha Booking Gig';
+    clientName?: string;
+    contactEmail?: string;
+    amount?: number;
+    selectedServices?: SelectedService[];
+    status?: string;
+    bookingId?: string;
+  } | null>(null);
 
   // Search & Filters for Bookings List
   const [searchQuery, setSearchQuery] = useState('');
@@ -647,6 +664,138 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     }
   };
 
+  const parseGoogleDateTimeFriendly = (dateTimeStr: string) => {
+    if (!dateTimeStr) return 'N/A';
+    try {
+      const d = new Date(dateTimeStr);
+      if (isNaN(d.getTime())) return dateTimeStr;
+      
+      if (dateTimeStr.length <= 10) {
+        const [year, month, day] = dateTimeStr.split('-').map(Number);
+        const dUtc = new Date(year, month - 1, day);
+        return dUtc.toLocaleDateString('default', { 
+          weekday: 'long',
+          month: 'long', 
+          day: 'numeric', 
+          year: 'numeric'
+        }) + ' (All Day)';
+      }
+      
+      return d.toLocaleDateString('default', { 
+        weekday: 'long',
+        month: 'long', 
+        day: 'numeric', 
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (e) {
+      return dateTimeStr;
+    }
+  };
+
+  const parseDateTimeFriendly = (dateStr: string, timeStr?: string) => {
+    if (!dateStr) return 'N/A';
+    
+    if (timeStr && /^\d{2}:\d{2}/.test(timeStr)) {
+      try {
+        const [hours, minutes] = timeStr.split(':');
+        const d = new Date(`${dateStr}T${hours}:${minutes}:00`);
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleDateString('default', { 
+            weekday: 'long',
+            month: 'long', 
+            day: 'numeric', 
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          });
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        return d.toLocaleDateString('default', { 
+          weekday: 'long',
+          month: 'long', 
+          day: 'numeric', 
+          year: 'numeric' 
+        });
+      }
+    } catch (e) {}
+
+    return dateStr;
+  };
+
+  const handleGoogleEventClick = (e: any) => {
+    const startStr = e.start || '';
+    const endStr = e.end || '';
+    const startFormatted = parseGoogleDateTimeFriendly(startStr);
+    const endFormatted = parseGoogleDateTimeFriendly(endStr);
+
+    setSelectedCalendarEvent({
+      type: 'google',
+      id: e.id,
+      title: e.summary || 'Busy (Google Calendar)',
+      start: startFormatted,
+      end: endFormatted,
+      location: e.location || 'Not specified',
+      notes: e.description || 'No additional details.',
+      badge: 'Google Calendar Event'
+    });
+  };
+
+  const handleSimchaBookingClick = (b: Booking) => {
+    const startFormatted = parseDateTimeFriendly(b.date, b.eventTime);
+    let endFormatted = 'Flexible';
+    if (b.eventTime && /^\d{2}:\d{2}/.test(b.eventTime)) {
+      try {
+        const [hours, minutes] = b.eventTime.split(':');
+        const startD = new Date(`${b.date}T${hours}:${minutes}:00`);
+        if (!isNaN(startD.getTime())) {
+          const endD = new Date(startD.getTime() + 4 * 60 * 60 * 1000);
+          endFormatted = endD.toLocaleDateString('default', { 
+            weekday: 'long',
+            month: 'long', 
+            day: 'numeric', 
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          }) + ' (Estimated 4-Hour Block)';
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    } else {
+      endFormatted = 'Flexible (End time not specified)';
+    }
+
+    setSelectedCalendarEvent({
+      type: 'simcha',
+      id: b.id,
+      title: b.eventName || 'Simcha Booking Gig',
+      start: startFormatted,
+      end: endFormatted,
+      location: b.eventLocation || 'Venue address pending',
+      notes: b.notes || 'No additional notes.',
+      badge: 'Simcha Booking Gig',
+      clientName: b.clientName,
+      contactEmail: b.contactEmail,
+      amount: b.amount,
+      selectedServices: b.selectedServices,
+      status: b.status,
+      bookingId: b.id
+    });
+  };
+
   const handleToggleDate = (dateStr: string) => {
     const currentUnavailable = vendor.unavailableDates || [];
     let updated: string[];
@@ -1167,9 +1316,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                    key={b.id}
                    onClick={(e) => {
                      e.stopPropagation();
-                     setSelectedBookingForDetail(b);
+                     handleSimchaBookingClick(b);
                    }}
-                   className="bg-[#1a1a1a]/80 backdrop-blur-md border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 p-1.5 rounded-lg text-left text-[10px] leading-tight transition-all duration-300"
+                   className="bg-[#1a1a1a]/80 backdrop-blur-md border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 p-1.5 rounded-lg text-left text-[10px] leading-tight transition-all duration-300 cursor-pointer"
                  >
                    <div className="font-extrabold text-white truncate">{b.eventName || 'Event'}</div>
                    <div className="text-[8px] text-[#D4AF37] truncate font-semibold">{b.clientName}</div>
@@ -1184,9 +1333,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                    key={e.id}
                    onClick={(ev) => {
                      ev.stopPropagation();
-                     showNotification(`Google Event: ${e.summary} (${timeLabel})`, 'info');
+                     handleGoogleEventClick(e);
                    }}
-                   className="bg-[#0e0e0e] border border-white/10 hover:border-[#D4AF37]/40 p-1.5 rounded-lg text-left text-[10px] leading-tight transition-all duration-300 relative overflow-hidden group/gcal"
+                   className="bg-[#0e0e0e] border border-white/10 hover:border-[#D4AF37]/40 p-1.5 rounded-lg text-left text-[10px] leading-tight transition-all duration-300 relative overflow-hidden group/gcal cursor-pointer"
                  >
                    <div className="absolute top-0 left-0 bottom-0 w-0.5 bg-[#D4AF37]"></div>
                    <div className="pl-1.5">
@@ -1266,9 +1415,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       key={b.id}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedBookingForDetail(b);
+                        handleSimchaBookingClick(b);
                       }}
-                      className="bg-[#1a1a1a]/80 backdrop-blur-md border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 p-3 rounded-xl shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 group/card text-left"
+                      className="bg-[#1a1a1a]/80 backdrop-blur-md border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 p-3 rounded-xl shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 group/card text-left cursor-pointer"
                     >
                       <div className="flex justify-between items-start mb-1">
                         <span className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37]">
@@ -1293,9 +1442,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         key={e.id}
                         onClick={(ev) => {
                           ev.stopPropagation();
-                          showNotification(`Google Event: ${e.summary} (${timeLabel})`, 'info');
+                          handleGoogleEventClick(e);
                         }}
-                        className="bg-[#0c0c0c] border border-white/10 hover:border-[#D4AF37]/50 p-3 rounded-xl shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 group/gcard text-left relative overflow-hidden"
+                        className="bg-[#0c0c0c] border border-white/10 hover:border-[#D4AF37]/50 p-3 rounded-xl shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 group/gcard text-left relative overflow-hidden cursor-pointer"
                       >
                         <div className="absolute top-0 left-0 bottom-0 w-1 bg-[#D4AF37]"></div>
                         <div className="pl-2">
@@ -1513,175 +1662,237 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         </div>
       )}
 
-      {/* Booking Detail Modal */}
-      {selectedBookingForDetail && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-[#111] w-full max-w-2xl rounded-3xl border border-[#D4AF37]/30 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-white/10 flex justify-between items-center bg-black">
-              <div>
-                <h2 className="text-2xl font-bold font-[Cinzel] text-[#D4AF37]">Event Specifications</h2>
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Reviewing Request #{selectedBookingForDetail.id}</p>
-              </div>
-              <button onClick={() => setSelectedBookingForDetail(null)} className="text-slate-500 hover:text-white p-2 bg-white/5 rounded-full"><X className="w-6 h-6" /></button>
-            </div>
+      {/* Unified Sleek Calendar Event Modal with Close Animations */}
+      <AnimatePresence>
+        {selectedCalendarEvent && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              onClick={() => setSelectedCalendarEvent(null)}
+              className="absolute inset-0 bg-black/95 backdrop-blur-md"
+            />
             
-            <div className="flex-1 overflow-y-auto p-8 space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Client Info */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 text-[#D4AF37]">
-                    <User className="w-5 h-5" />
-                    <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">Client Information</h3>
+            {/* Modal Box */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: "spring", duration: 0.45, bounce: 0.15 }}
+              className="bg-[#111] w-full max-w-2xl rounded-3xl border border-[#D4AF37]/30 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] z-10"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/10 flex justify-between items-center bg-black/50">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2.5">
+                    {selectedCalendarEvent.type === 'simcha' ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Simcha Booking Gig
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span> Google Calendar Event
+                      </span>
+                    )}
                   </div>
-                  <div className="bg-black/40 p-5 rounded-2xl border border-white/5 space-y-3">
-                    <div>
-                      <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">Full Name</p>
-                      <p className="text-white font-bold">{selectedBookingForDetail.clientName}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">Contact Email</p>
-                      <p className="text-white font-bold">{selectedBookingForDetail.contactEmail}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Logistics */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 text-[#D4AF37]">
-                    <Calendar className="w-5 h-5" />
-                    <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">Event Logistics</h3>
-                  </div>
-                  <div className="bg-black/40 p-5 rounded-2xl border border-white/5 space-y-3">
-                    <div>
-                      <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">Event Type</p>
-                      <p className="text-white font-bold">{selectedBookingForDetail.eventName}</p>
-                    </div>
-                    <div className="flex gap-4">
-                      <div className="flex-1">
-                        <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">Date</p>
-                        <p className="text-white font-bold">{selectedBookingForDetail.date}</p>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">Time</p>
-                        <p className="text-white font-bold">{selectedBookingForDetail.eventTime || 'Flexible'}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1 text-red-500/80">Location</p>
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-start gap-2">
-                          <MapPin className="w-4 h-4 text-red-500/50 mt-0.5" />
-                          <p className="text-white font-bold">{selectedBookingForDetail.eventLocation || 'Venue address pending'}</p>
-                        </div>
-                        {selectedBookingForDetail.status === 'confirmed' && (selectedBookingForDetail.eventAddress || selectedBookingForDetail.eventLocation) && (
-                          <a
-                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(selectedBookingForDetail.eventAddress || selectedBookingForDetail.eventLocation || '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-black px-3.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-green-500/30 transition-all shrink-0"
-                          >
-                            Go to Event
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Selected Services */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 text-[#D4AF37]">
-                  <ClipboardList className="w-5 h-5" />
-                  <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">Requested Packages</h3>
-                </div>
-                <div className="bg-black/40 rounded-2xl border border-white/5 overflow-hidden">
-                  {selectedBookingForDetail.selectedServices && selectedBookingForDetail.selectedServices.length > 0 ? (
-                    <div className="divide-y divide-white/5">
-                      {selectedBookingForDetail.selectedServices.map((s: SelectedService) => (
-                        <div key={s.id} className="p-4 flex justify-between items-center hover:bg-white/5 transition-colors">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium text-slate-200">{s.name}</span>
-                            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Qty: {s.quantity} {s.unit ? `per ${s.unit}` : ''}</span>
-                          </div>
-                          <span className="text-sm font-black text-[#D4AF37]">${(s.price * s.quantity).toLocaleString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-6 text-center">
-                      <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Base Starting Package Requested</p>
-                    </div>
+                  <h2 className="text-xl md:text-2xl font-bold font-[Cinzel] text-[#D4AF37] leading-tight">
+                    {selectedCalendarEvent.title}
+                  </h2>
+                  {selectedCalendarEvent.bookingId && (
+                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">
+                      Booking ID: {selectedCalendarEvent.bookingId}
+                    </p>
                   )}
-                  <div className="p-4 bg-[#D4AF37]/10 border-t border-[#D4AF37]/20 flex justify-between items-center">
-                    <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest">
-                      {selectedBookingForDetail.notes?.includes('OFFERED PRICE:') ? 'Offered Price (Counter-Offer)' : 'Total Estimated Budget'}
-                    </span>
-                    <span className="text-xl font-bold text-[#D4AF37]">${selectedBookingForDetail.amount.toLocaleString()}</span>
+                </div>
+                <button 
+                  onClick={() => setSelectedCalendarEvent(null)} 
+                  className="text-slate-400 hover:text-white p-2.5 bg-white/5 hover:bg-white/10 rounded-full transition-all duration-300"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              {/* Scrollable Body */}
+              <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
+                
+                {/* Logistics Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Start Date & Time */}
+                  <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 hover:border-white/10 transition-colors">
+                    <Clock className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Start Logistics</p>
+                      <p className="text-white font-bold text-sm leading-tight">{selectedCalendarEvent.start}</p>
+                    </div>
+                  </div>
+
+                  {/* End Date & Time */}
+                  <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 hover:border-white/10 transition-colors">
+                    <Clock className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">End Logistics</p>
+                      <p className="text-white font-bold text-sm leading-tight">{selectedCalendarEvent.end}</p>
+                    </div>
+                  </div>
+
+                  {/* Location */}
+                  <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 col-span-1 md:col-span-2 hover:border-white/10 transition-colors">
+                    <MapPin className="w-4 h-4 text-red-500/50 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Event Location</p>
+                      <p className="text-white font-bold text-sm leading-tight truncate">{selectedCalendarEvent.location || 'Not specified'}</p>
+                    </div>
+                    {selectedCalendarEvent.location && selectedCalendarEvent.location !== 'Venue address pending' && selectedCalendarEvent.location !== 'Not specified' && (
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(selectedCalendarEvent.location)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-black px-3.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border border-green-500/30 transition-all shrink-0 self-center"
+                      >
+                        Navigate
+                      </a>
+                    )}
                   </div>
                 </div>
-              </div>
 
-              {/* Client Notes */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 text-[#D4AF37]">
-                  <MessageSquare className="w-5 h-5" />
-                  <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">Message from Client</h3>
-                </div>
-                <div className="bg-black/40 p-6 rounded-2xl border border-white/5 italic text-slate-400 text-sm leading-relaxed">
-                  {selectedBookingForDetail.notes ? `"${selectedBookingForDetail.notes}"` : "No additional notes provided."}
-                </div>
-              </div>
-            </div>
+                {/* Event Context: Google Event Description */}
+                {selectedCalendarEvent.type === 'google' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-slate-400">
+                      <FileText className="w-4 h-4 text-blue-400" />
+                      <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">Calendar Description</h3>
+                    </div>
+                    <div className="bg-black/40 p-5 rounded-2xl border border-white/5 text-slate-300 text-xs leading-relaxed whitespace-pre-wrap">
+                      {selectedCalendarEvent.notes || 'No description provided for this Google event.'}
+                    </div>
+                  </div>
+                )}
 
-            {/* Actions */}
-            <div className="p-8 bg-black border-t border-white/10 flex flex-wrap gap-4">
-              {selectedBookingForDetail.status === 'pending' && (
-                <>
+                {/* Event Context: Simcha Booking Gig Details */}
+                {selectedCalendarEvent.type === 'simcha' && (
+                  <div className="space-y-6">
+                    {/* Client Info */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-[#D4AF37]">
+                        <User className="w-4 h-4" />
+                        <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">Client Information</h3>
+                      </div>
+                      <div className="bg-black/40 p-5 rounded-2xl border border-white/5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Client Name</p>
+                          <p className="text-white font-bold text-sm">{selectedCalendarEvent.clientName || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Contact Email</p>
+                          <p className="text-white font-bold text-sm truncate">{selectedCalendarEvent.contactEmail || 'N/A'}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Packages / Services */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-[#D4AF37]">
+                        <ClipboardList className="w-4 h-4" />
+                        <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">Requested Packages & Services</h3>
+                      </div>
+                      <div className="bg-black/40 rounded-2xl border border-white/5 overflow-hidden">
+                        {selectedCalendarEvent.selectedServices && selectedCalendarEvent.selectedServices.length > 0 ? (
+                          <div className="divide-y divide-white/5">
+                            {selectedCalendarEvent.selectedServices.map((s: SelectedService) => (
+                              <div key={s.id} className="p-4 flex justify-between items-center hover:bg-white/5 transition-colors">
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-bold text-slate-200">{s.name}</span>
+                                  <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Qty: {s.quantity} {s.unit ? `per ${s.unit}` : ''}</span>
+                                </div>
+                                <span className="text-xs font-black text-[#D4AF37]">${(s.price * s.quantity).toLocaleString()}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-5 text-center">
+                            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Base Starting Package Requested</p>
+                          </div>
+                        )}
+                        <div className="p-4 bg-[#D4AF37]/10 border-t border-[#D4AF37]/20 flex justify-between items-center">
+                          <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest">
+                            {selectedCalendarEvent.notes?.includes('OFFERED PRICE:') ? 'Offered Price (Counter-Offer)' : 'Total Gig Value'}
+                          </span>
+                          <span className="text-lg font-black text-[#D4AF37]">${(selectedCalendarEvent.amount || 0).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Message / Notes */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-[#D4AF37]">
+                        <MessageSquare className="w-4 h-4" />
+                        <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">Message from Client</h3>
+                      </div>
+                      <div className="bg-black/40 p-5 rounded-2xl border border-white/5 italic text-slate-300 text-xs leading-relaxed whitespace-pre-wrap">
+                        {selectedCalendarEvent.notes ? `"${selectedCalendarEvent.notes}"` : "No additional notes provided by client."}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Footer / Interactive Actions */}
+              <div className="p-6 bg-black border-t border-white/10 flex flex-wrap gap-3">
+                {selectedCalendarEvent.type === 'simcha' && selectedCalendarEvent.status === 'pending' ? (
+                  <>
+                    <button 
+                      onClick={() => { 
+                        onUpdateBookingStatus(selectedCalendarEvent.id, 'cancelled'); 
+                        setSelectedCalendarEvent(null); 
+                      }}
+                      className="flex-1 py-3.5 bg-red-600/10 hover:bg-red-600/20 text-red-500 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] border border-red-500/20 transition-all cursor-pointer"
+                    >
+                      Decline
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const amount = prompt("Enter counter-offer amount ($):", (selectedCalendarEvent.amount || 0).toString());
+                        if (amount && !isNaN(Number(amount))) {
+                          const newNotes = `OFFERED PRICE: $${amount}. ${selectedCalendarEvent.notes || ''}`;
+                          updateDoc(doc(db, 'bookings', selectedCalendarEvent.id), { 
+                            amount: Number(amount),
+                            notes: newNotes
+                          }).then(() => {
+                             showNotification("Counter-offer sent!");
+                             setSelectedCalendarEvent(null);
+                          });
+                        }
+                      }}
+                      className="flex-1 py-3.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-500 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] border border-blue-500/20 transition-all cursor-pointer"
+                    >
+                      Make Offer
+                    </button>
+                    <button 
+                      onClick={() => { 
+                        onUpdateBookingStatus(selectedCalendarEvent.id, 'confirmed'); 
+                        setSelectedCalendarEvent(null); 
+                      }}
+                      className="flex-[2] py-3.5 bg-[#D4AF37] hover:bg-[#E5C76B] text-black rounded-xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-[#D4AF37]/10 transition-all cursor-pointer"
+                    >
+                      Confirm & Accept
+                    </button>
+                  </>
+                ) : (
                   <button 
-                    onClick={() => { onUpdateBookingStatus(selectedBookingForDetail.id, 'cancelled'); setSelectedBookingForDetail(null); }}
-                    className="flex-1 py-4 bg-red-600/10 hover:bg-red-600/20 text-red-500 rounded-xl font-black text-[10px] uppercase tracking-[0.3em] border border-red-500/20 transition-all"
+                    onClick={() => setSelectedCalendarEvent(null)}
+                    className="w-full py-3.5 bg-white/5 hover:bg-white/10 text-slate-400 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] transition-all cursor-pointer"
                   >
-                    Decline
+                    Close Record
                   </button>
-                  <button 
-                    onClick={() => {
-                      const amount = prompt("Enter counter-offer amount ($):", selectedBookingForDetail.amount.toString());
-                      if (amount && !isNaN(Number(amount))) {
-                        const newNotes = `OFFERED PRICE: $${amount}. ${selectedBookingForDetail.notes || ''}`;
-                        updateDoc(doc(db, 'bookings', selectedBookingForDetail.id), { 
-                          amount: Number(amount),
-                          notes: newNotes
-                        }).then(() => {
-                           showNotification("Counter-offer sent!");
-                           setSelectedBookingForDetail(null);
-                        });
-                      }
-                    }}
-                    className="flex-1 py-4 bg-blue-600/10 hover:bg-blue-600/20 text-blue-500 rounded-xl font-black text-[10px] uppercase tracking-[0.3em] border border-blue-500/20 transition-all"
-                  >
-                    Make Offer
-                  </button>
-                  <button 
-                    onClick={() => { onUpdateBookingStatus(selectedBookingForDetail.id, 'confirmed'); setSelectedBookingForDetail(null); }}
-                    className="flex-[2] py-4 bg-[#D4AF37] hover:bg-[#E5C76B] text-black rounded-xl font-black text-[10px] uppercase tracking-[0.3em] shadow-xl shadow-[#D4AF37]/10 transition-all"
-                  >
-                    Confirm & Accept
-                  </button>
-                </>
-              )}
-              {selectedBookingForDetail.status !== 'pending' && (
-                <button 
-                  onClick={() => setSelectedBookingForDetail(null)}
-                  className="w-full py-4 bg-white/5 hover:bg-white/10 text-slate-400 rounded-xl font-black text-[10px] uppercase tracking-[0.3em] transition-all"
-                >
-                  Close Record
-                </button>
-              )}
-            </div>
+                )}
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* Mobile Toggle */}
       <div className="md:hidden bg-[#0a0a0a] border-b border-[#D4AF37]/10 p-4 flex justify-between items-center z-50">
@@ -2190,7 +2401,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                 </a>
                               )}
                               <button 
-                                onClick={() => setSelectedBookingForDetail(b)}
+                                onClick={() => handleSimchaBookingClick(b)}
                                 className="inline-flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all shadow-lg shadow-[#D4AF37]/0 hover:shadow-[#D4AF37]/20"
                               >
                                 <Eye className="w-3.5 h-3.5" /> Full Scope
