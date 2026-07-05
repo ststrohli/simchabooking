@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, ShoppingBag, Calendar, MessageSquare, LogOut, Trash2, 
   ChevronRight, MapPin, Clock, CreditCard, CheckCircle, Bell, X, Menu, Send,
@@ -316,6 +317,29 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     }
   }, [selectedThreadVendorId, activeTab, chatThreads]);
 
+  const [otherIsTyping, setOtherIsTyping] = useState(false);
+
+  useEffect(() => {
+    if (!selectedThreadVendorId || !user.id || activeTab !== 'chats') {
+      setOtherIsTyping(false);
+      return;
+    }
+    const activeConversationId = [user.id, selectedThreadVendorId].sort().join('_');
+    const unsub = onSnapshot(doc(db, 'conversations', activeConversationId), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const typing = data?.typing || {};
+        const otherTyping = typing[selectedThreadVendorId] || false;
+        setOtherIsTyping(otherTyping);
+      } else {
+        setOtherIsTyping(false);
+      }
+    }, (err) => {
+      console.warn("Error listening to conversation document:", err);
+    });
+    return () => unsub();
+  }, [selectedThreadVendorId, user.id, activeTab]);
+
   const subtotal = cart.reduce((sum, item) => sum + item.amount, 0);
 
   const NavItem = ({ id, icon: Icon, label, badge }: { id: typeof activeTab, icon: any, label: string, badge?: number }) => (
@@ -325,7 +349,20 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     >
       <Icon className="w-5 h-5" />
       <span className="text-xs font-black uppercase tracking-widest">{label}</span>
-      {!!badge && <span className="ml-auto bg-[#D4AF37] text-black text-[9px] font-black px-2 py-0.5 rounded-full">{badge}</span>}
+      <AnimatePresence mode="popLayout">
+        {!!badge && (
+          <motion.span
+            key={`badge-${id}-${badge}`}
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 500, damping: 25 }}
+            className="ml-auto bg-[#D4AF37] text-black text-[9px] font-black px-2 py-0.5 rounded-full"
+          >
+            {badge}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </button>
   );
 
@@ -659,20 +696,39 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                     <MessageSquare className="w-10 h-10 mx-auto mb-4" />
                     <p className="text-[10px] font-black uppercase tracking-widest">No Active Chats</p>
                   </div>
-                ) : chatThreads.map(([vendorId, data]) => (
-                  <button 
-                    key={vendorId}
-                    onClick={() => setSelectedThreadVendorId(vendorId)}
-                    className={`w-full p-6 text-left border-b border-white/5 transition-all hover:bg-white/5 ${selectedThreadVendorId === vendorId ? 'bg-[#D4AF37]/5 border-l-4 border-l-[#D4AF37]' : ''}`}
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="font-bold text-white text-sm truncate">{data.vendor.name}</span>
-                      <span className="text-[8px] text-slate-500">{new Date(data.lastMessage.timestamp).toLocaleDateString()}</span>
-                    </div>
-                    <p className="text-[10px] text-[#D4AF37] uppercase tracking-widest truncate mb-2">{data.vendor.category}</p>
-                    <p className="text-xs text-slate-400 line-clamp-1 italic">"{data.lastMessage.text}"</p>
-                  </button>
-                ))}
+                ) : chatThreads.map(([vendorId, data]) => {
+                  const unreadInThread = data.messages.filter(m => m.receiverId === user.id && !m.isRead).length;
+                  return (
+                    <button 
+                      key={vendorId}
+                      onClick={() => setSelectedThreadVendorId(vendorId)}
+                      className={`w-full p-6 text-left border-b border-white/5 transition-all hover:bg-white/5 ${selectedThreadVendorId === vendorId ? 'bg-[#D4AF37]/5 border-l-4 border-l-[#D4AF37]' : ''}`}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <div className="flex items-center gap-1.5 truncate max-w-[70%]">
+                          <span className="font-bold text-white text-sm truncate">{data.vendor.name}</span>
+                          <AnimatePresence mode="popLayout">
+                            {unreadInThread > 0 && (
+                              <motion.span
+                                key={`unread-client-${vendorId}-${unreadInThread}`}
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0, opacity: 0 }}
+                                transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                                className="bg-red-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0 animate-pulse"
+                              >
+                                {unreadInThread}
+                              </motion.span>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                        <span className="text-[8px] text-slate-500">{new Date(data.lastMessage.timestamp).toLocaleDateString()}</span>
+                      </div>
+                      <p className="text-[10px] text-[#D4AF37] uppercase tracking-widest truncate mb-2">{data.vendor.category}</p>
+                      <p className="text-xs text-slate-400 line-clamp-1 italic">"{data.lastMessage.text}"</p>
+                    </button>
+                  );
+                })}
              </div>
 
              {/* Chat Pane */}
@@ -693,7 +749,13 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                       {chatThreads.find(t => t[0] === selectedThreadVendorId)?.[1].messages.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map(m => {
                         const isSent = m.senderId === user.id;
                         return (
-                          <div key={m.id} className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}>
+                          <motion.div 
+                            key={m.id} 
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.25, ease: "easeOut" }}
+                            className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}
+                          >
                             <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative ${
                               isSent 
                                 ? 'bg-[#D4AF37] text-black shadow-md' 
@@ -738,9 +800,35 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                                  )}
                                </div>
                             </div>
-                          </div>
+                          </motion.div>
                         );
                       })}
+                      {otherIsTyping && (
+                        <div className="flex justify-start px-2 py-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                          <div className="bg-zinc-900 border border-[#D4AF37]/10 text-[#D4AF37] px-4 py-2.5 rounded-[20px] text-[11px] flex items-center gap-3 shadow-lg">
+                            <span className="font-semibold">
+                              {vendors.find(v => v.id === selectedThreadVendorId)?.name || 'Professional'} is typing
+                            </span>
+                            <div className="flex items-center gap-1 mt-0.5" aria-hidden="true">
+                              <motion.span
+                                animate={{ opacity: [0.3, 1, 0.3] }}
+                                transition={{ repeat: Infinity, duration: 1.2, delay: 0 }}
+                                className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
+                              />
+                              <motion.span
+                                animate={{ opacity: [0.3, 1, 0.3] }}
+                                transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }}
+                                className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
+                              />
+                              <motion.span
+                                animate={{ opacity: [0.3, 1, 0.3] }}
+                                transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }}
+                                className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div ref={messagesEndRef} />
                     </div>
                     

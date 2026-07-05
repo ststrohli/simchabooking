@@ -3,6 +3,96 @@ import { motion } from 'motion/react';
 import { X, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, AlertTriangle, Hash, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Vendor, SelectedService, VendorCategory } from '../types';
 
+const FloatingInput: React.FC<{
+  id: string;
+  label: string;
+  icon: any;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  required?: boolean;
+  type?: string;
+  className?: string;
+}> = ({ id, label, icon: Icon, value, onChange, required = false, type = "text", className = "" }) => {
+  const [focused, setFocused] = useState(false);
+  const isFilled = value !== '';
+
+  return (
+    <div className="relative w-full">
+      <div className="relative flex items-center">
+        {Icon && (
+          <Icon className={`absolute left-3.5 w-4 h-4 transition-all duration-300 z-10 ${focused ? 'text-[#D4AF37] scale-110' : 'text-[#D4AF37]/40'}`} />
+        )}
+        <input
+          id={id}
+          type={type}
+          required={required}
+          value={value}
+          onChange={onChange}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          className={`w-full bg-black/60 border border-[#D4AF37]/20 rounded-xl text-slate-100 placeholder-transparent focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all duration-300 pt-6 pb-2 pr-4 ${Icon ? 'pl-10' : 'pl-4'} ${className}`}
+          placeholder={label}
+        />
+        <label
+          htmlFor={id}
+          className={`absolute pointer-events-none transition-all duration-300 leading-none ${Icon ? 'left-10' : 'left-4'} 
+            ${(focused || isFilled) 
+              ? 'top-2 text-[9px] text-[#D4AF37] font-black uppercase tracking-widest' 
+              : 'top-4 text-xs text-slate-500 font-medium'
+            }`}
+        >
+          {label}
+        </label>
+      </div>
+    </div>
+  );
+};
+
+const FloatingTextarea: React.FC<{
+  id: string;
+  label: string;
+  icon: any;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  required?: boolean;
+  rows?: number;
+  className?: string;
+}> = ({ id, label, icon: Icon, value, onChange, required = false, rows = 3, className = "" }) => {
+  const [focused, setFocused] = useState(false);
+  const isFilled = value !== '';
+
+  return (
+    <div className="relative w-full">
+      <div className="relative flex items-start">
+        {Icon && (
+          <Icon className={`absolute left-3.5 top-4.5 w-4 h-4 transition-all duration-300 z-10 ${focused ? 'text-[#D4AF37] scale-110' : 'text-[#D4AF37]/40'}`} />
+        )}
+        <textarea
+          id={id}
+          required={required}
+          value={value}
+          onChange={onChange}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          rows={rows}
+          className={`w-full bg-black/60 border border-[#D4AF37]/20 rounded-xl text-slate-100 placeholder-transparent focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all duration-300 pt-6 pb-2 pr-4 resize-none ${Icon ? 'pl-10' : 'pl-4'} ${className}`}
+          placeholder={label}
+        />
+        <label
+          htmlFor={id}
+          className={`absolute pointer-events-none transition-all duration-300 leading-none ${Icon ? 'left-10' : 'left-4'} 
+            ${(focused || isFilled) 
+              ? 'top-2 text-[9px] text-[#D4AF37] font-black uppercase tracking-widest' 
+              : 'top-4 text-xs text-slate-500 font-medium'
+            }`}
+        >
+          {label}
+        </label>
+      </div>
+    </div>
+  );
+};
+
 interface BookingModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -326,7 +416,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (checkedDates[localDate] !== 'Available') return;
+    if (isPastDate(new Date(localDate))) return;
     
     const selectedServices = vendor.services
         ?.filter(s => selectedServiceIds.includes(s.id))
@@ -374,24 +464,15 @@ const BookingModal: React.FC<BookingModalProps> = ({
       const isSelected = dateStr === localDate;
       const isPast = isPastDate(dateObj);
       
-      // Stop pre-loading vendor's schedule:
-      // Real isBlocked (unavailable date status) is only shown IF they have already checked it this session!
-      // Otherwise, we do not show any red indicator or grayed-out layout for standard un-checked future dates.
-      const isKnownUnavailable = checkedDates[dateStr] === 'Unavailable';
-
-      // If the client has hit their max limit, we block them from checking NEW (unchecked) dates on the calendar.
-      const isUncheckedAndLimitReached = !checkedDates[dateStr] && privacyBlocked;
-
-      // Disable state is determined by past date, known unavailable date, or if it's unchecked when limit is reached.
-      const isDisabled = isPast || isKnownUnavailable || isUncheckedAndLimitReached;
+      // Crucially, the calendar must not display specific booked dates to protect vendor privacy.
+      // All future dates are displayed uniformly as selectable options, while past dates are unselectable.
+      const isDisabled = isPast;
 
       let buttonStyle = "";
       if (isSelected) {
         buttonStyle = "bg-[#D4AF37] text-black font-black shadow-[0_0_15px_rgba(212,175,55,0.45)] scale-105 border border-[#D4AF37]";
-      } else if (isPast || isKnownUnavailable) {
+      } else if (isPast) {
         buttonStyle = "text-slate-600 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95";
-      } else if (isUncheckedAndLimitReached) {
-        buttonStyle = "text-slate-600 bg-transparent opacity-20 cursor-not-allowed";
       } else {
         // Standard selectable future date has crisp white text, with elegant soft-gold hover/active states.
         buttonStyle = "text-slate-100 bg-black/40 border border-white/5 hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 hover:scale-105 hover:shadow-[0_0_12px_rgba(212,175,55,0.25)] active:scale-95";
@@ -409,12 +490,6 @@ const BookingModal: React.FC<BookingModalProps> = ({
           {!isSelected && !isDisabled && (
             <span className="w-1 h-1 rounded-full bg-[#D4AF37] opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 animate-pulse" />
           )}
-          {isKnownUnavailable && (
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 mt-0.5" title="Previously Verified Unavailable" />
-          )}
-          {checkedDates[dateStr] === 'Available' && !isSelected && (
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 mt-0.5" title="Verified Available" />
-          )}
         </button>
       );
     }
@@ -422,15 +497,15 @@ const BookingModal: React.FC<BookingModalProps> = ({
     const weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
     return (
-      <div className="bg-[#050505] border border-[#D4AF37]/20 rounded-2xl p-4 shadow-xl select-none relative overflow-hidden w-full">
+      <div className="bg-[#050505]/95 border border-[#D4AF37]/25 rounded-2xl p-4 shadow-2xl select-none relative overflow-hidden w-full backdrop-blur-xl">
         <div className="absolute inset-0 border border-white/5 pointer-events-none rounded-2xl" />
         
         {/* Header with Navigation */}
-        <div className="flex items-center justify-between mb-4 border-b border-[#D4AF37]/10 pb-3">
+        <div className="flex items-center justify-between mb-4 border-b border-[#D4AF37]/15 pb-3">
           <button
             type="button"
             onClick={prevMonth}
-            className="p-1.5 rounded-lg border border-[#D4AF37]/10 hover:border-[#D4AF37]/40 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37]"
+            className="p-1.5 rounded-lg border border-[#D4AF37]/10 hover:border-[#D4AF37]/40 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] cursor-pointer"
             aria-label="Previous Month"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -443,7 +518,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
           <button
             type="button"
             onClick={nextMonth}
-            className="p-1.5 rounded-lg border border-[#D4AF37]/10 hover:border-[#D4AF37]/40 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37]"
+            className="p-1.5 rounded-lg border border-[#D4AF37]/10 hover:border-[#D4AF37]/40 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] cursor-pointer"
             aria-label="Next Month"
           >
             <ChevronRight className="w-4 h-4" />
@@ -453,7 +528,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
         {/* Weekdays */}
         <div className="grid grid-cols-7 gap-1 text-center mb-1">
           {weekdays.map((wd, idx) => (
-            <div key={`wd-${idx}`} className="text-[10px] text-slate-500 font-bold uppercase tracking-widest py-1">
+            <div key={`wd-${idx}`} className="text-[10px] text-[#D4AF37]/70 font-black uppercase tracking-widest py-1">
               {wd}
             </div>
           ))}
@@ -462,6 +537,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
         {/* Days */}
         <div className="grid grid-cols-7 gap-1.5">
           {days}
+        </div>
+
+        {/* Privacy Lock Notice */}
+        <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center gap-2 justify-center text-[9px] text-slate-500 font-bold uppercase tracking-wider text-center">
+          <span className="text-[#D4AF37]">🔒 Master Calendar Privacy Mode Active</span>
         </div>
       </div>
     );
@@ -493,14 +573,14 @@ const BookingModal: React.FC<BookingModalProps> = ({
             <h2 id="modal-title" className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">{initialDetails ? 'Update Your Selection' : 'Reserve Service'}</h2>
             <p className="text-slate-500 text-xs mt-1">Vendor: <span className="text-slate-100 font-bold">{vendor.name}</span></p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-[#D4AF37] p-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full" aria-label="Close booking modal"><X className="w-6 h-6" /></button>
+          <button onClick={onClose} className="text-slate-400 hover:text-[#D4AF37] p-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full transition-colors cursor-pointer" aria-label="Close booking modal"><X className="w-6 h-6" /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div className="space-y-3">
             {/* Blinking/pulsing gold warning */}
-            <p className="text-[11px] font-bold text-[#D4AF37] animate-pulse leading-relaxed tracking-wide mb-2 text-center" style={{ textShadow: "0 0 10px rgba(212,175,55,0.4)" }}>
-              Note: For vendor privacy, you may only check availability for {vendor.maxDateChecks ?? 5} dates every {vendor.dateCheckResetHours ?? 24} hours.
+            <p className="text-[11px] font-black text-[#D4AF37]/90 animate-pulse leading-relaxed tracking-widest uppercase text-center" style={{ textShadow: "0 0 10px rgba(212,175,55,0.4)" }}>
+              ✦ Concierge Elite Availability Protocol ✦
             </p>
 
             <label className={labelClass}>Event Date</label>
@@ -524,70 +604,14 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 {renderInteractiveCalendar()}
               </div>
             )}
-
-            {/* List of checked dates this session */}
-            {Object.keys(checkedDates).length > 0 && (
-              <div className="bg-black/50 border border-[#D4AF37]/15 rounded-xl p-3 space-y-2 mt-2">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-[10px] uppercase font-black tracking-widest text-[#D4AF37]/60">session checked dates</span>
-                  <span className="text-[9px] text-[#D4AF37] font-mono px-1.5 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/15">
-                    Checks used: {vendor.maxDateChecks ?? 5 - getRemainingAttempts()} / {vendor.maxDateChecks ?? 5}
-                  </span>
-                </div>
-                <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
-                  {Object.entries(checkedDates).map(([date, status]) => {
-                    const isSelected = date === localDate;
-                    return (
-                      <div 
-                        key={date}
-                        onClick={() => handleSelectCheckedDate(date)}
-                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border text-xs 
-                          ${isSelected 
-                            ? 'bg-[#D4AF37]/20 border-[#D4AF37] text-white font-bold' 
-                            : 'bg-[#050505] border-white/5 hover:border-[#D4AF37]/40 text-slate-300'
-                          }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Calendar className={`w-3.5 h-3.5 ${isSelected ? 'text-[#D4AF37]' : 'text-slate-500'}`} />
-                          <span className="font-mono">{date}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] uppercase font-black tracking-wider
-                            ${status === 'Available' 
-                              ? 'bg-green-500/10 text-green-400 border border-green-500/20' 
-                              : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                            }`}
-                          >
-                            {status}
-                          </span>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-[#D4AF37]" />}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
 
-          <div className={`border rounded-lg p-4 flex items-center gap-4 transition-colors 
-            ${checkedDates[localDate] === 'Unavailable' 
-              ? 'bg-red-500/10 border-red-500/30 text-red-500' 
-              : checkedDates[localDate] === 'Available'
-                ? 'bg-[#D4AF37]/10 border-[#D4AF37]/20 text-[#D4AF37]'
-                : 'bg-slate-955 border-white/5 text-slate-400'
-            }`} 
-            role="alert"
-          >
-            {checkedDates[localDate] === 'Unavailable' ? <AlertTriangle className="w-6 h-6 flex-shrink-0" aria-hidden="true" /> : <Calendar className="w-6 h-6 flex-shrink-0" aria-hidden="true" />}
+          <div className="border border-[#D4AF37]/30 bg-[#D4AF37]/5 rounded-xl p-4 flex items-center gap-4 transition-all duration-300" role="alert">
+            <Calendar className="w-5 h-5 text-[#D4AF37] flex-shrink-0 animate-pulse" aria-hidden="true" />
             <div>
-              <p className="text-xs font-black uppercase tracking-widest">Availability Status</p>
-              <p className="text-sm font-bold">
-                {checkedDates[localDate] === 'Unavailable' 
-                  ? 'Selected date is Booked/Unavailable.' 
-                  : checkedDates[localDate] === 'Available'
-                    ? 'Selected date is AVAILABLE — Add to Plan'
-                    : 'Please select and verify availability.'}
+              <p className="text-xs font-black uppercase tracking-widest text-[#D4AF37]" style={{ textShadow: "0 0 6px rgba(212,175,55,0.3)" }}>Priority Custom Hold Request</p>
+              <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+                Your proposed date <span className="text-white font-bold">{getReadableLocalDate()}</span> will be cross-checked with the vendor's private registry. If approved, your hold is guaranteed immediately.
               </p>
             </div>
           </div>
@@ -636,52 +660,64 @@ const BookingModal: React.FC<BookingModalProps> = ({
           )}
 
           <div className="space-y-4">
-            <div>
-              <label htmlFor="event-name" className={labelClass}>Event Name</label>
-              <div className="relative">
-                <PartyPopper className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" aria-hidden="true" />
-                <input id="event-name" required type="text" placeholder="Sarah's Wedding" className={inputClass} value={formData.eventName} onChange={(e) => setFormData({...formData, eventName: e.target.value})} />
-              </div>
-            </div>
+            <FloatingInput 
+              id="event-name" 
+              required 
+              label="Event Name" 
+              icon={PartyPopper} 
+              value={formData.eventName} 
+              onChange={(e) => setFormData({...formData, eventName: e.target.value})} 
+            />
+            
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="event-time" className={labelClass}>Time</label>
-                <div className="relative">
-                  <Clock className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" aria-hidden="true" />
-                  <input id="event-time" required type="time" className={inputClass + " [color-scheme:dark]"} value={formData.eventTime} onChange={(e) => setFormData({...formData, eventTime: e.target.value})} />
-                </div>
-              </div>
-              <div>
-                <label htmlFor="client-name" className={labelClass}>Your Name</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" aria-hidden="true" />
-                  <input id="client-name" required type="text" placeholder="Full Name" className={inputClass} value={formData.clientName} onChange={(e) => setFormData({...formData, clientName: e.target.value})} />
-                </div>
-              </div>
+              <FloatingInput 
+                id="event-time" 
+                required 
+                label="Time" 
+                type="time" 
+                icon={Clock} 
+                className="[color-scheme:dark]" 
+                value={formData.eventTime} 
+                onChange={(e) => setFormData({...formData, eventTime: e.target.value})} 
+              />
+              <FloatingInput 
+                id="client-name" 
+                required 
+                label="Your Name" 
+                icon={User} 
+                value={formData.clientName} 
+                onChange={(e) => setFormData({...formData, clientName: e.target.value})} 
+              />
             </div>
+
             {!isVenue && (
-              <div>
-                <label htmlFor="event-location" className={labelClass}>Location</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" aria-hidden="true" />
-                  <input id="event-location" required type="text" placeholder="Address or Venue" className={inputClass} value={formData.eventLocation} onChange={(e) => setFormData({...formData, eventLocation: e.target.value})} />
-                </div>
-              </div>
+              <FloatingInput 
+                id="event-location" 
+                required 
+                label="Location" 
+                icon={MapPin} 
+                value={formData.eventLocation} 
+                onChange={(e) => setFormData({...formData, eventLocation: e.target.value})} 
+              />
             )}
-            <div>
-              <label htmlFor="client-email" className={labelClass}>Email Address</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" aria-hidden="true" />
-                <input id="client-email" required type="email" placeholder="email@example.com" className={inputClass} value={formData.contactEmail} onChange={(e) => setFormData({...formData, contactEmail: e.target.value})} />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="booking-notes" className={labelClass}>Special Requests</label>
-              <div className="relative">
-                <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" aria-hidden="true" />
-                <textarea id="booking-notes" rows={3} placeholder="Special requests..." className={inputClass + " resize-none"} value={formData.notes} onChange={(e) => setFormData({...formData, notes: e.target.value})} />
-              </div>
-            </div>
+
+            <FloatingInput 
+              id="client-email" 
+              required 
+              label="Email Address" 
+              type="email" 
+              icon={Mail} 
+              value={formData.contactEmail} 
+              onChange={(e) => setFormData({...formData, contactEmail: e.target.value})} 
+            />
+
+            <FloatingTextarea 
+              id="booking-notes" 
+              label="Special Requests / Custom Notes" 
+              icon={MessageSquare} 
+              value={formData.notes} 
+              onChange={(e) => setFormData({...formData, notes: e.target.value})} 
+            />
           </div>
 
           <div className="flex flex-col gap-3 pt-4 border-t border-[#D4AF37]/20">
@@ -710,7 +746,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                     <button 
                         type="button" 
                         onClick={() => { setIsOfferMode(true); setOfferedPrice(totalAmount.toString()); }}
-                        className="text-[10px] font-black text-[#D4AF37] border border-[#D4AF37]/30 px-3 py-1.5 rounded-full hover:bg-[#D4AF37]/10 transition-all uppercase tracking-widest"
+                        className="text-[10px] font-black text-[#D4AF37] border border-[#D4AF37]/30 px-3 py-1.5 rounded-full hover:bg-[#D4AF37]/10 transition-all uppercase tracking-widest cursor-pointer"
                     >
                         Make an Offer
                     </button>
@@ -719,7 +755,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                     <button 
                         type="button" 
                         onClick={() => setIsOfferMode(false)}
-                        className="text-[10px] font-black text-slate-500 hover:text-white transition-all uppercase tracking-widest"
+                        className="text-[10px] font-black text-slate-500 hover:text-white transition-all uppercase tracking-widest cursor-pointer"
                     >
                         Standard Price
                     </button>
@@ -728,14 +764,14 @@ const BookingModal: React.FC<BookingModalProps> = ({
              {isOfferMode && <p className="text-[10px] text-slate-500 leading-relaxed italic">Propose your desired price to the vendor. They will review and respond to your inquiry.</p>}
           </div>
 
-          <div className="flex gap-4">
-            <button type="button" onClick={onClose} className="flex-1 py-3 font-bold text-slate-500 hover:text-[#D4AF37] outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] rounded-lg">Cancel</button>
+          <div className="flex gap-4 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 py-3 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-[#D4AF37] outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] rounded-xl transition-all cursor-pointer">Cancel</button>
             <button 
                 type="submit" 
-                disabled={checkedDates[localDate] !== 'Available' || (isOfferMode && (!offeredPrice || parseInt(offeredPrice) <= 0))} 
-                className={`flex-1 py-3 rounded-xl font-bold transition-all shadow-lg border outline-none focus-visible:ring-2 focus-visible:ring-white ${checkedDates[localDate] !== 'Available' || (isOfferMode && !offeredPrice) ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20'}`}
+                disabled={isPastDate(new Date(localDate)) || (isOfferMode && (!offeredPrice || parseInt(offeredPrice) <= 0))} 
+                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg border outline-none focus-visible:ring-2 focus-visible:ring-white ${isPastDate(new Date(localDate)) || (isOfferMode && !offeredPrice) ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20 hover:scale-105 active:scale-95 cursor-pointer'}`}
             >
-                {checkedDates[localDate] !== 'Available' ? 'Verify Availability' : (isOfferMode ? 'Send Offer' : 'Add to Plan')}
+                {isOfferMode ? 'Send Offer' : 'Add to Plan'}
             </button>
           </div>
         </form>

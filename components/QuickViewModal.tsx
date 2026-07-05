@@ -41,14 +41,14 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
+      transition={{ duration: 0.3 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
     >
       <motion.div 
-        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+        initial={{ opacity: 0, y: 40, scale: 0.92 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 30, scale: 0.95 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+        exit={{ opacity: 0, y: 40, scale: 0.92 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 220 }}
         className="bg-[#111] w-full max-w-4xl rounded-3xl border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative"
       >
         <button 
@@ -166,18 +166,22 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
             </div>
 
             <div className="mt-10 grid grid-cols-2 gap-4">
-              <button 
+              <motion.button 
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
                 onClick={() => onMessage(vendor)}
-                className="flex items-center justify-center gap-2 border border-[#D4AF37]/30 text-[#D4AF37] font-black py-4 rounded-2xl hover:bg-[#D4AF37]/10 transition-all uppercase tracking-widest text-[10px]"
+                className="flex items-center justify-center gap-2 border border-[#D4AF37]/30 text-[#D4AF37] font-black py-4 rounded-2xl hover:bg-[#D4AF37]/10 transition-all uppercase tracking-widest text-[10px] cursor-pointer"
               >
                 <MessageCircle className="w-4 h-4" /> Message
-              </button>
-              <button 
+              </motion.button>
+              <motion.button 
+                whileHover={{ scale: 1.03, boxShadow: "0 10px 20px rgba(212,175,55,0.25)" }}
+                whileTap={{ scale: 0.97 }}
                 onClick={() => onBook(vendor)}
-                className="bg-[#D4AF37] text-black font-black py-4 rounded-2xl hover:bg-[#E5C76B] transition-all uppercase tracking-widest text-[10px] shadow-lg shadow-[#D4AF37]/20"
+                className="bg-[#D4AF37] text-black font-black py-4 rounded-2xl hover:bg-[#E5C76B] transition-all uppercase tracking-widest text-[10px] shadow-lg shadow-[#D4AF37]/20 cursor-pointer"
               >
                 Reserve Now
-              </button>
+              </motion.button>
             </div>
           </div>
         </div>

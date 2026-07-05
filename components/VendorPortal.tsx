@@ -3,13 +3,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, CalendarDays, Settings, LogOut, DollarSign, Users, User, TrendingUp, CheckCircle, XCircle, Clock, Save, Trash2, 
   ImageIcon, Menu, X, Plus, Tag, CreditCard, ArrowRight, Video, Film, ShieldCheck, MapPin, Eye, Upload, Mail, AlertTriangle, 
-  ChevronLeft, ChevronRight, RefreshCw, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, Volume2, Camera, FileText, Download, Search
+  ChevronLeft, ChevronRight, ChevronDown, RefreshCw, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, Volume2, Camera, FileText, Download, Search
 } from 'lucide-react';
 import { Vendor, Booking, Message, SelectedService, VendorService } from '../types';
 import { db, storage, auth } from '../services/firebase';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { markChatAsRead } from '../services/messagingService';
-import { doc, updateDoc, writeBatch } from 'firebase/firestore';
+import { doc, updateDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
@@ -38,7 +38,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     end: string;
     location?: string;
     notes?: string;
-    badge: 'Google Calendar Event' | 'Simcha Booking Gig';
+    badge: 'Google Calendar Event' | 'Simcha Booking/event';
     clientName?: string;
     contactEmail?: string;
     amount?: number;
@@ -46,6 +46,132 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     status?: string;
     bookingId?: string;
   } | null>(null);
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [openDrawerSections, setOpenDrawerSections] = useState<Record<string, boolean>>({
+    logistics: true,
+    client: true,
+    services: true,
+    notes: true
+  });
+
+  const toggleDrawerSection = (section: string) => {
+    setOpenDrawerSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  useEffect(() => {
+    setIsLoading(true);
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [activeTab]);
+
+  // Premium Shimmer Skeleton Card
+  const ShimmerCard = () => (
+    <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 relative overflow-hidden">
+      <div className="w-12 h-12 rounded-2xl bg-white/5 animate-pulse" />
+      <div className="space-y-2">
+        <div className="h-3 w-1/3 bg-white/5 rounded animate-pulse" />
+        <div className="h-8 w-2/3 bg-white/5 rounded animate-pulse" />
+      </div>
+      <motion.div 
+        className="absolute inset-0 bg-gradient-to-r from-transparent via-[#D4AF37]/5 to-transparent"
+        initial={{ x: '-100%' }}
+        animate={{ x: '100%' }}
+        transition={{ repeat: Infinity, duration: 1.6, ease: "linear" }}
+      />
+    </div>
+  );
+
+  // Premium Shimmer Skeleton Analytics Chart
+  const ShimmerChart = () => (
+    <div className="bg-[#111] p-6 md:p-8 rounded-3xl border border-white/5 shadow-2xl space-y-6 relative overflow-hidden">
+      <div className="space-y-2">
+        <div className="h-4 w-1/4 bg-white/5 rounded animate-pulse" />
+        <div className="h-3 w-1/3 bg-white/5 rounded animate-pulse" />
+      </div>
+      <div className="w-full h-[250px] md:h-[400px] bg-white/5 rounded-2xl animate-pulse flex items-end justify-between p-4">
+        {[0.3, 0.5, 0.4, 0.7, 0.8, 0.6].map((h, i) => (
+          <div key={i} className="bg-white/5 w-12 rounded-t-lg transition-all" style={{ height: `${h * 100}%` }} />
+        ))}
+      </div>
+      <motion.div 
+        className="absolute inset-0 bg-gradient-to-r from-transparent via-[#D4AF37]/5 to-transparent"
+        initial={{ x: '-100%' }}
+        animate={{ x: '100%' }}
+        transition={{ repeat: Infinity, duration: 1.6, ease: "linear" }}
+      />
+    </div>
+  );
+
+  // Premium Shimmer Skeleton Gigs Table
+  const ShimmerTable = () => (
+    <div className="bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden relative">
+      <div className="p-6 border-b border-white/5 bg-black/20 flex justify-between items-center">
+        <div className="h-4 w-40 bg-white/5 rounded animate-pulse" />
+        <div className="h-8 w-24 bg-white/5 rounded animate-pulse" />
+      </div>
+      <div className="p-6 space-y-4">
+        {[1, 2, 3].map((n) => (
+          <div key={n} className="flex justify-between items-center py-3 border-b border-white/5">
+            <div className="space-y-2 flex-1">
+              <div className="h-4 w-1/4 bg-white/5 rounded animate-pulse" />
+              <div className="h-3 w-1/3 bg-white/5 rounded animate-pulse" />
+            </div>
+            <div className="h-6 w-20 bg-white/5 rounded-full animate-pulse mr-4" />
+            <div className="h-10 w-28 bg-white/5 rounded-xl animate-pulse" />
+          </div>
+        ))}
+      </div>
+      <motion.div 
+        className="absolute inset-0 bg-gradient-to-r from-transparent via-[#D4AF37]/5 to-transparent"
+        initial={{ x: '-100%' }}
+        animate={{ x: '100%' }}
+        transition={{ repeat: Infinity, duration: 1.6, ease: "linear" }}
+      />
+    </div>
+  );
+
+  // Accordion Header & Physics wrapper component
+  const AccordionSection = ({ title, icon: Icon, isOpen, onToggle, children }: { title: string; icon: any; isOpen: boolean; onToggle: () => void; children: React.ReactNode }) => (
+    <div className="border border-white/5 rounded-2xl overflow-hidden bg-black/20">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full p-4 flex items-center justify-between text-left hover:bg-white/5 transition-colors cursor-pointer"
+      >
+        <div className="flex items-center gap-2.5 text-[#D4AF37]">
+          <Icon className="w-4 h-4" />
+          <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">{title}</h3>
+        </div>
+        <motion.span
+          animate={{ rotate: isOpen ? 180 : 0 }}
+          transition={{ type: "spring", stiffness: 200, damping: 15 }}
+          className="text-slate-500"
+        >
+          <ChevronDown className="w-4.5 h-4.5" />
+        </motion.span>
+      </button>
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 180, damping: 20 }}
+          >
+            <div className="p-5 pt-0 border-t border-white/5 space-y-4">
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 
   // Search & Filters for Bookings List
   const [searchQuery, setSearchQuery] = useState('');
@@ -322,7 +448,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             },
             body: JSON.stringify({
               summary: `Simcha Booking: ${gig.eventName}`,
-              description: `Simcha Booking Gig Detail\nClient: ${gig.clientName}\nBooking ID: ${gig.id}\nLocation: ${gig.eventLocation || 'Not specified'}\nNotes: ${gig.notes || ''}`,
+              description: `Simcha Booking Detail\nClient: ${gig.clientName}\nBooking ID: ${gig.id}\nLocation: ${gig.eventLocation || 'Not specified'}\nNotes: ${gig.notes || ''}`,
               start: startVal,
               end: endVal
             })
@@ -411,7 +537,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       
       let successMsg = `Two-way sync complete! Imported ${activeEvents.length} events from Google.`;
       if (pushedCount > 0) {
-        successMsg += ` Exported ${pushedCount} gigs to Google Calendar.`;
+        successMsg += ` Exported ${pushedCount} bookings/events to Google Calendar.`;
       }
       if (newDatesCount > 0) {
         successMsg += ` Blocked ${newDatesCount} new dates.`;
@@ -593,6 +719,51 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     }
   }, [selectedThreadEmail, activeTab, messageThreads, vendor.id]);
 
+  const [otherIsTyping, setOtherIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!selectedThreadEmail || !vendor.id || activeTab !== 'messages') {
+      setOtherIsTyping(false);
+      return;
+    }
+    const thread = messageThreads.find(t => t[0] === selectedThreadEmail);
+    const clientUid = thread?.[1].messages.find(m => m.senderId !== vendor.id)?.senderId;
+    if (!clientUid) {
+      setOtherIsTyping(false);
+      return;
+    }
+    const activeConversationId = [vendor.id, clientUid].sort().join('_');
+    const unsub = onSnapshot(doc(db, 'conversations', activeConversationId), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const typing = data?.typing || {};
+        const otherTyping = typing[clientUid] || false;
+        setOtherIsTyping(otherTyping);
+      } else {
+        setOtherIsTyping(false);
+      }
+    }, (err) => {
+      console.warn("Error listening to conversation document:", err);
+    });
+    return () => unsub();
+  }, [selectedThreadEmail, vendor.id, messageThreads, activeTab]);
+
+  const handleVendorTypingStatus = async (isTyping: boolean) => {
+    if (!selectedThreadEmail || !vendor.id) return;
+    const thread = messageThreads.find(t => t[0] === selectedThreadEmail);
+    const clientUid = thread?.[1].messages.find(m => m.senderId !== vendor.id)?.senderId;
+    if (!clientUid) return;
+    const activeConversationId = [vendor.id, clientUid].sort().join('_');
+    try {
+      await updateDoc(doc(db, 'conversations', activeConversationId), {
+        [`typing.${vendor.id}`]: isTyping
+      });
+    } catch (err) {
+      console.warn("Error updating vendor typing status:", err);
+    }
+  };
+
   const totalRevenue = bookings.filter(b => b.status === 'confirmed' && b.paymentStatus === 'paid').reduce((sum, b) => sum + b.amount, 0);
   const pendingRequests = bookings.filter(b => b.status === 'pending').length;
 
@@ -603,7 +774,20 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     >
       <Icon className="w-5 h-5" />
       <span className="text-xs font-black uppercase tracking-widest">{label}</span>
-      {!!badge && <span className="ml-auto bg-red-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full">{badge}</span>}
+      <AnimatePresence mode="popLayout">
+        {!!badge && (
+          <motion.span
+            key={`badge-${id}-${badge}`}
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 500, damping: 25 }}
+            className="ml-auto bg-red-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full"
+          >
+            {badge}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </button>
   );
 
@@ -781,12 +965,12 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     setSelectedCalendarEvent({
       type: 'simcha',
       id: b.id,
-      title: b.eventName || 'Simcha Booking Gig',
+      title: b.eventName || 'Simcha Booking/event',
       start: startFormatted,
       end: endFormatted,
       location: b.eventLocation || 'Venue address pending',
       notes: b.notes || 'No additional notes.',
-      badge: 'Simcha Booking Gig',
+      badge: 'Simcha Booking/event',
       clientName: b.clientName,
       contactEmail: b.contactEmail,
       amount: b.amount,
@@ -971,6 +1155,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     if (thread) {
         onReplyMessage(selectedThreadEmail, thread[1].name, replyText);
         setReplyText('');
+        handleVendorTypingStatus(false);
     }
   };
 
@@ -1690,7 +1875,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                   <div className="flex items-center gap-2.5">
                     {selectedCalendarEvent.type === 'simcha' ? (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Simcha Booking Gig
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Simcha Booking/event
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-blue-500/15 text-blue-400 border border-blue-500/30">
@@ -1716,71 +1901,80 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               </div>
               
               {/* Scrollable Body */}
-              <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
+              <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-4">
                 
-                {/* Logistics Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Start Date & Time */}
-                  <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 hover:border-white/10 transition-colors">
-                    <Clock className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Start Logistics</p>
-                      <p className="text-white font-bold text-sm leading-tight">{selectedCalendarEvent.start}</p>
+                {/* Logistics Accordion */}
+                <AccordionSection
+                  title="Logistics & Scheduling"
+                  icon={Clock}
+                  isOpen={openDrawerSections.logistics}
+                  onToggle={() => toggleDrawerSection('logistics')}
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                    {/* Start Date & Time */}
+                    <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 hover:border-white/10 transition-colors">
+                      <Clock className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Start Logistics</p>
+                        <p className="text-white font-bold text-sm leading-tight">{selectedCalendarEvent.start}</p>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* End Date & Time */}
-                  <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 hover:border-white/10 transition-colors">
-                    <Clock className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">End Logistics</p>
-                      <p className="text-white font-bold text-sm leading-tight">{selectedCalendarEvent.end}</p>
+                    {/* End Date & Time */}
+                    <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 hover:border-white/10 transition-colors">
+                      <Clock className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">End Logistics</p>
+                        <p className="text-white font-bold text-sm leading-tight">{selectedCalendarEvent.end}</p>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Location */}
-                  <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 col-span-1 md:col-span-2 hover:border-white/10 transition-colors">
-                    <MapPin className="w-4 h-4 text-red-500/50 shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Event Location</p>
-                      <p className="text-white font-bold text-sm leading-tight truncate">{selectedCalendarEvent.location || 'Not specified'}</p>
+                    {/* Location */}
+                    <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 col-span-1 md:col-span-2 hover:border-white/10 transition-colors">
+                      <MapPin className="w-4 h-4 text-red-500/50 shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Event Location</p>
+                        <p className="text-white font-bold text-sm leading-tight truncate">{selectedCalendarEvent.location || 'Not specified'}</p>
+                      </div>
+                      {selectedCalendarEvent.location && selectedCalendarEvent.location !== 'Venue address pending' && selectedCalendarEvent.location !== 'Not specified' && (
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(selectedCalendarEvent.location)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-black px-3.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border border-green-500/30 transition-all shrink-0 self-center cursor-pointer"
+                        >
+                          Navigate
+                        </a>
+                      )}
                     </div>
-                    {selectedCalendarEvent.location && selectedCalendarEvent.location !== 'Venue address pending' && selectedCalendarEvent.location !== 'Not specified' && (
-                      <a
-                        href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(selectedCalendarEvent.location)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-black px-3.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border border-green-500/30 transition-all shrink-0 self-center"
-                      >
-                        Navigate
-                      </a>
-                    )}
                   </div>
-                </div>
+                </AccordionSection>
 
                 {/* Event Context: Google Event Description */}
                 {selectedCalendarEvent.type === 'google' && (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-slate-400">
-                      <FileText className="w-4 h-4 text-blue-400" />
-                      <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">Calendar Description</h3>
-                    </div>
-                    <div className="bg-black/40 p-5 rounded-2xl border border-white/5 text-slate-300 text-xs leading-relaxed whitespace-pre-wrap">
+                  <AccordionSection
+                    title="Calendar Description"
+                    icon={FileText}
+                    isOpen={openDrawerSections.notes}
+                    onToggle={() => toggleDrawerSection('notes')}
+                  >
+                    <div className="bg-black/40 p-5 rounded-2xl border border-white/5 text-slate-300 text-xs leading-relaxed whitespace-pre-wrap mt-2">
                       {selectedCalendarEvent.notes || 'No description provided for this Google event.'}
                     </div>
-                  </div>
+                  </AccordionSection>
                 )}
 
-                {/* Event Context: Simcha Booking Gig Details */}
+                {/* Event Context: Simcha Booking/event Details */}
                 {selectedCalendarEvent.type === 'simcha' && (
-                  <div className="space-y-6">
+                  <>
                     {/* Client Info */}
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-[#D4AF37]">
-                        <User className="w-4 h-4" />
-                        <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">Client Information</h3>
-                      </div>
-                      <div className="bg-black/40 p-5 rounded-2xl border border-white/5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <AccordionSection
+                      title="Client Information"
+                      icon={User}
+                      isOpen={openDrawerSections.client}
+                      onToggle={() => toggleDrawerSection('client')}
+                    >
+                      <div className="bg-black/40 p-5 rounded-2xl border border-white/5 grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                         <div>
                           <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Client Name</p>
                           <p className="text-white font-bold text-sm">{selectedCalendarEvent.clientName || 'N/A'}</p>
@@ -1790,15 +1984,16 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           <p className="text-white font-bold text-sm truncate">{selectedCalendarEvent.contactEmail || 'N/A'}</p>
                         </div>
                       </div>
-                    </div>
+                    </AccordionSection>
 
                     {/* Packages / Services */}
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-[#D4AF37]">
-                        <ClipboardList className="w-4 h-4" />
-                        <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">Requested Packages & Services</h3>
-                      </div>
-                      <div className="bg-black/40 rounded-2xl border border-white/5 overflow-hidden">
+                    <AccordionSection
+                      title="Requested Packages & Services"
+                      icon={ClipboardList}
+                      isOpen={openDrawerSections.services}
+                      onToggle={() => toggleDrawerSection('services')}
+                    >
+                      <div className="bg-black/40 rounded-2xl border border-white/5 overflow-hidden mt-2">
                         {selectedCalendarEvent.selectedServices && selectedCalendarEvent.selectedServices.length > 0 ? (
                           <div className="divide-y divide-white/5">
                             {selectedCalendarEvent.selectedServices.map((s: SelectedService) => (
@@ -1818,24 +2013,25 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         )}
                         <div className="p-4 bg-[#D4AF37]/10 border-t border-[#D4AF37]/20 flex justify-between items-center">
                           <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest">
-                            {selectedCalendarEvent.notes?.includes('OFFERED PRICE:') ? 'Offered Price (Counter-Offer)' : 'Total Gig Value'}
+                            {selectedCalendarEvent.notes?.includes('OFFERED PRICE:') ? 'Offered Price (Counter-Offer)' : 'Total Booking/event Value'}
                           </span>
                           <span className="text-lg font-black text-[#D4AF37]">${(selectedCalendarEvent.amount || 0).toLocaleString()}</span>
                         </div>
                       </div>
-                    </div>
+                    </AccordionSection>
 
                     {/* Message / Notes */}
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-[#D4AF37]">
-                        <MessageSquare className="w-4 h-4" />
-                        <h3 className="font-black text-[10px] uppercase tracking-[0.2em]">Message from Client</h3>
-                      </div>
-                      <div className="bg-black/40 p-5 rounded-2xl border border-white/5 italic text-slate-300 text-xs leading-relaxed whitespace-pre-wrap">
+                    <AccordionSection
+                      title="Message from Client"
+                      icon={MessageSquare}
+                      isOpen={openDrawerSections.notes}
+                      onToggle={() => toggleDrawerSection('notes')}
+                    >
+                      <div className="bg-black/40 p-5 rounded-2xl border border-white/5 italic text-slate-300 text-xs leading-relaxed whitespace-pre-wrap mt-2">
                         {selectedCalendarEvent.notes ? `"${selectedCalendarEvent.notes}"` : "No additional notes provided by client."}
                       </div>
-                    </div>
-                  </div>
+                    </AccordionSection>
+                  </>
                 )}
               </div>
               
@@ -1843,7 +2039,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               <div className="p-6 bg-black border-t border-white/10 flex flex-wrap gap-3">
                 {selectedCalendarEvent.type === 'simcha' && selectedCalendarEvent.status === 'pending' ? (
                   <>
-                    <button 
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
                       onClick={() => { 
                         onUpdateBookingStatus(selectedCalendarEvent.id, 'cancelled'); 
                         setSelectedCalendarEvent(null); 
@@ -1851,8 +2049,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       className="flex-1 py-3.5 bg-red-600/10 hover:bg-red-600/20 text-red-500 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] border border-red-500/20 transition-all cursor-pointer"
                     >
                       Decline
-                    </button>
-                    <button 
+                    </motion.button>
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
                       onClick={() => {
                         const amount = prompt("Enter counter-offer amount ($):", (selectedCalendarEvent.amount || 0).toString());
                         if (amount && !isNaN(Number(amount))) {
@@ -1869,24 +2069,41 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       className="flex-1 py-3.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-500 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] border border-blue-500/20 transition-all cursor-pointer"
                     >
                       Make Offer
-                    </button>
-                    <button 
+                    </motion.button>
+                    <motion.button 
+                      whileHover={{ scale: 1.02, backgroundColor: '#E5C76B' }}
+                      whileTap={{ scale: 0.98 }}
                       onClick={() => { 
                         onUpdateBookingStatus(selectedCalendarEvent.id, 'confirmed'); 
                         setSelectedCalendarEvent(null); 
                       }}
-                      className="flex-[2] py-3.5 bg-[#D4AF37] hover:bg-[#E5C76B] text-black rounded-xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-[#D4AF37]/10 transition-all cursor-pointer"
+                      className="relative overflow-hidden flex-[2] py-3.5 bg-[#D4AF37] text-black rounded-xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-[#D4AF37]/10 transition-all cursor-pointer"
                     >
-                      Confirm & Accept
-                    </button>
+                      {/* Signature Shine Sweep Element */}
+                      <motion.div 
+                        initial={{ left: '-100%' }}
+                        animate={{ left: '150%' }}
+                        transition={{ 
+                          repeat: Infinity, 
+                          repeatType: "loop", 
+                          duration: 2.2, 
+                          ease: "linear",
+                          repeatDelay: 1.5 
+                        }}
+                        className="absolute top-0 bottom-0 w-12 bg-gradient-to-r from-transparent via-white/80 to-transparent -skew-x-12 pointer-events-none"
+                      />
+                      <span className="relative z-10">Confirm & Accept</span>
+                    </motion.button>
                   </>
                 ) : (
-                  <button 
+                  <motion.button 
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
                     onClick={() => setSelectedCalendarEvent(null)}
                     className="w-full py-3.5 bg-white/5 hover:bg-white/10 text-slate-400 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] transition-all cursor-pointer"
                   >
                     Close Record
-                  </button>
+                  </motion.button>
                 )}
               </div>
             </motion.div>
@@ -1981,439 +2198,532 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
         <div className="p-4 md:p-10 max-w-7xl mx-auto space-y-8">
           {activeTab === 'overview' && (
-            <div className="space-y-8 animate-in fade-in duration-500">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-4 md:gap-6">
-                <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-[#D4AF37]/20 transition-all">
-                  <div className="bg-[#D4AF37]/10 p-3 w-fit rounded-2xl group-hover:bg-[#D4AF37]/20 transition-colors"><DollarSign className="w-6 h-6 text-[#D4AF37]" /></div>
-                  <div><p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">Earnings</p><h3 className="text-3xl font-bold text-white">${totalRevenue.toLocaleString()}</h3></div>
-                </div>
-                <div 
-                  onClick={() => setActiveTab('bookings')}
-                  className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-red-600/20 transition-all cursor-pointer"
+            <div className="space-y-8">
+              {isLoading ? (
+                <>
+                  {/* Skeletons */}
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-4 md:gap-6 animate-in fade-in duration-350">
+                    <ShimmerCard />
+                    <ShimmerCard />
+                    <ShimmerCard />
+                    <ShimmerCard />
+                  </div>
+                  <ShimmerChart />
+                  <ShimmerTable />
+                </>
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  className="space-y-8"
                 >
-                  <div className={`p-3 w-fit rounded-2xl transition-colors ${pendingRequests > 0 ? 'bg-red-600/10 group-hover:bg-red-600/20' : 'bg-[#D4AF37]/10'}`}>
-                    <Users className={`w-6 h-6 ${pendingRequests > 0 ? 'text-red-500' : 'text-[#D4AF37]'}`} />
-                  </div>
-                  <div>
-                    <p className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Action Required</p>
-                    <h3 className={`text-3xl font-bold ${pendingRequests > 0 ? 'text-red-500' : 'text-white'}`}>{pendingRequests} Requests</h3>
-                  </div>
-                </div>
-                <div 
-                  onClick={() => setActiveTab('messages')}
-                  className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-[#D4AF37]/25 transition-all cursor-pointer"
-                >
-                  <div className={`p-3 w-fit rounded-2xl transition-colors ${messages.filter(m => m.receiverId === vendor.id && !m.isRead).length > 0 ? 'bg-red-500/10 group-hover:bg-red-500/20' : 'bg-[#D4AF37]/10'}`}>
-                    <MessageSquare className={`w-6 h-6 ${messages.filter(m => m.receiverId === vendor.id && !m.isRead).length > 0 ? 'text-red-500' : 'text-[#D4AF37]'}`} />
-                  </div>
-                  <div>
-                    <p className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Client Inquiries</p>
-                    <h3 className="text-3xl font-bold text-white font-mono">
-                      {messages.filter(m => m.receiverId === vendor.id && !m.isRead).length || 0} Unread
-                    </h3>
-                  </div>
-                </div>
-                <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4">
-                  <div className="bg-[#D4AF37]/10 p-3 w-fit rounded-2xl"><TrendingUp className="w-6 h-6 text-[#D4AF37]" /></div>
-                  <div><p className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Active Presence</p><h3 className="text-3xl font-bold text-white">Live Catalog</h3></div>
-                </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-4 md:gap-6">
+                    <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-[#D4AF37]/20 transition-all">
+                      <div className="bg-[#D4AF37]/10 p-3 w-fit rounded-2xl group-hover:bg-[#D4AF37]/20 transition-colors"><DollarSign className="w-6 h-6 text-[#D4AF37]" /></div>
+                      <div><p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">Earnings</p><h3 className="text-3xl font-bold text-white">${totalRevenue.toLocaleString()}</h3></div>
+                    </div>
+                    <div 
+                      onClick={() => setActiveTab('bookings')}
+                      className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-red-600/20 transition-all cursor-pointer"
+                    >
+                      <div className={`p-3 w-fit rounded-2xl transition-colors ${pendingRequests > 0 ? 'bg-red-600/10 group-hover:bg-red-600/20' : 'bg-[#D4AF37]/10'}`}>
+                        <Users className={`w-6 h-6 ${pendingRequests > 0 ? 'text-red-500' : 'text-[#D4AF37]'}`} />
+                      </div>
+                      <div>
+                        <p className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Action Required</p>
+                        <h3 className={`text-3xl font-bold ${pendingRequests > 0 ? 'text-red-500' : 'text-white'}`}>{pendingRequests} Requests</h3>
+                      </div>
+                    </div>
+                    <div 
+                      onClick={() => setActiveTab('messages')}
+                      className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-[#D4AF37]/25 transition-all cursor-pointer"
+                    >
+                      <div className={`p-3 w-fit rounded-2xl transition-colors ${messages.filter(m => m.receiverId === vendor.id && !m.isRead).length > 0 ? 'bg-red-500/10 group-hover:bg-red-500/20' : 'bg-[#D4AF37]/10'}`}>
+                        <MessageSquare className={`w-6 h-6 ${messages.filter(m => m.receiverId === vendor.id && !m.isRead).length > 0 ? 'text-red-500' : 'text-[#D4AF37]'}`} />
+                      </div>
+                      <div>
+                        <p className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Client Inquiries</p>
+                        <h3 className="text-3xl font-bold text-white font-mono">
+                          {messages.filter(m => m.receiverId === vendor.id && !m.isRead).length || 0} Unread
+                        </h3>
+                      </div>
+                    </div>
+                    <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4">
+                      <div className="bg-[#D4AF37]/10 p-3 w-fit rounded-2xl"><TrendingUp className="w-6 h-6 text-[#D4AF37]" /></div>
+                      <div><p className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Active Presence</p><h3 className="text-3xl font-bold text-white">Live Catalog</h3></div>
+                    </div>
 
-                {/* Stripe Connect Card */}
-                <div className={`relative bg-[#111] p-6 rounded-3xl border shadow-2xl space-y-4 transition-all ${vendor.stripeAccountId ? 'border-green-500/20' : 'border-[#D4AF37]/20'}`}>
-                  {isOnboarding && (
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-3xl flex flex-col items-center justify-center z-10 animate-in fade-in duration-300">
-                      <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin mb-3" />
-                      <p className="text-[10px] font-black uppercase tracking-widest text-white">Connecting Stripe...</p>
-                      <p className="text-[9px] text-slate-400 mt-1">Please wait while we verify your account</p>
-                    </div>
-                  )}
-                  
-                  <div className={`p-3 w-fit rounded-2xl ${vendor.stripeAccountId ? 'bg-green-500/10' : 'bg-[#D4AF37]/10'}`}>
-                    <CreditCard className={`w-6 h-6 ${vendor.stripeAccountId ? 'text-green-500' : 'text-[#D4AF37]'}`} />
-                  </div>
-                  <div className="flex justify-between items-end">
-                    <div>
-                      <p className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Stripe Payments</p>
-                      <h3 className="text-xl font-bold text-white">
-                        {vendor.stripeConnected === true ? 'Connected' : (vendor.stripeAccountId ? 'Pending / Incomplete' : 'Not Connected')}
-                      </h3>
-                    </div>
-                      <div className="flex flex-col items-end gap-2">
-                        {!vendor.stripeConnected ? (
-                          <button 
-                            onClick={handleStripeConnect}
-                            disabled={isOnboarding}
-                            className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#E5C76B] transition-all"
-                          >
-                            {isOnboarding ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-                            Connect Stripe
-                          </button>
-                        ) : (
+                    {/* Stripe Connect Card */}
+                    <div className={`relative bg-[#111] p-6 rounded-3xl border shadow-2xl space-y-4 transition-all ${vendor.stripeAccountId ? 'border-green-500/20' : 'border-[#D4AF37]/20'}`}>
+                      {isOnboarding && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-3xl flex flex-col items-center justify-center z-10 animate-in fade-in duration-300">
+                          <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin mb-3" />
+                          <p className="text-[10px] font-black uppercase tracking-widest text-white">Connecting Stripe...</p>
+                          <p className="text-[9px] text-slate-400 mt-1">Please wait while we verify your account</p>
+                        </div>
+                      )}
+                      
+                      <div className={`p-3 w-fit rounded-2xl ${vendor.stripeAccountId ? 'bg-green-500/10' : 'bg-[#D4AF37]/10'}`}>
+                        <CreditCard className={`w-6 h-6 ${vendor.stripeAccountId ? 'text-green-500' : 'text-[#D4AF37]'}`} />
+                      </div>
+                      <div className="flex justify-between items-end">
+                        <div>
+                          <p className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Stripe Payments</p>
+                          <h3 className="text-xl font-bold text-white">
+                            {vendor.stripeConnected === true ? 'Connected' : (vendor.stripeAccountId ? 'Pending / Incomplete' : 'Not Connected')}
+                          </h3>
+                        </div>
                           <div className="flex flex-col items-end gap-2">
-                            <button 
-                              onClick={handleVerifyStripeConnection}
-                              disabled={isOnboarding}
-                              className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-green-500 hover:text-green-400 transition-colors"
-                            >
-                              {isOnboarding ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                              Refresh Connection Status
-                            </button>
-                            <button 
-                              onClick={handleStripeDashboard}
-                              disabled={isOnboarding}
-                              className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-colors"
-                            >
-                              {isOnboarding ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
-                              Dashboard
+                            {!vendor.stripeConnected ? (
+                              <button 
+                                onClick={handleStripeConnect}
+                                disabled={isOnboarding}
+                                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#E5C76B] transition-all cursor-pointer"
+                              >
+                                {isOnboarding ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                                Connect Stripe
+                              </button>
+                            ) : (
+                              <div className="flex flex-col items-end gap-2">
+                                <button 
+                                  onClick={handleVerifyStripeConnection}
+                                  disabled={isOnboarding}
+                                  className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-green-500 hover:text-green-400 transition-colors cursor-pointer"
+                                >
+                                  {isOnboarding ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                                  Refresh Connection Status
+                                </button>
+                                <button 
+                                  onClick={handleStripeDashboard}
+                                  disabled={isOnboarding}
+                                  className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-colors cursor-pointer"
+                                >
+                                  {isOnboarding ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
+                                  Dashboard
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                      </div>
+                      <p className="text-[9px] text-slate-500 italic">
+                        {vendor.stripeAccountId 
+                          ? "Your account is linked. You can receive direct payments from clients."
+                          : "Connect your bank account to receive split payments automatically."}
+                      </p>
+
+                      {stripeMessage && (
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                          <div className="flex items-start gap-3">
+                            <Info className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Stripe Update</p>
+                              <p className="text-[10px] text-emerald-400 leading-relaxed font-bold">{stripeMessage}</p>
+                            </div>
+                            <button onClick={() => setStripeMessage(null)}>
+                              <X className="w-3 h-3 text-emerald-500/50 hover:text-emerald-500" />
                             </button>
                           </div>
-                        )}
-                      </div>
-                  </div>
-                  <p className="text-[9px] text-slate-500 italic">
-                    {vendor.stripeAccountId 
-                      ? "Your account is linked. You can receive direct payments from clients."
-                      : "Connect your bank account to receive split payments automatically."}
-                  </p>
+                        </div>
+                      )}
 
-                  {stripeMessage && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <div className="flex items-start gap-3">
-                        <Info className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Stripe Update</p>
-                          <p className="text-[10px] text-emerald-400 leading-relaxed font-bold">{stripeMessage}</p>
-                        </div>
-                        <button onClick={() => setStripeMessage(null)}>
-                          <X className="w-3 h-3 text-emerald-500/50 hover:text-emerald-500" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {onboardingError && (
-                    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <div className="flex items-start gap-3">
-                        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">Connection Error</p>
-                          <p className="text-[10px] text-red-400 leading-relaxed font-bold">{onboardingError}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="pt-3 border-t border-red-500/10 space-y-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-px flex-1 bg-red-500/20"></div>
-                          <p className="text-[9px] text-red-500/60 uppercase tracking-widest font-black">Action Required</p>
-                          <div className="h-px flex-1 bg-red-500/20"></div>
-                        </div>
-                        
-                        <div className="bg-black/20 rounded-xl p-3 space-y-2 border border-red-500/10">
-                          <div className="flex justify-between items-center mb-1">
-                            <p className="text-[10px] text-slate-300 leading-relaxed">
-                              Your key is currently <span className="text-red-500 font-bold">truncated</span>.
-                            </p>
-                            <div className="px-1.5 py-0.5 rounded bg-red-500/20 border border-red-500/30">
-                              <p className="text-[8px] font-mono text-red-400">Length: 28/107</p>
+                      {onboardingError && (
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                          <div className="flex items-start gap-3">
+                            <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">Connection Error</p>
+                              <p className="text-[10px] text-red-400 leading-relaxed font-bold">{onboardingError}</p>
                             </div>
                           </div>
                           
-                          <div className="p-2 bg-black/40 rounded border border-white/5 font-mono text-[9px] text-slate-400 break-all">
-                            Current: <span className="text-red-400">sk_test_...99iz</span>
-                          </div>
-
-                          <ol className="text-[10px] text-slate-300 space-y-2 list-decimal ml-4 leading-relaxed pt-1">
-                            <li>Go to <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noreferrer" className="text-[#D4AF37] font-bold underline hover:text-white transition-colors">Stripe API Keys</a></li>
-                            <li>Click <strong className="text-white">"Reveal test key"</strong></li>
-                            <li><strong className="text-white">Click the key itself</strong> to copy the full 107-character string</li>
-                            <li>Open <strong className="text-white">Settings (⚙️) &gt; Secrets</strong> (top-right of this screen)</li>
-                            <li>Delete <code>STRIPE_SECRET_KEY</code> and paste the <strong className="text-white">full key</strong></li>
-                            <li>Press <strong className="text-white">Enter</strong> to save and try again</li>
-                          </ol>
-
-                          <div className="pt-3 border-t border-white/5 space-y-2">
-                            <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Emergency Key Update</p>
-                            <p className="text-[9px] text-slate-500 leading-relaxed">If you can't find the Secrets menu, paste the full key here to update it directly in the database:</p>
-                            <div className="flex gap-2">
-                              <input 
-                                type="password"
-                                value={manualStripeKey}
-                                onChange={(e) => setManualStripeKey(e.target.value)}
-                                placeholder="sk_test_..."
-                                className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] text-white font-mono focus:outline-none focus:border-[#D4AF37]/50"
-                              />
-                              <button 
-                                onClick={handleManualKeyUpdate}
-                                disabled={isUpdatingKey}
-                                className="px-3 py-1.5 bg-[#D4AF37] text-black text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-white transition-colors disabled:opacity-50"
-                              >
-                                {isUpdatingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : "Update"}
-                              </button>
+                          <div className="pt-3 border-t border-red-500/10 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <div className="h-px flex-1 bg-red-500/20"></div>
+                              <p className="text-[9px] text-red-500/60 uppercase tracking-widest font-black">Action Required</p>
+                              <div className="h-px flex-1 bg-red-500/20"></div>
                             </div>
-                            {keyUpdateSuccess && (
-                              <p className="text-[9px] text-emerald-500 font-bold flex items-center gap-1">
-                                <Check className="w-3 h-3" /> Key updated successfully!
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                            
+                            <div className="bg-black/20 rounded-xl p-3 space-y-2 border border-red-500/10">
+                              <div className="flex justify-between items-center mb-1">
+                                <p className="text-[10px] text-slate-300 leading-relaxed">
+                                  Your key is currently <span className="text-red-500 font-bold">truncated</span>.
+                                </p>
+                                <div className="px-1.5 py-0.5 rounded bg-red-500/20 border border-red-500/30">
+                                  <p className="text-[8px] font-mono text-red-400">Length: 28/107</p>
+                                </div>
+                              </div>
+                              
+                              <div className="p-2 bg-black/40 rounded border border-white/5 font-mono text-[9px] text-slate-400 break-all">
+                                Current: <span className="text-red-400">sk_test_...99iz</span>
+                              </div>
 
-                      <button 
-                        onClick={() => setOnboardingError(null)}
-                        className="w-full py-2 text-[8px] font-black uppercase tracking-widest text-red-500/60 hover:text-red-500 transition-colors border border-red-500/10 rounded-lg hover:bg-red-500/5"
+                              <ol className="text-[10px] text-slate-300 space-y-2 list-decimal ml-4 leading-relaxed pt-1">
+                                <li>Go to <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noreferrer" className="text-[#D4AF37] font-bold underline hover:text-white transition-colors">Stripe API Keys</a></li>
+                                <li>Click <strong className="text-white">"Reveal test key"</strong></li>
+                                <li><strong className="text-white">Click the key itself</strong> to copy the full 107-character string</li>
+                                <li>Open <strong className="text-white">Settings (⚙️) &gt; Secrets</strong> (top-right of this screen)</li>
+                                <li>Delete <code>STRIPE_SECRET_KEY</code> and paste the <strong className="text-white">full key</strong></li>
+                                <li>Press <strong className="text-white">Enter</strong> to save and try again</li>
+                              </ol>
+
+                              <div className="pt-3 border-t border-white/5 space-y-2">
+                                <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Emergency Key Update</p>
+                                <p className="text-[9px] text-slate-500 leading-relaxed">If you can't find the Secrets menu, paste the full key here to update it directly in the database:</p>
+                                <div className="flex gap-2">
+                                  <input 
+                                    type="password"
+                                    value={manualStripeKey}
+                                    onChange={(e) => setManualStripeKey(e.target.value)}
+                                    placeholder="sk_test_..."
+                                    className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] text-white font-mono focus:outline-none focus:border-[#D4AF37]/50"
+                                  />
+                                  <button 
+                                    type="button"
+                                    onClick={handleManualKeyUpdate}
+                                    disabled={isUpdatingKey}
+                                    className="px-3 py-1.5 bg-[#D4AF37] text-black text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-white transition-colors disabled:opacity-50"
+                                  >
+                                    {isUpdatingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : "Update"}
+                                  </button>
+                                </div>
+                                {keyUpdateSuccess && (
+                                  <p className="text-[9px] text-emerald-500 font-bold flex items-center gap-1">
+                                    <Check className="w-3 h-3" /> Key updated successfully!
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <button 
+                            type="button"
+                            onClick={() => setOnboardingError(null)}
+                            className="w-full py-2 text-[8px] font-black uppercase tracking-widest text-red-500/60 hover:text-red-500 transition-colors border border-red-500/10 rounded-lg hover:bg-red-500/5"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Performance Analytics Chart Component */}
+                  <div className="bg-[#111] p-6 md:p-8 rounded-3xl border border-white/5 shadow-2xl space-y-6">
+                    <div>
+                      <h4 className="text-base font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-wider">Performance Analytics</h4>
+                      <p className="text-xs text-slate-500">Monthly scale of gross revenue and client acquisition values.</p>
+                    </div>
+
+                    <div 
+                      ref={chartContainerRef}
+                      className="w-full h-[250px] md:h-[400px] relative bg-black/20 rounded-2xl p-2 border border-white/5"
+                    >
+                      <svg 
+                        width="100%" 
+                        height="100%" 
+                        viewBox={`0 0 ${chartSize.width} ${chartSize.height}`}
+                        className="w-full h-full select-none"
                       >
-                        Dismiss
+                        <defs>
+                          <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#D4AF37" stopOpacity="0.35" />
+                            <stop offset="100%" stopColor="#D4AF37" stopOpacity="0.0" />
+                          </linearGradient>
+                        </defs>
+                        
+                        {/* Grid Background Lines */}
+                        {Array.from({ length: 5 }).map((_, index) => {
+                          const ratio = index / 4;
+                          const isIntermediate = index === 1 || index === 3;
+                          const yVal = chartPoints.padding.top + ratio * chartPoints.chartH;
+                          
+                          return (
+                            <g key={index} className={isIntermediate ? "hidden md:block" : ""}>
+                              <line 
+                                x1={chartPoints.padding.left} 
+                                y1={yVal} 
+                                x2={chartPoints.padding.left + chartPoints.chartW} 
+                                y2={yVal} 
+                                style={{ stroke: 'rgba(255,255,255,0.03)', strokeWidth: 1 }} 
+                              />
+                              <text 
+                                x={chartPoints.padding.left - 12} 
+                                y={yVal + 4} 
+                                className="fill-slate-600 text-[9px] font-mono text-right"
+                                textAnchor="end"
+                              >
+                                ${Math.round(chartPoints.maxRevenue * (1 - ratio)).toLocaleString()}
+                              </text>
+                            </g>
+                          );
+                        })}
+
+                        {/* Area fill */}
+                        {chartPoints.areaPath && (
+                          <path d={chartPoints.areaPath} fill="url(#chartGrad)" className="transition-all duration-500" />
+                        )}
+
+                        {/* Line stroke */}
+                        {chartPoints.linePath && (
+                          <path d={chartPoints.linePath} fill="none" stroke="#D4AF37" strokeWidth={2.5} className="transition-all duration-500" />
+                        )}
+
+                        {/* SVG Data Coordinates Dots */}
+                        {chartPoints.points.map((p, idx) => (
+                          <g key={idx} className="group/dot">
+                            <circle 
+                              cx={p.x} 
+                              cy={p.y} 
+                              r={4.5} 
+                              className="fill-[#D4AF37] stroke-black stroke-2 hover:scale-150 cursor-pointer transition-all duration-300" 
+                            />
+                            <text
+                              x={p.x}
+                              y={p.y - 12}
+                              className="fill-[#D4AF37] font-bold font-mono text-[9px] text-center hidden md:group-hover/dot:block"
+                              textAnchor="middle"
+                            >
+                              ${p.data.revenue.toLocaleString()}
+                            </text>
+                          </g>
+                        ))}
+
+                        {/* Custom Tick Density Reduction on Mobile for X-Axis */}
+                        {chartPoints.points.map((p, idx) => {
+                          const isOdd = idx % 2 !== 0;
+                          return (
+                            <text
+                              key={idx}
+                              x={p.x}
+                              y={chartSize.height - 10}
+                              className={`fill-slate-500 text-[10px] font-black uppercase tracking-wider ${isOdd ? "hidden md:block" : ""}`}
+                              textAnchor="middle"
+                            >
+                              {p.data.name}
+                            </text>
+                          );
+                        })}
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* Upcoming Booking/events Widget on Dashboard */}
+                  <div className="bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden">
+                    <div className="p-6 border-b border-white/5 bg-black/20 flex justify-between items-center">
+                      <h4 className="text-sm font-bold text-[#D4AF37] font-[Cinzel] uppercase tracking-widest">Upcoming Booking/events</h4>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('bookings')}
+                        className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#E5C76B] transition-colors cursor-pointer"
+                      >
+                        View All Booking/events
                       </button>
                     </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Performance Analytics Chart Component */}
-              <div className="bg-[#111] p-6 md:p-8 rounded-3xl border border-white/5 shadow-2xl space-y-6">
-                <div>
-                  <h4 className="text-base font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-wider">Performance Analytics</h4>
-                  <p className="text-xs text-slate-500">Monthly scale of gross revenue and client acquisition values.</p>
-                </div>
-
-                <div 
-                  ref={chartContainerRef}
-                  className="w-full h-[250px] md:h-[400px] relative bg-black/20 rounded-2xl p-2 border border-white/5"
-                >
-                  <svg 
-                    width="100%" 
-                    height="100%" 
-                    viewBox={`0 0 ${chartSize.width} ${chartSize.height}`}
-                    className="w-full h-full select-none"
-                  >
-                    <defs>
-                      <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#D4AF37" stopOpacity="0.35" />
-                        <stop offset="100%" stopColor="#D4AF37" stopOpacity="0.0" />
-                      </linearGradient>
-                    </defs>
-                    
-                    {/* Grid Background Lines */}
-                    {Array.from({ length: 5 }).map((_, index) => {
-                      const ratio = index / 4;
-                      const isIntermediate = index === 1 || index === 3;
-                      const yVal = chartPoints.padding.top + ratio * chartPoints.chartH;
-                      
-                      return (
-                        <g key={index} className={isIntermediate ? "hidden md:block" : ""}>
-                          <line 
-                            x1={chartPoints.padding.left} 
-                            y1={yVal} 
-                            x2={chartPoints.padding.left + chartPoints.chartW} 
-                            y2={yVal} 
-                            style={{ stroke: 'rgba(255,255,255,0.03)', strokeWidth: 1 }} 
-                          />
-                          <text 
-                            x={chartPoints.padding.left - 12} 
-                            y={yVal + 4} 
-                            className="fill-slate-600 text-[9px] font-mono text-right"
-                            textAnchor="end"
-                          >
-                            ${Math.round(chartPoints.maxRevenue * (1 - ratio)).toLocaleString()}
-                          </text>
-                        </g>
-                      );
-                    })}
-
-                    {/* Area fill */}
-                    {chartPoints.areaPath && (
-                      <path d={chartPoints.areaPath} fill="url(#chartGrad)" className="transition-all duration-500" />
-                    )}
-
-                    {/* Line stroke */}
-                    {chartPoints.linePath && (
-                      <path d={chartPoints.linePath} fill="none" stroke="#D4AF37" strokeWidth={2.5} className="transition-all duration-500" />
-                    )}
-
-                    {/* SVG Data Coordinates Dots */}
-                    {chartPoints.points.map((p, idx) => (
-                      <g key={idx} className="group/dot">
-                        <circle 
-                          cx={p.x} 
-                          cy={p.y} 
-                          r={4.5} 
-                          className="fill-[#D4AF37] stroke-black stroke-2 hover:scale-150 cursor-pointer transition-all duration-300" 
-                        />
-                        <text
-                          x={p.x}
-                          y={p.y - 12}
-                          className="fill-[#D4AF37] font-bold font-mono text-[9px] text-center hidden md:group-hover/dot:block"
-                          textAnchor="middle"
-                        >
-                          ${p.data.revenue.toLocaleString()}
-                        </text>
-                      </g>
-                    ))}
-
-                    {/* Custom Tick Density Reduction on Mobile for X-Axis */}
-                    {chartPoints.points.map((p, idx) => {
-                      const isOdd = idx % 2 !== 0;
-                      return (
-                        <text
-                          key={idx}
-                          x={p.x}
-                          y={chartSize.height - 10}
-                          className={`fill-slate-500 text-[10px] font-black uppercase tracking-wider ${isOdd ? "hidden md:block" : ""}`}
-                          textAnchor="middle"
-                        >
-                          {p.data.name}
-                        </text>
-                      );
-                    })}
-                  </svg>
-                </div>
-              </div>
+                    <div className="p-6 divide-y divide-white/5">
+                      {bookings.slice(0, 3).length === 0 ? (
+                        <div className="py-12 text-center opacity-30">
+                          <Calendar className="w-8 h-8 mx-auto mb-2 text-[#D4AF37]" />
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">No upcoming booking/events scheduled</p>
+                        </div>
+                      ) : (
+                        bookings.slice(0, 3).map((b) => (
+                          <div key={b.id} className="flex flex-col sm:flex-row justify-between sm:items-center py-4 gap-4 group hover:bg-white/[0.01] px-4 -mx-4 rounded-xl transition-all">
+                            <div className="space-y-1">
+                              <p className="font-bold text-white group-hover:text-[#D4AF37] transition-colors">{b.clientName}</p>
+                              <div className="flex flex-wrap items-center gap-3">
+                                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-1">
+                                  <Calendar className="w-3 h-3 text-[#D4AF37]" /> {b.date}
+                                </span>
+                                {b.eventTime && (
+                                  <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-[#D4AF37]" /> {b.eventTime}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between sm:justify-end gap-4">
+                              <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-wider border ${
+                                b.status === 'confirmed' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
+                                b.status === 'pending' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/30' :
+                                'bg-red-500/10 text-red-500 border-red-500/20'
+                              }`}>
+                                {b.status}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleSimchaBookingClick(b)}
+                                className="bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-4 py-2 rounded-xl transition-all border border-[#D4AF37]/20 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 cursor-pointer"
+                              >
+                                <Eye className="w-3 h-3" /> Spec Sheet
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
             </div>
           )}
 
           {activeTab === 'bookings' && (
-            <div className="space-y-6 animate-in fade-in duration-500">
-              {/* Streamlined Mobile Controls Section */}
-              <div className="bg-[#111] p-5 rounded-3xl border border-white/5 shadow-xl flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
-                <div>
-                  <h4 className="text-xs font-black text-[#D4AF37] uppercase tracking-widest">Filter Bookings</h4>
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">Refine by client, status, or service date</p>
+            <div className="space-y-6">
+              {isLoading ? (
+                <div className="animate-in fade-in duration-350">
+                  <ShimmerTable />
                 </div>
-                <div className="flex flex-col md:flex-row md:space-x-4 space-y-3 md:space-y-0 w-full md:w-auto">
-                  {/* Search Bar */}
-                  <div className="relative flex-1 md:w-64">
-                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                      <Search className="h-4 w-4 text-slate-500" />
-                    </span>
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search name, event..."
-                      className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
-                    />
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  className="space-y-6"
+                >
+                  {/* Streamlined Mobile Controls Section */}
+                  <div className="bg-[#111] p-5 rounded-3xl border border-white/5 shadow-xl flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-black text-[#D4AF37] uppercase tracking-widest">Filter Bookings</h4>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">Refine by client, status, or service date</p>
+                    </div>
+                    <div className="flex flex-col md:flex-row md:space-x-4 space-y-3 md:space-y-0 w-full md:w-auto">
+                      {/* Search Bar */}
+                      <div className="relative flex-1 md:w-64">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                          <Search className="h-4 w-4 text-slate-500" />
+                        </span>
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Search name, event..."
+                          className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
+                        />
+                      </div>
+                      
+                      {/* Status Filter */}
+                      <div className="relative">
+                        <select
+                          value={statusFilter}
+                          onChange={(e: any) => setStatusFilter(e.target.value)}
+                          className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-[#D4AF37] appearance-none"
+                        >
+                          <option value="all">All Statuses</option>
+                          <option value="pending">Pending</option>
+                          <option value="confirmed">Confirmed</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      </div>
+                      
+                      {/* Date Picker */}
+                      <div className="relative">
+                        <input
+                          type="date"
+                          value={dateFilter}
+                          onChange={(e) => setDateFilter(e.target.value)}
+                          className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
+                        />
+                        {dateFilter && (
+                          <button 
+                            onClick={() => setDateFilter('')}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs px-1"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  
-                  {/* Status Filter */}
-                  <div className="relative">
-                    <select
-                      value={statusFilter}
-                      onChange={(e: any) => setStatusFilter(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-[#D4AF37] appearance-none"
-                    >
-                      <option value="all">All Statuses</option>
-                      <option value="pending">Pending</option>
-                      <option value="confirmed">Confirmed</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                  </div>
-                  
-                  {/* Date Picker */}
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={dateFilter}
-                      onChange={(e) => setDateFilter(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
-                    />
-                    {dateFilter && (
-                      <button 
-                        onClick={() => setDateFilter('')}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs px-1"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
 
-              {/* Bookings Table Block */}
-              <div className="bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden">
-                <div className="p-6 border-b border-white/5 bg-black/20 flex justify-between items-center">
-                  <h3 className="font-bold text-[#D4AF37] font-[Cinzel] uppercase text-sm tracking-widest">Incoming Reservations</h3>
-                  <div className="bg-white/5 px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                    Showing: {filteredBookings.length} of {bookings.length}
+                  {/* Bookings Table Block */}
+                  <div className="bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden">
+                    <div className="p-6 border-b border-white/5 bg-black/20 flex justify-between items-center">
+                      <h3 className="font-bold text-[#D4AF37] font-[Cinzel] uppercase text-sm tracking-widest">Incoming Reservations</h3>
+                      <div className="bg-white/5 px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        Showing: {filteredBookings.length} of {bookings.length}
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto whitespace-nowrap scrollbar-thin">
+                      <table className="w-full text-left">
+                        <thead className="bg-black/40 border-b border-white/10">
+                          <tr>
+                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">Client</th>
+                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">Details</th>
+                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">Status</th>
+                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#D4AF37] text-right">Review Details</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {filteredBookings.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-6 py-24 text-center">
+                                <div className="flex flex-col items-center gap-4 opacity-30">
+                                  <Info className="w-10 h-10 text-[#D4AF37]" />
+                                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">No matching requests found</p>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : filteredBookings.map((b, idx) => (
+                            <tr key={b.id} className={`transition-colors group ${idx % 2 === 0 ? 'bg-black/90 hover:bg-[#D4AF37]/5' : 'bg-[#151515] hover:bg-[#D4AF37]/5'}`}>
+                              <td className="px-6 py-5">
+                                <p className="font-bold text-white group-hover:text-[#D4AF37] transition-colors">{b.clientName}</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <p className="text-[10px] text-slate-500 uppercase tracking-widest truncate max-w-[120px]">{b.contactEmail}</p>
+                                  {b.notes?.includes('OFFERED PRICE:') && (
+                                    <span className="bg-[#D4AF37]/20 text-[#D4AF37] text-[7px] font-black px-1.5 py-0.5 rounded border border-[#D4AF37]/30 uppercase tracking-tighter">Offer</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-6 py-5">
+                                <p className="text-xs text-slate-300 font-bold mb-1">{b.eventName}</p>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest flex items-center gap-1.5 bg-black px-2 py-0.5 rounded border border-white/5">
+                                    <Calendar className="w-2.5 h-2.5" /> {b.date}
+                                  </span>
+                                  <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest flex items-center gap-1.5 bg-black px-2 py-0.5 rounded border border-white/5">
+                                    <DollarSign className="w-2.5 h-2.5" /> {b.amount}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-5">
+                                <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.15em] border ${
+                                  b.status === 'confirmed' ? 'bg-green-500/10 text-green-500 border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.05)]' : 
+                                  b.status === 'pending' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/30 shadow-[0_0_10px_rgba(212,175,55,0.05)]' :
+                                  'bg-red-500/10 text-red-500 border-red-500/20'
+                                }`}>
+                                  {b.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-5 text-right">
+                                <div className="flex justify-end items-center gap-2">
+                                  {b.status === 'confirmed' && (b.eventAddress || b.eventLocation) && (
+                                    <a
+                                      href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(b.eventAddress || b.eventLocation || '')}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-black px-3.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-green-500/30 transition-all cursor-pointer"
+                                    >
+                                      Go to Event
+                                    </a>
+                                  )}
+                                  <button 
+                                    type="button"
+                                    onClick={() => handleSimchaBookingClick(b)}
+                                    className="inline-flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all shadow-lg shadow-[#D4AF37]/0 hover:shadow-[#D4AF37]/20 cursor-pointer"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" /> Full Scope
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
-                <div className="overflow-x-auto whitespace-nowrap scrollbar-thin">
-                  <table className="w-full text-left">
-                    <thead className="bg-black/40 border-b border-white/10">
-                      <tr>
-                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">Client</th>
-                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">Details</th>
-                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">Status</th>
-                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#D4AF37] text-right">Review Details</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {filteredBookings.length === 0 ? (
-                        <tr>
-                          <td colSpan={4} className="px-6 py-24 text-center">
-                            <div className="flex flex-col items-center gap-4 opacity-30">
-                              <Info className="w-10 h-10 text-[#D4AF37]" />
-                              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">No matching requests found</p>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : filteredBookings.map((b, idx) => (
-                        <tr key={b.id} className={`transition-colors group ${idx % 2 === 0 ? 'bg-black/90 hover:bg-[#D4AF37]/5' : 'bg-[#151515] hover:bg-[#D4AF37]/5'}`}>
-                          <td className="px-6 py-5">
-                            <p className="font-bold text-white group-hover:text-[#D4AF37] transition-colors">{b.clientName}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <p className="text-[10px] text-slate-500 uppercase tracking-widest truncate max-w-[120px]">{b.contactEmail}</p>
-                              {b.notes?.includes('OFFERED PRICE:') && (
-                                <span className="bg-[#D4AF37]/20 text-[#D4AF37] text-[7px] font-black px-1.5 py-0.5 rounded border border-[#D4AF37]/30 uppercase tracking-tighter">Offer</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-5">
-                            <p className="text-xs text-slate-300 font-bold mb-1">{b.eventName}</p>
-                            <div className="flex items-center gap-3">
-                              <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest flex items-center gap-1.5 bg-black px-2 py-0.5 rounded border border-white/5">
-                                <Calendar className="w-2.5 h-2.5" /> {b.date}
-                              </span>
-                              <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest flex items-center gap-1.5 bg-black px-2 py-0.5 rounded border border-white/5">
-                                <DollarSign className="w-2.5 h-2.5" /> {b.amount}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-5">
-                            <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.15em] border ${
-                              b.status === 'confirmed' ? 'bg-green-500/10 text-green-500 border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.05)]' : 
-                              b.status === 'pending' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/30 shadow-[0_0_10px_rgba(212,175,55,0.05)]' :
-                              'bg-red-500/10 text-red-500 border-red-500/20'
-                            }`}>
-                              {b.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-5 text-right">
-                            <div className="flex justify-end items-center gap-2">
-                              {b.status === 'confirmed' && (b.eventAddress || b.eventLocation) && (
-                                <a
-                                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(b.eventAddress || b.eventLocation || '')}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1.5 bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-black px-3.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-green-500/30 transition-all"
-                                >
-                                  Go to Event
-                                </a>
-                              )}
-                              <button 
-                                onClick={() => handleSimchaBookingClick(b)}
-                                className="inline-flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all shadow-lg shadow-[#D4AF37]/0 hover:shadow-[#D4AF37]/20"
-                              >
-                                <Eye className="w-3.5 h-3.5" /> Full Scope
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                </motion.div>
+              )}
             </div>
           )}
 
@@ -2440,11 +2750,20 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         <div className="flex justify-between items-start mb-1">
                           <div className="flex items-center gap-1.5 truncate max-w-[70%]">
                             <span className="font-bold text-white text-sm truncate">{data.name}</span>
-                            {unreadInThread > 0 && (
-                              <span className="bg-red-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full animate-pulse flex-shrink-0">
-                                {unreadInThread}
-                              </span>
-                            )}
+                            <AnimatePresence mode="popLayout">
+                              {unreadInThread > 0 && (
+                                <motion.span
+                                  key={`unread-${email}-${unreadInThread}`}
+                                  initial={{ scale: 0, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  exit={{ scale: 0, opacity: 0 }}
+                                  transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                                  className="bg-red-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
+                                >
+                                  {unreadInThread}
+                                </motion.span>
+                              )}
+                            </AnimatePresence>
                           </div>
                           <span className="text-[8px] text-slate-500 flex-shrink-0">{new Date(data.lastMessage.timestamp).toLocaleDateString()}</span>
                         </div>
@@ -2475,7 +2794,13 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         {messageThreads.find(t => t[0] === selectedThreadEmail)?.[1].messages.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map(m => {
                           const isSent = m.senderId === vendor.id;
                           return (
-                            <div key={m.id} className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}>
+                            <motion.div 
+                              key={m.id} 
+                              initial={{ opacity: 0, y: 15 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.25, ease: "easeOut" }}
+                              className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}
+                            >
                               <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative ${
                                 isSent 
                                   ? 'bg-[#D4AF37] text-black shadow-md' 
@@ -2522,9 +2847,35 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                    )}
                                  </div>
                               </div>
-                            </div>
+                            </motion.div>
                           );
                         })}
+                        {otherIsTyping && (
+                          <div className="flex justify-start px-2 py-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                            <div className="bg-zinc-900 border border-[#D4AF37]/10 text-[#D4AF37] px-4 py-2.5 rounded-[20px] text-[11px] flex items-center gap-3 shadow-lg">
+                              <span className="font-semibold">
+                                {messageThreads.find(t => t[0] === selectedThreadEmail)?.[1].name || 'Client'} is typing
+                              </span>
+                              <div className="flex items-center gap-1 mt-0.5" aria-hidden="true">
+                                <motion.span
+                                  animate={{ opacity: [0.3, 1, 0.3] }}
+                                  transition={{ repeat: Infinity, duration: 1.2, delay: 0 }}
+                                  className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
+                                />
+                                <motion.span
+                                  animate={{ opacity: [0.3, 1, 0.3] }}
+                                  transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }}
+                                  className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
+                                />
+                                <motion.span
+                                  animate={{ opacity: [0.3, 1, 0.3] }}
+                                  transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }}
+                                  className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         <div ref={messagesEndRef} />
                       </div>
 
@@ -2533,7 +2884,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           <input 
                             type="text"
                             value={replyText}
-                            onChange={e => setReplyText(e.target.value)}
+                            onChange={e => {
+                              setReplyText(e.target.value);
+                              handleVendorTypingStatus(true);
+                              if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                              typingTimeoutRef.current = setTimeout(() => {
+                                handleVendorTypingStatus(false);
+                              }, 2000);
+                            }}
                             placeholder="Type your response..."
                             className="w-full bg-[#050505] border border-white/10 rounded-2xl pl-6 pr-16 py-4 text-sm focus:border-[#D4AF37] outline-none transition-all"
                           />

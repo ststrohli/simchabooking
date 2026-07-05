@@ -1,6 +1,7 @@
 
 import React from 'react';
-import { ChevronLeft, Play, Calendar, Share2, Heart, ExternalLink } from 'lucide-react';
+import { ChevronLeft, Play, Calendar, Share2, Bookmark, ExternalLink } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Post, Vendor } from '../types';
 
 interface PostsPageProps {
@@ -44,12 +45,37 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
             <p className="text-sm mt-2 tracking-widest uppercase font-bold opacity-30">Check back soon for event highlights</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+          <motion.div 
+            initial="hidden"
+            animate="show"
+            variants={{
+              hidden: { opacity: 0 },
+              show: {
+                opacity: 1,
+                transition: {
+                  staggerChildren: 0.08
+                }
+              }
+            }}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10"
+          >
             {posts.map((post) => {
               const linkedVendor = post.vendorId ? vendors.find(v => v.id === post.vendorId) : null;
               
               return (
-                <div key={post.id} className="bg-[#111] rounded-3xl border border-[#D4AF37]/10 overflow-hidden group hover:border-[#D4AF37]/40 transition-all duration-500 shadow-2xl flex flex-col">
+                <motion.div 
+                  key={post.id} 
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100, damping: 15 } }
+                  }}
+                  whileHover={{ 
+                    y: -6, 
+                    boxShadow: "0 20px 40px rgba(212, 175, 55, 0.08)",
+                    borderColor: "rgba(212, 175, 55, 0.3)"
+                  }}
+                  className="bg-[#111] rounded-3xl border border-[#D4AF37]/10 overflow-hidden group hover:border-[#D4AF37]/40 transition-all duration-500 shadow-2xl flex flex-col"
+                >
                   <div className="relative aspect-[4/5] bg-black overflow-hidden cursor-zoom-in">
                     {post.type === 'video' ? (
                       <video 
@@ -88,9 +114,11 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
                     
                     <div className="mt-auto pt-6 border-t border-[#D4AF37]/10 flex flex-col gap-6">
                         {linkedVendor && (
-                            <button 
+                            <motion.button 
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
                                 onClick={() => onViewVendor(linkedVendor)}
-                                className="flex items-center gap-4 bg-black/40 p-3 rounded-2xl border border-[#D4AF37]/20 hover:border-[#D4AF37]/60 transition-all text-left"
+                                className="flex items-center gap-4 bg-black/40 p-3 rounded-2xl border border-[#D4AF37]/20 hover:border-[#D4AF37]/60 transition-all text-left w-full cursor-pointer"
                             >
                                 <img src={linkedVendor.image} className="w-12 h-12 rounded-xl object-cover" alt="" />
                                 <div className="flex-1 min-w-0">
@@ -98,28 +126,34 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
                                     <p className="text-sm font-bold text-white truncate">{linkedVendor.name}</p>
                                 </div>
                                 <ExternalLink className="w-4 h-4 text-[#D4AF37]/40" />
-                            </button>
+                            </motion.button>
                         )}
                         
                         <div className="flex justify-between items-center">
                             <div className="flex items-center gap-4">
-                                <button className="flex items-center gap-1.5 text-slate-500 hover:text-red-500 transition-colors group/heart">
-                                    <Heart className="w-5 h-5 group-hover/heart:fill-current" />
+                                <motion.button 
+                                    whileTap={{ scale: 0.92 }}
+                                    className="flex items-center gap-1.5 text-slate-500 hover:text-[#D4AF37] transition-colors group/bookmark cursor-pointer"
+                                >
+                                    <Bookmark className="w-5 h-5 group-hover/bookmark:fill-current" />
                                     <span className="text-[10px] font-black">2.4K</span>
-                                </button>
-                                <button className="flex items-center gap-1.5 text-slate-500 hover:text-[#D4AF37] transition-colors">
+                                </motion.button>
+                                <motion.button 
+                                    whileTap={{ scale: 0.92 }}
+                                    className="flex items-center gap-1.5 text-slate-500 hover:text-[#D4AF37] transition-colors cursor-pointer"
+                                >
                                     <Share2 className="w-5 h-5" />
                                     <span className="text-[10px] font-black uppercase tracking-widest">Share</span>
-                                </button>
+                                </motion.button>
                             </div>
                             {!linkedVendor && <div className="w-4"></div>}
                         </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               );
             })}
-          </div>
+          </motion.div>
         )}
       </main>
       

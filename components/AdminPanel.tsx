@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff } from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType, firebaseConfig } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
-import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { uploadFileRobustly } from '../services/uploadService';
@@ -47,6 +48,59 @@ interface AdminPanelProps {
   showNotification: (message: string, type?: 'success' | 'info') => void;
 }
 
+const TableContainer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [showLeftShadow, setShowLeftShadow] = useState(false);
+  const [showRightShadow, setShowRightShadow] = useState(false);
+
+  const checkScroll = () => {
+    if (containerRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = containerRef.current;
+      setShowLeftShadow(scrollLeft > 10);
+      setShowRightShadow(scrollLeft < scrollWidth - clientWidth - 10);
+    }
+  };
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el) {
+      checkScroll();
+      el.addEventListener('scroll', checkScroll);
+      window.addEventListener('resize', checkScroll);
+      
+      const observer = new ResizeObserver(checkScroll);
+      observer.observe(el);
+      
+      return () => {
+        el.removeEventListener('scroll', checkScroll);
+        window.removeEventListener('resize', checkScroll);
+        observer.disconnect();
+      };
+    }
+  }, [children]);
+
+  return (
+    <div className="relative group/table w-full rounded-xl overflow-hidden border border-white/5 bg-black/40">
+      <div 
+        className={`pointer-events-none absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-black via-black/90 to-transparent z-20 transition-all duration-300 ${
+          showLeftShadow ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+        }`}
+      />
+      <div 
+        className={`pointer-events-none absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-black via-black/90 to-transparent z-20 transition-all duration-300 ${
+          showRightShadow ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'
+        }`}
+      />
+      <div 
+        ref={containerRef}
+        className="overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent w-full"
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
+
 const ADMIN_CODE = "ss-77859";
 const COMMISSION_RATE = 0.10;
 
@@ -56,13 +110,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'posts' | 'categories' | 'bookings' | 'stripe' | 'users' | 'messages' | 'analytics'>('manage');
+  const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'posts' | 'categories' | 'bookings' | 'stripe' | 'users' | 'messages' | 'analytics' | 'moderation'>('manage');
   const [isUploading, setIsUploading] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [selectedPostFile, setSelectedPostFile] = useState<File | null>(null);
   const [selectedVendorFile, setSelectedVendorFile] = useState<File | null>(null);
   const [selectedCategoryFile, setSelectedCategoryFile] = useState<File | null>(null);
   const [selectedHeroFile, setSelectedHeroFile] = useState<File | null>(null);
+
+  // Advanced Back-Office moderation & search states
+  const [moderationActioning, setModerationActioning] = useState<Record<string, 'approve' | 'reject'>>({});
+  const [removedModerationIds, setRemovedModerationIds] = useState<string[]>([]);
+  const [filterText, setFilterText] = useState('');
 
   const [analyticsLogs, setAnalyticsLogs] = useState<any[]>([]);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
@@ -807,20 +866,53 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex justify-center mb-10 overflow-x-auto pb-2">
-            <div className="bg-[#111] p-1 rounded-xl border border-[#D4AF37]/20 flex shrink-0">
-                {['add', 'manage', 'bookings', 'messages', 'stripe', 'users', 'posts', 'categories', 'analytics'].map(tab => (
-                    <button 
-                        key={tab} 
-                        onClick={() => {
-                            setActiveTab(tab as any);
-                            if (tab !== 'add') setEditingVendor(null);
-                        }} 
-                        className={`px-8 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-[#D4AF37] text-black shadow-lg' : 'text-slate-500 hover:text-white'}`}
-                    >
-                        {tab === 'add' ? (editingVendor ? 'Edit Professional' : 'Add Professional') : tab === 'manage' ? 'Professionals' : tab === 'analytics' ? 'Funnel Insights' : tab}
-                    </button>
-                ))}
+        <div className="flex justify-start md:justify-center mb-10 overflow-x-auto pb-3 scrollbar-none">
+            <div className="bg-[#111] p-1.5 rounded-xl border border-white/5 flex shrink-0 gap-1">
+                {['manage', 'users', 'moderation', 'bookings', 'messages', 'stripe', 'posts', 'categories', 'analytics', 'add'].map(tab => {
+                    const pendingVendorsCount = vendors.filter(v => !v.isVerified && !removedModerationIds.includes(v.id)).length;
+                    const pendingUsersCount = users.filter(u => !(u as any).isApproved && !removedModerationIds.includes(u.id)).length;
+                    const totalPendingCount = pendingVendorsCount + pendingUsersCount;
+
+                    const getTabLabel = (t: string) => {
+                        if (t === 'add') return editingVendor ? 'Edit Professional' : 'Add New';
+                        if (t === 'manage') return 'Professionals';
+                        if (t === 'users') return 'User Directory';
+                        if (t === 'moderation') return 'Moderation Queue';
+                        if (t === 'analytics') return 'Funnel Insights';
+                        if (t === 'bookings') return 'Platform Bookings';
+                        if (t === 'messages') return 'Inbox';
+                        if (t === 'stripe') return 'Stripe Hub';
+                        if (t === 'posts') return 'Moments';
+                        if (t === 'categories') return 'Taxonomy';
+                        return t;
+                    };
+
+                    const isActive = activeTab === tab;
+                    return (
+                        <button 
+                            key={tab} 
+                            onClick={() => {
+                                setActiveTab(tab as any);
+                                setFilterText(''); // reset search on change
+                                if (tab !== 'add') setEditingVendor(null);
+                            }} 
+                            className={`px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-200 flex items-center gap-2 shrink-0 ${
+                                isActive 
+                                    ? 'bg-[#D4AF37] text-black shadow-lg font-black' 
+                                    : 'text-slate-500 hover:text-white hover:bg-white/[0.02]'
+                            }`}
+                        >
+                            <span>{getTabLabel(tab)}</span>
+                            {tab === 'moderation' && totalPendingCount > 0 && (
+                                <span className={`px-1.5 py-0.5 text-[8px] font-bold rounded-full ${
+                                    isActive ? 'bg-black text-[#D4AF37]' : 'bg-[#D4AF37] text-black animate-pulse'
+                                }`}>
+                                    {totalPendingCount}
+                                </span>
+                            )}
+                        </button>
+                    );
+                })}
             </div>
         </div>
 
@@ -953,42 +1045,99 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="space-y-4 animate-in fade-in duration-300">
                 <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
                     <Search className="w-5 h-5 text-slate-500" />
-                    <input type="text" placeholder="Filter active professionals..." className="bg-transparent border-none outline-none text-sm w-full" />
+                    <input 
+                        type="text" 
+                        placeholder="Filter professionals by name, category, or location..." 
+                        value={filterText}
+                        onChange={(e) => setFilterText(e.target.value)}
+                        className="bg-transparent border-none outline-none text-sm w-full text-white" 
+                    />
                 </div>
-                {vendors.map(v => (
-                    <div key={v.id} className="bg-[#111] p-5 rounded-xl border border-[#D4AF37]/10 flex flex-col md:flex-row items-center justify-between group hover:border-[#D4AF37]/40 transition-all gap-4">
-                        <div className="flex items-center gap-4 w-full md:w-1/3">
-                            <img src={v.image} className="w-14 h-14 rounded-lg object-cover bg-black border border-[#D4AF37]/10" />
-                            <div className="min-w-0">
-                                <h3 className="font-bold text-slate-100 truncate">{v.name}</h3>
-                                <p className="text-[10px] text-slate-500 uppercase tracking-widest">{v.category}</p>
-                            </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2 justify-center md:justify-start">
-                            {v.subCategories?.slice(0, 3).map(s => (
-                                <span key={s} className="bg-white/5 px-2 py-0.5 rounded text-[8px] font-black uppercase text-slate-500 tracking-widest">{s}</span>
-                            ))}
-                            {(v.subCategories?.length || 0) > 3 && <span className="text-[8px] text-slate-600 font-bold">+{v.subCategories!.length - 3} more</span>}
-                        </div>
-                        <div className="flex items-center gap-2">
-                            {v.stripeAccountId ? (
-                                <div className="flex items-center gap-1 bg-green-500/10 px-2 py-1 rounded border border-green-500/20" title="Stripe Connected">
-                                    <CheckSquare className="w-3 h-3 text-green-500" />
-                                    <span className="text-[8px] font-black text-green-500 uppercase tracking-widest">Stripe</span>
-                                </div>
-                            ) : (
-                                <button onClick={() => handleStripeOnboard(v.id, v.contactEmail || '')} className="flex items-center gap-1 bg-red-500/10 px-2 py-1 rounded border border-red-500/20 hover:bg-red-500/20 transition-all" title="Connect Stripe">
-                                    <CreditCard className="w-3 h-3 text-red-500" />
-                                    <span className="text-[8px] font-black text-red-500 uppercase tracking-widest">Connect</span>
-                                </button>
+                <TableContainer>
+                    <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr className="border-b border-white/10 bg-black/40 text-slate-400 font-bold uppercase tracking-widest text-[9px]">
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Professional</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Classification</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Location</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Starting Price</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Contact Email</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Stripe Status</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {vendors
+                                .filter(v => 
+                                    v.name.toLowerCase().includes(filterText.toLowerCase()) || 
+                                    v.category.toLowerCase().includes(filterText.toLowerCase()) || 
+                                    v.location.toLowerCase().includes(filterText.toLowerCase())
+                                )
+                                .map(v => (
+                                    <tr key={v.id} className="hover:bg-white/[0.02] active:bg-white/[0.03] transition-colors duration-150">
+                                        <td className="p-4 font-bold text-slate-100">
+                                            <div className="flex items-center gap-3">
+                                                <img src={v.image} className="w-10 h-10 rounded-lg object-cover bg-black border border-white/10 shrink-0" />
+                                                <div>
+                                                    <div className="font-bold text-white text-sm flex items-center gap-1.5">
+                                                        {v.name}
+                                                        {v.isVerified && <ShieldCheck className="w-3.5 h-3.5 text-green-500 fill-green-500/10" />}
+                                                    </div>
+                                                    <span className="text-[9px] text-slate-500 uppercase tracking-widest">{v.category}</span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                                {v.subCategories?.slice(0, 3).map(s => (
+                                                    <span key={s} className="bg-white/5 px-2 py-0.5 rounded text-[8px] font-black uppercase text-slate-400 tracking-widest">{s}</span>
+                                                ))}
+                                                {(v.subCategories?.length || 0) > 3 && <span className="text-[8px] text-slate-600 font-bold">+{v.subCategories!.length - 3}</span>}
+                                                {(!v.subCategories || v.subCategories.length === 0) && <span className="text-slate-600 italic">None</span>}
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-slate-400 font-medium">
+                                            {v.location}
+                                        </td>
+                                        <td className="p-4 text-[#D4AF37] font-bold font-mono">
+                                            ${v.priceStart.toLocaleString()}
+                                        </td>
+                                        <td className="p-4 text-slate-400 font-mono text-[11px]">
+                                            {v.contactEmail || 'N/A'}
+                                        </td>
+                                        <td className="p-4">
+                                            {v.stripeAccountId ? (
+                                                <span className="inline-flex items-center gap-1.5 bg-green-500/15 border border-green-500/20 px-2 py-1 rounded text-[8px] font-black text-green-400 uppercase tracking-widest" title={`Stripe Account ID: ${v.stripeAccountId}`}>
+                                                    <CheckSquare className="w-3 h-3" /> Stripe Active
+                                                </span>
+                                            ) : (
+                                                <button onClick={() => handleStripeOnboard(v.id, v.contactEmail || '')} className="inline-flex items-center gap-1.5 bg-red-500/10 border border-red-500/20 hover:bg-red-500/25 px-2 py-1 rounded text-[8px] font-black text-red-400 uppercase tracking-widest transition-all cursor-pointer" title="Initiate Connection">
+                                                    <CreditCard className="w-3 h-3" /> Connect Stripe
+                                                </button>
+                                            )}
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                                <button onClick={() => onLoginAsVendor(v.id)} title="Login to Portal" className="p-2 text-slate-500 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><LogIn className="w-4 h-4" /></button>
+                                                <button onClick={() => handleEditVendor(v)} title="Edit Professional" className="p-2 text-slate-500 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
+                                                <button onClick={() => onToggleVerify(v.id)} title="Toggle Verification" className={`p-2 rounded-lg transition-all ${v.isVerified ? 'text-green-500 hover:bg-green-500/10' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}><ShieldCheck className="w-4 h-4" /></button>
+                                                <button onClick={() => handleDeleteVendor(v.id, v.name)} title="Remove Professional" className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            {vendors.filter(v => 
+                                v.name.toLowerCase().includes(filterText.toLowerCase()) || 
+                                v.category.toLowerCase().includes(filterText.toLowerCase()) || 
+                                v.location.toLowerCase().includes(filterText.toLowerCase())
+                            ).length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="p-8 text-center text-slate-500 uppercase tracking-widest text-[10px]">No professionals found</td>
+                                </tr>
                             )}
-                            <button onClick={() => onLoginAsVendor(v.id)} title="Login to Portal" className="p-2 text-slate-600 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-lg transition-all"><LogIn className="w-5 h-5" /></button>
-                            <button onClick={() => handleEditVendor(v)} title="Edit Professional" className="p-2 text-slate-600 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-lg transition-all"><Edit2 className="w-5 h-5" /></button>
-                            <button onClick={() => onToggleVerify(v.id)} title="Toggle Verification" className={`p-2 rounded-lg transition-all ${v.isVerified ? 'text-green-500 hover:bg-green-500/10' : 'text-slate-600 hover:text-[#D4AF37]'}`}><ShieldCheck className="w-5 h-5" /></button>
-                            <button onClick={() => handleDeleteVendor(v.id, v.name)} title="Remove Professional" className="p-2 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"><Trash2 className="w-5 h-5" /></button>
-                        </div>
-                    </div>
-                ))}
+                        </tbody>
+                    </table>
+                </TableContainer>
             </div>
         )}
 
@@ -1168,53 +1317,128 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {activeTab === 'bookings' && (
             <div className="space-y-6 animate-in fade-in duration-300">
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold font-[Cinzel] text-white">Platform Bookings</h2>
-                    <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                        Total: {bookings.length}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                    <div>
+                        <h2 className="text-2xl font-bold font-[Cinzel] text-white">Platform Bookings</h2>
+                        <p className="text-xs text-slate-500 mt-1">Unified transactional records across the entire marketplace.</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                            Total Bookings: {bookings.length}
+                        </div>
                     </div>
                 </div>
-                <div className="grid grid-cols-1 gap-4">
-                    {bookings.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).map(b => {
-                        const vendor = vendors.find(v => v.id === b.vendorId);
-                        return (
-                            <div key={b.id} className="bg-[#111] p-6 rounded-2xl border border-white/5 hover:border-[#D4AF37]/30 transition-all flex flex-col md:flex-row justify-between items-center gap-6">
-                                <div className="flex items-center gap-4 flex-1">
-                                    <div className="bg-black p-3 rounded-xl border border-white/5">
-                                        <LayoutList className="w-6 h-6 text-[#D4AF37]" />
-                                    </div>
-                                    <div>
-                                        <h4 className="font-bold text-white">{b.clientName}</h4>
-                                        <p className="text-[10px] text-slate-500 uppercase tracking-widest">{b.eventName} • {b.date}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-4 flex-1">
-                                    <div className="text-right md:text-left">
-                                        <p className="text-[9px] text-slate-600 uppercase font-black tracking-widest">Professional</p>
-                                        <p className="text-sm font-bold text-[#D4AF37]">{vendor?.name || 'Unknown'}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-6">
-                                    <div className="text-right">
-                                        <p className="text-xl font-bold text-white">${b.amount.toLocaleString()}</p>
-                                        <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${b.paymentStatus === 'paid' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                                            {b.paymentStatus}
-                                        </span>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button 
-                                            onClick={() => onUpdateBookingStatus(b.id, b.status === 'confirmed' ? 'pending' : 'confirmed')}
-                                            className={`p-2 rounded-lg transition-all ${b.status === 'confirmed' ? 'bg-green-500/10 text-green-500' : 'bg-white/5 text-slate-500 hover:text-[#D4AF37]'}`}
-                                            title="Toggle Confirmation"
-                                        >
-                                            <ShieldCheck className="w-5 h-5" />
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
+
+                <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
+                    <Search className="w-5 h-5 text-slate-500" />
+                    <input 
+                        type="text" 
+                        placeholder="Filter bookings by client name, event name, or professional..." 
+                        value={filterText}
+                        onChange={(e) => setFilterText(e.target.value)}
+                        className="bg-transparent border-none outline-none text-sm w-full text-white" 
+                    />
                 </div>
+
+                <TableContainer>
+                    <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr className="border-b border-white/10 bg-black/40 text-slate-400 font-bold uppercase tracking-widest text-[9px]">
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Client & Event</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Professional</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Date</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Transaction Amount</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Payment Status</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Confirmation</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {bookings
+                                .filter(b => {
+                                    const vendor = vendors.find(v => v.id === b.vendorId);
+                                    const vendorName = vendor?.name || 'Unknown';
+                                    return (
+                                        b.clientName.toLowerCase().includes(filterText.toLowerCase()) ||
+                                        b.eventName.toLowerCase().includes(filterText.toLowerCase()) ||
+                                        vendorName.toLowerCase().includes(filterText.toLowerCase())
+                                    );
+                                })
+                                .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+                                .map(b => {
+                                    const vendor = vendors.find(v => v.id === b.vendorId);
+                                    return (
+                                        <tr key={b.id} className="hover:bg-white/[0.02] active:bg-white/[0.03] transition-colors duration-150">
+                                            <td className="p-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="bg-black p-2 rounded-lg border border-white/5 text-[#D4AF37] shrink-0">
+                                                        <LayoutList className="w-4 h-4" />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-bold text-white text-sm">{b.clientName}</h4>
+                                                        <span className="text-[10px] text-slate-500 uppercase tracking-widest">{b.eventName}</span>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="p-4 font-semibold text-[#D4AF37] text-sm">
+                                                {vendor?.name || 'Unknown'}
+                                            </td>
+                                            <td className="p-4 text-slate-400 font-mono text-[11px]">
+                                                {b.date}
+                                            </td>
+                                            <td className="p-4 font-bold text-white text-sm font-mono">
+                                                ${b.amount.toLocaleString()}
+                                            </td>
+                                            <td className="p-4">
+                                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
+                                                    b.paymentStatus === 'paid' 
+                                                        ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                                                        : 'bg-red-500/10 text-red-400 border-red-500/20'
+                                                }`}>
+                                                    {b.paymentStatus}
+                                                </span>
+                                            </td>
+                                            <td className="p-4">
+                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
+                                                    b.status === 'confirmed' 
+                                                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' 
+                                                        : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                }`}>
+                                                    {b.status}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-right">
+                                                <button 
+                                                    onClick={() => onUpdateBookingStatus(b.id, b.status === 'confirmed' ? 'pending' : 'confirmed')}
+                                                    className={`p-2 rounded-lg transition-all ${
+                                                        b.status === 'confirmed' 
+                                                            ? 'bg-green-500/10 text-green-500' 
+                                                            : 'bg-white/5 text-slate-500 hover:text-[#D4AF37]'
+                                                    }`}
+                                                    title="Toggle Confirmation"
+                                                >
+                                                    <ShieldCheck className="w-4 h-4" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            {bookings.filter(b => {
+                                const vendor = vendors.find(v => v.id === b.vendorId);
+                                const vendorName = vendor?.name || 'Unknown';
+                                return (
+                                    b.clientName.toLowerCase().includes(filterText.toLowerCase()) ||
+                                    b.eventName.toLowerCase().includes(filterText.toLowerCase()) ||
+                                    vendorName.toLowerCase().includes(filterText.toLowerCase())
+                                );
+                            }).length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="p-8 text-center text-slate-500 uppercase tracking-widest text-[10px]">No bookings logged</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </TableContainer>
             </div>
         )}
 
@@ -1289,9 +1513,336 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {activeTab === 'users' && (
             <div className="space-y-6 animate-in fade-in duration-300">
-                {/* User list remains as is */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                    <div>
+                        <h2 className="text-2xl font-bold font-[Cinzel] text-white">User Directory</h2>
+                        <p className="text-xs text-slate-500 mt-1">Manage active platform registrants and client profiles.</p>
+                    </div>
+                    <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                        Total Users: {users.length}
+                    </div>
+                </div>
+
+                <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
+                    <Search className="w-5 h-5 text-slate-500" />
+                    <input 
+                        type="text" 
+                        placeholder="Filter users by name or email..." 
+                        value={filterText}
+                        onChange={(e) => setFilterText(e.target.value)}
+                        className="bg-transparent border-none outline-none text-sm w-full text-white" 
+                    />
+                </div>
+
+                <TableContainer>
+                    <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr className="border-b border-white/10 bg-black/40 text-slate-400 font-bold uppercase tracking-widest text-[9px]">
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">User Profile</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">User ID</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Contact Email</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Account Status</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {users
+                                .filter(u => 
+                                    (u.name || '').toLowerCase().includes(filterText.toLowerCase()) || 
+                                    (u.username || '').toLowerCase().includes(filterText.toLowerCase())
+                                )
+                                .map(u => (
+                                    <tr key={u.id} className="hover:bg-white/[0.02] active:bg-white/[0.03] transition-colors duration-150">
+                                        <td className="p-4">
+                                            <div className="flex items-center gap-3">
+                                                {u.photoURL ? (
+                                                    <img src={u.photoURL} className="w-9 h-9 rounded-full object-cover bg-black border border-white/10 shrink-0" />
+                                                ) : (
+                                                    <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-700 border border-white/10 flex items-center justify-center font-bold text-white text-xs uppercase shrink-0">
+                                                        {(u.name || u.username || 'U').slice(0, 2)}
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <h4 className="font-bold text-white text-sm">{u.name || 'Anonymous User'}</h4>
+                                                    <span className="text-[9px] text-slate-500 uppercase tracking-widest">
+                                                        {(u as any).role || 'Client'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="p-4 font-mono text-slate-500 text-[10px]">
+                                            {u.id}
+                                        </td>
+                                        <td className="p-4 text-slate-300 font-mono text-xs">
+                                            {u.username || 'N/A'}
+                                        </td>
+                                        <td className="p-4">
+                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
+                                                (u as any).isApproved || (u as any).role === 'admin'
+                                                    ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                                                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                            }`}>
+                                                {(u as any).isApproved || (u as any).role === 'admin' ? 'Approved' : 'Deactivated'}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                                {!(u as any).isApproved && (u as any).role !== 'admin' && (
+                                                    <button 
+                                                        onClick={async () => {
+                                                            setModerationActioning(prev => ({ ...prev, [u.id]: 'approve' }));
+                                                            await new Promise(r => setTimeout(r, 800));
+                                                            try {
+                                                                await updateDoc(doc(db, 'users', u.id), { isApproved: true });
+                                                                showNotification('User profile approved successfully.', 'success');
+                                                            } catch (err: any) {
+                                                                showNotification('Failed to approve: ' + err.message, 'info');
+                                                            } finally {
+                                                                setModerationActioning(prev => { const c = { ...prev }; delete c[u.id]; return c; });
+                                                            }
+                                                        }}
+                                                        title="Approve User Account" 
+                                                        className="p-2 text-slate-500 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-all"
+                                                    >
+                                                        <ShieldCheck className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                                <button 
+                                                    onClick={async () => {
+                                                        if (window.confirm(`Are you sure you want to permanently delete user ${u.name || u.username}?`)) {
+                                                            try {
+                                                                await deleteDoc(doc(db, 'users', u.id));
+                                                                showNotification('User profile deleted successfully.', 'success');
+                                                            } catch (err: any) {
+                                                                showNotification('Failed to delete user: ' + err.message, 'info');
+                                                            }
+                                                        }
+                                                    }}
+                                                    title="Permanently Delete User" 
+                                                    className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            {users.filter(u => 
+                                (u.name || '').toLowerCase().includes(filterText.toLowerCase()) || 
+                                (u.username || '').toLowerCase().includes(filterText.toLowerCase())
+                            ).length === 0 && (
+                                <tr>
+                                    <td colSpan={5} className="p-8 text-center text-slate-500 uppercase tracking-widest text-[10px]">No users registered</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </TableContainer>
             </div>
         )}
+
+        {activeTab === 'moderation' && (() => {
+            const pendingVendors = vendors.filter(v => !v.isVerified && !removedModerationIds.includes(v.id));
+            const pendingUsers = users.filter(u => !(u as any).isApproved && (u as any).role !== 'admin' && !removedModerationIds.includes(u.id));
+            
+            const moderationQueueItems = [
+                ...pendingVendors.map(v => ({
+                    id: v.id,
+                    type: 'professional' as const,
+                    name: v.name,
+                    email: v.contactEmail || 'N/A',
+                    category: v.category,
+                    image: v.image,
+                    details: `${v.location} • Starting $${v.priceStart.toLocaleString()}`,
+                    raw: v,
+                })),
+                ...pendingUsers.map(u => ({
+                    id: u.id,
+                    type: 'client' as const,
+                    name: u.name || 'Anonymous Client',
+                    email: u.username || 'N/A',
+                    category: 'Client Access Request',
+                    image: u.photoURL || '',
+                    details: `Privileges: ${(u as any).role || 'Client'}`,
+                    raw: u,
+                }))
+            ];
+
+            const handleApproveAction = async (itemId: string, type: 'professional' | 'client') => {
+                setModerationActioning(prev => ({ ...prev, [itemId]: 'approve' }));
+                await new Promise(r => setTimeout(r, 850));
+                
+                try {
+                    if (type === 'professional') {
+                        await updateDoc(doc(db, 'vendors', itemId), { isVerified: true });
+                        showNotification('Service provider approved and listed.', 'success');
+                    } else {
+                        await updateDoc(doc(db, 'users', itemId), { isApproved: true });
+                        showNotification('Client credentials authorized.', 'success');
+                    }
+                    setRemovedModerationIds(prev => [...prev, itemId]);
+                } catch (err: any) {
+                    showNotification('Approval update failed: ' + err.message, 'info');
+                } finally {
+                    setModerationActioning(prev => { const c = { ...prev }; delete c[itemId]; return c; });
+                }
+            };
+
+            const handleRejectAction = async (itemId: string, type: 'professional' | 'client', name: string) => {
+                if (!window.confirm(`Are you sure you want to decline registration for ${name}?`)) return;
+                setModerationActioning(prev => ({ ...prev, [itemId]: 'reject' }));
+                await new Promise(r => setTimeout(r, 850));
+                
+                try {
+                    if (type === 'professional') {
+                        await deleteDoc(doc(db, 'vendors', itemId));
+                        showNotification('Provider application declined and deleted.', 'success');
+                    } else {
+                        await deleteDoc(doc(db, 'users', itemId));
+                        showNotification('Client request declined and deleted.', 'success');
+                    }
+                    setRemovedModerationIds(prev => [...prev, itemId]);
+                } catch (err: any) {
+                    showNotification('Rejection failed: ' + err.message, 'info');
+                } finally {
+                    setModerationActioning(prev => { const c = { ...prev }; delete c[itemId]; return c; });
+                }
+            };
+
+            return (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                        <div>
+                            <h2 className="text-2xl font-bold font-[Cinzel] text-white">Moderation Queue</h2>
+                            <p className="text-xs text-slate-500 mt-1">Audit and authorize incoming vendor and client registrants.</p>
+                        </div>
+                        <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                            Pending Audit: {moderationQueueItems.length}
+                        </div>
+                    </div>
+
+                    <TableContainer>
+                        <table className="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr className="border-b border-white/10 bg-black/40 text-slate-400 font-bold uppercase tracking-widest text-[9px]">
+                                    <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Applicant profile</th>
+                                    <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Request Type</th>
+                                    <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Credential Email</th>
+                                    <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Summary / Particulars</th>
+                                    <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10 text-right">Moderation Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="relative divide-y divide-white/5">
+                                <AnimatePresence mode="popLayout">
+                                    {moderationQueueItems.map(item => {
+                                        const action = moderationActioning[item.id];
+                                        return (
+                                            <motion.tr 
+                                                key={item.id}
+                                                layout
+                                                initial={{ opacity: 0, y: 12 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={{ 
+                                                    opacity: 0, 
+                                                    x: action === 'approve' ? 120 : -120,
+                                                    backgroundColor: action === 'approve' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                                    transition: { duration: 0.4, ease: 'easeOut' }
+                                                }}
+                                                className="hover:bg-white/[0.02] active:bg-white/[0.03] transition-colors duration-150 relative"
+                                            >
+                                                <td className="p-4">
+                                                    <div className="flex items-center gap-3">
+                                                        {item.image ? (
+                                                            <img src={item.image} className="w-10 h-10 rounded-lg object-cover bg-black border border-white/10 shrink-0" />
+                                                        ) : (
+                                                            <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-white/10 flex items-center justify-center font-bold text-slate-400 text-xs shrink-0">
+                                                                {item.name.slice(0, 2).toUpperCase()}
+                                                            </div>
+                                                        )}
+                                                        <div>
+                                                            <h4 className="font-bold text-white text-sm">{item.name}</h4>
+                                                            <span className="text-[9px] text-slate-500 uppercase tracking-widest">{item.category}</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
+                                                        item.type === 'professional'
+                                                            ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' 
+                                                            : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                                    }`}>
+                                                        {item.type}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-slate-300 font-mono text-xs">
+                                                    {item.email}
+                                                </td>
+                                                <td className="p-4 text-slate-400">
+                                                    {item.details}
+                                                </td>
+                                                <td className="p-4 text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <button 
+                                                            onClick={() => handleApproveAction(item.id, item.type)}
+                                                            disabled={!!action}
+                                                            className={`p-2 rounded-lg transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
+                                                                action === 'approve'
+                                                                    ? 'bg-green-500/20 text-green-400'
+                                                                    : 'text-slate-500 hover:text-green-500 hover:bg-green-500/10 cursor-pointer'
+                                                            }`}
+                                                            title="Approve Registration"
+                                                        >
+                                                            {action === 'approve' ? (
+                                                                <motion.div
+                                                                    initial={{ scale: 0.5, rotate: -45 }}
+                                                                    animate={{ scale: 1.1, rotate: 0 }}
+                                                                    className="bg-green-500 text-black p-1 rounded-full"
+                                                                >
+                                                                    <ShieldCheck className="w-3.5 h-3.5 stroke-[3.5]" />
+                                                                </motion.div>
+                                                            ) : (
+                                                                <ShieldCheck className="w-5 h-5" />
+                                                            )}
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleRejectAction(item.id, item.type, item.name)}
+                                                            disabled={!!action}
+                                                            className={`p-2 rounded-lg transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
+                                                                action === 'reject'
+                                                                    ? 'bg-red-500/20 text-red-400'
+                                                                    : 'text-slate-500 hover:text-red-500 hover:bg-red-500/10 cursor-pointer'
+                                                            }`}
+                                                            title="Decline registration"
+                                                        >
+                                                            {action === 'reject' ? (
+                                                                <motion.div
+                                                                    initial={{ scale: 0.5 }}
+                                                                    animate={{ scale: [1.1, 1] }}
+                                                                    className="bg-red-500 text-white p-1 rounded-full"
+                                                                >
+                                                                    <X className="w-3.5 h-3.5 stroke-[3.5]" />
+                                                                </motion.div>
+                                                            ) : (
+                                                                <X className="w-5 h-5" />
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </motion.tr>
+                                        );
+                                    })}
+                                </AnimatePresence>
+                                {moderationQueueItems.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} className="p-8 text-center text-slate-500 uppercase tracking-widest text-[10px]">Audit complete! Moderation queue is empty</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </TableContainer>
+                </div>
+            );
+        })()}
 
         {activeTab === 'messages' && (
             <div className="space-y-6 animate-in slide-in-from-right-10 duration-500">

@@ -1670,32 +1670,41 @@ function App() {
       setView('marketplace');
       return null;
     }
-    return <AdminPanel 
-    vendors={vendors} 
-    posts={posts} 
-    bookings={bookings} 
-    users={users}
-    onAddVendor={handleAdminAddVendor} 
-    onUpdateVendor={handleUpdateVendor}
-    onRemoveVendor={handleAdminRemoveVendor} 
-    onToggleVerify={handleAdminToggleVerify} 
-    onUpdateBookingStatus={handleUpdateBookingStatus}
-    onLoginAsVendor={id => { setCurrentUserVendorId(id); setUserRole('vendor'); setView('marketplace'); }} 
-    onAddPost={handleAdminAddPost} 
-    onRemovePost={handleAdminRemovePost} 
-    onBack={() => setView('marketplace')} 
-    categoryImages={categoryImages} 
-    onUpdateCategoryImage={handleAdminUpdateCategoryImage} 
-    categories={activeCategories} 
-    onAddCategory={handleAdminAddCategory} 
-    categorySubCategories={categorySubCategories} 
-    onUpdateCategorySubCategories={handleAdminUpdateCategorySubCategories} 
-    heroBackgroundUrl={heroBackgroundUrl}
-    onUpdateHeroBackground={handleAdminUpdateHeroBackground}
-    messages={messages}
-    onSendMessage={handleSendMessage}
-    showNotification={showNotification}
-  />;
+    return (
+      <motion.div 
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className="min-h-screen bg-black"
+      >
+        <AdminPanel 
+          vendors={vendors} 
+          posts={posts} 
+          bookings={bookings} 
+          users={users}
+          onAddVendor={handleAdminAddVendor} 
+          onUpdateVendor={handleUpdateVendor}
+          onRemoveVendor={handleAdminRemoveVendor} 
+          onToggleVerify={handleAdminToggleVerify} 
+          onUpdateBookingStatus={handleUpdateBookingStatus}
+          onLoginAsVendor={id => { setCurrentUserVendorId(id); setUserRole('vendor'); setView('marketplace'); }} 
+          onAddPost={handleAdminAddPost} 
+          onRemovePost={handleAdminRemovePost} 
+          onBack={() => setView('marketplace')} 
+          categoryImages={categoryImages} 
+          onUpdateCategoryImage={handleAdminUpdateCategoryImage} 
+          categories={activeCategories} 
+          onAddCategory={handleAdminAddCategory} 
+          categorySubCategories={categorySubCategories} 
+          onUpdateCategorySubCategories={handleAdminUpdateCategorySubCategories} 
+          heroBackgroundUrl={heroBackgroundUrl}
+          onUpdateHeroBackground={handleAdminUpdateHeroBackground}
+          messages={messages}
+          onSendMessage={handleSendMessage}
+          showNotification={showNotification}
+        />
+      </motion.div>
+    );
   }
 
   if (!fbUser) return <AuthWall />;
@@ -1745,7 +1754,12 @@ function App() {
       const v = vendors.find(v => v.id === currentUserVendorId);
       if (v) {
         return (
-          <div className="min-h-screen bg-black flex flex-col">
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="min-h-screen bg-black flex flex-col"
+          >
             {renderVendorToggle()}
             <div className="flex-grow flex flex-col">
               <VendorPortal 
@@ -1760,7 +1774,7 @@ function App() {
                 onSwitchToClientView={() => setView('marketplace')}
               />
             </div>
-          </div>
+          </motion.div>
         );
       }
     }
@@ -1769,7 +1783,12 @@ function App() {
     const myBookings = bookings.filter(b => b.contactEmail === fbUser.email);
     const myMessages = messages.filter(m => m.clientEmail === fbUser.email);
     return (
-      <div className="min-h-screen bg-black flex flex-col">
+      <motion.div 
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className="min-h-screen bg-black flex flex-col"
+      >
         {renderVendorToggle()}
         <div className="flex-grow flex flex-col">
           <ClientPortal 
@@ -1787,18 +1806,38 @@ function App() {
             onDeleteAccount={handleDeleteAccount} 
           />
         </div>
-      </div>
+      </motion.div>
     );
   }
 
-  if (view === 'posts') return <PostsPage posts={posts} vendors={vendors} onBack={() => setView('marketplace')} onViewVendor={navigateToVendor} />;
+  if (view === 'posts') {
+    return (
+      <motion.div 
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className="min-h-screen bg-black flex flex-col"
+      >
+        <PostsPage posts={posts} vendors={vendors} onBack={() => setView('marketplace')} onViewVendor={navigateToVendor} />
+      </motion.div>
+    );
+  }
 
   if (view === 'payment-success') {
-    return <PaymentSuccess 
-      bookingId={paymentBookingId || ''} 
-      vendorId={paymentVendorId || ''} 
-      onReturn={() => { setPortalTab('client'); setView('portal'); }} 
-    />;
+    return (
+      <motion.div 
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className="min-h-screen bg-black flex flex-col"
+      >
+        <PaymentSuccess 
+          bookingId={paymentBookingId || ''} 
+          vendorId={paymentVendorId || ''} 
+          onReturn={() => { setPortalTab('client'); setView('portal'); }} 
+        />
+      </motion.div>
+    );
   }
 
   if (view === 'verify-account') {
@@ -1822,22 +1861,41 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-slate-100 flex flex-col">
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      className="min-h-screen bg-black text-slate-100 flex flex-col"
+    >
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-lg focus:font-bold">Skip to main content</a>
       <nav className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
-            <button className="flex items-center gap-3 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-lg p-1" onClick={() => { setView('marketplace'); setActiveCategory('All'); }} aria-label="Simcha Booking Home">
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="flex items-center gap-3 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-lg p-1" 
+              onClick={() => { setView('marketplace'); setActiveCategory('All'); }} 
+              aria-label="Simcha Booking Home"
+            >
                 <SimchaLogo className="h-9 w-9 group-hover:scale-110 transition-transform" />
                 <div className="text-left">
                     <h1 className="text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
                       <span className="block md:inline">Simcha</span><span className="block md:inline md:ml-1.5">Booking</span>
                     </h1>
                 </div>
-            </button>
+            </motion.button>
             <div className="flex items-center gap-6">
-                <button onClick={() => setView('posts')} className="hidden md:block text-slate-300 hover:text-[#D4AF37] transition-colors text-sm font-bold uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded p-1">Moments</button>
-                <button 
+                <motion.button 
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setView('posts')} 
+                  className="hidden md:block text-slate-300 hover:text-[#D4AF37] transition-colors text-sm font-bold uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded p-1 cursor-pointer"
+                >
+                  Moments
+                </motion.button>
+                <motion.button 
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => {
                     if (isActuallyVendor) {
                       setPortalTab('vendor');
@@ -1846,13 +1904,20 @@ function App() {
                     }
                     setView('portal');
                   }} 
-                  className="flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/20 px-4 py-2 rounded-full transition-all text-[10px] font-black uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-white outline-none" 
+                  className="flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/20 px-4 py-2 rounded-full transition-all text-[10px] font-black uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-white outline-none cursor-pointer" 
                   aria-label="Open My Portal"
                 >
                   <LayoutDashboard className="w-4 h-4" aria-hidden="true" />
                   <span>My Portal</span>
-                </button>
-                <button onClick={handleSignOut} className="text-slate-500 hover:text-red-500 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-lg p-1" aria-label="Sign Out"><LogOut className="w-5 h-5" /></button>
+                </motion.button>
+                <motion.button 
+                  whileTap={{ scale: 0.9 }}
+                  onClick={handleSignOut} 
+                  className="text-slate-500 hover:text-red-500 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-lg p-1 cursor-pointer" 
+                  aria-label="Sign Out"
+                >
+                  <LogOut className="w-5 h-5" />
+                </motion.button>
             </div>
           </div>
         </div>
@@ -1873,7 +1938,13 @@ function App() {
                 <Search className="w-5 h-5 text-[#D4AF37]/50 mr-3 flex-shrink-0" aria-hidden="true" />
                 <input id="search-input" type="text" placeholder="Search elite vendors..." className="flex-1 focus:outline-none text-slate-100 placeholder:text-slate-600 bg-transparent h-10 md:h-14 font-medium" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
               </div>
-              <button className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black px-10 py-4 rounded-xl md:rounded-full font-black uppercase tracking-widest text-sm transition-all shadow-xl focus-visible:ring-2 focus-visible:ring-white outline-none">Search</button>
+              <motion.button 
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black px-10 py-4 rounded-xl md:rounded-full font-black uppercase tracking-widest text-sm transition-all shadow-xl focus-visible:ring-2 focus-visible:ring-white outline-none cursor-pointer"
+              >
+                Search
+              </motion.button>
             </div>
           </div>
         </section>
@@ -1884,11 +1955,18 @@ function App() {
                     <div className="text-center mb-10"><h2 id="categories-heading" className="text-3xl font-bold font-[Cinzel] mb-4 text-[#D4AF37]">Explore Signature Categories</h2></div>
                     <nav className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4" aria-label="Category Browser">
                         {activeCategories.map((cat) => (
-                            <button key={cat} onClick={() => setActiveCategory(cat)} className="group relative h-40 rounded-xl overflow-hidden border border-[#D4AF37]/20 hover:border-[#D4AF37]/50 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-all">
+                            <motion.button 
+                              key={cat} 
+                              whileHover={{ scale: 1.03, y: -4, borderColor: "rgba(212, 175, 55, 0.4)" }}
+                              whileTap={{ scale: 0.97 }}
+                              transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                              onClick={() => setActiveCategory(cat)} 
+                              className="group relative h-40 rounded-xl overflow-hidden border border-[#D4AF37]/20 hover:border-[#D4AF37]/50 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-all cursor-pointer"
+                            >
                                 <img src={categoryImages[cat]} alt="" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform" aria-hidden="true" />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
                                 <div className="absolute inset-0 flex items-center justify-center p-2 text-center"><h3 className="text-[#D4AF37] font-bold text-lg font-[Cinzel] tracking-wide">{cat}</h3></div>
-                            </button>
+                            </motion.button>
                         ))}
                     </nav>
                 </div>
@@ -1897,7 +1975,13 @@ function App() {
             <section className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 w-full animate-in fade-in" aria-labelledby="results-heading">
                 <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                      <nav className="flex flex-wrap items-center gap-2" aria-label="Breadcrumb">
-                        <button onClick={() => setActiveCategory('All')} className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all border outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${activeCategory === 'All' ? 'bg-[#D4AF37] text-black border-[#D4AF37]' : 'bg-black text-[#D4AF37]/70 hover:bg-[#D4AF37]/10 border-[#D4AF37]/30'}`}>All Categories</button>
+                        <motion.button 
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => setActiveCategory('All')} 
+                          className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all border outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] cursor-pointer ${activeCategory === 'All' ? 'bg-[#D4AF37] text-black border-[#D4AF37]' : 'bg-black text-[#D4AF37]/70 hover:bg-[#D4AF37]/10 border-[#D4AF37]/30'}`}
+                        >
+                          All Categories
+                        </motion.button>
                         {activeCategory !== 'All' && <><span className="text-slate-600" aria-hidden="true">/</span><span id="results-heading" className="font-bold text-[#D4AF37]">{activeCategory}</span></>}
                      </nav>
                 </header>
@@ -1909,28 +1993,54 @@ function App() {
                         <span className="text-[9px] uppercase tracking-[0.2em] text-[#D4AF37]/60 font-black mr-2 min-w-[80px]">{group}</span>
                         <div className="flex flex-wrap gap-2">
                           {(subCats as string[]).map(sub => (
-                            <button
+                            <motion.button
                               key={sub}
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
                               onClick={() => setActiveSubCategories(prev => 
                                 prev.includes(sub) ? prev.filter(s => s !== sub) : [...prev, sub]
                               )}
-                              className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border ${
+                              className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border cursor-pointer ${
                                 activeSubCategories.includes(sub)
                                   ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-[0_0_15px_rgba(212,175,55,0.3)]'
                                   : 'bg-black text-slate-500 border-white/10 hover:border-[#D4AF37]/50 hover:text-slate-300'
                               }`}
                             >
                               {sub}
-                            </button>
+                            </motion.button>
                           ))}
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
+                <motion.div 
+                    key={`${filteredVendors.length}-${activeCategory}-${searchTerm}`}
+                    variants={{
+                      hidden: { opacity: 0 },
+                      show: {
+                        opacity: 1,
+                        transition: {
+                          staggerChildren: 0.05
+                        }
+                      }
+                    }}
+                    initial="hidden"
+                    whileInView="show"
+                    viewport={{ once: true, amount: 0.02 }}
+                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8"
+                >
                     {filteredVendors.map(v => (
-                      <div id={`vendor-${v.id}`} key={v.id} tabIndex={-1} className="outline-none focus:ring-2 focus:ring-[#D4AF37] rounded-xl">
+                      <motion.div 
+                        variants={{
+                          hidden: { opacity: 0, y: 30 },
+                          show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100, damping: 15 } }
+                        }}
+                        id={`vendor-${v.id}`} 
+                        key={v.id} 
+                        tabIndex={-1} 
+                        className="outline-none focus:ring-2 focus:ring-[#D4AF37] rounded-xl"
+                      >
                         <VendorCard 
                           vendor={v} 
                           onBook={v => setBookingVendor(v)} 
@@ -1939,9 +2049,9 @@ function App() {
                           selectedDate={eventDate} 
                           onAddReview={handleAddReview} 
                         />
-                      </div>
+                      </motion.div>
                     ))}
-                </div>
+                </motion.div>
                 {filteredVendors.length === 0 && (
                     <div className="py-20 text-center opacity-40" role="status">
                       <Search className="w-16 h-16 mx-auto mb-4 text-[#D4AF37]" aria-hidden="true" />
@@ -2033,7 +2143,7 @@ function App() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 

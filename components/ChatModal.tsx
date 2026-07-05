@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { X, Send, User, Mail, MessageSquare, Bot, Image as ImageIcon, Paperclip, Mic, StopCircle, Play, Volume2, FileText, Download, Loader2, Shield, ArrowLeft } from 'lucide-react';
 import { Vendor, Message, UserAccount } from '../types';
 import { storage, auth, db, handleFirestoreError, OperationType } from '../services/firebase';
@@ -849,7 +850,13 @@ const ChatModal: React.FC<ChatModalProps> = ({
                 chatMessages.map((msg) => {
                   const isSent = checkIfSent(msg);
                   return (
-                    <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
+                    <motion.div 
+                      key={msg.id} 
+                      initial={{ opacity: 0, y: 15, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ duration: 0.25, ease: "easeOut" }}
+                      className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}
+                    >
                       <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative shadow-md ${
                         isSent 
                           ? 'bg-[#D4AF37] text-black' 
@@ -932,19 +939,35 @@ const ChatModal: React.FC<ChatModalProps> = ({
                           {msg.status === 'sending' ? 'Sending...' : (msg.status === 'error' ? 'Not Sent' : (msg.isRead ? 'Seen' : 'Delivered'))}
                         </div>
                       )}
-                    </div>
+                    </motion.div>
                   );
                 })
               )}
 
               {/* Typing Indicator */}
               {otherIsTyping && (
-                <div className="flex justify-start px-2 py-1">
-                  <div className="bg-zinc-900 border border-[#D4AF37]/10 text-[#D4AF37] px-4 py-2.5 rounded-full text-[11px] flex items-center gap-2 shadow-lg animate-pulse">
-                    <Loader2 className="w-3 h-3 animate-spin" />
+                <div className="flex justify-start px-2 py-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="bg-zinc-900 border border-[#D4AF37]/10 text-[#D4AF37] px-4 py-2.5 rounded-[20px] text-[11px] flex items-center gap-3 shadow-lg">
                     <span className="font-semibold">
-                      {(isAdminReplying ? clientName : (isAdminMode ? 'System Concierge' : vendor?.name)) || 'Someone'} is typing...
+                      {(isAdminReplying ? clientName : (isAdminMode ? 'System Concierge' : vendor?.name)) || 'Someone'} is typing
                     </span>
+                    <div className="flex items-center gap-1 mt-0.5" aria-hidden="true">
+                      <motion.span
+                        animate={{ opacity: [0.3, 1, 0.3] }}
+                        transition={{ repeat: Infinity, duration: 1.2, delay: 0 }}
+                        className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
+                      />
+                      <motion.span
+                        animate={{ opacity: [0.3, 1, 0.3] }}
+                        transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }}
+                        className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
+                      />
+                      <motion.span
+                        animate={{ opacity: [0.3, 1, 0.3] }}
+                        transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }}
+                        className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
