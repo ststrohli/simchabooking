@@ -648,7 +648,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
           const storagePath = `chats/voice_${Date.now()}.${fileExt}`;
           const url = await uploadFileWithProgress(audioBlob, storagePath, (progress) => {
             setUploadProgress(progress);
-          });
+          }, { contentType: mimeType });
           const conversationId = [myUid, targetUid].sort().join('_');
 
           sendOptimisticMessage({
@@ -707,15 +707,28 @@ const ChatModal: React.FC<ChatModalProps> = ({
   };
 
   const cancelRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      // Clear the onstop handler so we don't upload
-      mediaRecorderRef.current.onstop = null;
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
+    if (mediaRecorderRef.current) {
+      try {
+        mediaRecorderRef.current.onstop = null;
+        if (mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
+        if (mediaRecorderRef.current.stream) {
+          mediaRecorderRef.current.stream.getTracks().forEach(track => {
+            try { track.stop(); } catch (e) {}
+          });
+        }
+      } catch (e) {
+        console.error("Error stopping recorder in cancelRecording:", e);
+      }
+    }
+    mediaRecorderRef.current = null;
+    setIsRecording(false);
+    setRecordingDuration(0);
+    audioChunksRef.current = [];
+    if (timerRef.current) {
       clearInterval(timerRef.current);
-      audioChunksRef.current = [];
-      // Stop the tracks
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      timerRef.current = null;
     }
   };
 
@@ -919,8 +932,15 @@ const ChatModal: React.FC<ChatModalProps> = ({
                           </div>
                         ) : msg.type === 'file' ? (
                           msg.fileType?.startsWith('video/') ? (
-                             <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: msg.fileUrl || '', type: 'video'})}>
-                               <video src={msg.fileUrl} className="w-full aspect-video rounded-lg object-cover bg-black" />
+                             <div className="space-y-2 cursor-pointer relative group" onClick={() => setFullscreenMedia({url: msg.fileUrl || '', type: 'video'})}>
+                               <div className="relative rounded-lg overflow-hidden border border-white/10 bg-black">
+                                 <video src={msg.fileUrl} className="w-full aspect-video object-cover" />
+                                 <div className="absolute inset-0 bg-black/20 flex items-center justify-center group-hover:bg-black/40 transition-colors">
+                                   <div className="w-12 h-12 bg-[#D4AF37] text-black rounded-full flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
+                                     <Play className="w-6 h-6 fill-current ml-0.5" />
+                                   </div>
+                                 </div>
+                               </div>
                                {msg.text && msg.text !== 'Sent a video' && <p className="text-sm">{msg.text}</p>}
                              </div>
                           ) : (
@@ -1065,27 +1085,27 @@ const ChatModal: React.FC<ChatModalProps> = ({
 
               {/* Upload Preview & Progress */}
               {(isUploading && uploadProgress !== null) && (
-                <div className="flex items-center gap-4 p-3 bg-zinc-900 border border-white/5 rounded-xl">
-                  {uploadPreview ? (
-                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-black relative border border-white/10 shrink-0">
-                      {uploadPreview.type.startsWith('video') ? (
-                        <video src={uploadPreview.url} className="w-full h-full object-cover opacity-50" />
+                <div className="flex items-center gap-4 p-4 bg-[#111] border border-[#D4AF37]/20 rounded-xl shadow-2xl relative overflow-hidden animate-pulse">
+                  <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-black border border-white/10 shrink-0 flex items-center justify-center">
+                    {uploadPreview ? (
+                      uploadPreview.type.startsWith('video') ? (
+                        <video src={uploadPreview.url} className="w-full h-full object-cover opacity-40" />
                       ) : (
-                        <img src={uploadPreview.url} className="w-full h-full object-cover opacity-50" />
-                      )}
+                        <img src={uploadPreview.url} className="w-full h-full object-cover opacity-40" />
+                      )
+                    ) : (
+                      <FileText className="w-6 h-6 text-[#D4AF37]/40" />
+                    )}
+                    {/* Seamless Progress Ring/Spinner Overlay */}
+                    <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center">
+                      <div className="w-8 h-8 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_10px_rgba(212,175,55,0.3)]"></div>
                     </div>
-                  ) : (
-                    <div className="w-12 h-12 rounded-lg bg-black flex items-center justify-center border border-white/10 shrink-0">
-                      <FileText className="w-5 h-5 text-slate-500" />
-                    </div>
-                  )}
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex justify-between text-xs font-bold mb-1.5">
-                      <span className="text-[#D4AF37]">Uploading...</span>
-                      <span className="text-slate-400">{Math.round(uploadProgress)}%</span>
-                    </div>
-                    <div className="h-1.5 w-full bg-black rounded-full overflow-hidden">
-                      <div className="h-full bg-[#D4AF37] transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                    <p className="text-[10px] font-black uppercase text-[#D4AF37] tracking-[0.2em] mb-1">Transferring Asset</p>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xl font-bold text-white tracking-tight font-mono">{Math.round(uploadProgress)}%</span>
+                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Complete</span>
                     </div>
                   </div>
                 </div>

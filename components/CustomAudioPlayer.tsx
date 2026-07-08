@@ -1,5 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Play, Pause } from 'lucide-react';
+import React from 'react';
 
 interface CustomAudioPlayerProps {
   src: string;
@@ -7,133 +6,32 @@ interface CustomAudioPlayerProps {
 }
 
 export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({ src, theme }) => {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [currentTime, setCurrentTime] = useState('0:00');
-  const [duration, setDuration] = useState('0:00');
-
-  const togglePlay = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play().catch(err => console.error("Audio playback error:", err));
-    }
-  };
-
-  useEffect(() => {
-    // Reset player if source changes
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-    setIsPlaying(false);
-    setProgress(0);
-    setCurrentTime('0:00');
-    setDuration('0:00');
-  }, [src]);
-
-  const formatTime = (secs: number) => {
-    if (isNaN(secs) || !isFinite(secs)) return '0:00';
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
-
-  const handleTimeUpdate = () => {
-    if (!audioRef.current) return;
-    const current = audioRef.current.currentTime;
-    const dur = audioRef.current.duration || 0;
-    setCurrentTime(formatTime(current));
-    if (dur > 0) {
-      setProgress((current / dur) * 100);
-    }
-  };
-
-  const handleLoadedMetadata = () => {
-    if (!audioRef.current) return;
-    setDuration(formatTime(audioRef.current.duration));
-  };
-
-  const handleEnded = () => {
-    setIsPlaying(false);
-    setProgress(0);
-    setCurrentTime('0:00');
-  };
-
-  const handlePlay = () => setIsPlaying(true);
-  const handlePause = () => setIsPlaying(false);
-
-  const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!audioRef.current || !audioRef.current.duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const width = rect.width;
-    const newTime = (clickX / width) * audioRef.current.duration;
-    audioRef.current.currentTime = newTime;
-  };
-
-  // Theme specific styles
-  const playButtonBg = theme === 'sent' 
-    ? 'bg-black/10 hover:bg-black/20 text-black' 
-    : 'bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37]';
-  
-  const progressBg = theme === 'sent' 
-    ? 'bg-black/15' 
-    : 'bg-zinc-800';
-     
-  const progressBarBg = theme === 'sent' 
-    ? 'bg-black' 
-    : 'bg-[#D4AF37]';
-
-  const textColorStatus = theme === 'sent'
-    ? 'text-black/60'
-    : 'text-zinc-400';
+  const isSent = theme === 'sent';
 
   return (
-    <div className="flex items-center gap-3 py-1.5 min-w-[180px] sm:min-w-[220px] select-none">
-      <audio
-        ref={audioRef}
-        src={src}
-        onPlay={handlePlay}
-        onPause={handlePause}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={handleEnded}
-        className="hidden"
-        preload="metadata"
-      />
-
-      <button
-        type="button"
-        onClick={togglePlay}
-        className={`w-9 h-9 rounded-full flex items-center justify-center transition-all flex-shrink-0 cursor-pointer ${playButtonBg}`}
-        aria-label={isPlaying ? "Pause" : "Play"}
-      >
-        {isPlaying ? (
-          <Pause className="w-3.5 h-3.5 fill-current" />
-        ) : (
-          <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-        )}
-      </button>
-
-      <div className="flex-1 space-y-1">
-        {/* Progress Line */}
-        <div 
-          onClick={handleProgressBarClick}
-          className={`h-1.5 rounded-full w-full cursor-pointer relative overflow-hidden ${progressBg}`}
-        >
-          <div 
-            style={{ width: `${progress}%` }} 
-            className={`h-full rounded-full transition-all duration-75 ${progressBarBg}`}
-          />
-        </div>
-        
-        <div className="flex justify-between items-center text-[9px] font-mono leading-none">
-          <span className={textColorStatus}>{currentTime}</span>
-          <span className={textColorStatus}>{duration}</span>
-        </div>
+    <div 
+      className={`flex flex-col gap-1.5 p-3 rounded-xl border max-w-[280px] sm:max-w-[320px] transition-all duration-300 ${
+        isSent 
+          ? 'bg-black/20 border-black/30' 
+          : 'bg-zinc-950 border-[#D4AF37]/20 shadow-[0_0_15px_rgba(212,175,55,0.05)]'
+      }`}
+    >
+      <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.15em] mb-1">
+        <span className={isSent ? 'text-black/60' : 'text-[#D4AF37]'}>Voice Note</span>
+        <span className={isSent ? 'text-black/40' : 'text-zinc-500 font-mono'}>Play online</span>
       </div>
+      <audio
+        src={src}
+        controls
+        preload="metadata"
+        className="w-full h-9 accent-[#D4AF37] outline-none"
+        style={{
+          borderRadius: '8px',
+          filter: isSent 
+            ? 'invert(1) hue-rotate(180deg) brightness(0.7) sepia(1) saturate(3) hue-rotate(-20deg)' 
+            : 'invert(0.9) sepia(1) saturate(5) hue-rotate(5deg) brightness(0.95)'
+        }}
+      />
     </div>
   );
 };

@@ -1022,9 +1022,12 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     if (!file || !vendor.id) return;
 
     setIsUploadingMedia(true);
+    setUploadProgresses(prev => ({ ...prev, 'gallery': 0 }));
     try {
       const storagePath = `vendors/${vendor.id}/gallery/${Date.now()}_${file.name}`;
-      const downloadURL = await uploadFileRobustly(file, storagePath);
+      const downloadURL = await uploadFileWithProgress(file, storagePath, (progress) => {
+        setUploadProgresses(prev => ({ ...prev, 'gallery': progress }));
+      });
       
       const newGallery = [...(vendor.gallery || []), downloadURL];
 
@@ -1049,6 +1052,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       showNotification('Failed to upload media: ' + err.message, 'info');
     } finally {
       setIsUploadingMedia(false);
+      setUploadProgresses(prev => { const newP = {...prev}; delete newP['gallery']; return newP; });
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -1058,9 +1062,12 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     if (!file || !vendor.id) return;
 
     setIsUploadingLogo(true);
+    setUploadProgresses(prev => ({ ...prev, 'logo': 0 }));
     try {
       const storagePath = `vendors/${vendor.id}/logo/${Date.now()}_${file.name}`;
-      const downloadURL = await uploadFileRobustly(file, storagePath);
+      const downloadURL = await uploadFileWithProgress(file, storagePath, (progress) => {
+        setUploadProgresses(prev => ({ ...prev, 'logo': progress }));
+      });
       
       // Save directly to Firestore database document
       await updateDoc(doc(db, 'vendors', vendor.id), {
@@ -1083,6 +1090,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       showNotification('Failed to upload image: ' + err.message, 'info');
     } finally {
       setIsUploadingLogo(false);
+      setUploadProgresses(prev => { const newP = {...prev}; delete newP['logo']; return newP; });
     }
   };
 
@@ -1285,7 +1293,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         try {
           const fileExt = mimeType.split('/')[1].split(';')[0];
           const storagePath = `chats/voice_${vendor.id}_${Date.now()}.${fileExt}`;
-          const url = await uploadFileRobustly(audioBlob, storagePath);
+          const url = await uploadFileRobustly(audioBlob, storagePath, { contentType: mimeType });
           const thread = messageThreads.find(t => t[0] === selectedThreadEmail);
           
           if (thread && selectedThreadEmail) {
@@ -1321,13 +1329,28 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   };
 
   const cancelChatRecording = () => {
-    if (mediaRecorderRef.current && isChatRecording) {
-      mediaRecorderRef.current.onstop = null;
-      mediaRecorderRef.current.stop();
-      setIsChatRecording(false);
+    if (mediaRecorderRef.current) {
+      try {
+        mediaRecorderRef.current.onstop = null;
+        if (mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
+        if (mediaRecorderRef.current.stream) {
+          mediaRecorderRef.current.stream.getTracks().forEach(track => {
+            try { track.stop(); } catch (e) {}
+          });
+        }
+      } catch (e) {
+        console.error("Error stopping recorder in cancelChatRecording:", e);
+      }
+    }
+    mediaRecorderRef.current = null;
+    setIsChatRecording(false);
+    setChatRecordingDuration(0);
+    audioChunksRef.current = [];
+    if (chatTimerRef.current) {
       clearInterval(chatTimerRef.current);
-      audioChunksRef.current = [];
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      chatTimerRef.current = null;
     }
   };
 
@@ -2301,17 +2324,17 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           <h2 className="text-[#D4AF37] font-bold font-[Cinzel] tracking-widest uppercase text-sm">Portal</h2>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-[#D4AF37] p-2 bg-white/5 rounded-lg transition-all">
+            {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
           {onSwitchToClientView && (
             <button 
               onClick={onSwitchToClientView}
-              className="bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] font-black px-3 py-1.5 rounded-lg text-[9px] uppercase tracking-wider transition-all border border-[#D4AF37]/30 flex items-center gap-1.5"
+              className="text-slate-500 hover:text-[#D4AF37] p-2 transition-all"
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> Back
+              <X className="w-5 h-5" />
             </button>
           )}
-          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-[#D4AF37] p-2 bg-white/5 rounded-lg transition-all">
-            {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
         </div>
       </div>
 
@@ -2354,30 +2377,86 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
       {/* Main Container */}
       <main className="flex-1 h-screen overflow-y-auto bg-[#050505] relative">
-        <header className="sticky top-0 z-30 bg-[#050505]/80 backdrop-blur-md px-6 md:px-10 py-6 md:py-8 border-b border-white/5">
-          <div className="flex justify-between items-center">
-            <div>
-              <button onClick={onSwitchToClientView} className="text-[#D4AF37] hover:text-[#E5C76B] font-bold text-[10px] uppercase tracking-widest flex items-center gap-1.5 transition-colors border border-[#D4AF37]/30 px-3 py-1.5 rounded-full hover:bg-[#D4AF37]/10 w-fit mb-4">
-                <ArrowLeft className="w-3.5 h-3.5" /> Client View
-              </button>
-              <h1 className="text-xl md:text-3xl font-bold font-[Cinzel] text-white capitalize tracking-tight">{activeTab}</h1>
-              <p className="text-[#D4AF37]/60 text-[10px] font-black uppercase tracking-[0.4em] mt-1.5">{vendor.name}</p>
+        <header className="sticky top-0 z-30 bg-[#050505]/95 backdrop-blur-md px-4 md:px-10 py-5 md:py-6 border-b border-white/5">
+          <div className="flex flex-col gap-4">
+            <div className="flex justify-between items-start">
+              <div>
+                {onSwitchToClientView && (
+                  <button 
+                    onClick={onSwitchToClientView} 
+                    className="text-[#D4AF37] hover:text-[#E5C76B] font-bold text-[10px] uppercase tracking-[0.2em] flex items-center gap-1.5 transition-colors border border-[#D4AF37]/30 px-3.5 py-2 rounded-full hover:bg-[#D4AF37]/10 w-fit mb-3 z-10 shadow-lg relative"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Client View
+                  </button>
+                )}
+                <h1 className="text-xl md:text-3xl font-bold font-[Cinzel] text-white capitalize tracking-tight leading-none">{activeTab}</h1>
+                <p className="text-[#D4AF37]/60 text-[9px] font-black uppercase tracking-[0.4em] mt-2">{vendor.name}</p>
+              </div>
+              <div className="flex items-center gap-4 pt-1">
+                 {onSwitchToClientView && (
+                   <button 
+                     onClick={onSwitchToClientView}
+                     className="hidden md:flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] font-black px-4 py-2 rounded-full text-[10px] uppercase tracking-widest transition-all border border-[#D4AF37]/30"
+                   >
+                     <ArrowLeft className="w-4 h-4" /> Client View
+                   </button>
+                 )}
+                 {pendingRequests > 0 && (
+                   <div className="hidden sm:flex items-center gap-2 bg-red-600/10 border border-red-600/30 px-3 py-1.5 rounded-full animate-pulse">
+                     <Bell className="w-3.5 h-3.5 text-red-500" />
+                     <span className="text-[9px] font-black text-red-500 uppercase tracking-widest">{pendingRequests} Pending</span>
+                   </div>
+                 )}
+              </div>
             </div>
-            <div className="flex items-center gap-4">
-               {onSwitchToClientView && (
-                 <button 
-                   onClick={onSwitchToClientView}
-                   className="hidden md:flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] font-black px-4 py-2 rounded-full text-[10px] uppercase tracking-widest transition-all border border-[#D4AF37]/30"
-                 >
-                   <ArrowLeft className="w-4 h-4" /> Client View
-                 </button>
-               )}
-               {pendingRequests > 0 && (
-                 <div className="hidden sm:flex items-center gap-2 bg-red-600/10 border border-red-600/30 px-3 py-1.5 rounded-full animate-pulse">
-                   <Bell className="w-3.5 h-3.5 text-red-500" />
-                   <span className="text-[9px] font-black text-red-500 uppercase tracking-widest">{pendingRequests} Pending</span>
-                 </div>
-               )}
+
+            {/* Scrollable Horizontal Navigation Tabs for Mobile Screens with Absolute Priority */}
+            <div className="md:hidden flex items-center gap-2.5 overflow-x-auto pb-1.5 scrollbar-none no-scrollbar border-t border-white/5 pt-4 z-20">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap shrink-0 transition-all flex items-center gap-2 shadow-sm cursor-pointer ${activeTab === 'overview' ? 'bg-[#D4AF37] text-black font-extrabold' : 'bg-zinc-900/60 text-slate-400 hover:text-white border border-white/5 hover:bg-zinc-850'}`}
+              >
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                Overview
+              </button>
+              <button
+                onClick={() => setActiveTab('bookings')}
+                className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap shrink-0 transition-all flex items-center gap-2 relative shadow-sm cursor-pointer ${activeTab === 'bookings' ? 'bg-[#D4AF37] text-black font-extrabold' : 'bg-zinc-900/60 text-slate-400 hover:text-white border border-white/5 hover:bg-zinc-850'}`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                Requests
+                {pendingRequests > 0 && (
+                  <span className="bg-red-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
+                    {pendingRequests}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('messages')}
+                className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap shrink-0 transition-all flex items-center gap-2 relative shadow-sm cursor-pointer ${activeTab === 'messages' ? 'bg-[#D4AF37] text-black font-extrabold' : 'bg-zinc-900/60 text-slate-400 hover:text-white border border-white/5 hover:bg-zinc-850'}`}
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                Messages
+                {messages.filter(m => m.receiverId === vendor.id && !m.isRead).length > 0 && (
+                  <span className="bg-red-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
+                    {messages.filter(m => m.receiverId === vendor.id && !m.isRead).length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('calendar')}
+                className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap shrink-0 transition-all flex items-center gap-2 shadow-sm cursor-pointer ${activeTab === 'calendar' ? 'bg-[#D4AF37] text-black font-extrabold' : 'bg-zinc-900/60 text-slate-400 hover:text-white border border-white/5 hover:bg-zinc-850'}`}
+              >
+                <CalendarDays className="w-3.5 h-3.5" />
+                Calendar
+              </button>
+              <button
+                onClick={() => setActiveTab('profile')}
+                className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap shrink-0 transition-all flex items-center gap-2 shadow-sm cursor-pointer ${activeTab === 'profile' ? 'bg-[#D4AF37] text-black font-extrabold' : 'bg-zinc-900/60 text-slate-400 hover:text-white border border-white/5 hover:bg-zinc-850'}`}
+              >
+                <Settings className="w-3.5 h-3.5" />
+                Business Profile
+              </button>
             </div>
           </div>
         </header>
@@ -3278,6 +3357,12 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Business Image</label>
                           <div className="relative group aspect-square rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl">
                              <img src={editForm.image} className="w-full h-full object-cover" alt="" />
+                             {typeof uploadProgresses['logo'] === 'number' && (
+                               <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
+                                 <div className="w-12 h-12 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_15px_rgba(212,175,55,0.3)]"></div>
+                                 <div className="text-[#D4AF37] font-bold text-xs mt-3 tracking-widest">{Math.round(uploadProgresses['logo'])}%</div>
+                               </div>
+                             )}
                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all flex flex-col items-center justify-center p-4">
                                 <button 
                                   onClick={() => logoFileInputRef.current?.click()}
@@ -3617,9 +3702,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                   {!collapsedSections['media'] && (
                     <div className="p-8 space-y-6 animate-in slide-in-from-top-2 duration-300">
                     <div className="flex justify-end gap-3">
-                      {isUploadingMedia && (
-                        <div className="flex items-center gap-2 text-[#D4AF37] text-[10px] font-black uppercase tracking-widest animate-pulse mr-auto">
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading to Asset Cloud...
+                      {typeof uploadProgresses['gallery'] === 'number' && (
+                        <div className="flex items-center gap-3 text-[#D4AF37] text-[10px] font-black uppercase tracking-widest mr-auto bg-black/40 border border-[#D4AF37]/20 px-4 py-2 rounded-xl">
+                          <div className="w-4 h-4 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_5px_rgba(212,175,55,0.3)]"></div>
+                          <span>Uploading: {Math.round(uploadProgresses['gallery'])}%</span>
                         </div>
                       )}
                       <button 
@@ -3657,14 +3743,26 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         const isVideo = url.startsWith('data:video/') || url.match(/\.(mp4|webm|ogg)$/i);
                         return (
                           <div key={idx} className="relative aspect-square bg-black rounded-2xl overflow-hidden border border-white/5 group ring-1 ring-white/5 shadow-2xl">
-                            {isVideo ? (
-                              <video src={url} className="w-full h-full object-cover" />
-                            ) : (
-                              <img src={url} className="w-full h-full object-cover" />
-                            )}
-                            <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col items-center justify-center p-2 text-center">
+                            <div 
+                              onClick={() => setFullscreenMedia({ url, type: isVideo ? 'video' : 'image' })}
+                              className="w-full h-full cursor-pointer relative"
+                            >
+                              {isVideo ? (
+                                <>
+                                  <video src={url} className="w-full h-full object-cover" />
+                                  <div className="absolute inset-0 bg-black/20 flex items-center justify-center group-hover:bg-black/40 transition-colors">
+                                    <div className="w-10 h-10 bg-[#D4AF37] text-black rounded-full flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
+                                      <Play className="w-5 h-5 fill-current ml-0.5" />
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <img src={url} className="w-full h-full object-cover" />
+                              )}
+                            </div>
+                            <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col items-center justify-center p-2 text-center pointer-events-none group-hover:pointer-events-auto">
                               <button 
-                                onClick={() => handleRemoveMedia(idx)}
+                                onClick={(e) => { e.stopPropagation(); handleRemoveMedia(idx); }}
                                 className="p-3 bg-red-600 text-white rounded-xl hover:bg-red-500 transition-colors shadow-xl"
                               >
                                 <Trash2 className="w-4 h-4" />

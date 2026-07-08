@@ -14,7 +14,7 @@ import {
   deleteUser,
   User as FirebaseUser 
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, query, where, orderBy, getDocs, addDoc, arrayUnion, limit, or, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, query, where, orderBy, getDocs, addDoc, arrayUnion, arrayRemove, deleteField, limit, or, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './services/firebase';
 import { uploadFileRobustly } from './services/uploadService';
@@ -736,6 +736,7 @@ function App() {
   const [activeCategory, setActiveCategory] = useState<string | 'All'>('All');
   const [activeSubCategoryGroup, setActiveSubCategoryGroup] = useState<string | null>(null);
   const [activeSubCategories, setActiveSubCategories] = useState<string[]>([]);
+  const [activeSubSubCategory, setActiveSubSubCategory] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [bookingVendor, setBookingVendor] = useState<Vendor | null>(null);
@@ -779,8 +780,9 @@ function App() {
     return vendors.filter(vendor => {
       const matchesCategory = activeCategory === 'All' || vendor.category === activeCategory;
       const matchesSearch = vendor.name.toLowerCase().includes(searchTerm.toLowerCase()) || vendor.location.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesSubCategories = activeSubCategories.length === 0 || 
-        activeSubCategories.some(sub => vendor.subCategories?.includes(sub));
+      const matchesSubCategories = activeSubSubCategory 
+        ? vendor.subCategories?.includes(activeSubSubCategory)
+        : (activeSubCategories.length === 0 || activeSubCategories.some(sub => vendor.subCategories?.includes(sub)));
       return matchesCategory && matchesSearch && matchesSubCategories;
     }).sort((a, b) => {
         if (eventDate) {
@@ -792,11 +794,12 @@ function App() {
         if (b.rating !== a.rating) return b.rating - a.rating;
         return a.name.localeCompare(b.name);
     });
-  }, [vendors, activeCategory, searchTerm, eventDate, activeSubCategories]);
+  }, [vendors, activeCategory, searchTerm, eventDate, activeSubCategories, activeSubSubCategory]);
 
   useEffect(() => {
     setActiveSubCategories([]);
     setActiveSubCategoryGroup(null);
+    setActiveSubSubCategory(null);
   }, [activeCategory]);
 
   const showNotification = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
@@ -1313,6 +1316,28 @@ function App() {
       showNotification('Category added!');
     } catch (err) {
       console.error("Error adding category:", err);
+    }
+  };
+
+  const handleAdminDeleteCategory = async (name: string) => {
+    try {
+      const catId = name.replace(/[^a-zA-Z0-9]/g, '_');
+      const catRef = doc(db, 'categories', catId);
+      await deleteDoc(catRef);
+
+      // Clean up metadata app_config
+      const appConfigRef = doc(db, 'metadata', 'app_config');
+      const appConfigSnap = await getDoc(appConfigRef);
+      if (appConfigSnap.exists()) {
+        await updateDoc(appConfigRef, {
+          categories: arrayRemove(name),
+          [`categoryImages.${name}`]: deleteField()
+        });
+      }
+      showNotification('Category deleted successfully!');
+    } catch (err) {
+      console.error("Error deleting category:", err);
+      showNotification('Failed to delete category.', 'info');
     }
   };
 
@@ -2112,6 +2137,7 @@ function App() {
           showNotification={showNotification}
           onSeedTaxonomy={handleSeedTaxonomy}
           onUpdateCategoryOrder={handleAdminUpdateCategoryOrder}
+          onDeleteCategory={handleAdminDeleteCategory}
         />
       </motion.div>
     );
@@ -2400,83 +2426,148 @@ function App() {
 
                 {activeCategory !== 'All' && categorySubCategories?.[activeCategory] && Object.keys(categorySubCategories[activeCategory]).length > 0 && (
                   <div className="mb-12 animate-in slide-in-from-top-4 duration-500">
-                    {activeSubCategoryGroup && (
-                      <div className="flex items-center gap-2 mb-6 text-sm">
-                        <button 
-                          onClick={() => setActiveSubCategoryGroup(null)} 
-                          className="text-[#D4AF37] hover:text-[#FFDF73] flex items-center transition-colors font-bold uppercase tracking-widest text-xs"
+                    {activeSubSubCategory ? (
+                      // Dedicated Vendor List Page for specific Sub-subcategory (Tier 3)
+                      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Golden back button */}
+                        <div className="flex items-center gap-2 mb-6 text-sm">
+                          <button 
+                            onClick={() => setActiveSubSubCategory(null)} 
+                            className="text-[#D4AF37] hover:text-[#FFDF73] flex items-center transition-colors font-bold uppercase tracking-[0.2em] text-[10px] py-1.5 px-3.5 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/30 rounded-lg shadow-sm cursor-pointer"
+                          >
+                            <ChevronLeft className="w-4 h-4 mr-1.5" />
+                            Back to {activeSubCategoryGroup}
+                          </button>
+                        </div>
+
+                        {/* Beautiful premium display heading */}
+                        <div className="mb-8 p-6 rounded-2xl bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 border border-white/5 relative overflow-hidden shadow-xl">
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37]/5 rounded-full blur-2xl pointer-events-none"></div>
+                          <p className="text-[10px] font-black uppercase text-[#D4AF37] tracking-[0.3em] mb-1.5">{activeSubCategoryGroup}</p>
+                          <h2 className="text-3xl font-extrabold font-[Cinzel] tracking-widest text-white">{activeSubSubCategory}</h2>
+                          <p className="text-slate-400 text-xs mt-2 font-light">Explore elite professionals specializing in {activeSubSubCategory} for your celebration.</p>
+                        </div>
+
+                        {/* Premium Vendor Cards List for this specific sub-subcategory */}
+                        <motion.div 
+                          key={`subsubcategory-vendors-${activeSubSubCategory}-${filteredVendors.length}`}
+                          variants={{
+                            hidden: { opacity: 0 },
+                            show: {
+                              opacity: 1,
+                              transition: {
+                                staggerChildren: 0.05
+                              }
+                            }
+                          }}
+                          initial="hidden"
+                          animate="show"
+                          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8"
                         >
-                          <ChevronLeft className="w-4 h-4 mr-1" />
-                          Back to {activeCategory}
-                        </button>
-                        <span className="text-zinc-600">/</span>
-                        <span className="text-zinc-400 uppercase tracking-widest text-xs">{activeSubCategoryGroup}</span>
+                          {filteredVendors.map(v => (
+                            <motion.div
+                              variants={{
+                                hidden: { opacity: 0, y: 30 },
+                                show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 15 } }
+                              }}
+                              key={v.id}
+                              id={`vendor-${v.id}`}
+                              className="outline-none focus:ring-2 focus:ring-[#D4AF37] rounded-xl"
+                            >
+                              <VendorCard 
+                                vendor={v}
+                                onBook={vendor => setBookingVendor(vendor)}
+                                onMessage={vendor => setChatVendor(vendor)}
+                                onQuickView={handleViewVendor}
+                                selectedDate={eventDate}
+                                onAddReview={handleAddReview}
+                              />
+                            </motion.div>
+                          ))}
+                        </motion.div>
+
+                        {filteredVendors.length === 0 && (
+                          <div className="py-20 text-center opacity-40" role="status">
+                            <Search className="w-16 h-16 mx-auto mb-4 text-[#D4AF37]" aria-hidden="true" />
+                            <p className="text-xl font-[Cinzel] text-slate-300">No vendors specializing in {activeSubSubCategory} yet.</p>
+                            <p className="text-xs text-slate-500 mt-2 max-w-sm mx-auto">Please check other subcategories or search for similar services.</p>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                      {!activeSubCategoryGroup ? (
-                        // Render Subcategory Groups (Tier 2)
-                        Object.keys(categorySubCategories[activeCategory] || {}).map(group => (
-                          <motion.button
-                            key={group}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => setActiveSubCategoryGroup(group)}
-                            className="relative h-40 rounded-xl overflow-hidden border border-white/10 hover:border-[#D4AF37]/50 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all cursor-pointer group shadow-lg"
-                          >
-                             {subCategoryImages[group] ? (
-                               <img src={subCategoryImages[group]} alt={group} className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700" />
-                             ) : (
-                               <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-all duration-700">
-                                 <span className="text-zinc-700 font-bold uppercase tracking-widest text-xs">No Image</span>
+                    ) : (
+                      <>
+                        {activeSubCategoryGroup && (
+                          <div className="flex items-center gap-2 mb-6 text-sm">
+                            <button 
+                              onClick={() => setActiveSubCategoryGroup(null)} 
+                              className="text-[#D4AF37] hover:text-[#FFDF73] flex items-center transition-colors font-bold uppercase tracking-widest text-xs cursor-pointer"
+                            >
+                              <ChevronLeft className="w-4 h-4 mr-1" />
+                              Back to {activeCategory}
+                            </button>
+                            <span className="text-zinc-600">/</span>
+                            <span className="text-zinc-400 uppercase tracking-widest text-xs">{activeSubCategoryGroup}</span>
+                          </div>
+                        )}
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                          {!activeSubCategoryGroup ? (
+                            // Render Subcategory Groups (Tier 2)
+                            Object.keys(categorySubCategories[activeCategory] || {}).map(group => (
+                              <motion.button
+                                key={group}
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => setActiveSubCategoryGroup(group)}
+                                className="relative h-40 rounded-xl overflow-hidden border border-white/10 hover:border-[#D4AF37]/50 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all cursor-pointer group shadow-lg"
+                              >
+                                 {subCategoryImages[group] ? (
+                                   <img src={subCategoryImages[group]} alt={group} className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700" />
+                                 ) : (
+                                   <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-all duration-700">
+                                     <span className="text-zinc-700 font-bold uppercase tracking-widest text-xs">No Image</span>
+                                    </div>
+                                 )}
+                                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
+                                 <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+                                   <h3 className="text-[#D4AF37] font-bold text-lg font-[Cinzel] tracking-wide">{group}</h3>
+                                 </div>
+                              </motion.button>
+                            ))
+                          ) : (
+                            // Render Sub-Subcategories (Tier 3)
+                            (categorySubCategories[activeCategory]?.[activeSubCategoryGroup] || []).map(sub => (
+                              <motion.button
+                                key={sub}
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => setActiveSubSubCategory(sub)}
+                                className={`relative h-40 rounded-xl overflow-hidden border outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all cursor-pointer group ${
+                                  activeSubSubCategory === sub
+                                    ? 'border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.3)]'
+                                    : 'border-white/10 hover:border-[#D4AF37]/50'
+                                }`}
+                              >
+                                {subCategoryImages[sub] ? (
+                                  <img src={subCategoryImages[sub]} alt={sub} className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700" />
+                                ) : (
+                                  <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-transform duration-700">
+                                    <span className="text-zinc-700 font-bold uppercase tracking-widest text-xs">No Image</span>
+                                  </div>
+                                )}
+                                <div className={`absolute inset-0 bg-gradient-to-t ${activeSubSubCategory === sub ? 'from-[#D4AF37]/40 via-black/60 to-black/20' : 'from-black via-black/40 to-transparent'}`}></div>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+                                  <h3 className="text-white font-bold text-lg font-[Cinzel] tracking-wide">{sub}</h3>
                                 </div>
-                             )}
-                             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
-                             <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
-                               <h3 className="text-[#D4AF37] font-bold text-lg font-[Cinzel] tracking-wide">{group}</h3>
-                             </div>
-                          </motion.button>
-                        ))
-                      ) : (
-                        // Render Sub-Subcategories (Tier 3)
-                        (categorySubCategories[activeCategory]?.[activeSubCategoryGroup] || []).map(sub => (
-                          <motion.button
-                            key={sub}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => setActiveSubCategories(prev => 
-                              prev.includes(sub) ? prev.filter(s => s !== sub) : [...prev, sub]
-                            )}
-                            className={`relative h-40 rounded-xl overflow-hidden border outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all cursor-pointer group ${
-                              activeSubCategories.includes(sub)
-                                ? 'border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.3)]'
-                                : 'border-white/10 hover:border-[#D4AF37]/50'
-                            }`}
-                          >
-                            {subCategoryImages[sub] ? (
-                              <img src={subCategoryImages[sub]} alt={sub} className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700" />
-                            ) : (
-                              <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-transform duration-700">
-                                <span className="text-zinc-700 font-bold uppercase tracking-widest text-xs">No Image</span>
-                              </div>
-                            )}
-                            <div className={`absolute inset-0 bg-gradient-to-t ${activeSubCategories.includes(sub) ? 'from-[#D4AF37]/40 via-black/60 to-black/20' : 'from-black via-black/40 to-transparent'}`}></div>
-                            <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
-                              <h3 className="text-white font-bold text-lg font-[Cinzel] tracking-wide">{sub}</h3>
-                            </div>
-                            {activeSubCategories.includes(sub) && (
-                              <div className="absolute top-3 right-3 bg-[#D4AF37] text-black p-1 rounded-full">
-                                <CheckCircle className="w-4 h-4" />
-                              </div>
-                            )}
-                          </motion.button>
-                        ))
-                      )}
-                    </div>
+                              </motion.button>
+                            ))
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
                 {/* Vendors List */}
-                {(!categorySubCategories[activeCategory] || Object.keys(categorySubCategories[activeCategory]).length === 0 || activeCategory === 'All' || activeSubCategories.length > 0) && (
+                {(!categorySubCategories[activeCategory] || Object.keys(categorySubCategories[activeCategory]).length === 0 || activeCategory === 'All' || (activeSubCategories.length > 0 && !activeSubSubCategory)) && !activeSubSubCategory && (
                   <>
                   <motion.div 
                     key={`${filteredVendors.length}-${activeCategory}-${searchTerm}`}

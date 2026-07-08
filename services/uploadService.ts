@@ -1,4 +1,4 @@
-import { ref, uploadBytes, getDownloadURL, uploadBytesResumable, UploadTaskSnapshot } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, uploadBytesResumable, UploadTaskSnapshot, SettableMetadata } from 'firebase/storage';
 import { storage } from './firebase';
 
 /**
@@ -8,11 +8,11 @@ import { storage } from './firebase';
  * @param storagePath Target destination path in the storage bucket
  * @returns The resolved public download URL of the uploaded file
  */
-export const uploadFileRobustly = async (file: File | Blob, storagePath: string): Promise<string> => {
+export const uploadFileRobustly = async (file: File | Blob, storagePath: string, metadata?: SettableMetadata): Promise<string> => {
   console.log("[Upload] Attempting official Direct Firebase Storage upload for path:", storagePath);
   try {
     const storageRef = ref(storage, storagePath);
-    const snapshot = await uploadBytes(storageRef, file);
+    const snapshot = await uploadBytes(storageRef, file, metadata);
     console.log("[Upload] uploadBytes succeeded:", snapshot);
     const downloadURL = await getDownloadURL(storageRef);
     console.log("[Upload] Firebase Storage upload succeeded:", downloadURL);
@@ -37,12 +37,13 @@ export const uploadFileRobustly = async (file: File | Blob, storagePath: string)
 export const uploadFileWithProgress = (
   file: File | Blob,
   storagePath: string,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  metadata?: SettableMetadata
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
     console.log("[Upload] Attempting progress-tracked upload for path:", storagePath);
     const storageRef = ref(storage, storagePath);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
     uploadTask.on(
       'state_changed',

@@ -50,6 +50,7 @@ interface AdminPanelProps {
   showNotification: (message: string, type?: 'success' | 'info' | 'error') => void;
   onSeedTaxonomy?: () => Promise<void>;
   onUpdateCategoryOrder: (orderedCategories: string[]) => void;
+  onDeleteCategory?: (name: string) => void;
 }
 
 const TableContainer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -109,7 +110,7 @@ const ADMIN_CODE = "ss-77859";
 const COMMISSION_RATE = 0.10;
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
-    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder
+    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder, onDeleteCategory
 }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [accessCode, setAccessCode] = useState('');
@@ -1452,7 +1453,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     </button>
                                 </div>
 
-                                <button onClick={() => categoryImageInputRefs.current[cat]?.click()} className="absolute top-4 right-4 bg-black/60 hover:bg-[#D4AF37] hover:text-black p-2 rounded-lg text-slate-300 transition-all border border-white/10" title="Modify Banner"><Camera className="w-4 h-4" /></button>
+                                <div className="absolute top-4 right-4 flex gap-2">
+                                    <button 
+                                        onClick={() => categoryImageInputRefs.current[cat]?.click()} 
+                                        className="bg-black/60 hover:bg-[#D4AF37] hover:text-black p-2 rounded-lg text-slate-300 transition-all border border-white/10" 
+                                        title="Modify Banner"
+                                    >
+                                        <Camera className="w-4 h-4" />
+                                    </button>
+                                    {onDeleteCategory && (
+                                        <button 
+                                            onClick={() => {
+                                                if (window.confirm(`Are you sure you want to delete the main category "${cat}" and all of its subcategories? This action is irreversible.`)) {
+                                                    onDeleteCategory(cat);
+                                                }
+                                            }}
+                                            className="bg-black/60 hover:bg-red-600 hover:text-white p-2 rounded-lg text-red-500 transition-all border border-white/10" 
+                                            title="Delete Category"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
                                 <input type="file" accept="image/*" className="hidden" ref={el => { categoryImageInputRefs.current[cat] = el; }} onChange={(e) => handleCategoryImageUpload(cat, e)} />
                                 <h3 className="absolute bottom-4 left-6 text-2xl font-bold font-[Cinzel] text-[#D4AF37]">{cat}</h3>
                                 
@@ -2318,196 +2340,61 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             </div>
                         </div>
 
-                        {/* Chat Area */}
-                        <div className="lg:col-span-2 bg-[#111] rounded-2xl border border-white/5 overflow-hidden flex flex-col">
-                            {selectedInquiryEmail ? (() => {
-                                const conversationMessages = messages.filter(m => 
-                                    (selectedConversationId && (m.conversationId === selectedConversationId || [m.senderId, m.receiverId].sort().join('_') === selectedConversationId)) ||
-                                    (!selectedConversationId && (m.clientEmail === selectedInquiryEmail || m.vendorEmail === selectedInquiryEmail))
-                                );
-                                const lastMsg = conversationMessages[conversationMessages.length - 1];
-                                const isAdminSupport = lastMsg ? (lastMsg.senderId === 'admin' || lastMsg.receiverId === 'admin' || lastMsg.participants?.includes('admin') || lastMsg.isAdminInquiry) : true;
-                                
-                                const { client: otherUserClient, vendor: otherUserVendor } = lastMsg 
-                                    ? getConversationParticipants(lastMsg)
-                                    : { client: { name: 'Client', email: selectedInquiryEmail || '', avatar: '' }, vendor: { name: 'Vendor', email: '', avatar: '' } };
-                                
-                                const otherId = lastMsg ? getOtherUserId(lastMsg) : '';
-                                const otherUser = lastMsg ? getOtherUserDetails(otherId, lastMsg) : { name: 'User', email: selectedInquiryEmail || '', role: 'client' as const, avatar: '' };
-
-                                return (
-                                    <>
-                                        <div className="p-6 border-b border-white/5 bg-black/40 flex justify-between items-center">
-                                            <div className="flex items-center gap-3">
-                                                {isAdminSupport ? (
-                                                    <>
-                                                        <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] border border-[#D4AF37]/20 font-bold">
-                                                            {otherUser.name?.[0] || 'U'}
-                                                        </div>
-                                                        <div>
-                                                            <div className="flex items-center gap-2">
-                                                                <h3 className="font-bold text-white text-sm">
-                                                                    {otherUser.name || 'User'}
-                                                                </h3>
-                                                                <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">
-                                                                    Admin Support Chat
-                                                                </span>
-                                                            </div>
-                                                            <p className="text-[10px] text-slate-500">{otherUser.email}</p>
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] border border-[#D4AF37]/20 font-bold">
-                                                            🤝
-                                                        </div>
-                                                        <div>
-                                                            <div className="flex items-center gap-2">
-                                                                <h3 className="font-bold text-white text-sm">
-                                                                    {otherUserClient.name} ↔ {otherUserVendor.name}
-                                                                </h3>
-                                                                <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 rounded">
-                                                                    B2C direct oversight
-                                                                </span>
-                                                            </div>
-                                                            <p className="text-[10px] text-slate-500">
-                                                                Client: {otherUserClient.email} | Vendor: {otherUserVendor.email}
-                                                            </p>
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => { setSelectedInquiryEmail(null); setSelectedConversationId(null); }} className="p-2 text-slate-500 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="flex-1 overflow-y-auto p-6 space-y-6" id="admin-chat-scroll-container" ref={messagesEndRef}>
-                                            {conversationMessages
-                                                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                                                .map((msg, idx) => (
-                                                    <div key={idx} className={`flex ${msg.senderId === 'admin' ? 'justify-end' : 'justify-start'}`}>
-                                                        <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative shadow-md ${
-                                                            msg.senderId === 'admin' 
-                                                                ? 'bg-[#D4AF37] text-black' 
-                                                                : 'bg-zinc-900 text-white border border-zinc-800'
-                                                        }`}>
-                                                            {msg.type === 'image' || msg.imageUrl ? (
-                                                                <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: msg.imageUrl || msg.fileUrl || '', type: 'image'})}>
-                                                                    <img 
-                                                                      src={msg.imageUrl || msg.fileUrl} 
-                                                                      onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })} 
-                                                                      className="rounded-lg w-full max-h-80 object-cover border border-white/5 shadow-lg" 
-                                                                      alt="Sent" 
-                                                                    />
-                                                                    {msg.text && msg.text !== 'Sent an image' && <p className="mt-2 text-sm leading-relaxed">{msg.text}</p>}
-                                                                </div>
-                                                            ) : msg.type === 'voice' || msg.audioUrl ? (
-                                                                <div className="space-y-2 min-w-[200px] sm:min-w-[240px]">
-                                                                    <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Voice note</p>
-                                                                    <CustomAudioPlayer src={msg.audioUrl || msg.fileUrl || ''} theme={msg.senderId === 'admin' ? 'sent' : 'received'} />
-                                                                </div>
-                                                            ) : msg.type === 'file' ? (
-                                                                msg.fileType?.startsWith('video/') ? (
-                                                                    <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: msg.fileUrl || '', type: 'video'})}>
-                                                                        <video src={msg.fileUrl} className="w-full aspect-video rounded-lg object-cover bg-black" />
-                                                                        {msg.text && msg.text !== 'Sent a video' && <p className="text-sm">{msg.text}</p>}
-                                                                    </div>
-                                                                ) : (
-                                                                <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-black/10 p-2 rounded-lg hover:bg-black/20 transition-all text-sm">
-                                                                    <FileText className="w-8 h-8 opacity-50" />
-                                                                    <div className="flex-1 min-w-0">
-                                                                       <p className="truncate font-bold text-xs">{msg.fileName}</p>
-                                                                       <p className="text-[10px] opacity-50">Click to download</p>
-                                                                    </div>
-                                                                    <Download className="w-4 h-4 opacity-50" />
-                                                                </a>
-                                                                )
-                                                            ) : (
-                                                                <p className="leading-relaxed">{msg.text}</p>
-                                                            )}
-                                                            
-                                                            <div className="flex justify-between items-center gap-2 mt-2 select-none leading-none w-full">
-                                                                {msg.senderId !== 'admin' ? (
-                                                                    <button
-                                                                        onClick={(e) => toggleMessageReadStatus(msg.id, msg.isRead, e)}
-                                                                        title={msg.isRead ? "Mark as Unread" : "Mark as Read"}
-                                                                        className="flex items-center gap-1.5 text-[9px] text-[#D4AF37] hover:text-[#E2C562] transition-colors py-0.5 px-2 bg-black/40 rounded border border-[#D4AF37]/10"
-                                                                    >
-                                                                        {msg.isRead ? (
-                                                                            <>
-                                                                                <Eye className="w-3 h-3 text-[#D4AF37]" />
-                                                                                <span>Read</span>
-                                                                            </>
-                                                                        ) : (
-                                                                            <>
-                                                                                <EyeOff className="w-3 h-3 text-red-400 animate-pulse" />
-                                                                                <span className="text-red-400 font-bold">Unread</span>
-                                                                            </>
-                                                                        )}
-                                                                    </button>
-                                                                ) : (
-                                                                    <div />
-                                                                )}
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <span className={`text-[9px] text-zinc-400`}>
-                                                                        {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                                                                    </span>
-                                                                    {msg.senderId === 'admin' && (
-                                                                        <span className={`text-[10px] ${msg.isRead ? 'text-blue-600' : 'text-black/40'}`}>
-                                                                            ✓✓
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                        </div>
-
-                                        {!isAdminSupport ? (
-                                            <div className="p-6 border-t border-[#D4AF37]/20 bg-amber-500/5 text-center animate-in fade-in duration-300">
-                                                <p className="text-[#D4AF37] text-xs font-bold uppercase tracking-wider mb-1 flex items-center justify-center gap-1.5">
-                                                    👁️ Direct Oversight Mode
-                                                </p>
-                                                <p className="text-slate-400 text-[11px] leading-relaxed max-w-lg mx-auto">
-                                                    You are spectating a direct thread between Client <span className="text-white font-bold">{otherUserClient.name}</span> and Vendor <span className="text-[#D4AF37] font-bold">{otherUserVendor.name}</span>. Messaging is disabled to maintain standard direct-booking communications.
-                                                </p>
-                                            </div>
-                                        ) : (
-                                            <div className="p-6 border-t border-white/5 bg-black/20">
-                                                <div className="flex gap-4">
-                                                    <div className="flex-1 relative">
-                                                        <textarea 
-                                                            rows={1}
-                                                            value={replyText}
-                                                            onChange={(e) => setReplyText(e.target.value)}
-                                                            onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(); } }}
-                                                            placeholder="Type your response..."
-                                                            className="w-full bg-black border border-[#D4AF37]/20 rounded-xl px-4 py-3 text-sm text-white resize-none outline-none focus:border-[#D4AF37] transition-all"
-                                                        />
-                                                    </div>
-                                                    <button 
-                                                        onClick={handleSendReply}
-                                                        disabled={!replyText.trim()}
-                                                        className="bg-[#D4AF37] text-black w-14 h-12 flex items-center justify-center rounded-xl hover:bg-[#E5C76B] transition-all disabled:opacity-30 shadow-lg shadow-[#D4AF37]/10"
-                                                    >
-                                                        <Send className="w-5 h-5" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </>
-                                );
-                            })() : (
-                                <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-20">
-                                    <Bot className="w-20 h-20 mb-4" />
-                                    <h3 className="text-xl font-bold font-[Cinzel]">No Conversation Selected</h3>
-                                    <p className="text-sm max-w-xs">Select an inquiry from the sidebar to view details and respond.</p>
-                                </div>
-                            )}
+                        {/* Chat Area - Rebuilt to use unified ChatModal */}
+                        <div className="lg:col-span-2 bg-[#111] rounded-2xl border border-white/5 overflow-hidden flex flex-col items-center justify-center p-12 text-center bg-gradient-to-br from-zinc-950 to-[#111]">
+                            <div className="w-16 h-16 rounded-full bg-[#D4AF37]/10 flex items-center justify-center border border-[#D4AF37]/20 text-[#D4AF37] mb-6 animate-pulse">
+                                <MessageSquare className="w-8 h-8" />
+                            </div>
+                            <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Secure Oversight Console</h3>
+                            <p className="text-slate-400 text-xs max-w-sm mt-3 leading-relaxed">
+                                Choose an active inquiry or support thread from the sidebar. The secure real-time messaging channel will launch instantly in our premium client-support interface.
+                            </p>
                         </div>
                     </div>
+
+                    {selectedConversationId && (() => {
+                        const conversationMessages = messages.filter(m => 
+                            (selectedConversationId && (m.conversationId === selectedConversationId || [m.senderId, m.receiverId].sort().join('_') === selectedConversationId)) ||
+                            (!selectedConversationId && (m.clientEmail === selectedInquiryEmail || m.vendorEmail === selectedInquiryEmail))
+                        );
+                        const lastMsg = conversationMessages[conversationMessages.length - 1];
+                        const otherId = lastMsg ? getOtherUserId(lastMsg) : '';
+                        const otherUser = lastMsg ? getOtherUserDetails(otherId, lastMsg) : { id: selectedInquiryEmail || '', name: 'User', email: selectedInquiryEmail || '', role: 'client' as const, avatar: '' };
+
+                        return (
+                            <ChatModal
+                                isOpen={true}
+                                vendor={null}
+                                isAdminMode={true}
+                                onClose={() => {
+                                    setSelectedConversationId(null);
+                                    setSelectedInquiryEmail(null);
+                                }}
+                                onSendMessage={(payload) => {
+                                    onSendMessage({
+                                        ...payload,
+                                        senderId: 'admin',
+                                        receiverId: otherUser.id || otherUser.email,
+                                        conversationId: selectedConversationId,
+                                        clientEmail: otherUser.role === 'client' ? otherUser.email : (lastMsg?.clientEmail || ''),
+                                        vendorEmail: otherUser.role === 'vendor' ? otherUser.email : (lastMsg?.vendorEmail || ''),
+                                        isRead: false
+                                    });
+                                }}
+                                showNotification={showNotification}
+                                messages={conversationMessages}
+                                user={{
+                                    id: 'admin',
+                                    name: 'Admin support',
+                                    username: 'admin@simchabooking.com'
+                                }}
+                                recipientUid={otherUser.id || otherUser.email}
+                                recipientName={otherUser.name || 'User'}
+                                recipientEmail={otherUser.email}
+                                isAdminReplying={true}
+                            />
+                        );
+                    })()}
                 </div>
             );
         })()}

@@ -3,9 +3,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, ShoppingBag, Calendar, MessageSquare, LogOut, Trash2, 
   ChevronRight, MapPin, Clock, CreditCard, CheckCircle, Bell, X, Menu, Send,
-  FileText, Upload, Download, History, Loader2, Plus, Search, PartyPopper, Edit3, ArrowLeft
+  FileText, Upload, Download, Loader2, Plus, Search, Edit3, ArrowLeft
 } from 'lucide-react';
-import { CartItem, Booking, Message, Vendor, UserAccount, UserFile } from '../types';
+import { CartItem, Booking, Message, Vendor, UserAccount } from '../types';
 import PayPalButton from './PayPalButton';
 import { storage, db } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
@@ -14,7 +14,6 @@ import { uploadFileRobustly } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import { trackFunnelStep } from '../services/analyticsService';
 import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
-import { summarizeFile } from '../services/geminiService';
 
 interface ClientPortalProps {
   user: UserAccount;
@@ -36,7 +35,7 @@ interface ClientPortalProps {
 const ClientPortal: React.FC<ClientPortalProps> = ({ 
   user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile' | 'documents'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile'>('overview');
 
   const handleTabChange = (tab: typeof activeTab) => {
     setActiveTab(tab);
@@ -61,32 +60,9 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   const [editPhotoURL, setEditPhotoURL] = useState(user.photoURL || ''); 
   const [editPhotoStoragePath, setEditPhotoStoragePath] = useState(user.photoStoragePath || '');
 
-  // File Management State
-  const [userFiles, setUserFiles] = useState<UserFile[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [fileNotes, setFileNotes] = useState('');
-  const [fileSearch, setFileSearch] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const profilePhotoInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!user.id) return;
-    
-    const filesRef = collection(db, 'users', user.id, 'files');
-    const q = query(filesRef, orderBy('timestamp', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const files: UserFile[] = [];
-      snapshot.forEach((doc) => {
-        files.push({ id: doc.id, ...doc.data() } as UserFile);
-      });
-      setUserFiles(files);
-    });
-
-    return () => unsubscribe();
-  }, [user.id]);
 
   const handleProfilePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -162,108 +138,6 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user.id) return;
-
-    setIsUploading(true);
-    try {
-      const fileId = Math.random().toString(36).substr(2, 9);
-      const storagePath = `user_uploads/${user.id}/${fileId}_${file.name}`;
-      const downloadURL = await uploadFileRobustly(file, storagePath);
-      
-      // Generate AI Summary
-      const aiSummary = await summarizeFile(file.name, file.type, fileNotes);
-      
-      const fileData: UserFile = {
-        id: fileId,
-        name: file.name,
-        url: downloadURL,
-        storagePath: storagePath,
-        size: file.size,
-        type: file.type,
-        timestamp: new Date().toISOString(),
-        notes: fileNotes,
-        aiSummary: aiSummary
-      };
-
-      // Sync to Firestore
-      await setDoc(doc(db, 'users', user.id, 'files', fileId), fileData);
-      
-      setFileNotes('');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    } catch (error: any) {
-      console.error("File upload error:", error);
-      alert("Failed to upload file: " + error.message);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleFileDownload = async (file: UserFile) => {
-    try {
-      // The user wants us to find the storage path in Firestore first.
-      // Since we already have the file object from Firestore (via onSnapshot), 
-      // we can just use file.storagePath.
-      // If for some reason storagePath is missing (old records), we'll use the stored URL.
-      if (!file.storagePath) {
-        window.open(file.url, '_blank');
-        return;
-      }
-      
-      const storageRef = ref(storage, file.storagePath);
-      const downloadURL = await getDownloadURL(storageRef);
-      window.open(downloadURL, '_blank');
-    } catch (error) {
-      console.error("File download error:", error);
-      // Fallback to the stored URL if getting a fresh one fails
-      window.open(file.url, '_blank');
-    }
-  };
-
-  const handleFileDelete = async (file: UserFile) => {
-    if (!user.id || !window.confirm(`Are you sure you want to delete ${file.name}?`)) return;
-
-    try {
-      // Delete from Storage
-      if (file.storagePath) {
-        const storageRef = ref(storage, file.storagePath);
-        await deleteObject(storageRef);
-      } else {
-        // Fallback for old records without storagePath
-        const decodedUrl = decodeURIComponent(file.url);
-        const pathStart = decodedUrl.indexOf('/o/') + 3;
-        const pathEnd = decodedUrl.indexOf('?alt=media');
-        if (pathStart > 2 && pathEnd > pathStart) {
-          const fullPath = decodedUrl.substring(pathStart, pathEnd);
-          const storageRef = ref(storage, fullPath);
-          await deleteObject(storageRef);
-        }
-      }
-      
-      await deleteDoc(doc(db, 'users', user.id, 'files', file.id));
-    } catch (error) {
-      console.error("File delete error:", error);
-      // If storage delete fails (e.g. file not found), still delete Firestore record
-      await deleteDoc(doc(db, 'users', user.id, 'files', file.id));
-    }
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const filteredFiles = useMemo(() => {
-    return userFiles.filter(f => 
-      f.name.toLowerCase().includes(fileSearch.toLowerCase()) || 
-      (f.notes && f.notes.toLowerCase().includes(fileSearch.toLowerCase())) ||
-      (f.aiSummary && f.aiSummary.toLowerCase().includes(fileSearch.toLowerCase()))
-    );
-  }, [userFiles, fileSearch]);
 
   const getCountdown = (dateString: string) => {
     const eventDate = new Date(dateString);
@@ -432,7 +306,6 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           <NavItem id="plan" icon={ShoppingBag} label="My Plan" badge={cart.length > 0 ? cart.length : undefined} />
           <NavItem id="events" icon={Calendar} label="My Events" badge={clientBookings.filter(b => b.status === 'pending').length || undefined} />
           <NavItem id="chats" icon={MessageSquare} label="Chats" badge={messages.filter(m => m.receiverId === user.id && !m.isRead).length || undefined} />
-          <NavItem id="documents" icon={FileText} label="Documents" />
           <NavItem id="profile" icon={CheckCircle} label="Profile" />
         </nav>
 
@@ -459,7 +332,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
         {activeTab === 'overview' && (
           <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4">
                 <div className="bg-[#D4AF37]/10 p-3 w-fit rounded-2xl"><ShoppingBag className="w-6 h-6 text-[#D4AF37]" /></div>
                 <div><p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">Items in Plan</p><h3 className="text-3xl font-bold text-white">{cart.length}</h3></div>
@@ -468,137 +341,6 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                 <div className="bg-green-500/10 p-3 w-fit rounded-2xl"><CheckCircle className="w-6 h-6 text-green-500" /></div>
                 <div><p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">Confirmed Events</p><h3 className="text-3xl font-bold text-white">{clientBookings.filter(b => b.status === 'confirmed').length}</h3></div>
               </div>
-              <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4">
-                <div className="bg-purple-500/10 p-3 w-fit rounded-2xl"><FileText className="w-6 h-6 text-purple-500" /></div>
-                <div><p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">Documents</p><h3 className="text-3xl font-bold text-white">{userFiles.length}</h3></div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'documents' && (
-          <div className="space-y-8 animate-in slide-in-from-bottom-5 duration-500">
-            {/* Upload Section */}
-            <div className="bg-[#111] rounded-3xl border border-[#D4AF37]/10 p-8 shadow-2xl">
-              <div className="flex flex-col md:flex-row gap-6 items-start">
-                <div className="flex-1 w-full space-y-4">
-                  <h3 className="text-xl font-bold font-[Cinzel] text-white">Upload Document</h3>
-                  <p className="text-[10px] text-slate-500 uppercase tracking-widest">Contracts, Menus, Invoices, or Inspiration</p>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Notes (Optional)</label>
-                    <textarea 
-                      value={fileNotes}
-                      onChange={(e) => setFileNotes(e.target.value)}
-                      className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37] h-24 resize-none"
-                      placeholder="Add a note about this file..."
-                    />
-                  </div>
-                </div>
-                
-                <div className="w-full md:w-64 flex flex-col gap-4">
-                  <input 
-                    type="file" 
-                    ref={fileInputRef}
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploading}
-                    className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2"
-                  >
-                    {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    {isUploading ? 'Uploading...' : 'Select File'}
-                  </button>
-                  <p className="text-[8px] text-center text-slate-600 uppercase tracking-widest">Max size: 10MB</p>
-                </div>
-              </div>
-            </div>
-
-            {/* History / File List */}
-            <div className="space-y-6">
-              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="flex items-center gap-3">
-                  <History className="w-5 h-5 text-[#D4AF37]" />
-                  <h3 className="text-xl font-bold font-[Cinzel] text-white">Document History</h3>
-                </div>
-                <div className="relative w-full md:w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input 
-                    type="text"
-                    value={fileSearch}
-                    onChange={(e) => setFileSearch(e.target.value)}
-                    placeholder="Search documents..."
-                    className="w-full bg-[#111] border border-white/5 rounded-full pl-10 pr-4 py-2 text-xs text-white outline-none focus:border-[#D4AF37]/50"
-                  />
-                </div>
-              </div>
-
-              {filteredFiles.length === 0 ? (
-                <div className="py-20 text-center bg-[#111] rounded-3xl border border-dashed border-white/10 opacity-30">
-                  <FileText className="w-16 h-16 mx-auto mb-6 text-[#D4AF37]" />
-                  <p className="text-xl font-[Cinzel]">No documents found.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-4">
-                  {filteredFiles.map((file) => (
-                    <div key={file.id} className="bg-[#111] border border-white/5 rounded-3xl p-6 hover:border-[#D4AF37]/30 transition-all group">
-                      <div className="flex flex-col md:flex-row gap-6 items-start">
-                        <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
-                          <FileText className="w-8 h-8 text-[#D4AF37]" />
-                        </div>
-                        
-                        <div className="flex-1 space-y-3">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <h4 className="text-lg font-bold text-white font-[Cinzel]">{file.name}</h4>
-                              <div className="flex items-center gap-4 text-[9px] text-slate-500 font-black uppercase tracking-widest mt-1">
-                                <span>{formatFileSize(file.size)}</span>
-                                <span>•</span>
-                                <span>{new Date(file.timestamp).toLocaleDateString()}</span>
-                                <span>•</span>
-                                <span className="text-[#D4AF37]/60">{file.type}</span>
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <button 
-                                onClick={() => handleFileDownload(file)}
-                                className="p-2 bg-white/5 hover:bg-[#D4AF37] hover:text-black rounded-lg transition-all text-slate-400"
-                              >
-                                <Download className="w-4 h-4" />
-                              </button>
-                              <button 
-                                onClick={() => handleFileDelete(file)}
-                                className="p-2 bg-white/5 hover:bg-red-600 hover:text-white rounded-lg transition-all text-slate-400"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-
-                          {file.notes && (
-                            <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">User Note</p>
-                              <p className="text-xs text-slate-300 italic">"{file.notes}"</p>
-                            </div>
-                          )}
-
-                          {file.aiSummary && (
-                            <div className="bg-[#D4AF37]/5 p-4 rounded-2xl border border-[#D4AF37]/10">
-                              <div className="flex items-center gap-2 mb-2">
-                                <PartyPopper className="w-3 h-3 text-[#D4AF37]" />
-                                <p className="text-[9px] text-[#D4AF37] font-black uppercase tracking-widest">Simcha AI Summary</p>
-                              </div>
-                              <p className="text-xs text-slate-200 leading-relaxed">{file.aiSummary}</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         )}
