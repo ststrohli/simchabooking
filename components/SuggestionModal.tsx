@@ -9,6 +9,8 @@ interface SuggestionModalProps {
   recommendations: Vendor[];
   onBook: (vendor: Vendor) => void;
   cartItems: string[]; // IDs of items in cart to show "Added" state
+  isPriorityLock?: boolean;
+  eventDate?: string;
 }
 
 const SuggestionModal: React.FC<SuggestionModalProps> = ({ 
@@ -17,9 +19,23 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
   sourceVendor, 
   recommendations, 
   onBook,
-  cartItems 
+  cartItems,
+  isPriorityLock,
+  eventDate
 }) => {
   if (!isOpen || !sourceVendor) return null;
+
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '';
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        return dObj.toLocaleDateString('default', { month: 'long', day: 'numeric', year: 'numeric' });
+      }
+    } catch {}
+    return dateStr;
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -37,13 +53,24 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
             <div className="bg-[#D4AF37] p-1 rounded-full">
               <Check className="w-4 h-4 text-black" />
             </div>
-            <span className="font-bold text-[#D4AF37] uppercase text-xs tracking-wider">Added to plan</span>
+            <span className="font-bold text-[#D4AF37] uppercase text-xs tracking-wider">
+              {isPriorityLock ? 'Priority Date Lock Active' : 'Added to plan'}
+            </span>
           </div>
           
-          <h2 className="text-2xl font-bold font-[Cinzel] relative z-10 text-[#D4AF37]">Excellent Choice!</h2>
-          <p className="text-slate-300 mt-2 relative z-10 max-w-md">
-            You've booked <span className="font-bold text-white">{sourceVendor.name}</span>. 
-            Others who booked this vendor also considered these professionals.
+          <h2 className="text-2xl font-bold font-[Cinzel] relative z-10 text-[#D4AF37]">
+            {isPriorityLock ? '👑 Priority Date Lock Active!' : 'Excellent Choice!'}
+          </h2>
+          <p className="text-slate-300 mt-2 relative z-10 max-w-lg leading-relaxed text-sm">
+            {isPriorityLock ? (
+              <>
+                You have secured your priority celebration date for <span className="text-white font-bold">{formatDate(eventDate)}</span> with <span className="font-bold text-white">{sourceVendor.name}</span>. Below are the other elite vendors who are verified <span className="text-emerald-400 font-bold">AVAILABLE</span> on this exact same date:
+              </>
+            ) : (
+              <>
+                You've booked <span className="font-bold text-white">{sourceVendor.name}</span>. Others who booked this vendor also considered these professionals.
+              </>
+            )}
           </p>
         </div>
 
@@ -51,7 +78,7 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
         <div className="p-6 bg-[#111]">
           <h3 className="text-sm font-bold text-[#D4AF37]/50 uppercase tracking-wider mb-4 flex items-center gap-2">
             <Users className="w-4 h-4 text-[#D4AF37]" />
-            Frequently Booked Together
+            {isPriorityLock ? 'Coordinating Vendors Available on This Date' : 'Frequently Booked Together'}
           </h3>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

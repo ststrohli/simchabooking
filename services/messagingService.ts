@@ -62,7 +62,7 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
     throw new Error('Receiver ID is required to send a message');
   }
 
-  const conversationId = payload.conversationId || [senderId, receiverId].sort().join('_');
+  const conversationId = [senderId, receiverId].sort().join('_');
   const tempId = payload.tempId || `msg_${Date.now()}`;
   
   // Determine roles
@@ -164,6 +164,22 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
     return { id: msgDocSnapRef.id, conversationId };
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `conversations/${conversationId}/messages`);
+    throw err;
+  }
+}
+
+/**
+ * Unsend/Delete a message from the database.
+ */
+export async function deleteMessage(conversationId: string, messageId: string) {
+  if (!conversationId || !messageId) return;
+  const msgDocRef = doc(db, 'conversations', conversationId, 'messages', messageId);
+  try {
+    const batch = writeBatch(db);
+    batch.delete(msgDocRef);
+    await batch.commit();
+  } catch (err) {
+    console.error("Failed to delete/unsend message:", err);
     throw err;
   }
 }

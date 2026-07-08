@@ -10,6 +10,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import multer from "multer";
 import session from "express-session";
 import crypto from "crypto";
+import fs from "fs";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 import { 
   sendTestEmail, 
@@ -29,9 +30,7 @@ const __dirname = path.dirname(__filename);
 let adminApp: admin.app.App;
 let dbId: string | undefined;
 
-const uploadDir = process.platform === 'win32'
-  ? path.join(process.cwd(), 'uploads')
-  : '/tmp/uploads';
+const uploadDir = path.join(process.cwd(), 'uploads');
 
 // Try to get the project ID from config, but fall back to environment if it looks like a placeholder
 const configProjectId = firebaseConfig.projectId && !firebaseConfig.projectId.includes('TODO') 
@@ -83,9 +82,10 @@ async function initializeFirebase(useEnvFallback: boolean = false) {
     // Use the database ID from config if available. 
     // If we are falling back to a different project, we should probably use '(default)' 
     // because the named database likely doesn't exist in the fallback project.
-    dbId = (useEnvFallback) ? '(default)' : (((firebaseConfig as any).firestoreDatabaseId && !(firebaseConfig as any).firestoreDatabaseId.includes('TODO')) 
-      ? (firebaseConfig as any).firestoreDatabaseId 
-      : '(default)');
+    const configDbId = (firebaseConfig as any).firestoreDatabaseId || (firebaseConfig as any).databaseId;
+    dbId = (useEnvFallback) ? '(default)' : ((configDbId && !configDbId.includes('TODO')) 
+      ? configDbId 
+      : 'ai-studio-b85c10e8-0729-4d1f-841b-60b5c119be28');
 
     console.log(`[Firebase] Initializing for Project: ${targetProjectId}, Database: ${dbId}`);
     if (envProjectId && targetProjectId !== envProjectId) {
@@ -417,9 +417,9 @@ async function startServer() {
         console.warn("[Stripe] DB Fetch failed, using defaults.", dbError);
       }
 
-      // HARDCODED BACKUP (TEMPORARY) for Vendor '2' and 'ea54cmd95'
-      if (!vendorStripeAccountId && (vendorId === '2' || vendorId === 'ea54cmd95')) {
-        const backupId = vendorId === '2' ? 'acct_1TFG4u1F9HWZ6UFS' : 'acct_1TFG4u1F9HWZ6UFS'; // Using same backup for now or specific if known
+      // HARDCODED BACKUP (TEMPORARY) for Vendor '1', '2' and 'ea54cmd95'
+      if (!vendorStripeAccountId && (vendorId === '1' || vendorId === '2' || vendorId === 'ea54cmd95')) {
+        const backupId = 'acct_1TFG4u1F9HWZ6UFS';
         console.log(`[Stripe] Using hardcoded backup for Vendor '${vendorId}': ${backupId}`);
         vendorStripeAccountId = backupId;
         commissionRate = 5; // Use default 5% for the backup
@@ -691,7 +691,16 @@ async function startServer() {
 
   // Server-side Upload Bypass (Multer + Firebase Admin)
   const upload = multer({ storage: multer.memoryStorage() });
-  app.post("/api/upload", upload.single('file'), async (req, res) => {
+  
+  app.post("/api/upload", (req, res, next) => {
+    upload.single('file')(req, res, (err) => {
+      if (err) {
+        console.error("[Upload] Multer parsing error:", err);
+        return res.status(400).send(`Multer error: ${err.message}`);
+      }
+      next();
+    });
+  }, async (req, res) => {
     try {
       const file = req.file;
       const { path: storagePath } = req.body;
@@ -704,7 +713,8 @@ async function startServer() {
       // 1. Attempt upload to Firebase Cloud Storage via Admin SDK
       if (adminApp) {
         try {
-          const bucket = adminApp.storage().bucket();
+          const storageInstance = admin.storage(adminApp);
+          const bucket = storageInstance.bucket();
           const blob = bucket.file(storagePath);
           const downloadToken = crypto.randomUUID();
           
@@ -742,7 +752,6 @@ async function startServer() {
 
       // 2. Fallback: Save file inside local server filesystem and serve relative URL
       try {
-        const fs = await import('fs');
         const fsPromises = fs.promises;
         
         // Ensure uploads directory exists

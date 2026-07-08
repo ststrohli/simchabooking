@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw } from 'lucide-react';
+import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -14,7 +14,7 @@ import {
   deleteUser,
   User as FirebaseUser 
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, query, where, orderBy, getDocs, addDoc, arrayUnion, limit, or } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, query, where, orderBy, getDocs, addDoc, arrayUnion, limit, or, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './services/firebase';
 import { uploadFileRobustly } from './services/uploadService';
@@ -105,6 +105,49 @@ interface FirestoreErrorInfo {
   }
 }
 
+const JEWISH_TAXONOMY: Record<string, { icon: string; image: string; subcategories: Record<string, { image: string; items: string[] }> }> = {
+  'Music': {
+    icon: 'music',
+    image: 'https://images.unsplash.com/photo-1507838153414-b4b713384a76?auto=format&fit=crop&q=80&w=800&sat=-100&bri=-30&con=50',
+    subcategories: {
+      'DJ': { image: 'https://images.unsplash.com/photo-1571266028243-cb40fce756b1?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Wedding DJ', 'Bar Mitzvah DJ', 'Trance / Dance', 'Silent Disco'] },
+      'Band': { image: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Full Orchestra', 'Chassidish', 'Contemporary'] },
+      'Choir': { image: 'https://images.unsplash.com/photo-1528644498327-7cfdf3310023?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Adult Choir', 'Boys Choir', 'Chazzan / Cantor', 'Acapella Group'] },
+      'One-Man Band': { image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['One-Man Band', 'Kumzitz'] },
+    }
+  },
+  'Catering': {
+    icon: 'utensils',
+    image: 'https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&q=80&w=800&sat=-100&bri=-30&con=50',
+    subcategories: {
+      'Meat': { image: 'https://images.unsplash.com/photo-1600891964092-4316c288032e?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Glatt', 'Elegant Plated', 'Heimish Traditional', 'Gourmet French'] },
+      'Dairy': { image: 'https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Cholov Yisroel', 'Buffet', 'Pasta & Italian', 'Sushi & Fish'] },
+      'Pareve / Dessert': { image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Vegan Gourmet', 'Salad Bar', 'Healthy Clean Eating'] },
+      'Food Trucks': { image: 'https://images.unsplash.com/photo-1565123409695-7b5ef63a2efb?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Pizza Truck', 'Ice Cream / Gelato', 'Churros & Desserts', 'Coffee Bar', 'Candy Buffet'] },
+    }
+  },
+  'Photography & Video': {
+    icon: 'camera',
+    image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&q=80&w=800&sat=-100&bri=-30&con=50',
+    subcategories: {
+      'Wedding Photography': { image: 'https://images.unsplash.com/photo-1520390138845-fd2d229dd553?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Candid', 'Traditional', 'Artistic'] },
+      'Event Videography': { image: 'https://images.unsplash.com/photo-1579632652768-6cb9dcf85912?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Cinematic Film', 'Documentary Style', 'Highlight Reels'] },
+      'Drone Footage': { image: 'https://images.unsplash.com/photo-1508614589041-895b88991e3e?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Aerial Photography', 'Aerial Videography'] },
+      'Portrait Studio': { image: 'https://images.unsplash.com/photo-1533619043865-1c2e1f42cd20?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Family Portraits', 'Bridal Portraits'] },
+    }
+  },
+  'Design & Florals': {
+    icon: 'flower',
+    image: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&q=80&w=800&sat=-100&bri=-30&con=50',
+    subcategories: {
+      'Chupah Design': { image: 'https://images.unsplash.com/photo-1478146896981-b80fe463b330?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Floral Chupah', 'Modern Chupah', 'Traditional Chupah'] },
+      'Table Centerpieces': { image: 'https://images.unsplash.com/photo-1563241527-3004b7be0ffd?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Tall Floral', 'Low Floral', 'Candles & Decor'] },
+      'Bouquets': { image: 'https://images.unsplash.com/photo-1507290439931-a861b5a38200?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Bridal Bouquets', 'Bridesmaid Bouquets', 'Boutonnieres'] },
+      'Lighting & Production': { image: 'https://images.unsplash.com/photo-1470229722913-7c092db65f8c?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Uplighting', 'Pinspotting', 'Custom Gobos'] },
+    }
+  },
+};
+
 const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
@@ -164,6 +207,7 @@ function App() {
   const [activeCategories, setActiveCategories] = useState<string[]>(Object.values(VendorCategory));
   const [categoryImages, setCategoryImages] = useState<Record<string, string>>(INITIAL_CATEGORY_IMAGES);
   const [categorySubCategories, setCategorySubCategories] = useState<Record<string, Record<string, string[]>>>({});
+  const [subCategoryImages, setSubCategoryImages] = useState<Record<string, string>>({});
   const [heroBackgroundUrl, setHeroBackgroundUrl] = useState<string>("https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80");
 
   const syncUserProfile = async (user: FirebaseUser, additionalData: { fullName?: string, photoURL?: string, photoStoragePath?: string } = {}) => {
@@ -236,6 +280,7 @@ function App() {
         if (data.categories) setActiveCategories(data.categories);
         if (data.categoryImages) setCategoryImages(data.categoryImages);
         if (data.categorySubCategories) setCategorySubCategories(data.categorySubCategories);
+        if (data.subCategoryImages) setSubCategoryImages(data.subCategoryImages);
         if (data.heroBackgroundUrl) setHeroBackgroundUrl(data.heroBackgroundUrl);
       } else {
         // Seed metadata
@@ -243,6 +288,7 @@ function App() {
           categories: Object.values(VendorCategory),
           categoryImages: INITIAL_CATEGORY_IMAGES,
           categorySubCategories: {},
+          subCategoryImages: {},
           heroBackgroundUrl: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80"
         });
       }
@@ -552,10 +598,12 @@ function App() {
     }
   }, [cart, fbUser]);
   const [activeCategory, setActiveCategory] = useState<string | 'All'>('All');
+  const [activeSubCategoryGroup, setActiveSubCategoryGroup] = useState<string | null>(null);
   const [activeSubCategories, setActiveSubCategories] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [bookingVendor, setBookingVendor] = useState<Vendor | null>(null);
+  const [initialBookingDetails, setInitialBookingDetails] = useState<any>(null);
   const [quickViewVendor, setQuickViewVendor] = useState<Vendor | null>(null);
 
   const handleViewVendor = (v: Vendor | null) => {
@@ -582,11 +630,14 @@ function App() {
     
     setAdminInquiryText('');
   };
-  const [notification, setNotification] = useState<{message: string, type: 'success' | 'info'} | null>(null);
+  const [notification, setNotification] = useState<{message: string, type: 'success' | 'info' | 'error'} | null>(null);
   
   const [suggestedVendors, setSuggestedVendors] = useState<Vendor[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showPriorityHoldPopup, setShowPriorityHoldPopup] = useState(false);
   const [sourceVendorForSuggestions, setSourceVendorForSuggestions] = useState<Vendor | null>(null);
+  const [isPriorityLockForSuggestions, setIsPriorityLockForSuggestions] = useState(false);
+  const [suggestionsEventDate, setSuggestionsEventDate] = useState('');
 
   const filteredVendors = useMemo(() => {
     return vendors.filter(vendor => {
@@ -609,9 +660,10 @@ function App() {
 
   useEffect(() => {
     setActiveSubCategories([]);
+    setActiveSubCategoryGroup(null);
   }, [activeCategory]);
 
-  const showNotification = (message: string, type: 'success' | 'info' = 'success') => {
+  const showNotification = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 4000);
   };
@@ -748,7 +800,7 @@ function App() {
     return '';
   };
 
-  const handleReplyMessage = async (email: string, name: string, text: string) => {
+  const handleReplyMessage = async (email: string, name: string, text: string, type: 'text' | 'image' | 'voice' | 'file' = 'text', fileUrl?: string, audioUrl?: string, fileName?: string, fileType?: string) => {
     if (!currentUserVendorId) return;
     try {
       const clientUid = getClientUidSync(email) || 'client_legacy';
@@ -764,7 +816,12 @@ function App() {
         clientEmail: email,
         clientName: name,
         text,
-        senderRole: 'vendor'
+        senderRole: 'vendor',
+        type,
+        fileUrl,
+        audioUrl,
+        fileName,
+        fileType
       });
       showNotification('Reply sent!');
     } catch (err) {
@@ -803,6 +860,7 @@ function App() {
 
       setCart([]);
       await deleteDoc(doc(db, 'users', fbUser.uid, 'cart', 'current'));
+      setShowPriorityHoldPopup(true);
       showNotification('Requests sent!');
     } catch (err) {
       console.error("Error processing cart:", err);
@@ -812,9 +870,12 @@ function App() {
   const handleConfirmBooking = (d: any) => {
     if (!bookingVendor) return;
     trackFunnelStep.addToPlan(bookingVendor.id, bookingVendor.name, bookingVendor.category, d.totalAmount);
+    
+    const bookingDate = d.date || eventDate || new Date().toISOString().split('T')[0];
+    
     setCart(prev => [...prev, {
       vendor: bookingVendor,
-      date: d.date || eventDate || new Date().toISOString().split('T')[0],
+      date: bookingDate,
       notes: d.notes,
       clientName: currentAuthenticatedUser.name || d.clientName,
       eventName: d.eventName,
@@ -824,8 +885,46 @@ function App() {
       selectedServices: d.selectedServices,
       amount: d.totalAmount
     }]);
+    
+    // Suggest other available vendors on the same date
+    const availableOthers = vendors.filter(v => v.id !== bookingVendor.id && !v.unavailableDates?.includes(bookingDate) && cart.findIndex(c => c.vendor.id === v.id) === -1);
+    setSuggestedVendors(availableOthers.sort((a,b) => b.rating - a.rating).slice(0, 4));
+    setSourceVendorForSuggestions(bookingVendor);
+    setIsPriorityLockForSuggestions(!!d.isPriorityDate);
+    setSuggestionsEventDate(bookingDate);
+    
+    if (d.isPriorityDate) {
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
+    
     setBookingVendor(null);
     showNotification(`${bookingVendor.name} added to plan!`);
+  };
+
+  const handleEditCartItem = (index: number) => {
+    const item = cart[index];
+    if (item) {
+      const selectedServiceIds = item.selectedServices?.map(s => s.id) || [];
+      const selectedServiceQuantities: Record<string, number> = {};
+      item.selectedServices?.forEach(s => {
+        selectedServiceQuantities[s.id] = s.quantity || 1;
+      });
+
+      setInitialBookingDetails({
+        clientName: item.clientName || currentAuthenticatedUser.name || '',
+        contactEmail: item.contactEmail || currentAuthenticatedUser.username || '',
+        eventName: item.eventName || '',
+        eventLocation: item.eventLocation || '',
+        eventTime: item.eventTime || '',
+        notes: item.notes || '',
+        selectedServiceIds,
+        selectedServiceQuantities
+      });
+      setBookingVendor(item.vendor);
+      handleRemoveFromCart(index);
+    }
   };
 
   const handleRemoveFromCart = (index: number) => {
@@ -929,6 +1028,73 @@ function App() {
       showNotification('Post removed.');
     } catch (err) {
       console.error("Error removing post:", err);
+    }
+  };
+
+  const handleSeedTaxonomy = async () => {
+    if (!isUserAdmin(fbUser?.email)) return;
+    
+    try {
+      const batch = writeBatch(db);
+      
+      // Forcefully push this entire structure into a collection named 'categories'
+      for (const [catName, catData] of Object.entries(JEWISH_TAXONOMY)) {
+        // We'll use the category name as the document ID so it's clean and doesn't duplicate
+        const catRef = doc(collection(db, 'categories'), catName.replace(/[^a-zA-Z0-9]/g, '_'));
+        batch.set(catRef, {
+          name: catName,
+          icon: catData.icon,
+          image: catData.image,
+          subcategories: catData.subcategories,
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      // Also update the legacy app_config to avoid breaking the rest of the app if it relies on it
+      const newCategories = Object.keys(JEWISH_TAXONOMY);
+      const newCategoryImages: Record<string, string> = {};
+      const newCategorySubCategories: Record<string, Record<string, string[]>> = {};
+      const newSubCategoryImages: Record<string, string> = {};
+
+      for (const [catName, catData] of Object.entries(JEWISH_TAXONOMY)) {
+        newCategoryImages[catName] = catData.image;
+        newCategorySubCategories[catName] = {};
+        for (const [subName, subData] of Object.entries(catData.subcategories)) {
+          newCategorySubCategories[catName][subName] = subData.items;
+          newSubCategoryImages[subName] = subData.image;
+          for (const item of subData.items) {
+            newSubCategoryImages[item] = subData.image;
+          }
+        }
+      }
+
+      const configRef = doc(db, 'metadata', 'app_config');
+      batch.update(configRef, {
+        categories: newCategories,
+        categoryImages: newCategoryImages,
+        categorySubCategories: newCategorySubCategories,
+        subCategoryImages: newSubCategoryImages
+      });
+      
+      await batch.commit();
+      
+      console.log('Taxonomy data successfully written to Firestore.');
+      window.alert('Taxonomy successfully seeded!');
+      showNotification('Taxonomy successfully seeded!', 'success');
+    } catch (err: any) {
+      console.error("Error seeding taxonomy:", err);
+      showNotification(err.message || 'Failed to seed taxonomy.', 'error');
+    }
+  };
+
+  const handleAdminUpdateSubCategoryImage = async (subCategory: string, url: string) => {
+    try {
+      await updateDoc(doc(db, 'metadata', 'app_config'), {
+        [`subCategoryImages.${subCategory}`]: url
+      });
+      showNotification('Subcategory image updated!');
+    } catch (err) {
+      console.error("Error updating subcategory image:", err);
     }
   };
 
@@ -1697,11 +1863,14 @@ function App() {
           onAddCategory={handleAdminAddCategory} 
           categorySubCategories={categorySubCategories} 
           onUpdateCategorySubCategories={handleAdminUpdateCategorySubCategories} 
+          subCategoryImages={subCategoryImages}
+          onUpdateSubCategoryImage={handleAdminUpdateSubCategoryImage}
           heroBackgroundUrl={heroBackgroundUrl}
           onUpdateHeroBackground={handleAdminUpdateHeroBackground}
           messages={messages}
           onSendMessage={handleSendMessage}
           showNotification={showNotification}
+          onSeedTaxonomy={handleSeedTaxonomy}
         />
       </motion.div>
     );
@@ -1798,12 +1967,14 @@ function App() {
             messages={myMessages} 
             vendors={vendors} 
             onRemoveFromCart={handleRemoveFromCart} 
+            onEditCartItem={handleEditCartItem}
             onProcessCart={handleProcessCart} 
             onPaymentSuccess={handlePaymentSuccess} 
             onLogout={handleSignOut} 
             onClose={() => setView('marketplace')} 
             onUpdateProfile={handleUpdateProfile} 
             onDeleteAccount={handleDeleteAccount} 
+            onMessageVendor={v => setChatVendor(v)}
           />
         </div>
       </motion.div>
@@ -1986,35 +2157,87 @@ function App() {
                      </nav>
                 </header>
 
-                {activeCategory !== 'All' && categorySubCategories[activeCategory] && (
-                  <div className="mb-10 space-y-4 animate-in slide-in-from-top-2 duration-300">
-                    {Object.entries(categorySubCategories[activeCategory]).map(([group, subCats]) => (
-                      <div key={group} className="flex flex-wrap gap-2 items-center bg-[#111]/50 p-3 rounded-xl border border-white/5">
-                        <span className="text-[9px] uppercase tracking-[0.2em] text-[#D4AF37]/60 font-black mr-2 min-w-[80px]">{group}</span>
-                        <div className="flex flex-wrap gap-2">
-                          {(subCats as string[]).map(sub => (
-                            <motion.button
-                              key={sub}
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={() => setActiveSubCategories(prev => 
-                                prev.includes(sub) ? prev.filter(s => s !== sub) : [...prev, sub]
-                              )}
-                              className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border cursor-pointer ${
-                                activeSubCategories.includes(sub)
-                                  ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-[0_0_15px_rgba(212,175,55,0.3)]'
-                                  : 'bg-black text-slate-500 border-white/10 hover:border-[#D4AF37]/50 hover:text-slate-300'
-                              }`}
-                            >
-                              {sub}
-                            </motion.button>
-                          ))}
-                        </div>
+                {activeCategory !== 'All' && categorySubCategories[activeCategory] && Object.keys(categorySubCategories[activeCategory]).length > 0 && (
+                  <div className="mb-12 animate-in slide-in-from-top-4 duration-500">
+                    {activeSubCategoryGroup && (
+                      <div className="flex items-center gap-2 mb-6 text-sm">
+                        <button 
+                          onClick={() => setActiveSubCategoryGroup(null)} 
+                          className="text-[#D4AF37] hover:text-[#FFDF73] flex items-center transition-colors font-bold uppercase tracking-widest text-xs"
+                        >
+                          <ChevronLeft className="w-4 h-4 mr-1" />
+                          Back to {activeCategory}
+                        </button>
+                        <span className="text-zinc-600">/</span>
+                        <span className="text-zinc-400 uppercase tracking-widest text-xs">{activeSubCategoryGroup}</span>
                       </div>
-                    ))}
+                    )}
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {!activeSubCategoryGroup ? (
+                        // Render Subcategory Groups (Tier 2)
+                        Object.keys(categorySubCategories[activeCategory]).map(group => (
+                          <motion.button
+                            key={group}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => setActiveSubCategoryGroup(group)}
+                            className="relative h-40 rounded-xl overflow-hidden border border-white/10 hover:border-[#D4AF37]/50 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all cursor-pointer group shadow-lg"
+                          >
+                             {subCategoryImages[group] ? (
+                               <img src={subCategoryImages[group]} alt={group} className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700" />
+                             ) : (
+                               <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-all duration-700">
+                                 <span className="text-zinc-700 font-bold uppercase tracking-widest text-xs">No Image</span>
+                               </div>
+                             )}
+                             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
+                             <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+                               <h3 className="text-[#D4AF37] font-bold text-lg font-[Cinzel] tracking-wide">{group}</h3>
+                             </div>
+                          </motion.button>
+                        ))
+                      ) : (
+                        // Render Sub-Subcategories (Tier 3)
+                        (categorySubCategories[activeCategory][activeSubCategoryGroup] as string[]).map(sub => (
+                          <motion.button
+                            key={sub}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => setActiveSubCategories(prev => 
+                              prev.includes(sub) ? prev.filter(s => s !== sub) : [...prev, sub]
+                            )}
+                            className={`relative h-40 rounded-xl overflow-hidden border outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all cursor-pointer group ${
+                              activeSubCategories.includes(sub)
+                                ? 'border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.3)]'
+                                : 'border-white/10 hover:border-[#D4AF37]/50'
+                            }`}
+                          >
+                            {subCategoryImages[sub] ? (
+                              <img src={subCategoryImages[sub]} alt={sub} className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700" />
+                            ) : (
+                              <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-transform duration-700">
+                                <span className="text-zinc-700 font-bold uppercase tracking-widest text-xs">No Image</span>
+                              </div>
+                            )}
+                            <div className={`absolute inset-0 bg-gradient-to-t ${activeSubCategories.includes(sub) ? 'from-[#D4AF37]/40 via-black/60 to-black/20' : 'from-black via-black/40 to-transparent'}`}></div>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+                              <h3 className="text-white font-bold text-lg font-[Cinzel] tracking-wide">{sub}</h3>
+                            </div>
+                            {activeSubCategories.includes(sub) && (
+                              <div className="absolute top-3 right-3 bg-[#D4AF37] text-black p-1 rounded-full">
+                                <CheckCircle className="w-4 h-4" />
+                              </div>
+                            )}
+                          </motion.button>
+                        ))
+                      )}
+                    </div>
                   </div>
                 )}
-                <motion.div 
+                {/* Vendors List */}
+                {(!categorySubCategories[activeCategory] || Object.keys(categorySubCategories[activeCategory]).length === 0 || activeCategory === 'All' || activeSubCategories.length > 0) && (
+                  <>
+                  <motion.div 
                     key={`${filteredVendors.length}-${activeCategory}-${searchTerm}`}
                     variants={{
                       hidden: { opacity: 0 },
@@ -2058,6 +2281,8 @@ function App() {
                       <p className="text-xl font-[Cinzel]">No vendors match your query.</p>
                     </div>
                 )}
+                </>
+                )}
             </section>
         )}
       </main>
@@ -2088,10 +2313,77 @@ function App() {
         </div>
       </footer>
 
-      <SuggestionModal isOpen={showSuggestions} onClose={() => setShowSuggestions(false)} sourceVendor={sourceVendorForSuggestions} recommendations={suggestedVendors} onBook={v => setBookingVendor(v)} cartItems={cart.map(i => i.vendor.id)} />
+      <SuggestionModal 
+        isOpen={showSuggestions} 
+        onClose={() => setShowSuggestions(false)} 
+        sourceVendor={sourceVendorForSuggestions} 
+        recommendations={suggestedVendors} 
+        onBook={v => setBookingVendor(v)} 
+        cartItems={cart.map(i => i.vendor.id)} 
+        isPriorityLock={isPriorityLockForSuggestions}
+        eventDate={suggestionsEventDate}
+      />
+      
+      <AnimatePresence>
+        {showPriorityHoldPopup && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+            role="dialog"
+            aria-modal="true"
+          >
+            <motion.div 
+              initial={{ opacity: 0, y: 30, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 30, scale: 0.95 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="bg-[#0a0a0a] w-full max-w-md rounded-2xl p-8 border border-[#D4AF37]/30 text-center relative overflow-hidden"
+            >
+              {/* Decorative radial background */}
+              <div className="absolute -top-40 -left-40 w-80 h-80 bg-[#D4AF37]/5 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-[#D4AF37]/5 rounded-full blur-3xl pointer-events-none" />
+              
+              <div className="relative z-10 flex flex-col items-center">
+                <div className="w-16 h-16 bg-[#D4AF37]/10 border border-[#D4AF37]/30 rounded-full flex items-center justify-center mb-6 animate-pulse shadow-[0_0_20px_rgba(212,175,55,0.1)]">
+                  <ShieldCheck className="w-8 h-8 text-[#D4AF37]" />
+                </div>
+                
+                <h2 className="text-xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider mb-3">
+                  ✦ PRIORITY SLOT HOLD ACTIVE ✦
+                </h2>
+                
+                <p className="text-[11px] font-black text-[#D4AF37]/60 uppercase tracking-[0.25em] mb-4">
+                  Celebration Lock Protocol
+                </p>
+                
+                <p className="text-slate-300 text-sm leading-relaxed mb-6 font-light">
+                  Your requests have been submitted directly to the vendors. Your requested dates have been placed on a <span className="text-[#D4AF37] font-semibold">Priority Hold</span>. The specialists have been notified and will coordinate with you via the integrated chat.
+                </p>
+                
+                <button 
+                  onClick={() => setShowPriorityHoldPopup(false)}
+                  className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/10 hover:shadow-[#D4AF37]/20 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                >
+                  Enter Client Dashboard
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {bookingVendor && (
-          <BookingModal isOpen={!!bookingVendor} vendor={bookingVendor} selectedDate={eventDate} onClose={() => setBookingVendor(null)} onConfirm={handleConfirmBooking} initialDetails={{ clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} />
+          <BookingModal 
+            isOpen={!!bookingVendor} 
+            vendor={bookingVendor} 
+            selectedDate={eventDate} 
+            onClose={() => { setBookingVendor(null); setInitialBookingDetails(null); }} 
+            onConfirm={handleConfirmBooking} 
+            initialDetails={initialBookingDetails || { clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} 
+          />
         )}
       </AnimatePresence>
       <ChatModal 
@@ -2106,7 +2398,7 @@ function App() {
       />
 
       {/* Floating Support Button */}
-      {view === 'marketplace' && !isAdminChatOpen && !chatVendor && (
+      {view === 'marketplace' && userDocData?.role !== 'admin' && !isAdminChatOpen && !chatVendor && (
         <button 
           onClick={() => {
             if (fbUser) {
@@ -2137,9 +2429,13 @@ function App() {
 
       {notification && (
         <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300 w-full max-w-sm px-4 pointer-events-none">
-          <div className="bg-[#111] text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border border-[#D4AF37]/40 backdrop-blur-md">
-            <CheckCircle className="w-5 h-5 text-green-500" aria-hidden="true" />
-            <span className="font-bold text-sm flex-1">{notification.message}</span>
+          <div className={`bg-[#111] text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border backdrop-blur-md ${notification.type === 'error' ? 'border-red-500/40' : 'border-[#D4AF37]/40'}`}>
+            {notification.type === 'error' ? (
+              <X className="w-5 h-5 text-red-500" aria-hidden="true" />
+            ) : (
+              <CheckCircle className="w-5 h-5 text-green-500" aria-hidden="true" />
+            )}
+            <span className={`font-bold text-sm flex-1 ${notification.type === 'error' ? 'text-red-100' : ''}`}>{notification.message}</span>
           </div>
         </div>
       )}

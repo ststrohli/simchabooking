@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Star, MapPin, Lock, ChevronLeft, ChevronRight, PlayCircle, ShieldCheck, Video, MessageCircle, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Star, MapPin, Lock, ChevronLeft, ChevronRight, PlayCircle, ShieldCheck, Video, MessageCircle, X, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Vendor, Review } from '../types';
 
@@ -171,8 +171,9 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
         
         <div className="mt-auto flex items-center justify-between pt-5 border-t border-[#D4AF37]/10">
           <div className="flex-1">
-             <p className="text-[9px] text-[#D4AF37]/60 uppercase font-black tracking-widest">Confidential Quote</p>
-             <p className="text-[10px] font-bold text-slate-500 italic">Revealed in booking form</p>
+            <button onClick={() => onMessage(vendor)} className="text-[#D4AF37] hover:text-[#E5C76B] text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-colors border border-[#D4AF37]/30 px-3 py-2 rounded-lg hover:bg-[#D4AF37]/10 w-fit">
+              <MessageSquare className="w-3.5 h-3.5" /> Message
+            </button>
           </div>
           <motion.button 
             whileHover={!isEffectiveBookingDateBlocked ? { scale: 1.03 } : {}}
@@ -180,9 +181,9 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
             onClick={() => onBook(vendor)} 
             disabled={isEffectiveBookingDateBlocked} 
             className={`px-8 py-2.5 text-xs font-black rounded-xl transition-all uppercase tracking-widest outline-none focus-visible:ring-2 focus-visible:ring-white cursor-pointer ${!isEffectiveBookingDateBlocked ? 'bg-[#D4AF37] text-black hover:bg-[#E5C76B]' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`} 
-            aria-label={isEffectiveBookingDateBlocked ? 'Already booked' : `Reserve ${vendor.name}`}
+            aria-label={isEffectiveBookingDateBlocked ? 'Already booked' : `Book ${vendor.name}`}
           >
-            {isEffectiveBookingDateBlocked ? 'Booked' : 'Reserve'}
+            {isEffectiveBookingDateBlocked ? 'Booked' : 'Book'}
           </motion.button>
         </div>
       </div>

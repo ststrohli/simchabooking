@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff } from 'lucide-react';
+import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff, Filter, ArrowUpDown } from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType, firebaseConfig } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
-import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { uploadFileRobustly } from '../services/uploadService';
+import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import ChatModal from './ChatModal';
 import { Vendor, VendorCategory, Post, Booking, UserAccount, Message } from '../types';
@@ -42,10 +42,13 @@ interface AdminPanelProps {
   onAddCategory: (name: string, image: string, subCats: string[]) => void;
   categorySubCategories: Record<string, Record<string, string[]>>;
   onUpdateCategorySubCategories: (category: string, subCategories: Record<string, string[]>) => void;
+  subCategoryImages?: Record<string, string>;
+  onUpdateSubCategoryImage?: (subCategory: string, url: string) => void;
   heroBackgroundUrl: string;
   onUpdateHeroBackground: (url: string) => void;
   onSendMessage: (payload: Partial<Message>) => void;
-  showNotification: (message: string, type?: 'success' | 'info') => void;
+  showNotification: (message: string, type?: 'success' | 'info' | 'error') => void;
+  onSeedTaxonomy?: () => Promise<void>;
 }
 
 const TableContainer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -105,18 +108,63 @@ const ADMIN_CODE = "ss-77859";
 const COMMISSION_RATE = 0.10;
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
-    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification
+    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification, onSeedTaxonomy
 }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'posts' | 'categories' | 'bookings' | 'stripe' | 'users' | 'messages' | 'analytics' | 'moderation'>('manage');
   const [isUploading, setIsUploading] = useState(false);
+  const [isSeedingTaxonomy, setIsSeedingTaxonomy] = useState(false);
+
+  const handleSeed = async () => {
+    alert("Alert #1: Entered handleSeed function successfully.");
+    
+    try {
+      const taxonomyData = [
+        { name: "Music", subcategories: ["DJ", "Band", "Choir", "One-Man Band"] },
+        { name: "Catering", subcategories: ["Meat", "Dairy", "Pareve", "Food Trucks"] },
+        { name: "Photography & Video", subcategories: ["Wedding Photo", "Event Video", "Drone"] },
+        { name: "Design & Florals", subcategories: ["Chupah Design", "Table Centerpieces", "Lighting"] }
+      ];
+      
+      alert("Alert #2: Data array created. Testing if 'db' variable exists: " + (typeof db !== 'undefined' ? "Yes" : "No"));
+      
+      if (typeof db === 'undefined') {
+        alert("Error: 'db' is undefined! Stopping here.");
+        return;
+      }
+
+      alert("Alert #3: Starting loop to write to Firestore collection 'categories'...");
+
+      // Using a standard modern loop to add documents safely
+      for (const cat of taxonomyData) {
+        alert("Alert #4: Attempting to add category: " + cat.name);
+        await addDoc(collection(db, "categories"), {
+          name: cat.name,
+          subcategories: cat.subcategories,
+          imageUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=400", // placeholder
+          icon: "star"
+        });
+        alert("Alert #5: Successfully added category: " + cat.name);
+      }
+
+      alert("Alert #6: Database loop finished! Seeding complete!");
+
+    } catch (globalError: any) {
+      alert("CRASH DETECTED inside catch block: " + (globalError?.message || globalError || "Unknown error"));
+    }
+  };
+
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [selectedPostFile, setSelectedPostFile] = useState<File | null>(null);
   const [selectedVendorFile, setSelectedVendorFile] = useState<File | null>(null);
   const [selectedCategoryFile, setSelectedCategoryFile] = useState<File | null>(null);
   const [selectedHeroFile, setSelectedHeroFile] = useState<File | null>(null);
+
+  // Real-time Upload Progress & Optimistic Previews
+  const [uploadProgresses, setUploadProgresses] = useState<Record<string, number>>({});
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
 
   // Advanced Back-Office moderation & search states
   const [moderationActioning, setModerationActioning] = useState<Record<string, 'approve' | 'reject'>>({});
@@ -227,6 +275,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   
+  // Conversation search & filter states
+  const [convoSearchQuery, setConvoSearchQuery] = useState('');
+  const [convoTypeFilter, setConvoTypeFilter] = useState<'all' | 'admin' | 'vendor_client'>('all');
+  const [convoReadFilter, setConvoReadFilter] = useState<'all' | 'unread' | 'read'>('all');
+  const [convoSortBy, setConvoSortBy] = useState<'recent' | 'oldest' | 'alphabetical'>('recent');
+  
   const [chatOpen, setChatOpen] = useState(false);
   const [chatRecipient, setChatRecipient] = useState<{
     id: string;
@@ -275,11 +329,47 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     };
   };
 
+  const getConversationParticipants = (lastMsg: Message) => {
+    const sId = lastMsg.senderId || '';
+    const rId = lastMsg.receiverId || '';
+    
+    // Find vendor in vendors list by either senderId, receiverId, or vendorEmail
+    const vendor = vendors.find(v => 
+      v.id === sId || 
+      v.id === rId || 
+      (lastMsg.vendorEmail && v.contactEmail?.toLowerCase() === lastMsg.vendorEmail.toLowerCase())
+    );
+    
+    // Find client in users list by either senderId, receiverId, or clientEmail
+    const client = users.find(u => 
+      u.id === sId || 
+      u.id === rId || 
+      (lastMsg.clientEmail && u.username?.toLowerCase() === lastMsg.clientEmail.toLowerCase())
+    );
+    
+    const clientDetails = {
+      id: client?.id || (sId === vendor?.id ? rId : sId),
+      name: client?.name || lastMsg.clientName || 'Client',
+      email: client?.username || lastMsg.clientEmail || '',
+      avatar: client?.photoURL || ''
+    };
+
+    const vendorDetails = {
+      id: vendor?.id || (sId === clientDetails.id ? rId : sId),
+      name: vendor?.name || 'Vendor',
+      email: vendor?.contactEmail || lastMsg.vendorEmail || '',
+      avatar: vendor?.image || ''
+    };
+
+    return { vendor: vendorDetails, client: clientDetails };
+  };
+
   const handleOpenChat = (conversationId: string, lastMsg: Message) => {
     const otherId = getOtherUserId(lastMsg);
     const otherUser = getOtherUserDetails(otherId, lastMsg);
-    setChatRecipient(otherUser);
-    setChatOpen(true);
+    setSelectedInquiryEmail(otherUser.email);
+    setSelectedConversationId(conversationId);
+    setActiveTab('messages');
   };
 
   const toggleMessageReadStatus = async (messageId: string, currentStatus: boolean, e?: React.MouseEvent) => {
@@ -318,6 +408,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [fullscreenMedia, setFullscreenMedia] = useState<{url: string, type: 'image' | 'video'} | null>(null);
 
   // Automatically scroll to bottom of active message thread
   useEffect(() => {
@@ -632,17 +723,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     reader.readAsDataURL(file);
   };
 
+  const subCategoryImageInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const handleSubCategoryImageUpload = async (subCategory: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !onUpdateSubCategoryImage) return;
+    
+    // Optimistic Preview
+    const previewUrl = URL.createObjectURL(file);
+    setPreviewUrls(prev => ({ ...prev, [subCategory]: previewUrl }));
+    setUploadProgresses(prev => ({ ...prev, [subCategory]: 0 }));
+
+    try {
+      const url = await uploadFileWithProgress(file, `taxonomy/${Date.now()}_${file.name}`, (progress) => {
+        setUploadProgresses(prev => ({ ...prev, [subCategory]: progress }));
+      });
+      onUpdateSubCategoryImage(subCategory, url);
+    } catch (err) {
+      console.error("Upload error:", err);
+      showNotification('Upload failed', 'info');
+    } finally {
+      setUploadProgresses(prev => { const newP = {...prev}; delete newP[subCategory]; return newP; });
+    }
+  };
+
   const handleCategoryImageUpload = async (category: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setIsUploading(true);
+    
+    // Optimistic Preview
+    const previewUrl = URL.createObjectURL(file);
+    setPreviewUrls(prev => ({ ...prev, [category]: previewUrl }));
+    setUploadProgresses(prev => ({ ...prev, [category]: 0 }));
+
     try {
-      const url = await uploadFile(file, 'categories');
+      const url = await uploadFileWithProgress(file, `categories/${Date.now()}_${file.name}`, (progress) => {
+        setUploadProgresses(prev => ({ ...prev, [category]: progress }));
+      });
       onUpdateCategoryImage(category, url);
     } catch (err) {
       showNotification("Failed to upload category image.", 'info');
     } finally {
-      setIsUploading(false);
+      setUploadProgresses(prev => { const newP = {...prev}; delete newP[category]; return newP; });
     }
   };
 
@@ -661,14 +783,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleHeroBackgroundUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setIsUploading(true);
+
+    // Optimistic Preview
+    const previewUrl = URL.createObjectURL(file);
+    setPreviewUrls(prev => ({ ...prev, 'hero': previewUrl }));
+    setUploadProgresses(prev => ({ ...prev, 'hero': 0 }));
+
     try {
-      const url = await uploadFile(file, 'hero');
+      const url = await uploadFileWithProgress(file, `hero/${Date.now()}_${file.name}`, (progress) => {
+        setUploadProgresses(prev => ({ ...prev, 'hero': progress }));
+      });
       onUpdateHeroBackground(url);
     } catch (err) {
       showNotification("Failed to upload hero background.", 'info');
     } finally {
-      setIsUploading(false);
+      setUploadProgresses(prev => { const newP = {...prev}; delete newP['hero']; return newP; });
     }
   };
 
@@ -1209,11 +1338,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                         <div className="md:col-span-2">
                            <div className="aspect-[21/9] bg-black rounded-xl border border-[#D4AF37]/20 overflow-hidden relative group">
-                              <img src={heroBackgroundUrl} className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-1000" />
+                              <img src={previewUrls['hero'] || heroBackgroundUrl} className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-1000" />
                               <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
                               <div className="absolute bottom-4 left-6">
                                  <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Live Preview</p>
                               </div>
+                              
+                              {typeof uploadProgresses['hero'] === 'number' && (
+                                <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
+                                  <div className="w-12 h-12 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_15px_rgba(212,175,55,0.3)]"></div>
+                                  <div className="text-[#D4AF37] font-bold text-[10px] mt-3 tracking-widest">{Math.round(uploadProgresses['hero'])}%</div>
+                                </div>
+                              )}
                            </div>
                         </div>
                      </div>
@@ -1250,20 +1386,55 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
               {/* Advanced Taxonomy Management */}
               <div className="space-y-8">
-                <div className="flex items-center gap-3 border-b border-white/5 pb-4">
-                    <ListTree className="w-6 h-6 text-[#D4AF37]" />
-                    <h3 className="text-xl font-bold font-[Cinzel] text-white">Active Taxonomy Control</h3>
+                <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                    <div className="flex items-center gap-3">
+                        <ListTree className="w-6 h-6 text-[#D4AF37]" />
+                        <h3 className="text-xl font-bold font-[Cinzel] text-white">Active Taxonomy Control</h3>
+                    </div>
+                    {onSeedTaxonomy && (
+                        <button 
+                            type="button" 
+                            disabled={isSeedingTaxonomy}
+                            onClick={async () => { 
+                                if(window.confirm('This will populate the entire detailed Jewish Event taxonomy structure. Proceed?')) { 
+                                    setIsSeedingTaxonomy(true);
+                                    try {
+                                        await handleSeed(); 
+                                    } finally {
+                                        setIsSeedingTaxonomy(false);
+                                    }
+                                } 
+                            }} 
+                            className="px-4 py-2 bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37] hover:bg-[#D4AF37] hover:text-black transition-all rounded text-[10px] font-bold uppercase tracking-widest cursor-pointer shadow-[0_0_15px_rgba(212,175,55,0.2)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {isSeedingTaxonomy ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                Seeding Database...
+                              </>
+                            ) : (
+                              'Seed Taxonomy'
+                            )}
+                        </button>
+                    )}
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     {categories.map(cat => (
-                        <div key={cat} className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 overflow-hidden flex flex-col shadow-2xl group">
+                        <div key={cat} className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 overflow-hidden flex flex-col shadow-2xl group relative">
                             <div className="relative h-44 bg-black">
-                                <img src={categoryImages[cat]} className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" />
+                                <img src={previewUrls[cat] || categoryImages[cat]} className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" />
                                 <div className="absolute inset-0 bg-gradient-to-t from-[#111] via-transparent to-black/30"></div>
                                 <button onClick={() => categoryImageInputRefs.current[cat]?.click()} className="absolute top-4 right-4 bg-black/60 hover:bg-[#D4AF37] hover:text-black p-2 rounded-lg text-slate-300 transition-all border border-white/10" title="Modify Banner"><Camera className="w-4 h-4" /></button>
                                 <input type="file" accept="image/*" className="hidden" ref={el => { categoryImageInputRefs.current[cat] = el; }} onChange={(e) => handleCategoryImageUpload(cat, e)} />
                                 <h3 className="absolute bottom-4 left-6 text-2xl font-bold font-[Cinzel] text-[#D4AF37]">{cat}</h3>
+                                
+                                {typeof uploadProgresses[cat] === 'number' && (
+                                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
+                                    <div className="w-12 h-12 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_15px_rgba(212,175,55,0.3)]"></div>
+                                    <div className="text-[#D4AF37] font-bold text-xs mt-3 tracking-widest">{Math.round(uploadProgresses[cat])}%</div>
+                                  </div>
+                                )}
                             </div>
                             
                             <div className="p-6 space-y-6">
@@ -1289,14 +1460,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                   <button onClick={() => handleRemoveSubCategory(cat, sub)} className="text-red-500/30 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                                               </div>
                                               <div className="p-4 space-y-4">
-                                                  <div className="flex flex-wrap gap-1.5">
+                                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                                                       {items.map(item => (
-                                                          <div key={item} className="flex items-center gap-2 bg-[#D4AF37]/5 px-2.5 py-1.5 rounded-lg border border-[#D4AF37]/20 text-[9px] font-bold text-slate-400">
-                                                              {item}
-                                                              <button onClick={() => handleRemoveNestedSubCategory(cat, sub, item)} className="hover:text-red-500 transition-colors"><X className="w-3 h-3" /></button>
+                                                          <div key={item} className="relative group overflow-hidden bg-black/40 rounded-xl border border-white/5 aspect-square flex flex-col">
+                                                              <div className="flex-1 relative">
+                                                                  {(previewUrls[item] || subCategoryImages[item]) ? (
+                                                                      <img src={previewUrls[item] || subCategoryImages[item]} alt={item} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity" />
+                                                                  ) : (
+                                                                      <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
+                                                                          <ImageIcon className="w-6 h-6 text-zinc-700" />
+                                                                      </div>
+                                                                  )}
+                                                                  <button onClick={() => subCategoryImageInputRefs.current[item]?.click()} className="absolute inset-0 m-auto w-8 h-8 bg-black/60 hover:bg-[#D4AF37] hover:text-black rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all border border-white/10" title="Modify Image"><Camera className="w-4 h-4" /></button>
+                                                                  <input type="file" accept="image/*" className="hidden" ref={el => { subCategoryImageInputRefs.current[item] = el; }} onChange={(e) => handleSubCategoryImageUpload(item, e)} />
+                                                                  
+                                                                  {typeof uploadProgresses[item] === 'number' && (
+                                                                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
+                                                                      <div className="w-6 h-6 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_10px_rgba(212,175,55,0.3)]"></div>
+                                                                      <div className="text-[#D4AF37] font-bold text-[8px] mt-2 tracking-widest">{Math.round(uploadProgresses[item])}%</div>
+                                                                    </div>
+                                                                  )}
+                                                              </div>
+                                                              <div className="p-2 bg-black border-t border-white/5 flex items-center justify-between">
+                                                                  <span className="text-[10px] font-bold text-slate-300 truncate">{item}</span>
+                                                                  <button onClick={() => handleRemoveNestedSubCategory(cat, sub, item)} className="text-red-500/50 hover:text-red-500 transition-colors shrink-0 ml-2" title="Remove subcategory"><Trash2 className="w-3 h-3" /></button>
+                                                              </div>
                                                           </div>
                                                       ))}
-                                                      {items.length === 0 && <span className="text-[9px] text-slate-700 italic">No specific sub-category options added.</span>}
+                                                      {items.length === 0 && <span className="text-[9px] text-slate-700 italic col-span-full">No specific sub-category options added.</span>}
                                                   </div>
                                                   <div className="flex gap-2 pt-1">
                                                       <input type="text" className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-[10px] text-slate-400 outline-none focus:border-[#D4AF37]/40" placeholder={`Add ${sub} option...`} value={newNestedSubCategoryInputs[nestedKey] || ''} onChange={(e) => setNewNestedSubCategoryInputs({...newNestedSubCategoryInputs, [nestedKey]: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && handleAddNestedSubCategory(cat, sub)} />
@@ -1844,278 +2035,455 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             );
         })()}
 
-        {activeTab === 'messages' && (
-            <div className="space-y-6 animate-in slide-in-from-right-10 duration-500">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[600px]">
-                    {/* Inbox Sidebar */}
-                    <div className="bg-[#111] rounded-2xl border border-white/5 overflow-hidden flex flex-col">
-                        <div className="p-6 border-b border-white/5 bg-black/40">
-                             <h3 className="font-bold text-[#D4AF37] font-[Cinzel] flex items-center gap-2">
-                                <MessageSquare className="w-4 h-4" /> Message Inbox
-                             </h3>
-                        </div>
-                        <div className="flex-1 overflow-y-auto">
-                            {(() => {
-                                const lastMessagesByConversation: Record<string, Message> = {};
-                                const allMessagesByConversation: Record<string, Message[]> = {};
-                                messages.forEach(m => {
-                                    if (!m) return;
-                                    const isPart = m.senderId === 'admin' || m.receiverId === 'admin' || m.participants?.includes('admin') || m.isAdminInquiry;
-                                    if (isPart) {
-                                        const cid = m.conversationId || (m.senderId === 'admin' ? `admin_${m.receiverId || 'unknown'}` : `${m.senderId || 'unknown'}_admin`);
-                                        if (!lastMessagesByConversation[cid] || new Date(m.timestamp) > new Date(lastMessagesByConversation[cid].timestamp)) {
-                                            const msgCopy = { ...m, conversationId: cid };
-                                            lastMessagesByConversation[cid] = msgCopy;
-                                        }
-                                        if (!allMessagesByConversation[cid]) {
-                                            allMessagesByConversation[cid] = [];
-                                        }
-                                        allMessagesByConversation[cid].push(m);
-                                    }
-                                });
+        {activeTab === 'messages' && (() => {
+            const lastMessagesByConversation: Record<string, Message> = {};
+            const allMessagesByConversation: Record<string, Message[]> = {};
+            messages.forEach(m => {
+                if (!m) return;
+                const cid = m.conversationId || (m.senderId === 'admin' ? `admin_${m.receiverId || 'unknown'}` : `${m.senderId || 'unknown'}_admin`);
+                if (!lastMessagesByConversation[cid] || new Date(m.timestamp) > new Date(lastMessagesByConversation[cid].timestamp)) {
+                    const msgCopy = { ...m, conversationId: cid };
+                    lastMessagesByConversation[cid] = msgCopy;
+                }
+                if (!allMessagesByConversation[cid]) {
+                    allMessagesByConversation[cid] = [];
+                }
+                allMessagesByConversation[cid].push(m);
+            });
 
-                                const conversationList = Object.values(lastMessagesByConversation).sort((a, b) => 
-                                    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                                );
+            const processedList = Object.values(lastMessagesByConversation).map(msg => {
+                const cid = msg.conversationId || '';
+                const isAdminSupport = msg.senderId === 'admin' || msg.receiverId === 'admin' || msg.participants?.includes('admin') || msg.isAdminInquiry;
+                const hasUnread = (allMessagesByConversation[cid] || []).some(m => m.senderId !== 'admin' && !m.isRead);
+                
+                const { vendor: vendorDetails, client: clientDetails } = getConversationParticipants(msg);
+                const otherId = getOtherUserId(msg);
+                const otherUser = getOtherUserDetails(otherId, msg);
 
-                                if (conversationList.length === 0) {
-                                    return (
-                                        <div className="p-12 text-center opacity-30 flex flex-col items-center justify-center">
-                                            <Bot className="w-12 h-12 mx-auto mb-2 text-[#D4AF37]" />
-                                            <p className="text-xs font-[Cinzel] font-bold text-[#D4AF37] uppercase tracking-wider">No active chats</p>
-                                            <p className="text-[10px] mt-1 text-slate-400">All Client & Vendor messages will appear here.</p>
+                return {
+                    msg,
+                    cid,
+                    isAdminSupport,
+                    hasUnread,
+                    vendorDetails,
+                    clientDetails,
+                    otherUser
+                };
+            });
+
+            const filteredList = processedList.filter(item => {
+                const matchesSearch = convoSearchQuery === '' ||
+                    item.clientDetails.name.toLowerCase().includes(convoSearchQuery.toLowerCase()) ||
+                    item.clientDetails.email.toLowerCase().includes(convoSearchQuery.toLowerCase()) ||
+                    item.vendorDetails.name.toLowerCase().includes(convoSearchQuery.toLowerCase()) ||
+                    item.vendorDetails.email.toLowerCase().includes(convoSearchQuery.toLowerCase()) ||
+                    (item.msg.text || '').toLowerCase().includes(convoSearchQuery.toLowerCase());
+
+                const matchesType = convoTypeFilter === 'all' ||
+                    (convoTypeFilter === 'admin' && item.isAdminSupport) ||
+                    (convoTypeFilter === 'vendor_client' && !item.isAdminSupport);
+
+                const matchesRead = convoReadFilter === 'all' ||
+                    (convoReadFilter === 'unread' && item.hasUnread) ||
+                    (convoReadFilter === 'read' && !item.hasUnread);
+
+                return matchesSearch && matchesType && matchesRead;
+            });
+
+            filteredList.sort((a, b) => {
+                if (convoSortBy === 'recent') {
+                    return new Date(b.msg.timestamp).getTime() - new Date(a.msg.timestamp).getTime();
+                } else if (convoSortBy === 'oldest') {
+                    return new Date(a.msg.timestamp).getTime() - new Date(b.msg.timestamp).getTime();
+                } else {
+                    return a.clientDetails.name.localeCompare(b.clientDetails.name);
+                }
+            });
+
+            return (
+                <div className="space-y-6 animate-in slide-in-from-right-10 duration-500">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[600px]">
+                        {/* Inbox Sidebar */}
+                        <div className="bg-[#111] rounded-2xl border border-white/5 overflow-hidden flex flex-col">
+                            <div className="p-6 border-b border-white/5 bg-black/40">
+                                 <h3 className="font-bold text-[#D4AF37] font-[Cinzel] flex items-center gap-2">
+                                    <MessageSquare className="w-4 h-4" /> Message Inbox
+                                 </h3>
+                            </div>
+
+                            {/* Search and Filters panel */}
+                            <div className="p-4 border-b border-white/5 bg-zinc-950/40 space-y-3">
+                                {/* Search bar */}
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
+                                    <input
+                                        type="text"
+                                        value={convoSearchQuery}
+                                        onChange={(e) => setConvoSearchQuery(e.target.value)}
+                                        placeholder="Search clients, vendors, texts..."
+                                        className="w-full bg-black border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#D4AF37] transition-all"
+                                    />
+                                    {convoSearchQuery && (
+                                        <button 
+                                            onClick={() => setConvoSearchQuery('')}
+                                            className="absolute right-3 top-2.5 text-slate-500 hover:text-white transition-colors"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Filter Grid */}
+                                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                    {/* Chat Type */}
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Chat Type</label>
+                                        <div className="relative">
+                                            <select
+                                                value={convoTypeFilter}
+                                                onChange={(e) => setConvoTypeFilter(e.target.value as any)}
+                                                className="w-full bg-black border border-white/10 rounded-lg px-2 py-1.5 text-slate-300 focus:outline-none focus:border-[#D4AF37] appearance-none cursor-pointer"
+                                            >
+                                                <option value="all">All Chats</option>
+                                                <option value="admin">Support / Admin</option>
+                                                <option value="vendor_client">Vendor-Client</option>
+                                            </select>
+                                            <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 text-slate-500 pointer-events-none" />
                                         </div>
-                                    );
-                                }
+                                    </div>
 
-                                return conversationList.map(msg => {
-                                    const otherId = getOtherUserId(msg);
-                                    const otherUser = getOtherUserDetails(otherId, msg);
-                                    const cid = msg.conversationId || '';
-                                    const hasUnread = (allMessagesByConversation[cid] || []).some(m => m.senderId !== 'admin' && !m.isRead);
-                                    const isSelected = selectedConversationId === cid || selectedInquiryEmail === otherUser.email;
-                                    const itemBgClass = isSelected 
-                                        ? 'bg-[#D4AF37]/5 border-r-2 border-r-[#D4AF37]' 
-                                        : (hasUnread ? 'bg-white/[0.04] border-l-2 border-l-[#D4AF37]' : '');
-                                    
-                                    return (
-                                        <div 
-                                            key={cid || otherId}
-                                            role="button"
-                                            tabIndex={0}
-                                            onClick={() => {
-                                                setSelectedInquiryEmail(otherUser.email);
-                                                setSelectedConversationId(cid);
-                                                handleOpenChat(cid, msg);
-                                                
-                                                // Auto mark unread incoming messages as read when opening conversation
-                                                if (cid) {
-                                                    markChatAsRead(cid, 'admin').catch(console.error);
-                                                }
-                                            }}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter' || e.key === ' ') {
-                                                    e.preventDefault();
+                                    {/* Status */}
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Status</label>
+                                        <div className="relative">
+                                            <select
+                                                value={convoReadFilter}
+                                                onChange={(e) => setConvoReadFilter(e.target.value as any)}
+                                                className="w-full bg-black border border-white/10 rounded-lg px-2 py-1.5 text-slate-300 focus:outline-none focus:border-[#D4AF37] appearance-none cursor-pointer"
+                                            >
+                                                <option value="all">All Status</option>
+                                                <option value="unread">Unread</option>
+                                                <option value="read">Read</option>
+                                            </select>
+                                            <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 text-slate-500 pointer-events-none" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Sort & Stats */}
+                                <div className="flex justify-between items-center text-[10px] pt-2 border-t border-white/5">
+                                    <div className="flex items-center gap-1.5">
+                                        <ArrowUpDown className="w-3.5 h-3.5 text-[#D4AF37]" />
+                                        <select
+                                            value={convoSortBy}
+                                            onChange={(e) => setConvoSortBy(e.target.value as any)}
+                                            className="bg-transparent text-slate-300 focus:outline-none cursor-pointer font-medium"
+                                        >
+                                            <option value="recent">Newest First</option>
+                                            <option value="oldest">Oldest First</option>
+                                            <option value="alphabetical">Name A-Z</option>
+                                        </select>
+                                    </div>
+                                    <span className="text-slate-500 font-bold uppercase tracking-wider text-[8px]">
+                                        Results: <span className="text-[#D4AF37]">{filteredList.length}</span>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto">
+                                {filteredList.length === 0 ? (
+                                    <div className="p-12 text-center opacity-30 flex flex-col items-center justify-center">
+                                        <Bot className="w-12 h-12 mx-auto mb-2 text-[#D4AF37]" />
+                                        <p className="text-xs font-[Cinzel] font-bold text-[#D4AF37] uppercase tracking-wider">No chats found</p>
+                                        <p className="text-[10px] mt-1 text-slate-400">Try adjusting your filters or search query.</p>
+                                    </div>
+                                ) : (
+                                    filteredList.map(({ msg, cid, isAdminSupport, hasUnread, vendorDetails, clientDetails, otherUser }) => {
+                                        const isSelected = selectedConversationId === cid || selectedInquiryEmail === otherUser.email;
+                                        const itemBgClass = isSelected 
+                                            ? 'bg-[#D4AF37]/5 border-r-2 border-r-[#D4AF37]' 
+                                            : (hasUnread ? 'bg-white/[0.04] border-l-2 border-l-[#D4AF37]' : '');
+                                        
+                                        return (
+                                            <div 
+                                                key={cid || otherUser.id}
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={() => {
                                                     setSelectedInquiryEmail(otherUser.email);
                                                     setSelectedConversationId(cid);
-                                                    handleOpenChat(cid, msg);
                                                     
                                                     // Auto mark unread incoming messages as read when opening conversation
-                                                    if (cid) {
+                                                    if (cid && isAdminSupport) {
                                                         markChatAsRead(cid, 'admin').catch(console.error);
                                                     }
-                                                }
-                                            }}
-                                            className={`w-full p-6 text-left border-b border-white/5 transition-all hover:bg-white/5 flex flex-col gap-1.5 cursor-pointer outline-none focus-visible:bg-white/5 ${itemBgClass}`}
-                                        >
-                                            <div className="flex justify-between items-center w-full gap-2">
-                                                <div className="flex items-center gap-2 min-w-0">
-                                                    {hasUnread && (
-                                                        <span className="w-2 h-2 rounded-full bg-[#D4AF37] animate-pulse shadow-[0_0_8px_rgba(212,175,55,0.6)] flex-shrink-0"></span>
-                                                    )}
-                                                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${otherUser.role === 'vendor' ? 'bg-[#D4AF37]' : 'bg-blue-400'}`}></span>
-                                                    <h4 className={`text-white text-sm truncate max-w-[120px] ${hasUnread ? 'font-bold text-[#D4AF37]' : 'font-semibold'}`}>
-                                                        {otherUser.name}
-                                                    </h4>
-                                                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${otherUser.role === 'vendor' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'}`}>
-                                                        {otherUser.role}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                    <span className="text-[9px] text-slate-500">
-                                                        {msg.timestamp ? new Date(msg.timestamp).toLocaleDateString() : ''}
-                                                    </span>
-                                                    <button
-                                                        onClick={(e) => toggleConversationReadStatus(cid, otherUser.email, hasUnread, e)}
-                                                        title={hasUnread ? "Mark as Read" : "Mark as Unread"}
-                                                        className="p-1 hover:bg-white/10 rounded transition-all"
-                                                    >
-                                                        {hasUnread ? (
-                                                            <Mail className="w-3.5 h-3.5 text-[#D4AF37]" />
-                                                        ) : (
-                                                            <MailOpen className="w-3.5 h-3.5 text-slate-500 hover:text-white" />
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.preventDefault();
+                                                        setSelectedInquiryEmail(otherUser.email);
+                                                        setSelectedConversationId(cid);
+                                                        
+                                                        // Auto mark unread incoming messages as read when opening conversation
+                                                        if (cid && isAdminSupport) {
+                                                            markChatAsRead(cid, 'admin').catch(console.error);
+                                                        }
+                                                    }
+                                                }}
+                                                className={`w-full p-6 text-left border-b border-white/5 transition-all hover:bg-white/5 flex flex-col gap-1.5 cursor-pointer outline-none focus-visible:bg-white/5 ${itemBgClass}`}
+                                            >
+                                                <div className="flex justify-between items-center w-full gap-2">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        {hasUnread && (
+                                                            <span className="w-2 h-2 rounded-full bg-[#D4AF37] animate-pulse shadow-[0_0_8px_rgba(212,175,55,0.6)] flex-shrink-0"></span>
                                                         )}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <p className="text-[10px] text-slate-500 truncate">{otherUser.email}</p>
-                                            <p className={`text-xs line-clamp-1 ${hasUnread ? 'text-white font-medium' : 'text-slate-300 italic'}`}>
-                                                {msg.text || 'Shared attachment'}
-                                            </p>
-                                        </div>
-                                    );
-                                });
-                            })()}
-                        </div>
-                    </div>
+                                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isAdminSupport ? 'bg-emerald-400' : 'bg-[#D4AF37]'}`}></span>
+                                                        
+                                                        <h4 className={`text-white text-sm truncate max-w-[130px] ${hasUnread ? 'font-bold text-[#D4AF37]' : 'font-semibold'}`}>
+                                                            {isAdminSupport ? `Support: ${clientDetails.name}` : `${clientDetails.name}`}
+                                                        </h4>
 
-                    {/* Chat Area */}
-                    <div className="lg:col-span-2 bg-[#111] rounded-2xl border border-white/5 overflow-hidden flex flex-col">
-                        {selectedInquiryEmail ? (
-                            <>
-                                {(() => {
-                                    // Find matching messages in this conversation
-                                    const conversationMessages = messages.filter(m => 
-                                        m.conversationId === selectedConversationId || 
-                                        [m.senderId, m.receiverId].sort().join('_') === selectedConversationId ||
-                                        m.clientEmail === selectedInquiryEmail || 
-                                        m.vendorEmail === selectedInquiryEmail
-                                    );
-                                    const lastMsg = conversationMessages[conversationMessages.length - 1];
-                                    const otherId = lastMsg ? getOtherUserId(lastMsg) : '';
-                                    const otherUser = lastMsg ? getOtherUserDetails(otherId, lastMsg) : { name: 'User', email: selectedInquiryEmail, role: 'client' as const, avatar: '' };
-                                    
-                                    return (
-                                        <>
-                                            <div className="p-6 border-b border-white/5 bg-black/40 flex justify-between items-center">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] border border-[#D4AF37]/20 font-bold">
-                                                        {otherUser.name?.[0] || 'U'}
+                                                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                                                            isAdminSupport 
+                                                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                                                : 'bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20'
+                                                        }`}>
+                                                            {isAdminSupport ? 'Support' : 'Client-Vendor'}
+                                                        </span>
                                                     </div>
-                                                    <div>
-                                                        <h3 className="font-bold text-white text-sm">
-                                                            {otherUser.name || 'User'}
-                                                        </h3>
-                                                        <p className="text-[10px] text-slate-500">{otherUser.email}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => { setSelectedInquiryEmail(null); setSelectedConversationId(null); }} className="p-2 text-slate-500 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="flex-1 overflow-y-auto p-6 space-y-6" id="admin-chat-scroll-container" ref={messagesEndRef}>
-                                                {conversationMessages
-                                                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                                                    .map((msg, idx) => (
-                                                        <div key={idx} className={`flex ${msg.senderId === 'admin' ? 'justify-end' : 'justify-start'}`}>
-                                                            <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative shadow-md ${
-                                                                msg.senderId === 'admin' 
-                                                                    ? 'bg-[#D4AF37] text-black' 
-                                                                    : 'bg-zinc-900 text-white border border-zinc-800'
-                                                            }`}>
-                                                                {msg.type === 'image' || msg.imageUrl ? (
-                                                                    <div className="space-y-2">
-                                                                        <img 
-                                                                          src={msg.imageUrl || msg.fileUrl} 
-                                                                          onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })} 
-                                                                          className="rounded-lg w-full max-h-80 object-cover border border-white/5 shadow-lg" 
-                                                                          alt="Sent" 
-                                                                        />
-                                                                        {msg.text && msg.text !== 'Sent an image' && <p className="mt-2 text-sm leading-relaxed">{msg.text}</p>}
-                                                                    </div>
-                                                                ) : msg.type === 'voice' || msg.audioUrl ? (
-                                                                    <div className="space-y-2 min-w-[200px] sm:min-w-[240px]">
-                                                                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Voice note</p>
-                                                                        <CustomAudioPlayer src={msg.audioUrl || msg.fileUrl || ''} theme={msg.senderId === 'admin' ? 'sent' : 'received'} />
-                                                                    </div>
-                                                                ) : msg.type === 'file' ? (
-                                                                    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-black/10 p-2 rounded-lg hover:bg-black/20 transition-all text-sm">
-                                                                        <FileText className="w-8 h-8 opacity-50" />
-                                                                        <div className="flex-1 min-w-0">
-                                                                           <p className="truncate font-bold text-xs">{msg.fileName}</p>
-                                                                           <p className="text-[10px] opacity-50">Click to download</p>
-                                                                        </div>
-                                                                        <Download className="w-4 h-4 opacity-50" />
-                                                                    </a>
+                                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                        <span className="text-[9px] text-slate-500">
+                                                            {msg.timestamp ? new Date(msg.timestamp).toLocaleDateString() : ''}
+                                                        </span>
+                                                        {isAdminSupport && (
+                                                            <button
+                                                                onClick={(e) => toggleConversationReadStatus(cid, otherUser.email, hasUnread, e)}
+                                                                title={hasUnread ? "Mark as Read" : "Mark as Unread"}
+                                                                className="p-1 hover:bg-white/10 rounded transition-all"
+                                                            >
+                                                                {hasUnread ? (
+                                                                    <Mail className="w-3.5 h-3.5 text-[#D4AF37]" />
                                                                 ) : (
-                                                                    <p className="leading-relaxed">{msg.text}</p>
+                                                                    <MailOpen className="w-3.5 h-3.5 text-slate-500 hover:text-white" />
                                                                 )}
-                                                                
-                                                                <div className="flex justify-between items-center gap-2 mt-2 select-none leading-none w-full">
-                                                                    {msg.senderId !== 'admin' ? (
-                                                                        <button
-                                                                            onClick={(e) => toggleMessageReadStatus(msg.id, msg.isRead, e)}
-                                                                            title={msg.isRead ? "Mark as Unread" : "Mark as Read"}
-                                                                            className="flex items-center gap-1.5 text-[9px] text-[#D4AF37] hover:text-[#E2C562] transition-colors py-0.5 px-2 bg-black/40 rounded border border-[#D4AF37]/10"
-                                                                        >
-                                                                            {msg.isRead ? (
-                                                                                <>
-                                                                                    <Eye className="w-3 h-3 text-[#D4AF37]" />
-                                                                                    <span>Read</span>
-                                                                                </>
-                                                                            ) : (
-                                                                                <>
-                                                                                    <EyeOff className="w-3 h-3 text-red-400 animate-pulse" />
-                                                                                    <span className="text-red-400 font-bold">Unread</span>
-                                                                                </>
-                                                                            )}
-                                                                        </button>
-                                                                    ) : (
-                                                                        <div />
-                                                                    )}
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <span className={`text-[9px] text-zinc-400`}>
-                                                                            {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                                                                        </span>
-                                                                        {msg.senderId === 'admin' && (
-                                                                            <span className={`text-[10px] ${msg.isRead ? 'text-blue-600' : 'text-black/40'}`}>
-                                                                                ✓✓
-                                                                            </span>
-                                                                        )}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* Details subtext */}
+                                                {!isAdminSupport && (
+                                                    <p className="text-[9px] font-medium text-[#D4AF37]/75">
+                                                        ↔️ {vendorDetails.name} ({vendorDetails.email})
+                                                    </p>
+                                                )}
+                                                
+                                                <p className="text-[10px] text-slate-500 truncate">
+                                                    {clientDetails.email}
+                                                </p>
+                                                <p className={`text-xs line-clamp-1 ${hasUnread ? 'text-white font-medium' : 'text-slate-300 italic'}`}>
+                                                    {msg.text || 'Shared attachment'}
+                                                </p>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Chat Area */}
+                        <div className="lg:col-span-2 bg-[#111] rounded-2xl border border-white/5 overflow-hidden flex flex-col">
+                            {selectedInquiryEmail ? (() => {
+                                const conversationMessages = messages.filter(m => 
+                                    (selectedConversationId && (m.conversationId === selectedConversationId || [m.senderId, m.receiverId].sort().join('_') === selectedConversationId)) ||
+                                    (!selectedConversationId && (m.clientEmail === selectedInquiryEmail || m.vendorEmail === selectedInquiryEmail))
+                                );
+                                const lastMsg = conversationMessages[conversationMessages.length - 1];
+                                const isAdminSupport = lastMsg ? (lastMsg.senderId === 'admin' || lastMsg.receiverId === 'admin' || lastMsg.participants?.includes('admin') || lastMsg.isAdminInquiry) : true;
+                                
+                                const { client: otherUserClient, vendor: otherUserVendor } = lastMsg 
+                                    ? getConversationParticipants(lastMsg)
+                                    : { client: { name: 'Client', email: selectedInquiryEmail || '', avatar: '' }, vendor: { name: 'Vendor', email: '', avatar: '' } };
+                                
+                                const otherId = lastMsg ? getOtherUserId(lastMsg) : '';
+                                const otherUser = lastMsg ? getOtherUserDetails(otherId, lastMsg) : { name: 'User', email: selectedInquiryEmail || '', role: 'client' as const, avatar: '' };
+
+                                return (
+                                    <>
+                                        <div className="p-6 border-b border-white/5 bg-black/40 flex justify-between items-center">
+                                            <div className="flex items-center gap-3">
+                                                {isAdminSupport ? (
+                                                    <>
+                                                        <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] border border-[#D4AF37]/20 font-bold">
+                                                            {otherUser.name?.[0] || 'U'}
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <h3 className="font-bold text-white text-sm">
+                                                                    {otherUser.name || 'User'}
+                                                                </h3>
+                                                                <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">
+                                                                    Admin Support Chat
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-500">{otherUser.email}</p>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] border border-[#D4AF37]/20 font-bold">
+                                                            🤝
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <h3 className="font-bold text-white text-sm">
+                                                                    {otherUserClient.name} ↔ {otherUserVendor.name}
+                                                                </h3>
+                                                                <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 rounded">
+                                                                    B2C direct oversight
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-500">
+                                                                Client: {otherUserClient.email} | Vendor: {otherUserVendor.email}
+                                                            </p>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => { setSelectedInquiryEmail(null); setSelectedConversationId(null); }} className="p-2 text-slate-500 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="flex-1 overflow-y-auto p-6 space-y-6" id="admin-chat-scroll-container" ref={messagesEndRef}>
+                                            {conversationMessages
+                                                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                                                .map((msg, idx) => (
+                                                    <div key={idx} className={`flex ${msg.senderId === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                                                        <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative shadow-md ${
+                                                            msg.senderId === 'admin' 
+                                                                ? 'bg-[#D4AF37] text-black' 
+                                                                : 'bg-zinc-900 text-white border border-zinc-800'
+                                                        }`}>
+                                                            {msg.type === 'image' || msg.imageUrl ? (
+                                                                <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: msg.imageUrl || msg.fileUrl || '', type: 'image'})}>
+                                                                    <img 
+                                                                      src={msg.imageUrl || msg.fileUrl} 
+                                                                      onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })} 
+                                                                      className="rounded-lg w-full max-h-80 object-cover border border-white/5 shadow-lg" 
+                                                                      alt="Sent" 
+                                                                    />
+                                                                    {msg.text && msg.text !== 'Sent an image' && <p className="mt-2 text-sm leading-relaxed">{msg.text}</p>}
+                                                                </div>
+                                                            ) : msg.type === 'voice' || msg.audioUrl ? (
+                                                                <div className="space-y-2 min-w-[200px] sm:min-w-[240px]">
+                                                                    <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Voice note</p>
+                                                                    <CustomAudioPlayer src={msg.audioUrl || msg.fileUrl || ''} theme={msg.senderId === 'admin' ? 'sent' : 'received'} />
+                                                                </div>
+                                                            ) : msg.type === 'file' ? (
+                                                                msg.fileType?.startsWith('video/') ? (
+                                                                    <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: msg.fileUrl || '', type: 'video'})}>
+                                                                        <video src={msg.fileUrl} className="w-full aspect-video rounded-lg object-cover bg-black" />
+                                                                        {msg.text && msg.text !== 'Sent a video' && <p className="text-sm">{msg.text}</p>}
                                                                     </div>
+                                                                ) : (
+                                                                <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-black/10 p-2 rounded-lg hover:bg-black/20 transition-all text-sm">
+                                                                    <FileText className="w-8 h-8 opacity-50" />
+                                                                    <div className="flex-1 min-w-0">
+                                                                       <p className="truncate font-bold text-xs">{msg.fileName}</p>
+                                                                       <p className="text-[10px] opacity-50">Click to download</p>
+                                                                    </div>
+                                                                    <Download className="w-4 h-4 opacity-50" />
+                                                                </a>
+                                                                )
+                                                            ) : (
+                                                                <p className="leading-relaxed">{msg.text}</p>
+                                                            )}
+                                                            
+                                                            <div className="flex justify-between items-center gap-2 mt-2 select-none leading-none w-full">
+                                                                {msg.senderId !== 'admin' ? (
+                                                                    <button
+                                                                        onClick={(e) => toggleMessageReadStatus(msg.id, msg.isRead, e)}
+                                                                        title={msg.isRead ? "Mark as Unread" : "Mark as Read"}
+                                                                        className="flex items-center gap-1.5 text-[9px] text-[#D4AF37] hover:text-[#E2C562] transition-colors py-0.5 px-2 bg-black/40 rounded border border-[#D4AF37]/10"
+                                                                    >
+                                                                        {msg.isRead ? (
+                                                                            <>
+                                                                                <Eye className="w-3 h-3 text-[#D4AF37]" />
+                                                                                <span>Read</span>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <EyeOff className="w-3 h-3 text-red-400 animate-pulse" />
+                                                                                <span className="text-red-400 font-bold">Unread</span>
+                                                                            </>
+                                                                        )}
+                                                                    </button>
+                                                                ) : (
+                                                                    <div />
+                                                                )}
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className={`text-[9px] text-zinc-400`}>
+                                                                        {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                                    </span>
+                                                                    {msg.senderId === 'admin' && (
+                                                                        <span className={`text-[10px] ${msg.isRead ? 'text-blue-600' : 'text-black/40'}`}>
+                                                                            ✓✓
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    ))}
-                                            </div>
-                                        </>
-                                    );
-                                })()}
-
-                                <div className="p-6 border-t border-white/5 bg-black/20">
-                                    <div className="flex gap-4">
-                                        <div className="flex-1 relative">
-                                            <textarea 
-                                                rows={1}
-                                                value={replyText}
-                                                onChange={(e) => setReplyText(e.target.value)}
-                                                onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(); } }}
-                                                placeholder="Type your response..."
-                                                className="w-full bg-black border border-[#D4AF37]/20 rounded-xl px-4 py-3 text-sm text-white resize-none outline-none focus:border-[#D4AF37] transition-all"
-                                            />
+                                                    </div>
+                                                ))}
                                         </div>
-                                        <button 
-                                            onClick={handleSendReply}
-                                            disabled={!replyText.trim()}
-                                            className="bg-[#D4AF37] text-black w-14 h-12 flex items-center justify-center rounded-xl hover:bg-[#E5C76B] transition-all disabled:opacity-30 shadow-lg shadow-[#D4AF37]/10"
-                                        >
-                                            <Send className="w-5 h-5" />
-                                        </button>
-                                    </div>
+
+                                        {!isAdminSupport ? (
+                                            <div className="p-6 border-t border-[#D4AF37]/20 bg-amber-500/5 text-center animate-in fade-in duration-300">
+                                                <p className="text-[#D4AF37] text-xs font-bold uppercase tracking-wider mb-1 flex items-center justify-center gap-1.5">
+                                                    👁️ Direct Oversight Mode
+                                                </p>
+                                                <p className="text-slate-400 text-[11px] leading-relaxed max-w-lg mx-auto">
+                                                    You are spectating a direct thread between Client <span className="text-white font-bold">{otherUserClient.name}</span> and Vendor <span className="text-[#D4AF37] font-bold">{otherUserVendor.name}</span>. Messaging is disabled to maintain standard direct-booking communications.
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div className="p-6 border-t border-white/5 bg-black/20">
+                                                <div className="flex gap-4">
+                                                    <div className="flex-1 relative">
+                                                        <textarea 
+                                                            rows={1}
+                                                            value={replyText}
+                                                            onChange={(e) => setReplyText(e.target.value)}
+                                                            onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(); } }}
+                                                            placeholder="Type your response..."
+                                                            className="w-full bg-black border border-[#D4AF37]/20 rounded-xl px-4 py-3 text-sm text-white resize-none outline-none focus:border-[#D4AF37] transition-all"
+                                                        />
+                                                    </div>
+                                                    <button 
+                                                        onClick={handleSendReply}
+                                                        disabled={!replyText.trim()}
+                                                        className="bg-[#D4AF37] text-black w-14 h-12 flex items-center justify-center rounded-xl hover:bg-[#E5C76B] transition-all disabled:opacity-30 shadow-lg shadow-[#D4AF37]/10"
+                                                    >
+                                                        <Send className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })() : (
+                                <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-20">
+                                    <Bot className="w-20 h-20 mb-4" />
+                                    <h3 className="text-xl font-bold font-[Cinzel]">No Conversation Selected</h3>
+                                    <p className="text-sm max-w-xs">Select an inquiry from the sidebar to view details and respond.</p>
                                 </div>
-                            </>
-                        ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-20">
-                                <Bot className="w-20 h-20 mb-4" />
-                                <h3 className="text-xl font-bold font-[Cinzel]">No Conversation Selected</h3>
-                                <p className="text-sm max-w-xs">Select an inquiry from the sidebar to view details and respond.</p>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
                 </div>
-            </div>
-        )}
+            );
+        })()}
 
         {activeTab === 'analytics' && (
             <div className="space-y-8 animate-in fade-in duration-500">
@@ -2357,28 +2725,31 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
       </main>
 
-      {chatRecipient && (
-        <ChatModal
-          isOpen={chatOpen}
-          vendor={chatRecipient.role === 'vendor' ? (vendors.find(v => v.id === chatRecipient.id) || null) : null}
-          recipientUid={chatRecipient.id}
-          recipientName={chatRecipient.name}
-          recipientEmail={chatRecipient.email}
-          isAdminReplying={true}
-          onClose={() => {
-            setChatOpen(false);
-            setChatRecipient(null);
-          }}
-          onSendMessage={onSendMessage}
-          showNotification={showNotification}
-          messages={messages}
-          user={{
-            id: auth.currentUser?.uid || 'admin',
-            name: 'Admin',
-            username: auth.currentUser?.email || 'admin@admin.com'
-          }}
-        />
-      )}
+
+
+      {/* Fullscreen Media Viewer */}
+      <AnimatePresence>
+        {fullscreenMedia && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-sm"
+          >
+            <button 
+              onClick={() => setFullscreenMedia(null)}
+              className="absolute top-4 right-4 text-white hover:text-[#D4AF37] bg-black/50 p-3 rounded-full backdrop-blur-md border border-white/10 transition-all shadow-xl z-10"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            {fullscreenMedia.type === 'image' ? (
+              <img src={fullscreenMedia.url} alt="Fullscreen View" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
+            ) : (
+              <video src={fullscreenMedia.url} controls autoPlay className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl bg-black" />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

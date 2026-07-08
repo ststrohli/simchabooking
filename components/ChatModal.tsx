@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, User, Mail, MessageSquare, Bot, Image as ImageIcon, Paperclip, Mic, StopCircle, Play, Volume2, FileText, Download, Loader2, Shield, ArrowLeft } from 'lucide-react';
+import { X, Send, User, Mail, MessageSquare, Bot, Image as ImageIcon, Paperclip, Mic, StopCircle, Play, Volume2, FileText, Download, Loader2, Shield, ArrowLeft, Trash2, Upload } from 'lucide-react';
 import { Vendor, Message, UserAccount } from '../types';
 import { storage, auth, db, handleFirestoreError, OperationType } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, limit, startAfter, getDocs, setDoc } from 'firebase/firestore';
-import { uploadFileRobustly } from '../services/uploadService';
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, limit, startAfter, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
+import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 
 interface ImageWithPlaceholderProps {
@@ -74,6 +74,10 @@ const ChatModal: React.FC<ChatModalProps> = ({
   const [clientEmail, setClientEmail] = useState(isAdminReplying ? (recipientEmail || '') : (user?.username || ''));
   const [isIdentityVerified, setIsIdentityVerified] = useState(isAdminReplying ? true : !!(user?.name && user?.username));
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadPreview, setUploadPreview] = useState<{url: string, type: string} | null>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [fullscreenMedia, setFullscreenMedia] = useState<{url: string, type: 'image' | 'video'} | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
@@ -557,27 +561,37 @@ const ChatModal: React.FC<ChatModalProps> = ({
     setText('');
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList | null } }) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Optimistic Preview
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    
+    if (isImage || isVideo) {
+      setUploadPreview({ url: URL.createObjectURL(file), type: file.type });
+    }
+    setUploadProgress(0);
     setIsUploading(true);
+
     try {
       const storagePath = `chats/${Date.now()}_${file.name}`;
-      const url = await uploadFileRobustly(file, storagePath);
+      const url = await uploadFileWithProgress(file, storagePath, (progress) => {
+        setUploadProgress(progress);
+      });
 
-      const isImage = file.type.startsWith('image/');
       const conversationId = [myUid, targetUid].sort().join('_');
 
       sendOptimisticMessage({
-        text: isImage ? 'Sent an image' : `Sent a file: ${file.name}`,
+        text: isImage ? 'Sent an image' : isVideo ? 'Sent a video' : `Sent a file: ${file.name}`,
         clientName,
         clientEmail,
         senderId: myUid,
         receiverId: targetUid,
         conversationId,
         isAdminInquiry: isSupportChat,
-        type: isImage ? 'image' : 'file',
+        type: isImage ? 'image' : isVideo ? 'file' : 'file', // keeping type as 'file' but with video mime to avoid breaking schema
         fileUrl: url,
         imageUrl: isImage ? url : undefined,
         fileName: file.name,
@@ -588,6 +602,8 @@ const ChatModal: React.FC<ChatModalProps> = ({
       showNotification("Upload failed: " + err.message, "info");
     } finally {
       setIsUploading(false);
+      setUploadProgress(null);
+      setUploadPreview(null);
     }
   };
 
@@ -626,10 +642,13 @@ const ChatModal: React.FC<ChatModalProps> = ({
           : 'audio/webm';
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         setIsUploading(true);
+        setUploadProgress(0);
         try {
           const fileExt = mimeType.split('/')[1].split(';')[0];
           const storagePath = `chats/voice_${Date.now()}.${fileExt}`;
-          const url = await uploadFileRobustly(audioBlob, storagePath);
+          const url = await uploadFileWithProgress(audioBlob, storagePath, (progress) => {
+            setUploadProgress(progress);
+          });
           const conversationId = [myUid, targetUid].sort().join('_');
 
           sendOptimisticMessage({
@@ -649,6 +668,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
           showNotification("Failed to upload voice message: " + err.message, "info");
         } finally {
           setIsUploading(false);
+          setUploadProgress(null);
         }
         
         stream.getTracks().forEach(track => track.stop());
@@ -683,6 +703,31 @@ const ChatModal: React.FC<ChatModalProps> = ({
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       clearInterval(timerRef.current);
+    }
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      // Clear the onstop handler so we don't upload
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      clearInterval(timerRef.current);
+      audioChunksRef.current = [];
+      // Stop the tracks
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+  };
+
+  const handleUnsend = async (msg: Message) => {
+    if (!msg.id || msg.isOptimistic) return;
+    try {
+      const activeConversationId = [myUid, targetUid].sort().join('_');
+      await deleteDoc(doc(db, 'conversations', activeConversationId, 'messages', msg.id));
+      showNotification("Message unsent", "success");
+    } catch (err) {
+      console.error("Failed to unsend message:", err);
+      showNotification("Failed to unsend message", "info");
     }
   };
 
@@ -863,7 +908,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                           : 'bg-zinc-900 border border-zinc-800 text-white'
                       }`}>
                         {msg.type === 'image' || msg.imageUrl ? (
-                          <div className="space-y-2">
+                          <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: msg.imageUrl || msg.fileUrl || '', type: 'image'})}>
                              <ImageWithPlaceholder 
                                src={msg.imageUrl || msg.fileUrl || ''} 
                                alt="Sent" 
@@ -873,6 +918,12 @@ const ChatModal: React.FC<ChatModalProps> = ({
                              {msg.text && msg.text !== 'Sent an image' && <p className="text-sm">{msg.text}</p>}
                           </div>
                         ) : msg.type === 'file' ? (
+                          msg.fileType?.startsWith('video/') ? (
+                             <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: msg.fileUrl || '', type: 'video'})}>
+                               <video src={msg.fileUrl} className="w-full aspect-video rounded-lg object-cover bg-black" />
+                               {msg.text && msg.text !== 'Sent a video' && <p className="text-sm">{msg.text}</p>}
+                             </div>
+                          ) : (
                           <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl transition-all text-sm ${isSent ? 'bg-black/10 hover:bg-black/20 text-black' : 'bg-black/30 hover:bg-black/40 text-white'}`}>
                             <FileText className="w-8 h-8 opacity-60 flex-shrink-0" />
                             <div className="flex-1 min-w-0">
@@ -881,6 +932,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                             </div>
                             <Download className="w-4 h-4 opacity-60 flex-shrink-0" />
                           </a>
+                          )
                         ) : msg.type === 'voice' || msg.audioUrl ? (
                           <div className="space-y-1">
                              <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isSent ? 'text-black/60' : 'text-zinc-400'}`}>Voice Note</p>
@@ -916,6 +968,15 @@ const ChatModal: React.FC<ChatModalProps> = ({
                                 ✓✓
                               </span>
                             )
+                          )}
+                          {isSent && !msg.isOptimistic && msg.status !== 'sending' && (
+                            <button
+                              onClick={() => handleUnsend(msg)}
+                              className={`ml-2 text-[10px] ${isSent ? 'text-black/40 hover:text-black' : 'text-zinc-500 hover:text-zinc-300'} transition-colors`}
+                              title="Unsend message"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
                           )}
                         </div>
 
@@ -977,9 +1038,59 @@ const ChatModal: React.FC<ChatModalProps> = ({
             </div>
 
             {/* Input Footer */}
-            <div className="p-4 border-t border-[#D4AF37]/20 bg-black space-y-3 sticky bottom-0 pb-safe pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+            <div 
+              className={`p-4 border-t transition-colors relative bg-black space-y-3 sticky bottom-0 pb-safe pb-[calc(env(safe-area-inset-bottom)+1rem)] ${isDragActive ? 'border-[#D4AF37] shadow-[0_0_30px_rgba(212,175,55,0.2)] bg-[#D4AF37]/5' : 'border-[#D4AF37]/20'}`}
+              onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragActive(true); }}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragActive(true); }}
+              onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragActive(false); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragActive(false);
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  handleFileUpload({ target: { files: e.dataTransfer.files } });
+                }
+              }}
+            >
               <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
               
+              {isDragActive && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80 backdrop-blur-sm border-2 border-dashed border-[#D4AF37] rounded-xl m-2 pointer-events-none">
+                  <div className="flex flex-col items-center text-[#D4AF37]">
+                    <Upload className="w-8 h-8 mb-2 animate-bounce" />
+                    <span className="font-bold tracking-widest text-sm uppercase">Drop file to attach</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Upload Preview & Progress */}
+              {(isUploading && uploadProgress !== null) && (
+                <div className="flex items-center gap-4 p-3 bg-zinc-900 border border-white/5 rounded-xl">
+                  {uploadPreview ? (
+                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-black relative border border-white/10 shrink-0">
+                      {uploadPreview.type.startsWith('video') ? (
+                        <video src={uploadPreview.url} className="w-full h-full object-cover opacity-50" />
+                      ) : (
+                        <img src={uploadPreview.url} className="w-full h-full object-cover opacity-50" />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-black flex items-center justify-center border border-white/10 shrink-0">
+                      <FileText className="w-5 h-5 text-slate-500" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between text-xs font-bold mb-1.5">
+                      <span className="text-[#D4AF37]">Uploading...</span>
+                      <span className="text-slate-400">{Math.round(uploadProgress)}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-black rounded-full overflow-hidden">
+                      <div className="h-full bg-[#D4AF37] transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {micPermissionError && (
                 <div id="mic-perm-error-alert" className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-100 text-xs flex items-start gap-2.5 shadow-md">
                   <span className="text-red-400 font-bold mt-0.5" aria-hidden="true">⚠️</span>
@@ -1064,24 +1175,61 @@ const ChatModal: React.FC<ChatModalProps> = ({
                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
                        <span className="text-red-500 text-xs font-bold font-mono">{formatDuration(recordingDuration)}</span>
                     </div>
-                    <button 
-                      onClick={stopRecording}
-                      className="bg-red-500 text-white h-9 w-9 flex items-center justify-center rounded-lg hover:bg-red-600 transition-all flex-shrink-0"
-                    >
-                      <StopCircle className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={cancelRecording}
+                        className="bg-zinc-800 text-zinc-300 h-9 w-9 flex items-center justify-center rounded-lg hover:bg-zinc-700 transition-all flex-shrink-0"
+                        title="Cancel recording"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={stopRecording}
+                        className="bg-red-500 text-white h-9 w-9 flex items-center justify-center rounded-lg hover:bg-red-600 transition-all flex-shrink-0"
+                        title="Send recording"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
-              {isUploading && (
-                <div className="flex items-center justify-center gap-2 text-[10px] text-[#D4AF37] font-black uppercase tracking-widest animate-pulse">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Uploading Media...
-                </div>
-              )}
             </div>
           </>
         )}
       </div>
+
+      <AnimatePresence>
+        {fullscreenMedia && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-sm"
+          >
+            <button 
+              onClick={() => setFullscreenMedia(null)}
+              className="absolute top-4 right-4 text-white hover:text-[#D4AF37] bg-black/50 p-3 rounded-full backdrop-blur-md border border-white/10 transition-all shadow-xl z-10"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            {fullscreenMedia.type === 'image' ? (
+              <img 
+                src={fullscreenMedia.url} 
+                alt="Fullscreen" 
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              />
+            ) : (
+              <video 
+                src={fullscreenMedia.url} 
+                controls
+                autoPlay
+                className="max-w-full max-h-full rounded-lg shadow-2xl"
+              />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

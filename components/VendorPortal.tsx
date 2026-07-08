@@ -3,15 +3,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, CalendarDays, Settings, LogOut, DollarSign, Users, User, TrendingUp, CheckCircle, XCircle, Clock, Save, Trash2, 
   ImageIcon, Menu, X, Plus, Tag, CreditCard, ArrowRight, Video, Film, ShieldCheck, MapPin, Eye, Upload, Mail, AlertTriangle, 
-  ChevronLeft, ChevronRight, ChevronDown, RefreshCw, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, Volume2, Camera, FileText, Download, Search
+  ChevronLeft, ChevronRight, ChevronDown, RefreshCw, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, Volume2, Camera, FileText, Download, Search, ArrowLeft, Paperclip, Mic, StopCircle
 } from 'lucide-react';
 import { Vendor, Booking, Message, SelectedService, VendorService } from '../types';
 import { db, storage, auth } from '../services/firebase';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { markChatAsRead } from '../services/messagingService';
+import { markChatAsRead, deleteMessage } from '../services/messagingService';
 import { doc, updateDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { uploadFileRobustly } from '../services/uploadService';
+import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 
 interface VendorPortalProps {
@@ -20,7 +20,7 @@ interface VendorPortalProps {
   messages: Message[];
   onUpdateVendor: (updatedVendor: Vendor) => void;
   onUpdateBookingStatus: (bookingId: string, status: 'confirmed' | 'cancelled') => void;
-  onReplyMessage: (clientEmail: string, clientName: string, text: string) => void;
+  onReplyMessage: (clientEmail: string, clientName: string, text: string, type?: 'text' | 'image' | 'voice' | 'file', fileUrl?: string, audioUrl?: string, fileName?: string, fileType?: string) => void;
   showNotification: (message: string, type?: 'success' | 'info') => void;
   onLogout: () => void;
   onSwitchToClientView?: () => void;
@@ -328,12 +328,27 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const [newServicePrice, setNewServicePrice] = useState('');
   const [newServiceUnit, setNewServiceUnit] = useState('event');
   const [newServiceAllowQty, setNewServiceAllowQty] = useState(false);
+  const [newServiceImageUrl, setNewServiceImageUrl] = useState('');
+  const [isUploadingNewServiceImage, setIsUploadingNewServiceImage] = useState(false);
+  
+  // Progress and Previews
+  const [uploadProgresses, setUploadProgresses] = useState<Record<string, number>>({});
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
+
   const [showAddForm, setShowAddForm] = useState(false);
 
   // Message State
   const [selectedThreadEmail, setSelectedThreadEmail] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatFileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const chatTimerRef = useRef<any>(null);
+  const [isChatUploading, setIsChatUploading] = useState(false);
+  const [isChatRecording, setIsChatRecording] = useState(false);
+  const [chatRecordingDuration, setChatRecordingDuration] = useState(0);
+  const [fullscreenMedia, setFullscreenMedia] = useState<{url: string, type: 'image' | 'video'} | null>(null);
 
   // Automatically scroll to bottom of active message thread
   useEffect(() => {
@@ -1071,6 +1086,34 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     }
   };
 
+  const handleServiceImageUpload = async (serviceId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !vendor.id) return;
+    
+    // Optimistic Preview
+    const previewUrl = URL.createObjectURL(file);
+    setPreviewUrls(prev => ({ ...prev, [serviceId]: previewUrl }));
+    setUploadProgresses(prev => ({ ...prev, [serviceId]: 0 }));
+
+    try {
+      const storagePath = `vendors/${vendor.id}/services/${serviceId}_${Date.now()}_${file.name}`;
+      const downloadURL = await uploadFileWithProgress(file, storagePath, (progress) => {
+        setUploadProgresses(prev => ({ ...prev, [serviceId]: progress }));
+      });
+      
+      setEditForm(prev => ({
+        ...prev,
+        services: prev.services?.map(s => s.id === serviceId ? { ...s, image: downloadURL } : s) || []
+      }));
+      showNotification('Package image uploaded! Make sure to save profile.');
+    } catch (err: any) {
+      console.error("Service image upload error:", err);
+      showNotification('Failed to upload image: ' + err.message, 'info');
+    } finally {
+      setUploadProgresses(prev => { const newP = {...prev}; delete newP[serviceId]; return newP; });
+    }
+  };
+
   const handleRemoveMedia = async (index: number) => {
     const mediaUrl = editForm.gallery?.[index];
     if (!mediaUrl) return;
@@ -1098,6 +1141,35 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   };
 
   // Service Management Functions
+  const handleNewServiceImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !vendor.id) return;
+    
+    // Optimistic Preview
+    const previewUrl = URL.createObjectURL(file);
+    setPreviewUrls(prev => ({ ...prev, 'newService': previewUrl }));
+    setUploadProgresses(prev => ({ ...prev, 'newService': 0 }));
+    setNewServiceImageUrl(previewUrl);
+
+    try {
+      setIsUploadingNewServiceImage(true);
+      const tempId = Math.random().toString(36).substr(2, 9);
+      const storagePath = `vendors/${vendor.id}/services/new_${tempId}_${Date.now()}_${file.name}`;
+      const downloadURL = await uploadFileWithProgress(file, storagePath, (progress) => {
+        setUploadProgresses(prev => ({ ...prev, 'newService': progress }));
+      });
+      setNewServiceImageUrl(downloadURL);
+      showNotification('Package image uploaded successfully!', 'success');
+    } catch (err: any) {
+      console.error("New service image upload error:", err);
+      showNotification('Failed to upload image: ' + err.message, 'info');
+      setNewServiceImageUrl(''); // Revert on failure
+    } finally {
+      setIsUploadingNewServiceImage(false);
+      setUploadProgresses(prev => { const newP = {...prev}; delete newP['newService']; return newP; });
+    }
+  };
+
   const handleAddService = () => {
     if (!newServiceName.trim() || !newServicePrice) return;
     
@@ -1106,7 +1178,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       name: newServiceName.trim(),
       price: parseFloat(newServicePrice),
       unit: newServiceUnit,
-      allowQuantity: newServiceAllowQty
+      allowQuantity: newServiceAllowQty,
+      image: newServiceImageUrl || undefined
     };
 
     setEditForm(prev => ({
@@ -1118,6 +1191,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     setNewServicePrice('');
     setNewServiceUnit('event');
     setNewServiceAllowQty(false);
+    setNewServiceImageUrl('');
     setShowAddForm(false);
   };
 
@@ -1156,6 +1230,115 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         onReplyMessage(selectedThreadEmail, thread[1].name, replyText);
         setReplyText('');
         handleVendorTypingStatus(false);
+    }
+  };
+
+  const handleChatFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedThreadEmail) return;
+
+    setIsChatUploading(true);
+    try {
+      const thread = messageThreads.find(t => t[0] === selectedThreadEmail);
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+      const storagePath = `chats/${vendor.id}_${Date.now()}_${file.name}`;
+      const url = await uploadFileRobustly(file, storagePath);
+
+      if (thread) {
+          onReplyMessage(selectedThreadEmail, thread[1].name, isImage ? 'Sent an image' : isVideo ? 'Sent a video' : 'Sent a file', isImage ? 'image' : 'file', url, undefined, file.name, file.type);
+      }
+    } catch (err: any) {
+      console.error("Chat upload failed:", err);
+      showNotification("Failed to upload file: " + err.message, "info");
+    } finally {
+      setIsChatUploading(false);
+      if (chatFileInputRef.current) chatFileInputRef.current.value = '';
+    }
+  };
+
+  const startChatRecording = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showNotification("Your browser does not support audio recording.", "info");
+      return;
+    }
+    
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const mimeTypes = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'];
+        const mimeType = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported
+          ? (mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'audio/webm')
+          : 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        setIsChatUploading(true);
+        try {
+          const fileExt = mimeType.split('/')[1].split(';')[0];
+          const storagePath = `chats/voice_${vendor.id}_${Date.now()}.${fileExt}`;
+          const url = await uploadFileRobustly(audioBlob, storagePath);
+          const thread = messageThreads.find(t => t[0] === selectedThreadEmail);
+          
+          if (thread && selectedThreadEmail) {
+              onReplyMessage(selectedThreadEmail, thread[1].name, 'Voice note', 'voice', url, url);
+          }
+        } catch (err: any) {
+          console.error("Voice upload failed:", err);
+          showNotification("Failed to upload voice message: " + err.message, "info");
+        } finally {
+          setIsChatUploading(false);
+          setIsChatRecording(false);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsChatRecording(true);
+      setChatRecordingDuration(0);
+      chatTimerRef.current = setInterval(() => {
+        setChatRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Mic access denied:", err);
+      showNotification("Microphone access denied.", "info");
+    }
+  };
+
+  const stopChatRecording = () => {
+    if (mediaRecorderRef.current && isChatRecording) {
+      mediaRecorderRef.current.stop();
+      clearInterval(chatTimerRef.current);
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+  };
+
+  const cancelChatRecording = () => {
+    if (mediaRecorderRef.current && isChatRecording) {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+      setIsChatRecording(false);
+      clearInterval(chatTimerRef.current);
+      audioChunksRef.current = [];
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+  };
+
+  const handleUnsend = async (msg: Message) => {
+    if (!msg.id || !msg.conversationId) return;
+    try {
+      await deleteMessage(msg.conversationId, msg.id);
+      showNotification("Message unsent", "success");
+    } catch (err) {
+      console.error("Failed to unsend message:", err);
+      showNotification("Failed to unsend message", "info");
     }
   };
 
@@ -2121,9 +2304,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           {onSwitchToClientView && (
             <button 
               onClick={onSwitchToClientView}
-              className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black px-3 py-1.5 rounded-lg text-[9px] uppercase tracking-wider transition-all shadow-md flex items-center gap-1"
+              className="bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] font-black px-3 py-1.5 rounded-lg text-[9px] uppercase tracking-wider transition-all border border-[#D4AF37]/30 flex items-center gap-1.5"
             >
-              <Eye className="w-3.5 h-3.5" /> Client View
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
           )}
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-[#D4AF37] p-2 bg-white/5 rounded-lg transition-all">
@@ -2159,9 +2342,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               <span className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest pl-1.5">View Selector</span>
               <button 
                 onClick={onSwitchToClientView}
-                className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-wider transition-all shadow-md flex items-center gap-1 font-bold"
+                className="bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] font-black px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-wider transition-all border border-[#D4AF37]/30 flex items-center gap-1.5"
               >
-                <Eye className="w-3.5 h-3.5" /> Client View
+                <ArrowLeft className="w-3.5 h-3.5" /> Back
               </button>
             </div>
           )}
@@ -2174,6 +2357,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         <header className="sticky top-0 z-30 bg-[#050505]/80 backdrop-blur-md px-6 md:px-10 py-6 md:py-8 border-b border-white/5">
           <div className="flex justify-between items-center">
             <div>
+              <button onClick={onSwitchToClientView} className="text-[#D4AF37] hover:text-[#E5C76B] font-bold text-[10px] uppercase tracking-widest flex items-center gap-1.5 transition-colors border border-[#D4AF37]/30 px-3 py-1.5 rounded-full hover:bg-[#D4AF37]/10 w-fit mb-4">
+                <ArrowLeft className="w-3.5 h-3.5" /> Client View
+              </button>
               <h1 className="text-xl md:text-3xl font-bold font-[Cinzel] text-white capitalize tracking-tight">{activeTab}</h1>
               <p className="text-[#D4AF37]/60 text-[10px] font-black uppercase tracking-[0.4em] mt-1.5">{vendor.name}</p>
             </div>
@@ -2181,9 +2367,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                {onSwitchToClientView && (
                  <button 
                    onClick={onSwitchToClientView}
-                   className="hidden md:flex items-center gap-2 bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black px-4 py-2 rounded-full text-[10px] uppercase tracking-widest transition-all shadow-lg font-bold"
+                   className="hidden md:flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] font-black px-4 py-2 rounded-full text-[10px] uppercase tracking-widest transition-all border border-[#D4AF37]/30"
                  >
-                   <Eye className="w-4 h-4" /> Client View
+                   <ArrowLeft className="w-4 h-4" /> Client View
                  </button>
                )}
                {pendingRequests > 0 && (
@@ -2806,40 +2992,57 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                   ? 'bg-[#D4AF37] text-black shadow-md' 
                                   : 'bg-zinc-900 text-white border border-zinc-800 shadow-md'
                               }`}>
-                                 {m.type === 'image' || m.imageUrl ? (
-                                     <div className="space-y-2">
-                                         <img 
-                                           src={m.imageUrl || m.fileUrl} 
-                                           onLoad={() => {
-                                             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-                                           }} 
-                                           className="rounded-lg w-full max-h-60 object-cover border border-white/5 shadow-lg" 
-                                           alt="Sent" 
-                                         />
-                                         {m.text && m.text !== 'Sent an image' && <p className="text-sm leading-relaxed">{m.text}</p>}
-                                     </div>
-                                 ) : m.type === 'voice' || m.audioUrl ? (
-                                     <div className="space-y-1">
-                                         <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isSent ? 'text-black/60' : 'text-zinc-400'}`}>Voice Note</p>
-                                         <CustomAudioPlayer src={m.audioUrl || m.fileUrl || ''} theme={isSent ? 'sent' : 'received'} />
-                                     </div>
-                                 ) : m.type === 'file' ? (
-                                     <a href={m.fileUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl transition-all text-sm ${isSent ? 'bg-black/10 hover:bg-black/20 text-black' : 'bg-black/30 hover:bg-black/40 text-white'}`}>
-                                         <FileText className="w-8 h-8 opacity-60 flex-shrink-0" />
-                                         <div className="flex-1 min-w-0">
-                                            <p className="truncate font-bold text-xs">{m.fileName || 'Document'}</p>
-                                            <p className="text-[10px] opacity-60">Click to download</p>
-                                         </div>
-                                         <Download className="w-4 h-4 opacity-60 flex-shrink-0" />
-                                     </a>
-                                 ) : (
-                                     <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{m.text}</p>
-                                 )}
+                                {m.type === 'image' || m.imageUrl ? (
+                                    <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: m.imageUrl || m.fileUrl || '', type: 'image'})}>
+                                        <img 
+                                          src={m.imageUrl || m.fileUrl} 
+                                          onLoad={() => {
+                                            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                                          }}
+                                          className="rounded-lg w-full max-h-60 object-cover border border-white/5 shadow-lg" 
+                                          alt="Sent" 
+                                        />
+                                        {m.text && m.text !== 'Sent an image' && <p className="text-sm leading-relaxed">{m.text}</p>}
+                                    </div>
+                                ) : m.type === 'voice' || m.audioUrl ? (
+                                    <div className="space-y-1">
+                                        <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isSent ? 'text-black/60' : 'text-zinc-400'}`}>Voice Note</p>
+                                        <CustomAudioPlayer src={m.audioUrl || m.fileUrl || ''} theme={isSent ? 'sent' : 'received'} />
+                                    </div>
+                                ) : m.type === 'file' ? (
+                                    m.fileType?.startsWith('video/') ? (
+                                       <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: m.fileUrl || '', type: 'video'})}>
+                                           <video src={m.fileUrl} className="w-full aspect-video rounded-lg object-cover bg-black" />
+                                           {m.text && m.text !== 'Sent a video' && <p className="text-sm">{m.text}</p>}
+                                       </div>
+                                    ) : (
+                                    <a href={m.fileUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl transition-all text-sm ${isSent ? 'bg-black/10 hover:bg-black/20 text-black' : 'bg-black/30 hover:bg-black/40 text-white'}`}>
+                                        <FileText className="w-8 h-8 opacity-60 flex-shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                           <p className="truncate font-bold text-xs">{m.fileName || 'Document'}</p>
+                                           <p className="text-[10px] opacity-60">Click to download</p>
+                                        </div>
+                                        <Download className="w-4 h-4 opacity-60 flex-shrink-0" />
+                                    </a>
+                                    )
+                                ) : (
+                                    <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{m.text}</p>
+                                )}
 
                                  <div className="flex justify-end items-center gap-1 mt-2 select-none leading-none">
                                    <span className={`text-[9px] font-medium opacity-65 ${isSent ? 'text-black/75' : 'text-zinc-400'}`}>
                                      {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                    </span>
+                                   {isSent && (
+                                     <button 
+                                       type="button"
+                                       onClick={() => handleUnsend(m)}
+                                       className="ml-1 text-black/40 hover:text-black/85 transition-colors cursor-pointer"
+                                       title="Unsend Message"
+                                     >
+                                       <Trash2 className="w-3 h-3" />
+                                     </button>
+                                   )}
                                    {isSent && (
                                      <span className={`text-[10px] ${m.isRead ? 'text-blue-600' : 'text-black/40'}`}>
                                        ✓✓
@@ -2879,8 +3082,42 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         <div ref={messagesEndRef} />
                       </div>
 
-                      <form onSubmit={handleSendReply} className="p-6 bg-black/60 border-t border-white/5">
-                        <div className="relative flex items-center">
+                      <form onSubmit={handleSendReply} className="p-4 bg-black/60 border-t border-white/5 space-y-3 sticky bottom-0">
+                        <input type="file" ref={chatFileInputRef} className="hidden" onChange={handleChatFileUpload} />
+                        {isChatRecording && (
+                          <div className="flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-xl animate-pulse">
+                             <div className="flex items-center gap-3 text-red-500">
+                               <Mic className="w-5 h-5 animate-bounce" />
+                               <span className="font-bold">Recording Voice Note...</span>
+                               <span className="font-mono">{Math.floor(chatRecordingDuration / 60)}:{(chatRecordingDuration % 60).toString().padStart(2, '0')}</span>
+                             </div>
+                             <div className="flex items-center gap-2">
+                               <button type="button" onClick={cancelChatRecording} className="p-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors" title="Cancel recording">
+                                 <X className="w-5 h-5" />
+                               </button>
+                               <button type="button" onClick={stopChatRecording} className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                                 <StopCircle className="w-5 h-5" />
+                               </button>
+                             </div>
+                          </div>
+                        )}
+                        <div className="relative flex items-center gap-2">
+                          <button 
+                            type="button"
+                            onClick={() => chatFileInputRef.current?.click()}
+                            className="flex items-center justify-center h-12 w-12 text-slate-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
+                            title="Attach file"
+                          >
+                            <Paperclip className="w-5 h-5" />
+                          </button>
+                          <button 
+                             type="button"
+                             onClick={startChatRecording}
+                             className="flex items-center justify-center h-12 w-12 text-slate-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
+                             title="Record voice note"
+                          >
+                             <Mic className="w-5 h-5" />
+                          </button>
                           <input 
                             type="text"
                             value={replyText}
@@ -2893,14 +3130,15 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               }, 2000);
                             }}
                             placeholder="Type your response..."
-                            className="w-full bg-[#050505] border border-white/10 rounded-2xl pl-6 pr-16 py-4 text-sm focus:border-[#D4AF37] outline-none transition-all"
+                            className="flex-1 bg-[#050505] border border-white/10 rounded-2xl pl-4 pr-14 py-3.5 text-sm focus:border-[#D4AF37] outline-none transition-all"
+                            disabled={isChatUploading || isChatRecording}
                           />
                           <button 
                             type="submit"
-                            disabled={!replyText.trim()}
-                            className="absolute right-3 p-3 bg-[#D4AF37] text-black rounded-xl hover:bg-[#E5C76B] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                            disabled={!replyText.trim() || isChatUploading || isChatRecording}
+                            className="absolute right-2 p-2.5 bg-[#D4AF37] text-black rounded-xl hover:bg-[#E5C76B] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                           >
-                            <Send className="w-5 h-5" />
+                            {isChatUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                           </button>
                         </div>
                       </form>
@@ -3185,6 +3423,51 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           </div>
                         </div>
 
+                        {/* Package Photo Upload */}
+                        <div className="space-y-2 border-t border-white/5 pt-4">
+                          <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">Package Photo (Optional)</label>
+                          <div className="flex items-center gap-4">
+                            {newServiceImageUrl ? (
+                              <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-[#D4AF37]/30 bg-black group">
+                                <img src={newServiceImageUrl} alt="Preview" className="w-full h-full object-cover" />
+                                
+                                {typeof uploadProgresses['newService'] === 'number' && (
+                                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
+                                    <div className="w-6 h-6 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_10px_rgba(212,175,55,0.3)]"></div>
+                                    <div className="text-[#D4AF37] font-bold text-[8px] mt-2 tracking-widest">{Math.round(uploadProgresses['newService'])}%</div>
+                                  </div>
+                                )}
+                                
+                                {typeof uploadProgresses['newService'] !== 'number' && (
+                                  <button 
+                                    type="button" 
+                                    onClick={() => setNewServiceImageUrl('')}
+                                    className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-red-500 hover:bg-black hover:text-red-400"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="w-20 h-20 rounded-xl border border-dashed border-white/10 flex flex-col items-center justify-center bg-black text-slate-600">
+                                <ImageIcon className="w-5 h-5 opacity-40" />
+                                <span className="text-[8px] font-bold uppercase mt-1">No Image</span>
+                              </div>
+                            )}
+                            <label className="cursor-pointer bg-black hover:bg-[#D4AF37]/10 border border-[#D4AF37]/30 hover:border-[#D4AF37] text-[#D4AF37] px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-bold transition-all">
+                              <Camera className="w-4 h-4" />
+                              {isUploadingNewServiceImage ? 'Uploading...' : 'Upload Package Photo'}
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                className="hidden" 
+                                disabled={isUploadingNewServiceImage}
+                                onChange={handleNewServiceImageUpload} 
+                              />
+                            </label>
+                          </div>
+                        </div>
+
                         <div className="flex gap-3">
                            <button 
                               onClick={() => setShowAddForm(false)}
@@ -3203,47 +3486,57 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     )}
 
                     {/* Service List */}
-                    <div className="grid grid-cols-1 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
                       {editForm.services && editForm.services.length > 0 ? (
                         editForm.services.map((service) => (
-                          <div key={service.id} className="relative p-6 bg-black/40 border border-white/5 rounded-3xl group hover:border-[#D4AF37]/40 transition-all">
-                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                              
-                              {/* Left column: Name & Logic Toggle */}
-                              <div className="lg:col-span-5 space-y-5">
-                                <div className="space-y-1.5">
-                                  <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Package Identity</label>
-                                  <div className="relative">
-                                    <Package className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/40" />
-                                    <input 
-                                      type="text"
-                                      className="w-full bg-black/60 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-slate-100 transition-all"
-                                      value={service.name}
-                                      onChange={e => handleUpdateService(service.id, { name: e.target.value })}
-                                      placeholder="Package Name"
-                                    />
-                                  </div>
+                          <div key={service.id} className="relative bg-black/40 border border-white/5 rounded-3xl group hover:border-[#D4AF37]/40 transition-all flex flex-col overflow-hidden">
+                            
+                            {/* Top Image Section */}
+                            <div className="relative h-48 bg-[#111] group-hover:bg-[#151515] transition-colors border-b border-white/5 flex items-center justify-center">
+                              {(previewUrls[service.id] || service.image) ? (
+                                <img src={previewUrls[service.id] || service.image} alt={service.name} className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity" />
+                              ) : (
+                                <div className="flex flex-col items-center justify-center text-slate-600 gap-2">
+                                  <ImageIcon className="w-8 h-8 opacity-50" />
+                                  <span className="text-[9px] font-bold uppercase tracking-widest">No Image</span>
                                 </div>
-                                <div className="flex items-center gap-4">
-                                  <button 
-                                    onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity })}
-                                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${service.allowQuantity ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/5' : 'text-slate-600 border-white/10 hover:bg-white/5'}`}
-                                  >
-                                    {service.allowQuantity ? <Hash className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
-                                    {service.allowQuantity ? 'Quantity Enabled' : 'Fixed Package'}
-                                  </button>
-                                  <button 
-                                    onClick={() => handleRemoveService(service.id)}
-                                    className="p-2.5 text-slate-700 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20"
-                                    title="Delete Package"
-                                  >
-                                    <Trash2 className="w-4.5 h-4.5" />
-                                  </button>
+                              )}
+                              
+                              {/* Upload Button overlay */}
+                              {typeof uploadProgresses[service.id] === 'number' ? (
+                                <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
+                                  <div className="w-10 h-10 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_15px_rgba(212,175,55,0.3)]"></div>
+                                  <div className="text-[#D4AF37] font-bold text-[10px] mt-2 tracking-widest">{Math.round(uploadProgresses[service.id])}%</div>
+                                </div>
+                              ) : (
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
+                                  <label className="cursor-pointer bg-black/60 hover:bg-[#D4AF37]/20 border border-white/10 hover:border-[#D4AF37]/50 text-white hover:text-[#D4AF37] px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-all shadow-xl backdrop-blur-md">
+                                    <Camera className="w-4 h-4" />
+                                    {service.image ? 'Change Photo' : 'Upload Photo'}
+                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleServiceImageUpload(service.id, e)} />
+                                  </label>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Content Section */}
+                            <div className="p-6 flex-1 flex flex-col gap-5">
+                              
+                              <div className="space-y-1.5">
+                                <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Package Identity</label>
+                                <div className="relative">
+                                  <Package className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/40" />
+                                  <input 
+                                    type="text"
+                                    className="w-full bg-black/60 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-slate-100 transition-all"
+                                    value={service.name}
+                                    onChange={e => handleUpdateService(service.id, { name: e.target.value })}
+                                    placeholder="Package Name"
+                                  />
                                 </div>
                               </div>
-
-                              {/* Right column: Price & Units */}
-                              <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                              
+                              <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
                                   <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Base Rate ($)</label>
                                   <div className="relative">
@@ -3257,28 +3550,34 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                   </div>
                                 </div>
                                 <div className="space-y-1.5">
-                                  <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Pricing Model (per...)</label>
-                                  <div className="relative">
-                                    <div className="absolute left-3 top-3 text-[10px] font-bold text-slate-600 uppercase tracking-widest">per</div>
-                                    <input 
-                                      type="text"
-                                      className="w-full bg-black/60 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-slate-100 transition-all"
-                                      value={service.unit}
-                                      onChange={e => handleUpdateService(service.id, { unit: e.target.value })}
-                                      placeholder="e.g. event"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="sm:col-span-2">
-                                  <div className="bg-black/80 px-4 py-2 rounded-xl border border-white/5 flex items-center justify-between">
-                                     <span className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Live Preview</span>
-                                     <span className="text-[10px] font-bold text-slate-400">
-                                       {service.name || 'Unnamed Package'} — ${service.price.toLocaleString()} per {service.unit || 'unit'}
-                                       {service.allowQuantity && ' (Multiple select enabled)'}
-                                     </span>
-                                  </div>
+                                  <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Model (per...)</label>
+                                  <input 
+                                    type="text"
+                                    className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-slate-100 transition-all text-center"
+                                    value={service.unit}
+                                    onChange={e => handleUpdateService(service.id, { unit: e.target.value })}
+                                    placeholder="e.g. event"
+                                  />
                                 </div>
                               </div>
+
+                              <div className="mt-auto flex items-center gap-3 pt-2">
+                                <button 
+                                  onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity })}
+                                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${service.allowQuantity ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/10 shadow-[0_0_10px_rgba(212,175,55,0.1)]' : 'text-slate-500 border-white/5 hover:bg-white/5 hover:text-slate-300'}`}
+                                >
+                                  {service.allowQuantity ? <Hash className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
+                                  {service.allowQuantity ? 'Quantities On' : 'Fixed Package'}
+                                </button>
+                                <button 
+                                  onClick={() => handleRemoveService(service.id)}
+                                  className="p-2.5 text-slate-600 bg-white/5 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20"
+                                  title="Delete Package"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+
                             </div>
                           </div>
                         ))
@@ -3487,6 +3786,29 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           )}
         </div>
       </main>
+      {/* Fullscreen Media Viewer */}
+      <AnimatePresence>
+        {fullscreenMedia && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-sm"
+          >
+            <button 
+              onClick={() => setFullscreenMedia(null)}
+              className="absolute top-4 right-4 text-white hover:text-[#D4AF37] bg-black/50 p-3 rounded-full backdrop-blur-md border border-white/10 transition-all shadow-xl z-10"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            {fullscreenMedia.type === 'image' ? (
+              <img src={fullscreenMedia.url} alt="Fullscreen View" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
+            ) : (
+              <video src={fullscreenMedia.url} controls autoPlay className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl bg-black" />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

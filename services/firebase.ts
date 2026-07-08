@@ -31,50 +31,22 @@ provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
 provider.addScope('https://www.googleapis.com/auth/calendar.events');
 provider.setCustomParameters({ prompt: 'consent', access_type: 'offline' });
 
-// Use a function to allow re-initialization if fallback is needed
-const createFirestore = (id?: string) => {
-  console.log(`[Firebase] Initializing Firestore with project: ${targetProjectId}, database: ${id || '(default)'}`);
-  try {
-    const isIframe = typeof window !== 'undefined' && window.self !== window.top;
-    if (isIframe) {
-      console.log("[Firebase] Running inside iframe - using memory/default cache to avoid iframe storage partitioning offline lock.");
-      return initializeFirestore(app, {
-        host: "firestore.googleapis.com",
-        ssl: true,
-        experimentalForceLongPolling: true
-      }, id);
-    }
-    return initializeFirestore(app, {
-      host: "firestore.googleapis.com",
-      ssl: true,
-      experimentalForceLongPolling: true,
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager()
-      })
-    }, id);
-  } catch (err: any) {
-    console.warn("[Firebase] Failed to initialize Firestore with persistent local cache. Falling back to default cache:", err.message);
-    return initializeFirestore(app, {
-      host: "firestore.googleapis.com",
-      ssl: true,
-      experimentalForceLongPolling: true
-    }, id);
-  }
-};
+// Initialize Firestore exactly as requested with databaseId, ensuring compatibility with iframe environments
+export const db = initializeFirestore(app, {
+  databaseId: dbId,
+  host: "firestore.googleapis.com",
+  ssl: true,
+  experimentalForceLongPolling: true
+} as any, dbId);
 
-export let db = createFirestore(dbId);
 export const storage = getStorage(app, `gs://${firebaseConfig.storageBucket}`);
 
 async function testConnection() {
   let retries = 3;
-  let currentDbId: string | undefined = dbId;
-  
   while (retries > 0) {
     try {
-      console.log(`[Firebase] Testing Firestore connection (Attempt ${4 - retries}/3, DB: ${currentDbId || '(default)'})...`);
-      // Use getDocFromServer to bypass local cache and test actual connectivity
+      console.log(`[Firebase] Testing Firestore connection to custom instance ${dbId} (Attempt ${4 - retries}/3)...`);
       await getDocFromServer(doc(db, 'test', 'connection')).catch(e => {
-        // We only care about network errors, "not found" is actually a success for connectivity
         if (e.code === 'not-found') return;
         throw e;
       });
@@ -90,21 +62,6 @@ async function testConnection() {
         console.warn(`[Firebase] Firestore connection check: Client is offline or Firestore is temporarily unavailable.`);
       } else {
         console.error(`[Firebase] Firestore connection attempt failed:`, error.message);
-      }
-      
-      // If we are using a named database and it's unavailable, try falling back to (default)
-      if (currentDbId && (
-        error.code === 'unavailable' || 
-        error.message?.includes('unavailable') || 
-        error.message?.includes('offline') || 
-        error.message?.includes('Failed to get document')
-      )) {
-        console.warn(`[Firebase] Named database ${currentDbId} is unavailable. Attempting fallback to default database...`);
-        currentDbId = undefined;
-        db = createFirestore(undefined);
-        // Reset retries for the fallback attempt
-        retries = 2; 
-        continue;
       }
       
       retries--;

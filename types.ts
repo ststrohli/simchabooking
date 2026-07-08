@@ -40,6 +40,7 @@ export interface VendorService {
   price: number;
   unit?: string; // e.g., "person", "violin", "hour", "event"
   allowQuantity?: boolean;
+  image?: string;
 }
 
 export interface SelectedService {

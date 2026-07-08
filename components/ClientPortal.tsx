@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, ShoppingBag, Calendar, MessageSquare, LogOut, Trash2, 
   ChevronRight, MapPin, Clock, CreditCard, CheckCircle, Bell, X, Menu, Send,
-  FileText, Upload, Download, History, Loader2, Plus, Search, PartyPopper
+  FileText, Upload, Download, History, Loader2, Plus, Search, PartyPopper, Edit3, ArrowLeft
 } from 'lucide-react';
 import { CartItem, Booking, Message, Vendor, UserAccount, UserFile } from '../types';
 import PayPalButton from './PayPalButton';
@@ -23,16 +23,18 @@ interface ClientPortalProps {
   messages: Message[];
   vendors: Vendor[];
   onRemoveFromCart: (index: number) => void;
+  onEditCartItem: (index: number) => void;
   onProcessCart: () => void;
   onPaymentSuccess: (bookingId: string, method: string) => void;
   onLogout: () => void;
   onClose: () => void;
   onUpdateProfile: (data: { name: string, photoURL: string, photoStoragePath?: string }) => void;
   onDeleteAccount: () => void;
+  onMessageVendor: (vendor: Vendor) => void;
 }
 
 const ClientPortal: React.FC<ClientPortalProps> = ({ 
-  user, cart, bookings, messages, vendors, onRemoveFromCart, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount
+  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile' | 'documents'>('overview');
 
@@ -46,6 +48,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedThreadVendorId, setSelectedThreadVendorId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [fullscreenMedia, setFullscreenMedia] = useState<{url: string, type: 'image' | 'video'} | null>(null);
 
   // Automatically scroll to the bottom of the chat pane when thread changes or new message is received
   useEffect(() => {
@@ -285,21 +288,38 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     const groups: Record<string, { vendor: Vendor, messages: Message[], lastMessage: Message }> = {};
     messages.forEach(m => {
       const vendorId = m.senderId === user.id ? m.receiverId : m.senderId;
-      const vendor = vendors.find(v => v.id === vendorId);
+      let vendor = vendors.find(v => v.id === vendorId);
+      
+      // If the chat is with the admin, create a mock vendor for the thread
+      if (vendorId === 'admin' || m.isAdminInquiry || m.receiverId === 'admin') {
+        vendor = {
+          id: 'admin',
+          name: 'Simcha Admin',
+          category: 'Support',
+          description: 'Direct support from the Simcha platform.',
+          priceRange: 'N/A',
+          location: 'System',
+          image: '',
+          rating: 5,
+          reviews: []
+        } as unknown as Vendor;
+      }
+
       if (vendor) {
-        if (!groups[vendorId]) {
-          groups[vendorId] = { vendor, messages: [], lastMessage: m };
+        const actualVendorId = vendor.id || 'admin';
+        if (!groups[actualVendorId]) {
+          groups[actualVendorId] = { vendor, messages: [], lastMessage: m };
         }
-        groups[vendorId].messages.push(m);
-        if (new Date(m.timestamp) > new Date(groups[vendorId].lastMessage.timestamp)) {
-          groups[vendorId].lastMessage = m;
+        groups[actualVendorId].messages.push(m);
+        if (new Date(m.timestamp) > new Date(groups[actualVendorId].lastMessage.timestamp)) {
+          groups[actualVendorId].lastMessage = m;
         }
       }
     });
     return Object.entries(groups).sort((a, b) => 
       new Date(b[1].lastMessage.timestamp).getTime() - new Date(a[1].lastMessage.timestamp).getTime()
     );
-  }, [messages, vendors]);
+  }, [messages, vendors, user.id]);
 
   // Automatically mark unread messages as read when viewing a thread
   useEffect(() => {
@@ -425,12 +445,16 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto bg-[#050505] p-6 md:p-10">
-        <header className="mb-10 flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold font-[Cinzel] text-white capitalize tracking-tight">{activeTab}</h1>
-            <p className="text-[#D4AF37]/60 text-[10px] font-black uppercase tracking-[0.4em] mt-1.5">Managing your celebrations</p>
+        <header className="mb-10 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+          <div className="flex flex-col items-start gap-4">
+            <button onClick={onClose} className="text-[#D4AF37] hover:text-[#E5C76B] font-bold text-[10px] uppercase tracking-widest flex items-center gap-1.5 transition-colors border border-[#D4AF37]/30 px-3 py-1.5 rounded-full hover:bg-[#D4AF37]/10 w-fit">
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to Marketplace
+            </button>
+            <div>
+              <h1 className="text-3xl font-bold font-[Cinzel] text-white capitalize tracking-tight">{activeTab}</h1>
+              <p className="text-[#D4AF37]/60 text-[10px] font-black uppercase tracking-[0.4em] mt-1.5">Managing your celebrations</p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-[#D4AF37] hover:underline font-bold text-xs uppercase tracking-widest">Back to Marketplace</button>
         </header>
 
         {activeTab === 'overview' && (
@@ -594,14 +618,40 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                     <div className="flex-1 min-w-0 text-center sm:text-left">
                       <h4 className="font-bold text-xl text-slate-100 font-[Cinzel]">{item.vendor.name}</h4>
                       <p className="text-[10px] text-[#D4AF37] font-black uppercase tracking-widest mt-1">{item.vendor.category}</p>
+                      
                       <div className="mt-3 flex flex-wrap justify-center sm:justify-start gap-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                         <div className="flex items-center gap-2"><Calendar className="w-3.5 h-3.5" />{item.date}</div>
                         <div className="flex items-center gap-2 text-[#D4AF37]"><CreditCard className="w-3.5 h-3.5" />${item.amount.toLocaleString()}</div>
                       </div>
+
+                      {/* Display full filled-out details for verification and editing */}
+                      <div className="mt-4 bg-black/40 p-4 rounded-xl border border-white/5 text-[11px] text-slate-300 space-y-1.5 text-left max-w-md">
+                        <div><span className="text-slate-500 uppercase tracking-wider font-bold">Event Name:</span> {item.eventName}</div>
+                        {item.eventTime && <div><span className="text-slate-500 uppercase tracking-wider font-bold">Event Time:</span> {item.eventTime}</div>}
+                        {item.eventLocation && <div><span className="text-slate-500 uppercase tracking-wider font-bold">Location:</span> {item.eventLocation}</div>}
+                        <div><span className="text-slate-500 uppercase tracking-wider font-bold">Client Name:</span> {item.clientName}</div>
+                        <div><span className="text-slate-500 uppercase tracking-wider font-bold">Client Email:</span> {item.contactEmail}</div>
+                        {item.notes && <div><span className="text-slate-500 uppercase tracking-wider font-bold">Notes:</span> <span className="italic text-slate-400">"{item.notes}"</span></div>}
+                        {item.selectedServices && item.selectedServices.length > 0 && (
+                          <div className="pt-2 border-t border-white/5 mt-2">
+                            <span className="text-[#D4AF37] uppercase tracking-wider font-bold text-[9px]">Selected Services:</span>
+                            <ul className="list-disc pl-4 mt-1 space-y-0.5 text-[10px] text-slate-400">
+                              {item.selectedServices.map(s => (
+                                <li key={s.id}>{s.name} x {s.quantity} (${(s.price * s.quantity).toLocaleString()})</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <button onClick={() => onRemoveFromCart(index)} className="p-3 bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white rounded-xl transition-all border border-red-500/20">
-                      <Trash2 className="w-5 h-5" />
-                    </button>
+                    <div className="flex flex-col gap-2">
+                      <button onClick={() => onEditCartItem(index)} className="p-3 bg-zinc-800 text-zinc-300 hover:bg-[#D4AF37] hover:text-black rounded-xl transition-all border border-zinc-700 hover:border-[#D4AF37]/50" title="Edit Request">
+                        <Edit3 className="w-5 h-5" />
+                      </button>
+                      <button onClick={() => onRemoveFromCart(index)} className="p-3 bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white rounded-xl transition-all border border-red-500/20" title="Remove">
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 <div className="pt-8 border-t border-[#D4AF37]/20 mt-10">
@@ -650,17 +700,21 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                   <div className="text-center md:text-right min-w-[200px]">
                     <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Service Fee</p>
                     <p className="text-3xl font-bold text-[#D4AF37]">${booking.amount.toLocaleString()}</p>
-                    {booking.status === 'confirmed' && booking.paymentStatus === 'pending' && (
-                      <div className="flex flex-col gap-3 mt-6">
-                        <PayPalButton 
-                          amount={booking.amount} 
-                          onSuccess={() => onPaymentSuccess(booking.id, 'PayPal')} 
-                          onClick={() => trackFunnelStep.initiatePayment(booking.id, booking.vendorId, booking.amount, 'PayPal')}
-                        />
-                        {(vendor.stripeConnected || vendor.stripeAccountId) && (
-                          <button 
-                            onClick={() => handlePay(
-                              booking.id, 
+                    <div className="flex flex-col gap-3 mt-6">
+                      <button onClick={() => onMessageVendor(vendor)} className="w-full px-4 py-3 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] rounded-xl transition-all border border-[#D4AF37]/20 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest">
+                        <MessageSquare className="w-4 h-4" /> Message Professional
+                      </button>
+                      {booking.status === 'confirmed' && booking.paymentStatus === 'pending' && (
+                        <>
+                          <PayPalButton 
+                            amount={booking.amount} 
+                            onSuccess={() => onPaymentSuccess(booking.id, 'PayPal')} 
+                            onClick={() => trackFunnelStep.initiatePayment(booking.id, booking.vendorId, booking.amount, 'PayPal')}
+                          />
+                          {(vendor.stripeConnected || vendor.stripeAccountId) && (
+                            <button 
+                              onClick={() => handlePay(
+                                booking.id, 
                               booking.vendorId, 
                               booking.amount
                             )}
@@ -675,8 +729,9 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                             Pay with Card
                           </button>
                         )}
-                      </div>
-                    )}
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -762,7 +817,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                                 : 'bg-zinc-900 text-white border border-zinc-800 shadow-md'
                             }`}>
                                {m.type === 'image' || m.imageUrl ? (
-                                  <div className="space-y-2">
+                                  <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: m.imageUrl || m.fileUrl || '', type: 'image'})}>
                                     <img 
                                       src={m.imageUrl || m.fileUrl} 
                                       onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })} 
@@ -777,6 +832,12 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                                     <CustomAudioPlayer src={m.audioUrl || m.fileUrl || ''} theme={isSent ? 'sent' : 'received'} />
                                   </div>
                                 ) : m.type === 'file' ? (
+                                  m.fileType?.startsWith('video/') ? (
+                                     <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: m.fileUrl || '', type: 'video'})}>
+                                       <video src={m.fileUrl} className="w-full aspect-video rounded-lg object-cover bg-black" />
+                                       {m.text && m.text !== 'Sent a video' && <p className="text-sm">{m.text}</p>}
+                                     </div>
+                                  ) : (
                                   <a href={m.fileUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl transition-all text-sm ${isSent ? 'bg-black/10 hover:bg-black/20 text-black' : 'bg-black/30 hover:bg-black/40 text-white'}`}>
                                     <FileText className="w-8 h-8 opacity-60 flex-shrink-0" />
                                     <div className="flex-1 min-w-0">
@@ -785,6 +846,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                                     </div>
                                     <Download className="w-4 h-4 opacity-60 flex-shrink-0" />
                                   </a>
+                                  )
                                 ) : (
                                   <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{m.text}</p>
                                 )}
@@ -930,6 +992,29 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           </div>
         )}
       </main>
+      {/* Fullscreen Media Viewer */}
+      <AnimatePresence>
+        {fullscreenMedia && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-sm"
+          >
+            <button 
+              onClick={() => setFullscreenMedia(null)}
+              className="absolute top-4 right-4 text-white hover:text-[#D4AF37] bg-black/50 p-3 rounded-full backdrop-blur-md border border-white/10 transition-all shadow-xl z-10"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            {fullscreenMedia.type === 'image' ? (
+              <img src={fullscreenMedia.url} alt="Fullscreen View" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
+            ) : (
+              <video src={fullscreenMedia.url} controls autoPlay className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl bg-black" />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

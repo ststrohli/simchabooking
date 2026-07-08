@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { X, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, AlertTriangle, Hash, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import { Vendor, SelectedService, VendorCategory } from '../types';
 
 const FloatingInput: React.FC<{
@@ -131,6 +131,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const [offeredPrice, setOfferedPrice] = useState<string>('');
 
   const [localDate, setLocalDate] = useState(selectedDate || new Date().toISOString().split('T')[0]);
+  const [isPriorityDate, setIsPriorityDate] = useState(false);
   const [privacyBlocked, setPrivacyBlocked] = useState(false);
   const [currentCalendarMonth, setCurrentCalendarMonth] = useState<Date>(() => {
     const d = selectedDate ? new Date(selectedDate) : new Date();
@@ -217,10 +218,17 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const handleDateChange = (newDate: string) => {
     if (!vendor) return;
 
+    // Toggle: if clicked date is already selected, deselect it
+    if (newDate === localDate) {
+      setLocalDate('');
+      setIsCalendarOpen(false); // Close calendar when deselected
+      return;
+    }
+
     // 1. If it's already in checkedDates, we can just switch back directly!
     if (checkedDates[newDate]) {
       setLocalDate(newDate);
-      setIsCalendarOpen(false);
+      setIsCalendarOpen(false); // Close calendar on selection
       return;
     }
 
@@ -243,12 +251,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
     sessionStorage.setItem(sessionKey, JSON.stringify(updated));
 
     setLocalDate(newDate);
-    setIsCalendarOpen(false);
+    setIsCalendarOpen(false); // Close calendar on selection
   };
 
   const handleSelectCheckedDate = (date: string) => {
     setLocalDate(date);
-    setIsCalendarOpen(false);
   };
 
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -278,6 +285,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
   };
 
   const getReadableLocalDate = () => {
+    if (!localDate) return 'No Date Selected';
     try {
       const parts = localDate.split('-');
       if (parts.length === 3) {
@@ -416,6 +424,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!localDate) return;
     if (isPastDate(new Date(localDate))) return;
     
     const selectedServices = vendor.services
@@ -435,6 +444,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
         selectedServices, 
         totalAmount: isOfferMode ? (parseInt(offeredPrice) || 0) : totalAmount,
         date: localDate,
+        isPriorityDate,
         // @ts-ignore - added to internal callback but type checked manually
         isOffer: isOfferMode,
         offeredPrice: isOfferMode ? (parseInt(offeredPrice) || 0) : undefined
@@ -466,13 +476,31 @@ const BookingModal: React.FC<BookingModalProps> = ({
       
       // Crucially, the calendar must not display specific booked dates to protect vendor privacy.
       // All future dates are displayed uniformly as selectable options, while past dates are unselectable.
-      const isDisabled = isPast;
+      // However, if the user has checked a date, we display its availability.
+      // If privacy limit is reached, un-checked future dates become unselectable (grayed out).
+      const hasBeenChecked = !!checkedDates[dateStr];
+      const isAvailable = checkedDates[dateStr] === 'Available';
+      const isUnavailable = checkedDates[dateStr] === 'Unavailable';
+      
+      const isDisabled = (isPast || (!hasBeenChecked && privacyBlocked) || isUnavailable) && !isSelected;
 
       let buttonStyle = "";
       if (isSelected) {
-        buttonStyle = "bg-[#D4AF37] text-black font-black shadow-[0_0_15px_rgba(212,175,55,0.45)] scale-105 border border-[#D4AF37]";
+        if (isUnavailable) {
+          buttonStyle = "bg-red-500 text-white font-black shadow-[0_0_15px_rgba(239,68,68,0.45)] scale-105 border-2 border-red-500";
+        } else if (isAvailable) {
+          buttonStyle = "bg-green-500 text-black font-black shadow-[0_0_15px_rgba(34,197,94,0.45)] scale-105 border-2 border-green-500";
+        } else {
+          buttonStyle = "bg-[#D4AF37] text-black font-black shadow-[0_0_15px_rgba(212,175,55,0.45)] scale-105 border border-[#D4AF37]";
+        }
       } else if (isPast) {
-        buttonStyle = "text-slate-600 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95";
+        buttonStyle = "text-slate-600 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent";
+      } else if (isAvailable) {
+        buttonStyle = "text-green-400 bg-green-500/10 border-2 border-green-500 hover:bg-green-500/20";
+      } else if (isUnavailable) {
+        buttonStyle = "text-red-500 bg-red-500/10 opacity-50 cursor-not-allowed scale-95 border-2 border-red-500";
+      } else if (privacyBlocked) {
+        buttonStyle = "text-slate-600 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent";
       } else {
         // Standard selectable future date has crisp white text, with elegant soft-gold hover/active states.
         buttonStyle = "text-slate-100 bg-black/40 border border-white/5 hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 hover:scale-105 hover:shadow-[0_0_12px_rgba(212,175,55,0.25)] active:scale-95";
@@ -539,9 +567,14 @@ const BookingModal: React.FC<BookingModalProps> = ({
           {days}
         </div>
 
-        {/* Privacy Lock Notice */}
-        <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center gap-2 justify-center text-[9px] text-slate-500 font-bold uppercase tracking-wider text-center">
-          <span className="text-[#D4AF37]">🔒 Master Calendar Privacy Mode Active</span>
+        {/* Search Limits & Warning */}
+        <div className="mt-4 p-3.5 bg-amber-500/5 border border-[#D4AF37]/20 rounded-xl text-center">
+          <p className="text-[#D4AF37] text-[10px] font-black uppercase tracking-wider mb-1">
+            ⚠️ Calendar Privacy Search Limits
+          </p>
+          <p className="text-slate-400 text-[10px] leading-relaxed font-medium">
+            You are allowed {vendor.maxDateChecks ?? 5} checks per vendor. You have <span className="font-black text-[#D4AF37] underline">{getRemainingAttempts()}</span> searches remaining before remaining unselected dates go gray.
+          </p>
         </div>
       </div>
     );
@@ -570,7 +603,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
       >
         <div className="bg-black p-6 text-white flex justify-between items-start sticky top-0 z-10 border-b border-[#D4AF37]/20">
           <div>
-            <h2 id="modal-title" className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">{initialDetails ? 'Update Your Selection' : 'Reserve Service'}</h2>
+            <h2 id="modal-title" className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">{initialDetails ? 'Update Your Selection' : 'Book Service'}</h2>
             <p className="text-slate-500 text-xs mt-1">Vendor: <span className="text-slate-100 font-bold">{vendor.name}</span></p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-[#D4AF37] p-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full transition-colors cursor-pointer" aria-label="Close booking modal"><X className="w-6 h-6" /></button>
@@ -578,11 +611,6 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div className="space-y-3">
-            {/* Blinking/pulsing gold warning */}
-            <p className="text-[11px] font-black text-[#D4AF37]/90 animate-pulse leading-relaxed tracking-widest uppercase text-center" style={{ textShadow: "0 0 10px rgba(212,175,55,0.4)" }}>
-              ✦ Concierge Elite Availability Protocol ✦
-            </p>
-
             <label className={labelClass}>Event Date</label>
             
             {/* Elegant luxury display of Selected Date as action picker */}
@@ -604,40 +632,61 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 {renderInteractiveCalendar()}
               </div>
             )}
-          </div>
 
-          <div className="border border-[#D4AF37]/30 bg-[#D4AF37]/5 rounded-xl p-4 flex items-center gap-4 transition-all duration-300" role="alert">
-            <Calendar className="w-5 h-5 text-[#D4AF37] flex-shrink-0 animate-pulse" aria-hidden="true" />
-            <div>
-              <p className="text-xs font-black uppercase tracking-widest text-[#D4AF37]" style={{ textShadow: "0 0 6px rgba(212,175,55,0.3)" }}>Priority Custom Hold Request</p>
-              <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                Your proposed date <span className="text-white font-bold">{getReadableLocalDate()}</span> will be cross-checked with the vendor's private registry. If approved, your hold is guaranteed immediately.
-              </p>
-            </div>
+            {/* Lock as Priority Date Feature */}
+            {localDate && !isPastDate(new Date(localDate)) && (
+              <div className="bg-[#D4AF37]/5 border border-[#D4AF37]/20 p-4 rounded-xl flex items-start gap-3 mt-3 animate-in fade-in duration-300">
+                <input
+                  id="priority-date"
+                  type="checkbox"
+                  checked={isPriorityDate}
+                  onChange={(e) => setIsPriorityDate(e.target.checked)}
+                  className="w-4.5 h-4.5 rounded border-[#D4AF37]/30 bg-black text-[#D4AF37] focus:ring-[#D4AF37] mt-0.5 accent-[#D4AF37] cursor-pointer"
+                />
+                <div className="flex-1">
+                  <label htmlFor="priority-date" className="text-xs font-black uppercase tracking-wider text-[#D4AF37] flex items-center gap-1.5 cursor-pointer">
+                    ✨ Secure as Priority Event Date
+                  </label>
+                  <p className="text-slate-400 text-[10px] mt-1.5 leading-relaxed">
+                    Locks in your date and instantly recommends matching professional vendors who are also available on <span className="text-white font-bold">{getReadableLocalDate()}</span>.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {vendor.services && vendor.services.length > 0 && (
             <fieldset className="space-y-3">
               <legend className={labelClass}>Select Package & Units</legend>
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {vendor.services.map((service) => (
-                  <div key={service.id} className="flex flex-col gap-2">
-                    <label className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all focus-within:ring-2 focus-within:ring-[#D4AF37] ${selectedServiceIds.includes(service.id) ? 'bg-[#D4AF37]/10 border-[#D4AF37]' : 'bg-black border-[#D4AF37]/20 hover:border-[#D4AF37]/50'}`}>
-                        <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${selectedServiceIds.includes(service.id) ? 'bg-[#D4AF37] border-[#D4AF37]' : 'border-[#D4AF37]/30'}`} aria-hidden="true">{selectedServiceIds.includes(service.id) && <Check className="w-2.5 h-2.5 text-black" />}</div>
-                        <div className="flex flex-col">
-                            <span className="text-sm font-medium text-slate-100">{service.name}</span>
-                            <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">
+                  <div key={service.id} className={`flex flex-col overflow-hidden rounded-xl border transition-all ${selectedServiceIds.includes(service.id) ? 'bg-[#D4AF37]/5 border-[#D4AF37] shadow-[0_0_15px_rgba(212,175,55,0.15)]' : 'bg-black border-[#D4AF37]/20 hover:border-[#D4AF37]/50'}`}>
+                    <label className="cursor-pointer flex-1 flex flex-col group relative">
+                        {service.image ? (
+                          <div className="h-32 w-full relative overflow-hidden bg-[#111]">
+                            <img src={service.image} alt={service.name} className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all group-hover:scale-105" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                          </div>
+                        ) : (
+                          <div className="h-32 w-full bg-[#111] border-b border-white/5 flex items-center justify-center">
+                            <ImageIcon className="w-6 h-6 text-slate-700" />
+                          </div>
+                        )}
+                        <div className={`absolute top-3 left-3 w-5 h-5 rounded-full border-2 flex items-center justify-center backdrop-blur-md ${selectedServiceIds.includes(service.id) ? 'bg-[#D4AF37] border-[#D4AF37]' : 'bg-black/50 border-white/40 group-hover:border-[#D4AF37]'}`}>
+                           {selectedServiceIds.includes(service.id) && <Check className="w-3 h-3 text-black" />}
+                        </div>
+                        <div className="p-4 flex flex-col flex-1 relative z-10 -mt-8">
+                            <span className="text-sm font-bold text-white drop-shadow-md leading-tight">{service.name}</span>
+                            <span className="text-[10px] text-[#D4AF37] font-black uppercase tracking-widest mt-1">
                                 ${service.price.toLocaleString()} {service.unit ? `per ${service.unit}` : ''}
                             </span>
-                        </div>
                         </div>
                         <input type="checkbox" className="sr-only" checked={selectedServiceIds.includes(service.id)} onChange={() => toggleService(service.id)} />
                     </label>
                     
                     {selectedServiceIds.includes(service.id) && service.allowQuantity && (
-                        <div className="flex items-center gap-3 pl-8 animate-in slide-in-from-left-2 duration-300">
-                            <div className="relative flex-1">
+                        <div className="px-4 pb-4 pt-1 flex flex-col gap-2 animate-in slide-in-from-top-2 duration-300 border-t border-white/5">
+                            <div className="relative">
                                 <Hash className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[#D4AF37]/50" />
                                 <input 
                                     type="number" 
@@ -648,7 +697,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                                     onChange={(e) => handleQuantityChange(service.id, e.target.value)}
                                 />
                             </div>
-                            <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest">
+                            <span className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest text-right">
                                 Total: ${(service.price * (quantities[service.id] || 1)).toLocaleString()}
                             </span>
                         </div>
@@ -768,8 +817,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
             <button type="button" onClick={onClose} className="flex-1 py-3 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-[#D4AF37] outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] rounded-xl transition-all cursor-pointer">Cancel</button>
             <button 
                 type="submit" 
-                disabled={isPastDate(new Date(localDate)) || (isOfferMode && (!offeredPrice || parseInt(offeredPrice) <= 0))} 
-                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg border outline-none focus-visible:ring-2 focus-visible:ring-white ${isPastDate(new Date(localDate)) || (isOfferMode && !offeredPrice) ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20 hover:scale-105 active:scale-95 cursor-pointer'}`}
+                disabled={!localDate || isPastDate(new Date(localDate)) || (isOfferMode && (!offeredPrice || parseInt(offeredPrice) <= 0))} 
+                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg border outline-none focus-visible:ring-2 focus-visible:ring-white ${!localDate || isPastDate(new Date(localDate)) || (isOfferMode && !offeredPrice) ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20 hover:scale-105 active:scale-95 cursor-pointer'}`}
             >
                 {isOfferMode ? 'Send Offer' : 'Add to Plan'}
             </button>

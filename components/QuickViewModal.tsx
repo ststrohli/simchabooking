@@ -180,7 +180,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
                 onClick={() => onBook(vendor)}
                 className="bg-[#D4AF37] text-black font-black py-4 rounded-2xl hover:bg-[#E5C76B] transition-all uppercase tracking-widest text-[10px] shadow-lg shadow-[#D4AF37]/20 cursor-pointer"
               >
-                Reserve Now
+                Book
               </motion.button>
             </div>
           </div>
