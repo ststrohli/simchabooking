@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff, Filter, ArrowUpDown } from 'lucide-react';
+import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff, Filter, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType, firebaseConfig } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
 import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
@@ -49,6 +49,7 @@ interface AdminPanelProps {
   onSendMessage: (payload: Partial<Message>) => void;
   showNotification: (message: string, type?: 'success' | 'info' | 'error') => void;
   onSeedTaxonomy?: () => Promise<void>;
+  onUpdateCategoryOrder: (orderedCategories: string[]) => void;
 }
 
 const TableContainer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -108,7 +109,7 @@ const ADMIN_CODE = "ss-77859";
 const COMMISSION_RATE = 0.10;
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
-    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification, onSeedTaxonomy
+    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder
 }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [accessCode, setAccessCode] = useState('');
@@ -117,42 +118,56 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [isSeedingTaxonomy, setIsSeedingTaxonomy] = useState(false);
 
-  const handleSeed = async () => {
-    alert("Alert #1: Entered handleSeed function successfully.");
+  const handleMoveCategory = (cat: string, direction: 'up' | 'down') => {
+    const currentIndex = categories.indexOf(cat);
+    if (currentIndex === -1) return;
     
+    const newCategories = [...categories];
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    
+    if (targetIndex >= 0 && targetIndex < newCategories.length) {
+      // Swap elements
+      newCategories[currentIndex] = newCategories[targetIndex];
+      newCategories[targetIndex] = cat;
+      
+      onUpdateCategoryOrder(newCategories);
+    }
+  };
+
+  const handleSeed = async () => {
+    setIsSeedingTaxonomy(true);
     try {
-      const taxonomyData = [
-        { name: "Music", subcategories: ["DJ", "Band", "Choir", "One-Man Band"] },
-        { name: "Catering", subcategories: ["Meat", "Dairy", "Pareve", "Food Trucks"] },
-        { name: "Photography & Video", subcategories: ["Wedding Photo", "Event Video", "Drone"] },
-        { name: "Design & Florals", subcategories: ["Chupah Design", "Table Centerpieces", "Lighting"] }
-      ];
-      
-      alert("Alert #2: Data array created. Testing if 'db' variable exists: " + (typeof db !== 'undefined' ? "Yes" : "No"));
-      
-      if (typeof db === 'undefined') {
-        alert("Error: 'db' is undefined! Stopping here.");
-        return;
+      if (onSeedTaxonomy) {
+        await onSeedTaxonomy();
+      } else {
+        const taxonomyData = [
+          { name: "Music", subcategories: ["DJ", "Band", "Choir", "One-Man Band"] },
+          { name: "Catering", subcategories: ["Meat", "Dairy", "Pareve", "Food Trucks"] },
+          { name: "Photography & Video", subcategories: ["Wedding Photo", "Event Video", "Drone"] },
+          { name: "Design & Florals", subcategories: ["Chupah Design", "Table Centerpieces", "Lighting"] }
+        ];
+        
+        if (typeof db === 'undefined') {
+          throw new Error("'db' is undefined!");
+        }
+
+        for (const cat of taxonomyData) {
+          await addDoc(collection(db, "categories"), {
+            name: cat.name,
+            subcategories: cat.subcategories,
+            imageUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=400", // placeholder
+            icon: "star"
+          });
+        }
+        window.alert('🎉 Database successfully seeded with Jewish Event Taxonomy!');
+        showNotification('🎉 Database successfully seeded with Jewish Event Taxonomy!', 'success');
       }
-
-      alert("Alert #3: Starting loop to write to Firestore collection 'categories'...");
-
-      // Using a standard modern loop to add documents safely
-      for (const cat of taxonomyData) {
-        alert("Alert #4: Attempting to add category: " + cat.name);
-        await addDoc(collection(db, "categories"), {
-          name: cat.name,
-          subcategories: cat.subcategories,
-          imageUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=400", // placeholder
-          icon: "star"
-        });
-        alert("Alert #5: Successfully added category: " + cat.name);
-      }
-
-      alert("Alert #6: Database loop finished! Seeding complete!");
-
     } catch (globalError: any) {
-      alert("CRASH DETECTED inside catch block: " + (globalError?.message || globalError || "Unknown error"));
+      console.error("Seeding error:", globalError);
+      window.alert("Error seeding database: " + (globalError?.message || globalError || "Unknown error"));
+      showNotification("Error seeding database: " + (globalError?.message || globalError || "Unknown error"), 'error');
+    } finally {
+      setIsSeedingTaxonomy(false);
     }
   };
 
@@ -1395,16 +1410,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <button 
                             type="button" 
                             disabled={isSeedingTaxonomy}
-                            onClick={async () => { 
-                                if(window.confirm('This will populate the entire detailed Jewish Event taxonomy structure. Proceed?')) { 
-                                    setIsSeedingTaxonomy(true);
-                                    try {
-                                        await handleSeed(); 
-                                    } finally {
-                                        setIsSeedingTaxonomy(false);
-                                    }
-                                } 
-                            }} 
+                            onClick={handleSeed} 
                             className="px-4 py-2 bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37] hover:bg-[#D4AF37] hover:text-black transition-all rounded text-[10px] font-bold uppercase tracking-widest cursor-pointer shadow-[0_0_15px_rgba(212,175,55,0.2)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                         >
                             {isSeedingTaxonomy ? (
@@ -1420,11 +1426,32 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {categories.map(cat => (
+                    {categories.map((cat, index) => (
                         <div key={cat} className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 overflow-hidden flex flex-col shadow-2xl group relative">
                             <div className="relative h-44 bg-black">
                                 <img src={previewUrls[cat] || categoryImages[cat]} className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" />
                                 <div className="absolute inset-0 bg-gradient-to-t from-[#111] via-transparent to-black/30"></div>
+                                
+                                <div className="absolute top-4 left-4 flex items-center gap-1 bg-black/80 px-2.5 py-1.5 rounded-lg border border-[#D4AF37]/20 backdrop-blur-sm z-10">
+                                    <span className="text-[#D4AF37] font-mono text-[10px] font-bold px-1 select-none">Rank #{index + 1}</span>
+                                    <button 
+                                        disabled={index === 0}
+                                        onClick={() => handleMoveCategory(cat, 'up')}
+                                        className="p-1 text-[#D4AF37] hover:text-white disabled:opacity-30 disabled:hover:text-[#D4AF37] transition-colors cursor-pointer"
+                                        title="Move Up"
+                                    >
+                                        <ArrowUp className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button 
+                                        disabled={index === categories.length - 1}
+                                        onClick={() => handleMoveCategory(cat, 'down')}
+                                        className="p-1 text-[#D4AF37] hover:text-white disabled:opacity-30 disabled:hover:text-[#D4AF37] transition-colors cursor-pointer"
+                                        title="Move Down"
+                                    >
+                                        <ArrowDown className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+
                                 <button onClick={() => categoryImageInputRefs.current[cat]?.click()} className="absolute top-4 right-4 bg-black/60 hover:bg-[#D4AF37] hover:text-black p-2 rounded-lg text-slate-300 transition-all border border-white/10" title="Modify Banner"><Camera className="w-4 h-4" /></button>
                                 <input type="file" accept="image/*" className="hidden" ref={el => { categoryImageInputRefs.current[cat] = el; }} onChange={(e) => handleCategoryImageUpload(cat, e)} />
                                 <h3 className="absolute bottom-4 left-6 text-2xl font-bold font-[Cinzel] text-[#D4AF37]">{cat}</h3>

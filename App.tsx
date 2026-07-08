@@ -108,44 +108,139 @@ interface FirestoreErrorInfo {
 const JEWISH_TAXONOMY: Record<string, { icon: string; image: string; subcategories: Record<string, { image: string; items: string[] }> }> = {
   'Music': {
     icon: 'music',
-    image: 'https://images.unsplash.com/photo-1507838153414-b4b713384a76?auto=format&fit=crop&q=80&w=800&sat=-100&bri=-30&con=50',
+    image: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&q=80&w=800',
     subcategories: {
-      'DJ': { image: 'https://images.unsplash.com/photo-1571266028243-cb40fce756b1?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Wedding DJ', 'Bar Mitzvah DJ', 'Trance / Dance', 'Silent Disco'] },
-      'Band': { image: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Full Orchestra', 'Chassidish', 'Contemporary'] },
-      'Choir': { image: 'https://images.unsplash.com/photo-1528644498327-7cfdf3310023?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Adult Choir', 'Boys Choir', 'Chazzan / Cantor', 'Acapella Group'] },
-      'One-Man Band': { image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['One-Man Band', 'Kumzitz'] },
+      'DJ': { image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&q=80&w=600', items: ['Wedding DJ', 'Bar Mitzvah DJ', 'Trance & Dance', 'Silent Disco'] },
+      'Band': { image: 'https://images.unsplash.com/photo-1511192336575-5a79af67a629?auto=format&fit=crop&q=80&w=600', items: ['Full Orchestra', 'Chassidish Band', 'Contemporary Pop', 'Mizrachi Band'] },
+      'Choir': { image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&q=80&w=600', items: ['Adult Men Choir', 'Boys Choir', 'Chuppah Acapella', 'Cantor & Chazzanim'] },
+      'One-Man Band': { image: 'https://images.unsplash.com/photo-1510915361894-db8b60106cb1?auto=format&fit=crop&q=80&w=600', items: ['Synthesizer Soloist', 'Kumzitz Guitarist', 'Acoustic Violinist'] },
     }
   },
   'Catering': {
     icon: 'utensils',
-    image: 'https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&q=80&w=800&sat=-100&bri=-30&con=50',
+    image: 'https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&q=80&w=800',
     subcategories: {
-      'Meat': { image: 'https://images.unsplash.com/photo-1600891964092-4316c288032e?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Glatt', 'Elegant Plated', 'Heimish Traditional', 'Gourmet French'] },
-      'Dairy': { image: 'https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Cholov Yisroel', 'Buffet', 'Pasta & Italian', 'Sushi & Fish'] },
-      'Pareve / Dessert': { image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Vegan Gourmet', 'Salad Bar', 'Healthy Clean Eating'] },
-      'Food Trucks': { image: 'https://images.unsplash.com/photo-1565123409695-7b5ef63a2efb?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Pizza Truck', 'Ice Cream / Gelato', 'Churros & Desserts', 'Coffee Bar', 'Candy Buffet'] },
+      'Meat': { image: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&q=80&w=600', items: ['Glatt Kosher Fine Dining', 'Elegant Plated Beef', 'Traditional Heimish Buffet', 'Gourmet French Cuisines'] },
+      'Dairy': { image: 'https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&q=80&w=600', items: ['Cholov Yisroel Pizza & Pasta', 'Artisanal Cheese Boards', 'Crepe & Waffle Stations', 'Fish & Salads'] },
+      'Desserts & Sweets': { image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&q=80&w=600', items: ['Premium Pastry Buffets', 'Chocolate Fountains', 'Candy Wall Stations', 'Warm Donut Bars'] },
+      'Food Trucks': { image: 'https://images.unsplash.com/photo-1565123409695-7b5ef63a2efb?auto=format&fit=crop&q=80&w=600', items: ['Pizza & Fries Truck', 'Gelato Ice Cream Truck', 'Churros & Waffles', 'Specialty Coffee Bar'] },
+    }
+  },
+  'Photography': {
+    icon: 'camera',
+    image: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Wedding Portraiture': { image: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&q=80&w=600', items: ['Candid Wedding Photos', 'Traditional Formals', 'Fine Art Editorials'] },
+      'Pre-Wedding & Portraits': { image: 'https://images.unsplash.com/photo-1520390138845-fd2d229dd553?auto=format&fit=crop&q=80&w=600', items: ['Engagement Shoots', 'Bridal Solo Portraits', 'Family & Kids Portraits'] },
+      'Event Photojournalism': { image: 'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?auto=format&fit=crop&q=80&w=600', items: ['Dancing Action Shots', 'Reception Candids', 'Simcha Highlights'] }
+    }
+  },
+  'Videography': {
+    icon: 'video',
+    image: 'https://images.unsplash.com/photo-1579632652768-6cb9dcf85912?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Cinematic Film': { image: 'https://images.unsplash.com/photo-1579632652768-6cb9dcf85912?auto=format&fit=crop&q=80&w=600', items: ['Feature Documentaries', 'Cinematic Highlights', 'Next-Day Edits'] },
+      'Aerial & Drone': { image: 'https://images.unsplash.com/photo-1508614589041-895b88991e3e?auto=format&fit=crop&q=80&w=600', items: ['Scenic Venue Flyovers', 'Overhead Dancing Clips', 'Landscape Videography'] }
     }
   },
   'Photography & Video': {
     icon: 'camera',
-    image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&q=80&w=800&sat=-100&bri=-30&con=50',
+    image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&q=80&w=800',
     subcategories: {
-      'Wedding Photography': { image: 'https://images.unsplash.com/photo-1520390138845-fd2d229dd553?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Candid', 'Traditional', 'Artistic'] },
-      'Event Videography': { image: 'https://images.unsplash.com/photo-1579632652768-6cb9dcf85912?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Cinematic Film', 'Documentary Style', 'Highlight Reels'] },
-      'Drone Footage': { image: 'https://images.unsplash.com/photo-1508614589041-895b88991e3e?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Aerial Photography', 'Aerial Videography'] },
-      'Portrait Studio': { image: 'https://images.unsplash.com/photo-1533619043865-1c2e1f42cd20?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Family Portraits', 'Bridal Portraits'] },
+      'Wedding Highlights': { image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&q=80&w=600', items: ['Candid Photography', 'Cinematic Videos', 'Aerial Drone Shoots', 'Portrait Studios'] }
     }
   },
   'Design & Florals': {
     icon: 'flower',
-    image: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&q=80&w=800&sat=-100&bri=-30&con=50',
+    image: 'https://images.unsplash.com/photo-1513201099705-a9746e1e201f?auto=format&fit=crop&q=80&w=800',
     subcategories: {
-      'Chupah Design': { image: 'https://images.unsplash.com/photo-1478146896981-b80fe463b330?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Floral Chupah', 'Modern Chupah', 'Traditional Chupah'] },
-      'Table Centerpieces': { image: 'https://images.unsplash.com/photo-1563241527-3004b7be0ffd?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Tall Floral', 'Low Floral', 'Candles & Decor'] },
-      'Bouquets': { image: 'https://images.unsplash.com/photo-1507290439931-a861b5a38200?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Bridal Bouquets', 'Bridesmaid Bouquets', 'Boutonnieres'] },
-      'Lighting & Production': { image: 'https://images.unsplash.com/photo-1470229722913-7c092db65f8c?auto=format&fit=crop&q=80&w=600&sat=-100&bri=-30&con=50', items: ['Uplighting', 'Pinspotting', 'Custom Gobos'] },
+      'Chupah Design': { image: 'https://images.unsplash.com/photo-1478146896981-b80fe463b330?auto=format&fit=crop&q=80&w=600', items: ['Floral Chupah Canopy', 'Modern Plexiglass Chupah', 'Traditional Velvet Chupah'] },
+      'Table Centerpieces': { image: 'https://images.unsplash.com/photo-1563241527-3004b7be0ffd?auto=format&fit=crop&q=80&w=600', items: ['Tall Flower Stands', 'Low Floral Cascades', 'Candles & Decor Sets'] },
+      'Bouquets': { image: 'https://images.unsplash.com/photo-1513201099705-a9746e1e201f?auto=format&fit=crop&q=80&w=600', items: ['Bridal Bouquets', 'Bridesmaid Bouquets', 'Boutonnieres & Pins'] },
+      'Lighting & Production': { image: 'https://images.unsplash.com/photo-1470229722913-7c092db65f8c?auto=format&fit=crop&q=80&w=600', items: ['Ambient Uplighting', 'Spotlight Fixtures', 'Custom Gobo Projection'] },
     }
   },
+  'Florist & Decor': {
+    icon: 'flower',
+    image: 'https://images.unsplash.com/photo-1513201099705-a9746e1e201f?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Wedding Florals': { image: 'https://images.unsplash.com/photo-1507290439931-a861b5a38200?auto=format&fit=crop&q=80&w=600', items: ['Bridal Bouquets', 'Chuppah Florals', 'Boutonnieres'] },
+      'Event Design': { image: 'https://images.unsplash.com/photo-1513201099705-a9746e1e201f?auto=format&fit=crop&q=80&w=600', items: ['Luxury Centerpieces', 'Table Scapes & Decor'] }
+    }
+  },
+  'Venue': {
+    icon: 'building',
+    image: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Grand Ballrooms': { image: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=600', items: ['Grand Ballroom', 'Historical Hall', 'Symphony Hall'] },
+      'Boutique & Intimate': { image: 'https://images.unsplash.com/photo-1527529482837-4698179dc6ce?auto=format&fit=crop&q=80&w=600', items: ['Boutique Loft', 'Private Mansion', 'Secret Garden'] },
+      'Outdoor & Scenic': { image: 'https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?auto=format&fit=crop&q=80&w=600', items: ['Vineyard', 'Beachside Pavilion', 'Country Estate'] }
+    }
+  },
+  'Event Planning': {
+    icon: 'calendar',
+    image: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Planning Services': { image: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&q=80&w=600', items: ['Full Service Planning', 'Month-Of Coordination', 'Day-Of Logistics'] }
+    }
+  },
+  'Attire': {
+    icon: 'shirt',
+    image: 'https://images.unsplash.com/photo-1594552072238-b8a33785b261?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Bridal Wear': { image: 'https://images.unsplash.com/photo-1594552072238-b8a33785b261?auto=format&fit=crop&q=80&w=600', items: ['Designer Gowns', 'Veils & Accessories'] },
+      'Menswear': { image: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&q=80&w=600', items: ['Bespoke Tuxedos', 'Suit Rentals'] }
+    }
+  },
+  'Makeup & Hair': {
+    icon: 'sparkles',
+    image: 'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Beauty Artistry': { image: 'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?auto=format&fit=crop&q=80&w=600', items: ['Bridal Makeup', 'Airbrush Makeup', 'Event Hairstyling'] }
+    }
+  },
+  'Judaica & Gifts': {
+    icon: 'gift',
+    image: 'https://images.unsplash.com/photo-1543157145-f78c636d023d?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Ceremony & Gifts': { image: 'https://images.unsplash.com/photo-1543157145-f78c636d023d?auto=format&fit=crop&q=80&w=600', items: ['Custom Ketubah', 'Chuppah Glass Sets', 'Jewish Art & Gifts'] }
+    }
+  },
+  'Rabbi & Officiants': {
+    icon: 'user-check',
+    image: 'https://images.unsplash.com/photo-1550592704-6c76defa99ce?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Officiating': { image: 'https://images.unsplash.com/photo-1550592704-6c76defa99ce?auto=format&fit=crop&q=80&w=600', items: ['Orthodox Rabbi', 'Conservative Rabbi', 'Chuppah Cantor'] }
+    }
+  },
+  'Invitations': {
+    icon: 'mail',
+    image: 'https://images.unsplash.com/photo-1550953683-9366e632b6a9?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Stationery': { image: 'https://images.unsplash.com/photo-1550953683-9366e632b6a9?auto=format&fit=crop&q=80&w=600', items: ['Luxury Letterpress', 'Gold Foil Engraving', 'Digital Invitations'] }
+    }
+  },
+  'Entertainment': {
+    icon: 'sparkles',
+    image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Interactive Talent': { image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=600', items: ['Caricature Artists', 'Close-up Magicians', 'Interactive Dance Teams'] }
+    }
+  },
+  'Rentals': {
+    icon: 'package',
+    image: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Equipment': { image: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=600', items: ['Luxury Lounges', 'Chair & Table Rentals', 'Dance Floors & Stages'] }
+    }
+  },
+  'Transportation': {
+    icon: 'car',
+    image: 'https://images.unsplash.com/photo-1563297775-81676646bc5f?auto=format&fit=crop&q=80&w=800',
+    subcategories: {
+      'Vehicles': { image: 'https://images.unsplash.com/photo-1563297775-81676646bc5f?auto=format&fit=crop&q=80&w=600', items: ['Chauffeur Limousines', 'Vintage Wedding Cars', 'Shuttle Buses'] }
+    }
+  }
 };
 
 const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
@@ -277,10 +372,6 @@ function App() {
     const unsubMetadata = onSnapshot(doc(db, 'metadata', 'app_config'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.categories) setActiveCategories(data.categories);
-        if (data.categoryImages) setCategoryImages(data.categoryImages);
-        if (data.categorySubCategories) setCategorySubCategories(data.categorySubCategories);
-        if (data.subCategoryImages) setSubCategoryImages(data.subCategoryImages);
         if (data.heroBackgroundUrl) setHeroBackgroundUrl(data.heroBackgroundUrl);
       } else {
         // Seed metadata
@@ -294,10 +385,55 @@ function App() {
       }
     }, (err) => handleFirestoreError(err, OperationType.GET, 'metadata/app_config'));
 
+    const unsubCategories = onSnapshot(
+      query(collection(db, 'categories'), orderBy('order', 'asc')),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: string[] = [];
+          const imgs: Record<string, string> = { ...INITIAL_CATEGORY_IMAGES };
+          const subCats: Record<string, Record<string, string[]>> = {};
+          const subImgs: Record<string, string> = {};
+
+          snapshot.docs.forEach((doc) => {
+            const data = doc.data();
+            const catName = data.name;
+            list.push(catName);
+            if (data.image) {
+              imgs[catName] = data.image;
+            }
+            if (data.subcategories) {
+              subCats[catName] = {};
+              for (const [subName, subData] of Object.entries(data.subcategories)) {
+                const typedSubData = subData as { image?: string; items?: string[] };
+                subCats[catName][subName] = typedSubData.items || [];
+                if (typedSubData.image) {
+                  subImgs[subName] = typedSubData.image;
+                  (typedSubData.items || []).forEach(item => {
+                    subImgs[item] = typedSubData.image!;
+                  });
+                }
+              }
+            }
+          });
+
+          setActiveCategories(list);
+          setCategoryImages(imgs);
+          setCategorySubCategories(subCats);
+          setSubCategoryImages(prev => ({ ...prev, ...subImgs }));
+        } else {
+          setActiveCategories(Object.values(VendorCategory));
+          setCategoryImages(INITIAL_CATEGORY_IMAGES);
+          setCategorySubCategories({});
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'categories')
+    );
+
     return () => {
       unsubVendors();
       unsubPosts();
       unsubMetadata();
+      unsubCategories();
     };
   }, []);
 
@@ -1038,6 +1174,7 @@ function App() {
       const batch = writeBatch(db);
       
       // Forcefully push this entire structure into a collection named 'categories'
+      let index = 0;
       for (const [catName, catData] of Object.entries(JEWISH_TAXONOMY)) {
         // We'll use the category name as the document ID so it's clean and doesn't duplicate
         const catRef = doc(collection(db, 'categories'), catName.replace(/[^a-zA-Z0-9]/g, '_'));
@@ -1046,6 +1183,7 @@ function App() {
           icon: catData.icon,
           image: catData.image,
           subcategories: catData.subcategories,
+          order: index++,
           updatedAt: new Date().toISOString()
         });
       }
@@ -1079,8 +1217,8 @@ function App() {
       await batch.commit();
       
       console.log('Taxonomy data successfully written to Firestore.');
-      window.alert('Taxonomy successfully seeded!');
-      showNotification('Taxonomy successfully seeded!', 'success');
+      window.alert('🎉 Database successfully seeded with Jewish Event Taxonomy!');
+      showNotification('🎉 Database successfully seeded with Jewish Event Taxonomy!', 'success');
     } catch (err: any) {
       console.error("Error seeding taxonomy:", err);
       showNotification(err.message || 'Failed to seed taxonomy.', 'error');
@@ -1089,9 +1227,38 @@ function App() {
 
   const handleAdminUpdateSubCategoryImage = async (subCategory: string, url: string) => {
     try {
+      // Find which category owns this subcategory
+      let foundCatName: string | null = null;
+      for (const [catName, subs] of Object.entries(categorySubCategories)) {
+        if (subs && Object.keys(subs).includes(subCategory)) {
+          foundCatName = catName;
+          break;
+        }
+      }
+
+      if (foundCatName) {
+        const catId = foundCatName.replace(/[^a-zA-Z0-9]/g, '_');
+        const catRef = doc(db, 'categories', catId);
+        const docSnap = await getDoc(catRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const subcategories = data.subcategories || {};
+          if (subcategories[subCategory]) {
+            subcategories[subCategory].image = url;
+            await updateDoc(catRef, { subcategories });
+          }
+        }
+      }
+
       await updateDoc(doc(db, 'metadata', 'app_config'), {
         [`subCategoryImages.${subCategory}`]: url
       });
+      
+      setSubCategoryImages(prev => ({
+        ...prev,
+        [subCategory]: url
+      }));
+
       showNotification('Subcategory image updated!');
     } catch (err) {
       console.error("Error updating subcategory image:", err);
@@ -1100,6 +1267,13 @@ function App() {
 
   const handleAdminUpdateCategoryImage = async (cat: string, url: string) => {
     try {
+      const catId = cat.replace(/[^a-zA-Z0-9]/g, '_');
+      const catRef = doc(db, 'categories', catId);
+      await updateDoc(catRef, {
+        image: url,
+        updatedAt: new Date().toISOString()
+      });
+
       await updateDoc(doc(db, 'metadata', 'app_config'), {
         [`categoryImages.${cat}`]: url
       });
@@ -1111,6 +1285,27 @@ function App() {
 
   const handleAdminAddCategory = async (name: string, image: string, subCats: string[]) => {
     try {
+      const nextOrder = activeCategories.length;
+      const catId = name.replace(/[^a-zA-Z0-9]/g, '_');
+      const catRef = doc(db, 'categories', catId);
+      
+      const initialSubcategories: Record<string, { image: string; items: string[] }> = {};
+      subCats.forEach(sub => {
+        initialSubcategories[sub] = {
+          image: image,
+          items: []
+        };
+      });
+
+      await setDoc(catRef, {
+        name,
+        image,
+        icon: 'folder',
+        subcategories: initialSubcategories,
+        order: nextOrder,
+        updatedAt: new Date().toISOString()
+      });
+
       await updateDoc(doc(db, 'metadata', 'app_config'), {
         categories: arrayUnion(name),
         [`categoryImages.${name}`]: image
@@ -1123,12 +1318,57 @@ function App() {
 
   const handleAdminUpdateCategorySubCategories = async (cat: string, subs: Record<string, string[]>) => {
     try {
+      const catId = cat.replace(/[^a-zA-Z0-9]/g, '_');
+      const catRef = doc(db, 'categories', catId);
+      const docSnap = await getDoc(catRef);
+      
+      let existingSubcategories: Record<string, { image: string; items: string[] }> = {};
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        existingSubcategories = data.subcategories || {};
+      }
+
+      const updatedSubcategories: Record<string, { image: string; items: string[] }> = {};
+      for (const [subName, items] of Object.entries(subs)) {
+        const oldSub = existingSubcategories[subName];
+        updatedSubcategories[subName] = {
+          image: oldSub?.image || "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=600",
+          items: items || []
+        };
+      }
+
+      await setDoc(catRef, {
+        subcategories: updatedSubcategories,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
       await updateDoc(doc(db, 'metadata', 'app_config'), {
         [`categorySubCategories.${cat}`]: subs
       });
       showNotification('Taxonomy updated!');
     } catch (err) {
       console.error("Error updating taxonomy:", err);
+    }
+  };
+
+  const handleAdminUpdateCategoryOrder = async (orderedCategories: string[]) => {
+    try {
+      const batch = writeBatch(db);
+      orderedCategories.forEach((catName, index) => {
+        const catRef = doc(db, 'categories', catName.replace(/[^a-zA-Z0-9]/g, '_'));
+        batch.set(catRef, { order: index }, { merge: true });
+      });
+      
+      const configRef = doc(db, 'metadata', 'app_config');
+      batch.update(configRef, {
+        categories: orderedCategories
+      });
+      
+      await batch.commit();
+      showNotification('Category order updated!');
+    } catch (err) {
+      console.error("Error updating category order:", err);
+      showNotification('Failed to update category order.', 'error');
     }
   };
 
@@ -1871,6 +2111,7 @@ function App() {
           onSendMessage={handleSendMessage}
           showNotification={showNotification}
           onSeedTaxonomy={handleSeedTaxonomy}
+          onUpdateCategoryOrder={handleAdminUpdateCategoryOrder}
         />
       </motion.div>
     );
@@ -2157,7 +2398,7 @@ function App() {
                      </nav>
                 </header>
 
-                {activeCategory !== 'All' && categorySubCategories[activeCategory] && Object.keys(categorySubCategories[activeCategory]).length > 0 && (
+                {activeCategory !== 'All' && categorySubCategories?.[activeCategory] && Object.keys(categorySubCategories[activeCategory]).length > 0 && (
                   <div className="mb-12 animate-in slide-in-from-top-4 duration-500">
                     {activeSubCategoryGroup && (
                       <div className="flex items-center gap-2 mb-6 text-sm">
@@ -2175,7 +2416,7 @@ function App() {
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                       {!activeSubCategoryGroup ? (
                         // Render Subcategory Groups (Tier 2)
-                        Object.keys(categorySubCategories[activeCategory]).map(group => (
+                        Object.keys(categorySubCategories[activeCategory] || {}).map(group => (
                           <motion.button
                             key={group}
                             whileHover={{ scale: 1.02 }}
@@ -2188,7 +2429,7 @@ function App() {
                              ) : (
                                <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-all duration-700">
                                  <span className="text-zinc-700 font-bold uppercase tracking-widest text-xs">No Image</span>
-                               </div>
+                                </div>
                              )}
                              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
                              <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
@@ -2198,7 +2439,7 @@ function App() {
                         ))
                       ) : (
                         // Render Sub-Subcategories (Tier 3)
-                        (categorySubCategories[activeCategory][activeSubCategoryGroup] as string[]).map(sub => (
+                        (categorySubCategories[activeCategory]?.[activeSubCategoryGroup] || []).map(sub => (
                           <motion.button
                             key={sub}
                             whileHover={{ scale: 1.02 }}
