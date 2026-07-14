@@ -124,7 +124,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
                 {vendor.category}
               </span>
               {vendor.isVerified && (
-                <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-3 py-1 rounded-full">
+                <span className="flex items-center gap-1 text-[10px] font-bold text-green-500 bg-green-500/10 px-3 py-1 rounded-full">
                   <ShieldCheck className="w-3 h-3" /> Verified
                 </span>
               )}
@@ -136,11 +136,11 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
               <div className="flex items-center gap-1.5 text-[#D4AF37]">
                 <Star className="w-4 h-4 fill-current" />
                 <span className="text-sm font-black">{vendor.rating.toFixed(1)}</span>
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider ml-1">
+                <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider ml-1">
                   ({vendor.reviews?.length || 0} Reviews)
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 text-slate-400">
+              <div className="flex items-center gap-1.5 text-zinc-400">
                 <MapPin className="w-4 h-4" />
                 <span className="text-sm font-medium">{vendor.location}</span>
               </div>
@@ -148,8 +148,8 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
 
             <div className="space-y-6 flex-1">
               <div>
-                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-3">About the Professional</h3>
-                <p className="text-slate-300 text-sm leading-relaxed font-light">
+                <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.3em] mb-3">About the Professional</h3>
+                <p className="text-zinc-300 text-sm leading-relaxed font-light">
                   {vendor.description}
                 </p>
               </div>
@@ -159,7 +159,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
                   <div className="w-10 h-10 bg-[#D4AF37] rounded-xl flex items-center justify-center text-black font-black text-xs">K</div>
                   <div>
                     <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest">Kosher Certified</p>
-                    <p className="text-[11px] text-slate-400">Strict adherence to dietary standards</p>
+                    <p className="text-[11px] text-zinc-400">Strict adherence to dietary standards</p>
                   </div>
                 </div>
               )}

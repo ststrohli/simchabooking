@@ -73,19 +73,19 @@ const PaymentSuccess: React.FC<PaymentSuccessProps> = ({ bookingId, vendorId, on
           <div className="flex flex-col items-center gap-6">
             <Loader2 className="w-16 h-16 text-[#D4AF37] animate-spin" />
             <h2 className="text-2xl font-bold font-[Cinzel] text-[#D4AF37]">Verifying Payment...</h2>
-            <p className="text-slate-400">Please wait while we update your booking status.</p>
+            <p className="text-zinc-400">Please wait while we update your booking status.</p>
           </div>
         )}
 
         {status === 'success' && (
           <div className="flex flex-col items-center gap-6">
-            <div className="bg-green-500/10 w-24 h-24 rounded-full flex items-center justify-center border border-green-500/20">
-              <CheckCircle className="w-16 h-16 text-green-500" />
+            <div className="bg-[#D4AF37]/10 w-24 h-24 rounded-full flex items-center justify-center border border-[#D4AF37]/20">
+              <CheckCircle className="w-16 h-16 text-[#D4AF37]" />
             </div>
-            <h2 className="text-3xl font-bold font-[Cinzel] text-green-500">Payment Successful!</h2>
+            <h2 className="text-3xl font-bold font-[Cinzel] text-[#D4AF37]">Payment Successful!</h2>
             <div className="space-y-2">
-              <p className="text-slate-300 text-lg">Your booking has been confirmed and marked as paid.</p>
-              <p className="text-slate-500 text-sm font-mono">Booking ID: {bookingId}</p>
+              <p className="text-zinc-300 text-lg">Your booking has been confirmed and marked as paid.</p>
+              <p className="text-zinc-500 text-sm font-mono">Booking ID: {bookingId}</p>
             </div>
             
             <button
@@ -99,15 +99,15 @@ const PaymentSuccess: React.FC<PaymentSuccessProps> = ({ bookingId, vendorId, on
 
         {status === 'error' && (
           <div className="flex flex-col items-center gap-6">
-            <div className="bg-red-500/10 w-24 h-24 rounded-full flex items-center justify-center border border-red-500/20">
-              <CheckCircle className="w-16 h-16 text-red-500 rotate-180" />
+            <div className="bg-zinc-500/10 w-24 h-24 rounded-full flex items-center justify-center border border-zinc-500/20">
+              <CheckCircle className="w-16 h-16 text-zinc-400 rotate-180" />
             </div>
-            <h2 className="text-2xl font-bold font-[Cinzel] text-red-500">Verification Failed</h2>
-            <p className="text-slate-400">{error || 'Something went wrong while updating your booking.'}</p>
+            <h2 className="text-2xl font-bold font-[Cinzel] text-zinc-400">Verification Failed</h2>
+            <p className="text-zinc-400">{error || 'Something went wrong while updating your booking.'}</p>
             
             <button
               onClick={onReturn}
-              className="mt-4 w-full bg-slate-800 text-white font-bold py-4 rounded-xl hover:bg-slate-700 transition-all uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-2"
+              className="mt-4 w-full bg-zinc-800 text-white font-bold py-4 rounded-xl hover:bg-zinc-700 transition-all uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" /> Return to Dashboard
             </button>

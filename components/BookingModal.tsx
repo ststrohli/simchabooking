@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { X, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
+import { X, Star, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import { Vendor, SelectedService, VendorCategory } from '../types';
 
 const FloatingInput: React.FC<{
@@ -30,7 +30,7 @@ const FloatingInput: React.FC<{
           onChange={onChange}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          className={`w-full bg-black/60 border border-[#D4AF37]/20 rounded-xl text-slate-100 placeholder-transparent focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all duration-300 pt-6 pb-2 pr-4 ${Icon ? 'pl-10' : 'pl-4'} ${className}`}
+          className={`w-full bg-black/60 border border-[#D4AF37]/20 rounded-xl text-zinc-100 placeholder-transparent focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all duration-300 pt-6 pb-2 pr-4 ${Icon ? 'pl-10' : 'pl-4'} ${className}`}
           placeholder={label}
         />
         <label
@@ -38,7 +38,7 @@ const FloatingInput: React.FC<{
           className={`absolute pointer-events-none transition-all duration-300 leading-none ${Icon ? 'left-10' : 'left-4'} 
             ${(focused || isFilled) 
               ? 'top-2 text-[9px] text-[#D4AF37] font-black uppercase tracking-widest' 
-              : 'top-4 text-xs text-slate-500 font-medium'
+              : 'top-4 text-xs text-zinc-500 font-medium'
             }`}
         >
           {label}
@@ -75,7 +75,7 @@ const FloatingTextarea: React.FC<{
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           rows={rows}
-          className={`w-full bg-black/60 border border-[#D4AF37]/20 rounded-xl text-slate-100 placeholder-transparent focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all duration-300 pt-6 pb-2 pr-4 resize-none ${Icon ? 'pl-10' : 'pl-4'} ${className}`}
+          className={`w-full bg-black/60 border border-[#D4AF37]/20 rounded-xl text-zinc-100 placeholder-transparent focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all duration-300 pt-6 pb-2 pr-4 resize-none ${Icon ? 'pl-10' : 'pl-4'} ${className}`}
           placeholder={label}
         />
         <label
@@ -83,7 +83,7 @@ const FloatingTextarea: React.FC<{
           className={`absolute pointer-events-none transition-all duration-300 leading-none ${Icon ? 'left-10' : 'left-4'} 
             ${(focused || isFilled) 
               ? 'top-2 text-[9px] text-[#D4AF37] font-black uppercase tracking-widest' 
-              : 'top-4 text-xs text-slate-500 font-medium'
+              : 'top-4 text-xs text-zinc-500 font-medium'
             }`}
         >
           {label}
@@ -474,36 +474,36 @@ const BookingModal: React.FC<BookingModalProps> = ({
       const isSelected = dateStr === localDate;
       const isPast = isPastDate(dateObj);
       
-      // Crucially, the calendar must not display specific booked dates to protect vendor privacy.
-      // All future dates are displayed uniformly as selectable options, while past dates are unselectable.
-      // However, if the user has checked a date, we display its availability.
-      // If privacy limit is reached, un-checked future dates become unselectable (grayed out).
+      const isVendorExplicitlyBlocked = vendor?.unavailableDates?.includes(dateStr);
+
       const hasBeenChecked = !!checkedDates[dateStr];
       const isAvailable = checkedDates[dateStr] === 'Available';
       const isUnavailable = checkedDates[dateStr] === 'Unavailable';
       
-      const isDisabled = (isPast || (!hasBeenChecked && privacyBlocked) || isUnavailable) && !isSelected;
+      const isDisabled = (isPast || (!hasBeenChecked && privacyBlocked) || isUnavailable || isVendorExplicitlyBlocked) && !isSelected;
 
       let buttonStyle = "";
       if (isSelected) {
-        if (isUnavailable) {
-          buttonStyle = "bg-red-500 text-white font-black shadow-[0_0_15px_rgba(239,68,68,0.45)] scale-105 border-2 border-red-500";
+        if (isUnavailable || isVendorExplicitlyBlocked) {
+          buttonStyle = "bg-red-600 text-white font-black shadow-[0_0_15px_rgba(239,68,68,0.45)] scale-105 border-2 border-red-500";
         } else if (isAvailable) {
-          buttonStyle = "bg-green-500 text-black font-black shadow-[0_0_15px_rgba(34,197,94,0.45)] scale-105 border-2 border-green-500";
+          buttonStyle = "bg-green-600 text-white font-black shadow-[0_0_15px_rgba(34,197,94,0.45)] scale-105 border-2 border-green-500";
         } else {
           buttonStyle = "bg-[#D4AF37] text-black font-black shadow-[0_0_15px_rgba(212,175,55,0.45)] scale-105 border border-[#D4AF37]";
         }
       } else if (isPast) {
-        buttonStyle = "text-slate-600 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent";
+        buttonStyle = "text-zinc-600 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent";
+      } else if (isVendorExplicitlyBlocked) {
+        buttonStyle = "text-red-400 bg-red-950/20 opacity-50 cursor-not-allowed scale-95 border border-red-900/30 line-through";
       } else if (isAvailable) {
-        buttonStyle = "text-green-400 bg-green-500/10 border-2 border-green-500 hover:bg-green-500/20";
+        buttonStyle = "text-green-500 bg-green-500/10 border-2 border-green-500/30 hover:bg-green-500/20";
       } else if (isUnavailable) {
-        buttonStyle = "text-red-500 bg-red-500/10 opacity-50 cursor-not-allowed scale-95 border-2 border-red-500";
+        buttonStyle = "text-red-500 bg-red-500/10 opacity-75 border-2 border-red-500/30";
       } else if (privacyBlocked) {
-        buttonStyle = "text-slate-600 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent";
+        buttonStyle = "text-zinc-600 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent";
       } else {
         // Standard selectable future date has crisp white text, with elegant soft-gold hover/active states.
-        buttonStyle = "text-slate-100 bg-black/40 border border-white/5 hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 hover:scale-105 hover:shadow-[0_0_12px_rgba(212,175,55,0.25)] active:scale-95";
+        buttonStyle = "text-zinc-100 bg-black/40 border border-white/5 hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 hover:scale-105 hover:shadow-[0_0_12px_rgba(212,175,55,0.25)] active:scale-95";
       }
 
       days.push(
@@ -568,11 +568,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
         </div>
 
         {/* Search Limits & Warning */}
-        <div className="mt-4 p-3.5 bg-amber-500/5 border border-[#D4AF37]/20 rounded-xl text-center">
-          <p className="text-[#D4AF37] text-[10px] font-black uppercase tracking-wider mb-1">
-            ⚠️ Calendar Privacy Search Limits
+        <div className="mt-4 p-3.5 bg-[#D4AF37]/5 border border-[#D4AF37]/20 rounded-xl text-center">
+          <p className="text-[#D4AF37] text-[10px] font-black uppercase tracking-wider mb-1 flex items-center justify-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" /> Calendar Privacy Search Limits
           </p>
-          <p className="text-slate-400 text-[10px] leading-relaxed font-medium">
+          <p className="text-zinc-400 text-[10px] leading-relaxed font-medium">
             You are allowed {vendor.maxDateChecks ?? 5} checks per vendor. You have <span className="font-black text-[#D4AF37] underline">{getRemainingAttempts()}</span> searches remaining before remaining unselected dates go gray.
           </p>
         </div>
@@ -580,7 +580,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
     );
   };
 
-  const inputClass = "w-full pl-10 pr-4 py-2.5 bg-black border border-[#D4AF37]/30 rounded-lg text-slate-100 placeholder:text-slate-600 focus:ring-2 focus:ring-[#D4AF37] focus:border-[#D4AF37] outline-none transition-all";
+  const inputClass = "w-full pl-10 pr-4 py-2.5 bg-black border border-[#D4AF37]/30 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:ring-2 focus:ring-[#D4AF37] focus:border-[#D4AF37] outline-none transition-all";
   const labelClass = "block text-xs font-bold text-[#D4AF37]/70 uppercase tracking-widest mb-1.5";
 
   return (
@@ -604,9 +604,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
         <div className="bg-black p-6 text-white flex justify-between items-start sticky top-0 z-10 border-b border-[#D4AF37]/20">
           <div>
             <h2 id="modal-title" className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">{initialDetails ? 'Update Your Selection' : 'Book Service'}</h2>
-            <p className="text-slate-500 text-xs mt-1">Vendor: <span className="text-slate-100 font-bold">{vendor.name}</span></p>
+            <p className="text-zinc-500 text-xs mt-1">Vendor: <span className="text-zinc-100 font-bold">{vendor.name}</span></p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-[#D4AF37] p-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full transition-colors cursor-pointer" aria-label="Close booking modal"><X className="w-6 h-6" /></button>
+          <button onClick={onClose} className="text-zinc-400 hover:text-[#D4AF37] p-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full transition-colors cursor-pointer" aria-label="Close booking modal"><X className="w-6 h-6" /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
@@ -622,7 +622,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
               <Calendar className="w-5 h-5 text-[#D4AF37] flex-shrink-0" />
               <div className="flex-1">
                 <span className="text-[10px] uppercase font-bold tracking-wider text-[#D4AF37]/60 block" style={{ textShadow: "0 0 4px rgba(212,175,55,0.1)" }}>Selected Celebration Date</span>
-                <span className="text-sm font-black text-slate-100 font-[Cinzel] tracking-wide">{getReadableLocalDate()}</span>
+                <span className="text-sm font-black text-zinc-100 font-[Cinzel] tracking-wide">{getReadableLocalDate()}</span>
               </div>
             </button>
             
@@ -630,27 +630,6 @@ const BookingModal: React.FC<BookingModalProps> = ({
             {isCalendarOpen && (
               <div className="animate-in fade-in slide-in-from-top-2 duration-200 mt-2 relative z-20">
                 {renderInteractiveCalendar()}
-              </div>
-            )}
-
-            {/* Lock as Priority Date Feature */}
-            {localDate && !isPastDate(new Date(localDate)) && (
-              <div className="bg-[#D4AF37]/5 border border-[#D4AF37]/20 p-4 rounded-xl flex items-start gap-3 mt-3 animate-in fade-in duration-300">
-                <input
-                  id="priority-date"
-                  type="checkbox"
-                  checked={isPriorityDate}
-                  onChange={(e) => setIsPriorityDate(e.target.checked)}
-                  className="w-4.5 h-4.5 rounded border-[#D4AF37]/30 bg-black text-[#D4AF37] focus:ring-[#D4AF37] mt-0.5 accent-[#D4AF37] cursor-pointer"
-                />
-                <div className="flex-1">
-                  <label htmlFor="priority-date" className="text-xs font-black uppercase tracking-wider text-[#D4AF37] flex items-center gap-1.5 cursor-pointer">
-                    ✨ Secure as Priority Event Date
-                  </label>
-                  <p className="text-slate-400 text-[10px] mt-1.5 leading-relaxed">
-                    Locks in your date and instantly recommends matching professional vendors who are also available on <span className="text-white font-bold">{getReadableLocalDate()}</span>.
-                  </p>
-                </div>
               </div>
             )}
           </div>
@@ -669,7 +648,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                           </div>
                         ) : (
                           <div className="h-32 w-full bg-[#111] border-b border-white/5 flex items-center justify-center">
-                            <ImageIcon className="w-6 h-6 text-slate-700" />
+                            <ImageIcon className="w-6 h-6 text-zinc-700" />
                           </div>
                         )}
                         <div className={`absolute top-3 left-3 w-5 h-5 rounded-full border-2 flex items-center justify-center backdrop-blur-md ${selectedServiceIds.includes(service.id) ? 'bg-[#D4AF37] border-[#D4AF37]' : 'bg-black/50 border-white/40 group-hover:border-[#D4AF37]'}`}>
@@ -772,7 +751,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
           <div className="flex flex-col gap-3 pt-4 border-t border-[#D4AF37]/20">
              <div className="flex justify-between items-end">
                 <div className="flex flex-col">
-                    <span className="text-slate-500 text-[10px] uppercase tracking-widest font-black">{isOfferMode ? 'My Proposed Price' : 'Estimated Total'}</span>
+                    <span className="text-zinc-500 text-[10px] uppercase tracking-widest font-black">{isOfferMode ? 'My Proposed Price' : 'Estimated Total'}</span>
                     <div className="flex items-center gap-2">
                         {isOfferMode ? (
                             <div className="flex items-center text-3xl font-bold text-white">
@@ -804,21 +783,47 @@ const BookingModal: React.FC<BookingModalProps> = ({
                     <button 
                         type="button" 
                         onClick={() => setIsOfferMode(false)}
-                        className="text-[10px] font-black text-slate-500 hover:text-white transition-all uppercase tracking-widest cursor-pointer"
+                        className="text-[10px] font-black text-zinc-500 hover:text-white transition-all uppercase tracking-widest cursor-pointer"
                     >
                         Standard Price
                     </button>
                 )}
              </div>
-             {isOfferMode && <p className="text-[10px] text-slate-500 leading-relaxed italic">Propose your desired price to the vendor. They will review and respond to your inquiry.</p>}
+             {isOfferMode && <p className="text-[10px] text-zinc-500 leading-relaxed italic">Propose your desired price to the vendor. They will review and respond to your inquiry.</p>}
           </div>
 
+          {/* Priority Event Toggle */}
+          {localDate && !isPastDate(new Date(localDate)) && (
+            <div className="p-5 bg-[#0a0a0a] border border-[#D4AF37]/20 rounded-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] flex items-center gap-1.5">
+                  <Star className="w-3.5 h-3.5" /> Event Status
+                </span>
+                <button 
+                  onClick={() => setIsPriorityDate(!isPriorityDate)}
+                  role="switch"
+                  aria-checked={isPriorityDate}
+                  className={`px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${
+                    isPriorityDate 
+                      ? 'bg-[#D4AF37] text-black' 
+                      : 'bg-zinc-900 text-zinc-400 border border-zinc-700'
+                  }`}
+                >
+                  {isPriorityDate ? 'Priority' : 'Standard'}
+                </button>
+              </div>
+              <p className="text-zinc-400 text-[10px] leading-relaxed">
+                Locks in <span className="text-white font-bold">{getReadableLocalDate()}</span> and instantly recommends matching professional vendors who are also available on this date.
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-4 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 py-3 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-[#D4AF37] outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] rounded-xl transition-all cursor-pointer">Cancel</button>
+            <button type="button" onClick={onClose} className="flex-1 py-3 text-xs font-black uppercase tracking-widest text-zinc-500 hover:text-[#D4AF37] outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] rounded-xl transition-all cursor-pointer">Cancel</button>
             <button 
                 type="submit" 
                 disabled={!localDate || isPastDate(new Date(localDate)) || (isOfferMode && (!offeredPrice || parseInt(offeredPrice) <= 0))} 
-                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg border outline-none focus-visible:ring-2 focus-visible:ring-white ${!localDate || isPastDate(new Date(localDate)) || (isOfferMode && !offeredPrice) ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20 hover:scale-105 active:scale-95 cursor-pointer'}`}
+                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg border outline-none focus-visible:ring-2 focus-visible:ring-white ${!localDate || isPastDate(new Date(localDate)) || (isOfferMode && !offeredPrice) ? 'bg-zinc-800 text-zinc-500 border-zinc-700 cursor-not-allowed' : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20 hover:scale-105 active:scale-95 cursor-pointer'}`}
             >
                 {isOfferMode ? 'Send Offer' : 'Add to Plan'}
             </button>

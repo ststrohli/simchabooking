@@ -1220,8 +1220,8 @@ function App() {
       await batch.commit();
       
       console.log('Taxonomy data successfully written to Firestore.');
-      window.alert('🎉 Database successfully seeded with Jewish Event Taxonomy!');
-      showNotification('🎉 Database successfully seeded with Jewish Event Taxonomy!', 'success');
+      window.alert('Database successfully seeded with Jewish Event Taxonomy!');
+      showNotification('Database successfully seeded with Jewish Event Taxonomy!', 'success');
     } catch (err: any) {
       console.error("Error seeding taxonomy:", err);
       showNotification(err.message || 'Failed to seed taxonomy.', 'error');
@@ -1757,7 +1757,7 @@ function App() {
               <Mail className="w-10 h-10 text-[#D4AF37]" />
             </div>
             <h2 className="text-2xl font-bold font-[Cinzel] text-[#D4AF37] mb-4">Email Verification Sent</h2>
-            <p className="text-slate-300 mb-8 leading-relaxed">
+            <p className="text-zinc-300 mb-8 leading-relaxed">
               We have sent a verification email to <span className="text-white font-bold">{unverifiedEmail}</span>. 
               Please verify your account via the link in your inbox and then log in.
             </p>
@@ -1786,11 +1786,11 @@ function App() {
         <div className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-[#D4AF37]/5 via-black to-black" aria-hidden="true"></div>
           <div className="bg-[#111] rounded-3xl p-8 md:p-12 max-w-lg w-full border border-[#D4AF37]/20 shadow-2xl animate-in zoom-in-95 duration-500 relative z-10 text-center">
-            <div className="bg-green-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 border border-green-500/20">
-              <RefreshCw className="w-10 h-10 text-green-500" />
+            <div className="bg-[#D4AF37]/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#D4AF37]/20">
+              <RefreshCw className="w-10 h-10 text-[#D4AF37]" />
             </div>
-            <h2 className="text-2xl font-bold font-[Cinzel] text-green-500 mb-4">Reset Link Sent</h2>
-            <p className="text-slate-300 mb-8 leading-relaxed">
+            <h2 className="text-2xl font-bold font-[Cinzel] text-[#D4AF37] mb-4">Reset Link Sent</h2>
+            <p className="text-zinc-300 mb-8 leading-relaxed">
               We sent you a password change link to <span className="text-white font-bold">{unverifiedEmail}</span>. 
               Please follow the instructions in the email to set a new password.
             </p>
@@ -1812,7 +1812,7 @@ function App() {
           <header className="text-center mb-10">
             <div className="flex items-center justify-center mx-auto mb-6"><SimchaLogo className="w-20 h-20" /></div>
             <h1 className="text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">WELCOME TO SIMCHA BOOKING</h1>
-            <p className="text-[10px] text-slate-500 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
           </header>
 
           {step === 'choice' ? (
@@ -1820,27 +1820,27 @@ function App() {
               <button onClick={() => { setTargetRole('client'); setStep('login'); }} className="group bg-black/40 border border-[#D4AF37]/20 p-10 rounded-3xl hover:border-[#D4AF37] focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all text-center outline-none">
                 <div className="w-16 h-16 bg-[#D4AF37]/10 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-[#D4AF37] transition-colors" aria-hidden="true"><User className="w-8 h-8 text-[#D4AF37] group-hover:text-black" /></div>
                 <h2 className="text-white font-bold uppercase tracking-[0.3em] text-lg mb-2">simcha sign in</h2>
-                <p className="text-xs text-slate-400 font-light px-4 leading-relaxed">The perfect platform to book and manage your simcha</p>
+                <p className="text-xs text-zinc-400 font-light px-4 leading-relaxed">The perfect platform to book and manage your simcha</p>
               </button>
             </nav>
           ) : step === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-6">
               <div className="space-y-2">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Email Address</label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Email Address</label>
                 <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Password</label>
+                  <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Password</label>
                   <button type="button" onClick={() => setStep('forgot-password')} className="text-[10px] text-[#D4AF37] hover:underline font-bold uppercase tracking-widest">Forgot password?</button>
                 </div>
                 <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
               </div>
               
               {error && (
-                <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
-                  <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                  <p className="text-red-500 text-xs font-bold uppercase tracking-tighter">{error}</p>
+                <div className="bg-zinc-500/10 border border-zinc-500/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
+                  <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                  <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
                 </div>
               )}
 
@@ -1853,7 +1853,7 @@ function App() {
                   <div className="w-full border-t border-white/10"></div>
                 </div>
                 <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-                  <span className="bg-[#111] px-4 text-slate-500 font-black">Or continue with</span>
+                  <span className="bg-[#111] px-4 text-zinc-500 font-black">Or continue with</span>
                 </div>
               </div>
 
@@ -1861,7 +1861,7 @@ function App() {
                 type="button" 
                 onClick={handleGoogleSignIn}
                 disabled={isLoading}
-                className="w-full bg-white text-black font-black py-4 rounded-xl hover:bg-slate-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3"
+                className="w-full bg-white text-black font-black py-4 rounded-xl hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
@@ -1885,7 +1885,7 @@ function App() {
               </button>
               
               <div className="flex flex-col gap-4 mt-6">
-                <button type="button" onClick={() => setStep('choice')} className="text-slate-500 hover:text-white text-[10px] font-black uppercase tracking-widest">Return to Roles</button>
+                <button type="button" onClick={() => setStep('choice')} className="text-zinc-500 hover:text-white text-[10px] font-black uppercase tracking-widest">Return to Roles</button>
                 <button type="button" onClick={() => setStep('register')} className="text-[#D4AF37] hover:underline text-[10px] font-black uppercase tracking-widest">
                   Need an account? Register here
                 </button>
@@ -1898,22 +1898,22 @@ function App() {
                </div>
                <div className="text-center mb-6">
                   <h2 className="text-white font-bold uppercase tracking-widest text-sm mb-2">Password Reset</h2>
-                  <p className="text-[10px] text-slate-500 uppercase leading-relaxed px-4">Enter your email and we'll send you a link to regain access to your simcha planning.</p>
+                  <p className="text-[10px] text-zinc-500 uppercase leading-relaxed px-4">Enter your email and we'll send you a link to regain access to your simcha planning.</p>
                </div>
                <div className="space-y-2">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Email Address</label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Email Address</label>
                 <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
               </div>
               {error && (
-                <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
-                  <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                  <p className="text-red-500 text-xs font-bold uppercase tracking-tighter">{error}</p>
+                <div className="bg-zinc-500/10 border border-zinc-500/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
+                  <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                  <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
                 </div>
               )}
               <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Get Reset Link'}
               </button>
-              <button type="button" onClick={() => setStep('login')} className="w-full text-slate-500 hover:text-white text-[10px] font-black uppercase tracking-widest">Return to Login</button>
+              <button type="button" onClick={() => setStep('login')} className="w-full text-zinc-500 hover:text-white text-[10px] font-black uppercase tracking-widest">Return to Login</button>
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
@@ -1927,32 +1927,32 @@ function App() {
                      <Plus className="w-3 h-3" />
                    </div>
                 </label>
-                <p className="text-[8px] text-slate-500 font-black uppercase tracking-widest mt-2">Upload Profile Photo</p>
+                <p className="text-[8px] text-zinc-500 font-black uppercase tracking-widest mt-2">Upload Profile Photo</p>
               </div>
 
               <div className="space-y-2">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Full Name</label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Full Name</label>
                 <input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="Sarah Cohen" />
               </div>
               <div className="space-y-2">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Email Address</label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Email Address</label>
                 <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Password</label>
+                  <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Password</label>
                   <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Repeat Password</label>
+                  <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Repeat Password</label>
                   <input required type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
                 </div>
               </div>
 
               {error && (
-                <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg flex items-center gap-3 animate-in fade-in">
-                  <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                  <p className="text-red-500 text-xs font-bold uppercase tracking-tighter">{error}</p>
+                <div className="bg-zinc-500/10 border border-zinc-500/20 p-3 rounded-lg flex items-center gap-3 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                  <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
                 </div>
               )}
 
@@ -1965,7 +1965,7 @@ function App() {
                   <div className="w-full border-t border-white/10"></div>
                 </div>
                 <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-                  <span className="bg-[#111] px-4 text-slate-500 font-black">Or join with</span>
+                  <span className="bg-[#111] px-4 text-zinc-500 font-black">Or join with</span>
                 </div>
               </div>
 
@@ -1973,7 +1973,7 @@ function App() {
                 type="button" 
                 onClick={handleGoogleSignIn}
                 disabled={isLoading}
-                className="w-full bg-white text-black font-black py-4 rounded-xl hover:bg-slate-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3"
+                className="w-full bg-white text-black font-black py-4 rounded-xl hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
@@ -1996,7 +1996,7 @@ function App() {
                 Google
               </button>
               
-              <button type="button" onClick={() => setStep('login')} className="w-full text-slate-500 hover:text-white text-[10px] font-black uppercase tracking-widest mt-2">
+              <button type="button" onClick={() => setStep('login')} className="w-full text-zinc-500 hover:text-white text-[10px] font-black uppercase tracking-widest mt-2">
                 Already registered? Sign in
               </button>
             </form>
@@ -2166,7 +2166,7 @@ function App() {
               className={`px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all ${
                 portalTab === 'client'
                   ? 'bg-[#D4AF37] text-black shadow-lg font-black'
-                  : 'text-slate-400 hover:text-white'
+                  : 'text-zinc-400 hover:text-white'
               }`}
             >
               Client Portal
@@ -2176,7 +2176,7 @@ function App() {
               className={`px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all ${
                 portalTab === 'vendor'
                   ? 'bg-[#D4AF37] text-black shadow-lg font-black'
-                  : 'text-slate-400 hover:text-white'
+                  : 'text-zinc-400 hover:text-white'
               }`}
             >
               Vendor Portal
@@ -2286,7 +2286,7 @@ function App() {
             <CheckCircle className="w-16 h-16 text-[#D4AF37]" />
           </div>
           <h2 className="text-3xl font-bold font-[Cinzel] text-[#D4AF37] mb-4">Account Verified!</h2>
-          <p className="text-slate-300 mb-8">Your email has been successfully verified. You can now access all features of Simcha Booking.</p>
+          <p className="text-zinc-300 mb-8">Your email has been successfully verified. You can now access all features of Simcha Booking.</p>
           <button 
             onClick={() => setView('marketplace')}
             className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-4 rounded-xl uppercase tracking-widest transition-all"
@@ -2303,7 +2303,7 @@ function App() {
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-      className="min-h-screen bg-black text-slate-100 flex flex-col"
+      className="min-h-screen bg-black text-zinc-100 flex flex-col"
     >
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-lg focus:font-bold">Skip to main content</a>
       <nav className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
@@ -2327,7 +2327,7 @@ function App() {
                 <motion.button 
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setView('posts')} 
-                  className="hidden md:block text-slate-300 hover:text-[#D4AF37] transition-colors text-sm font-bold uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded p-1 cursor-pointer"
+                  className="hidden md:block text-zinc-300 hover:text-[#D4AF37] transition-colors text-sm font-bold uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded p-1 cursor-pointer"
                 >
                   Moments
                 </motion.button>
@@ -2351,7 +2351,7 @@ function App() {
                 <motion.button 
                   whileTap={{ scale: 0.9 }}
                   onClick={handleSignOut} 
-                  className="text-slate-500 hover:text-red-500 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-lg p-1 cursor-pointer" 
+                  className="text-zinc-500 hover:text-zinc-400 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-lg p-1 cursor-pointer" 
                   aria-label="Sign Out"
                 >
                   <LogOut className="w-5 h-5" />
@@ -2369,12 +2369,12 @@ function App() {
           </div>
           <div className="relative max-w-7xl mx-auto px-4 py-16 md:py-32 text-center">
             <h2 id="hero-title" className="text-4xl md:text-7xl font-bold font-[Cinzel] mb-6 tracking-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)]">Celebrate Your <span className="text-[#D4AF37]">Simcha.</span> <br /> <span className="text-3xl md:text-5xl opacity-90">Book Perfection.</span></h2>
-            <p className="mb-10 text-slate-300 text-base md:text-lg font-light max-w-2xl mx-auto leading-relaxed">From world-class kosher caterers to soulful bands, curate your complete simcha in one place.</p>
+            <p className="mb-10 text-zinc-300 text-base md:text-lg font-light max-w-2xl mx-auto leading-relaxed">From world-class kosher caterers to soulful bands, curate your complete simcha in one place.</p>
             <div className="max-w-4xl mx-auto bg-[#111] rounded-2xl md:rounded-full p-2 flex flex-col md:flex-row items-stretch md:items-center shadow-2xl border border-[#D4AF37]/20 gap-2 md:gap-0">
               <div className="flex-1 flex items-center px-6 py-3">
                 <label htmlFor="search-input" className="sr-only">Search vendors</label>
                 <Search className="w-5 h-5 text-[#D4AF37]/50 mr-3 flex-shrink-0" aria-hidden="true" />
-                <input id="search-input" type="text" placeholder="Search elite vendors..." className="flex-1 focus:outline-none text-slate-100 placeholder:text-slate-600 bg-transparent h-10 md:h-14 font-medium" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                <input id="search-input" type="text" placeholder="Search elite vendors..." className="flex-1 focus:outline-none text-zinc-100 placeholder:text-zinc-600 bg-transparent h-10 md:h-14 font-medium" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
               </div>
               <motion.button 
                 whileHover={{ scale: 1.03 }}
@@ -2420,7 +2420,7 @@ function App() {
                         >
                           All Categories
                         </motion.button>
-                        {activeCategory !== 'All' && <><span className="text-slate-600" aria-hidden="true">/</span><span id="results-heading" className="font-bold text-[#D4AF37]">{activeCategory}</span></>}
+                        {activeCategory !== 'All' && <><span className="text-zinc-600" aria-hidden="true">/</span><span id="results-heading" className="font-bold text-[#D4AF37]">{activeCategory}</span></>}
                      </nav>
                 </header>
 
@@ -2445,7 +2445,7 @@ function App() {
                           <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37]/5 rounded-full blur-2xl pointer-events-none"></div>
                           <p className="text-[10px] font-black uppercase text-[#D4AF37] tracking-[0.3em] mb-1.5">{activeSubCategoryGroup}</p>
                           <h2 className="text-3xl font-extrabold font-[Cinzel] tracking-widest text-white">{activeSubSubCategory}</h2>
-                          <p className="text-slate-400 text-xs mt-2 font-light">Explore elite professionals specializing in {activeSubSubCategory} for your celebration.</p>
+                          <p className="text-zinc-400 text-xs mt-2 font-light">Explore elite professionals specializing in {activeSubSubCategory} for your celebration.</p>
                         </div>
 
                         {/* Premium Vendor Cards List for this specific sub-subcategory */}
@@ -2489,8 +2489,8 @@ function App() {
                         {filteredVendors.length === 0 && (
                           <div className="py-20 text-center opacity-40" role="status">
                             <Search className="w-16 h-16 mx-auto mb-4 text-[#D4AF37]" aria-hidden="true" />
-                            <p className="text-xl font-[Cinzel] text-slate-300">No vendors specializing in {activeSubSubCategory} yet.</p>
-                            <p className="text-xs text-slate-500 mt-2 max-w-sm mx-auto">Please check other subcategories or search for similar services.</p>
+                            <p className="text-xl font-[Cinzel] text-zinc-300">No vendors specializing in {activeSubSubCategory} yet.</p>
+                            <p className="text-xs text-zinc-500 mt-2 max-w-sm mx-auto">Please check other subcategories or search for similar services.</p>
                           </div>
                         )}
                       </div>
@@ -2570,7 +2570,7 @@ function App() {
                 {(!categorySubCategories[activeCategory] || Object.keys(categorySubCategories[activeCategory]).length === 0 || activeCategory === 'All' || (activeSubCategories.length > 0 && !activeSubSubCategory)) && !activeSubSubCategory && (
                   <>
                   <motion.div 
-                    key={`${filteredVendors.length}-${activeCategory}-${searchTerm}`}
+                    key={`${activeCategory}-${activeSubCategoryGroup}-${activeSubCategories.join(',')}-${searchTerm}-${filteredVendors.length}`}
                     variants={{
                       hidden: { opacity: 0 },
                       show: {
@@ -2626,18 +2626,18 @@ function App() {
                     <div className="flex items-center gap-3">
                       <SimchaLogo className="h-10 w-10" /><span className="text-2xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider leading-tight">Simcha Booking</span>
                     </div>
-                    <p className="text-slate-400 text-sm max-w-xs text-center md:text-left leading-relaxed">Curating exceptional Jewish celebrations with world-class professional partners.</p>
+                    <p className="text-zinc-400 text-sm max-w-xs text-center md:text-left leading-relaxed">Curating exceptional Jewish celebrations with world-class professional partners.</p>
                 </div>
                 <nav className="flex flex-col md:flex-row items-center gap-8 md:gap-16" aria-label="Footer Navigation">
                     <div className="flex flex-col gap-3 items-center md:items-start">
                         <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Directory</p>
-                        <button onClick={() => {setView('marketplace'); setActiveCategory('All');}} className="text-slate-400 hover:text-white text-sm transition-colors outline-none focus-visible:underline">Browse Marketplace</button>
-                        <button onClick={() => setView('posts')} className="text-slate-400 hover:text-white text-sm transition-colors outline-none focus-visible:underline">Community Gallery</button>
+                        <button onClick={() => {setView('marketplace'); setActiveCategory('All');}} className="text-zinc-400 hover:text-white text-sm transition-colors outline-none focus-visible:underline">Browse Marketplace</button>
+                        <button onClick={() => setView('posts')} className="text-zinc-400 hover:text-white text-sm transition-colors outline-none focus-visible:underline">Community Gallery</button>
                     </div>
                     <div className="flex flex-col gap-3 items-center md:items-start">
                         <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Access</p>
                         { isUserAdmin(fbUser?.email) && (
-                          <button onClick={() => setView('admin')} className="text-slate-400 hover:text-[#D4AF37] text-sm flex items-center gap-1.5 transition-colors outline-none focus-visible:underline"><Shield className="w-3.5 h-3.5" aria-hidden="true" /> Administration</button>
+                          <button onClick={() => setView('admin')} className="text-zinc-400 hover:text-[#D4AF37] text-sm flex items-center gap-1.5 transition-colors outline-none focus-visible:underline"><Shield className="w-3.5 h-3.5" aria-hidden="true" /> Administration</button>
                         )}
                     </div>
                 </nav>
@@ -2683,14 +2683,14 @@ function App() {
                 </div>
                 
                 <h2 className="text-xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider mb-3">
-                  ✦ PRIORITY SLOT HOLD ACTIVE ✦
+                  PRIORITY SLOT HOLD ACTIVE
                 </h2>
                 
                 <p className="text-[11px] font-black text-[#D4AF37]/60 uppercase tracking-[0.25em] mb-4">
                   Celebration Lock Protocol
                 </p>
                 
-                <p className="text-slate-300 text-sm leading-relaxed mb-6 font-light">
+                <p className="text-zinc-300 text-sm leading-relaxed mb-6 font-light">
                   Your requests have been submitted directly to the vendors. Your requested dates have been placed on a <span className="text-[#D4AF37] font-semibold">Priority Hold</span>. The specialists have been notified and will coordinate with you via the integrated chat.
                 </p>
                 
@@ -2761,13 +2761,13 @@ function App() {
 
       {notification && (
         <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300 w-full max-w-sm px-4 pointer-events-none">
-          <div className={`bg-[#111] text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border backdrop-blur-md ${notification.type === 'error' ? 'border-red-500/40' : 'border-[#D4AF37]/40'}`}>
+          <div className={`bg-[#111] text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border backdrop-blur-md ${notification.type === 'error' ? 'border-red-500/40 bg-red-950/20' : 'border-green-500/40 bg-green-950/20'}`}>
             {notification.type === 'error' ? (
-              <X className="w-5 h-5 text-red-500" aria-hidden="true" />
+              <X className="w-5 h-5 text-red-500 animate-pulse" aria-hidden="true" />
             ) : (
               <CheckCircle className="w-5 h-5 text-green-500" aria-hidden="true" />
             )}
-            <span className={`font-bold text-sm flex-1 ${notification.type === 'error' ? 'text-red-100' : ''}`}>{notification.message}</span>
+            <span className={`font-bold text-sm flex-1 ${notification.type === 'error' ? 'text-red-200' : 'text-green-200'}`}>{notification.message}</span>
           </div>
         </div>
       )}

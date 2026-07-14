@@ -435,6 +435,13 @@ async function startServer() {
       
       // MATH: Convert to cents for Stripe
       const amountInCents = Math.round(Number(amount) * 100);
+
+      // Validate payment amount is greater than zero
+      if (amountInCents <= 0) {
+        console.error(`[Stripe] Fee calculation error: Invalid amount (${amountInCents})`);
+        return res.status(400).json({ error: "The payment amount must be greater than zero. Free bookings or zero-value transactions do not require card payments." });
+      }
+
       const platformCutInCents = Math.round(amountInCents * (commissionRate / 100));
 
       // VALIDATION: Ensure fee is less than total

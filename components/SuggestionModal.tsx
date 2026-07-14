@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Check, Star, MapPin, Users } from 'lucide-react';
+import { X, Check, Star, MapPin, Users, Crown } from 'lucide-react';
 import { Vendor } from '../types';
 
 interface SuggestionModalProps {
@@ -44,7 +44,7 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
         <div className="bg-black p-6 text-white relative overflow-hidden border-b border-[#D4AF37]/20">
           <button 
             onClick={onClose}
-            className="absolute top-4 right-4 text-slate-400 hover:text-[#D4AF37] hover:bg-white/5 p-1 rounded-full transition-colors"
+            className="absolute top-4 right-4 text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 p-1 rounded-full transition-colors"
           >
             <X className="w-6 h-6" />
           </button>
@@ -58,13 +58,13 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
             </span>
           </div>
           
-          <h2 className="text-2xl font-bold font-[Cinzel] relative z-10 text-[#D4AF37]">
-            {isPriorityLock ? '👑 Priority Date Lock Active!' : 'Excellent Choice!'}
+          <h2 className="text-2xl font-bold font-[Cinzel] relative z-10 text-[#D4AF37] flex items-center justify-center">
+            {isPriorityLock ? <><Crown className="w-6 h-6 mr-2" /> Priority Date Lock Active!</> : 'Excellent Choice!'}
           </h2>
-          <p className="text-slate-300 mt-2 relative z-10 max-w-lg leading-relaxed text-sm">
+          <p className="text-zinc-300 mt-2 relative z-10 max-w-lg leading-relaxed text-sm">
             {isPriorityLock ? (
               <>
-                You have secured your priority celebration date for <span className="text-white font-bold">{formatDate(eventDate)}</span> with <span className="font-bold text-white">{sourceVendor.name}</span>. Below are the other elite vendors who are verified <span className="text-emerald-400 font-bold">AVAILABLE</span> on this exact same date:
+                You have secured your priority celebration date for <span className="text-white font-bold">{formatDate(eventDate)}</span> with <span className="font-bold text-white">{sourceVendor.name}</span>. Below are the other elite vendors who are verified <span className="text-green-400 font-bold">AVAILABLE</span> on this exact same date:
               </>
             ) : (
               <>
@@ -91,25 +91,25 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
                     <img 
                       src={vendor.image} 
                       alt={vendor.name} 
-                      className="w-16 h-16 rounded-lg object-cover bg-slate-900 border border-[#D4AF37]/10"
+                      className="w-16 h-16 rounded-lg object-cover bg-zinc-900 border border-[#D4AF37]/10"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start">
-                        <h4 className="font-bold text-slate-100 text-sm truncate pr-2 font-[Cinzel]">{vendor.name}</h4>
+                        <h4 className="font-bold text-zinc-100 text-sm truncate pr-2 font-[Cinzel]">{vendor.name}</h4>
                         <div className="flex items-center text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded border border-[#D4AF37]/20">
                           <Star className="w-2.5 h-2.5 fill-[#D4AF37] mr-0.5" />
                           {vendor.rating}
                         </div>
                       </div>
                       <p className="text-[10px] text-[#D4AF37]/60 font-bold uppercase tracking-widest mt-0.5">{vendor.category}</p>
-                      <div className="flex items-center text-[10px] text-slate-500 mt-1 truncate">
+                      <div className="flex items-center text-[10px] text-zinc-500 mt-1 truncate">
                         <MapPin className="w-2.5 h-2.5 mr-1" />
                         {vendor.location}
                       </div>
                     </div>
                   </div>
                   
-                  <p className="text-xs text-slate-400 line-clamp-2 mb-4 flex-1 font-light">
+                  <p className="text-xs text-zinc-400 line-clamp-2 mb-4 flex-1 font-light">
                     {vendor.description}
                   </p>
 
@@ -118,7 +118,7 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
                     disabled={isAdded}
                     className={`w-full py-2.5 rounded-lg text-[10px] font-black transition-all flex items-center justify-center gap-2 uppercase tracking-widest ${
                       isAdded
-                        ? 'bg-green-500/10 text-green-500 border border-green-500/20'
+                        ? 'bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20'
                         : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] shadow-lg shadow-[#D4AF37]/5'
                     }`}
                   >
@@ -141,7 +141,7 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
         <div className="p-6 bg-black border-t border-[#D4AF37]/10 flex justify-end gap-3">
           <button 
             onClick={onClose}
-            className="text-slate-500 hover:text-[#D4AF37] font-bold text-xs uppercase tracking-widest px-4 py-2 transition-colors"
+            className="text-zinc-500 hover:text-[#D4AF37] font-bold text-xs uppercase tracking-widest px-4 py-2 transition-colors"
           >
             Maybe Later
           </button>

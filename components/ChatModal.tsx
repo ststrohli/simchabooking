@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, User, Mail, MessageSquare, Bot, Image as ImageIcon, Paperclip, Mic, StopCircle, Play, Volume2, FileText, Download, Loader2, Shield, ArrowLeft, Trash2, Upload } from 'lucide-react';
+import { X, Send, User, Mail, MessageSquare, Bot, AlertTriangle, CheckCircle, Image as ImageIcon, Paperclip, Mic, StopCircle, Play, Volume2, FileText, Download, Loader2, Shield, ArrowLeft, Trash2, Upload } from 'lucide-react';
 import { Vendor, Message, UserAccount } from '../types';
 import { storage, auth, db, handleFirestoreError, OperationType } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
@@ -836,12 +836,12 @@ const ChatModal: React.FC<ChatModalProps> = ({
               <h3 className="font-bold text-[#D4AF37] font-[Cinzel] text-sm">
                 {isAdminReplying ? `Chat with ${clientName}` : (isAdminMode ? 'System Concierge' : vendor?.name)}
               </h3>
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+              <p className="text-[10px] text-zinc-500 uppercase tracking-widest">
                 {isAdminReplying ? `${clientEmail}` : (isAdminMode ? 'Direct Support' : 'In-App Messaging')}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="hidden md:block text-slate-500 hover:text-white p-2 transition-colors"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="hidden md:block text-zinc-500 hover:text-white p-2 transition-colors"><X className="w-5 h-5" /></button>
         </div>
 
         {/* Identity Verification */}
@@ -850,7 +850,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
             <div className="text-center mb-4">
               <User className="w-10 h-10 text-[#D4AF37] mx-auto mb-2 opacity-50" />
               <h4 className="text-white font-bold">Who are you?</h4>
-              <p className="text-xs text-slate-500">Provide your details to start a conversation.</p>
+              <p className="text-xs text-zinc-500">Provide your details to start a conversation.</p>
             </div>
             <div className="space-y-3">
               <input 
@@ -909,7 +909,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                   const isSent = checkIfSent(msg);
                   return (
                     <motion.div 
-                      key={msg.id} 
+                      key={msg.id || msg.tempId} 
                       initial={{ opacity: 0, y: 15, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       transition={{ duration: 0.25, ease: "easeOut" }}
@@ -982,10 +982,10 @@ const ChatModal: React.FC<ChatModalProps> = ({
                             msg.status === 'sending' ? (
                               <Loader2 className="w-2.5 h-2.5 animate-spin text-black/50" />
                             ) : msg.status === 'error' ? (
-                              <span className="text-red-600 text-[10px] font-bold font-mono">⚠️</span>
+                              <AlertTriangle className="w-3 h-3 text-red-600" />
                             ) : (
-                              <span className={`text-[10px] ${msg.isRead ? 'text-blue-500' : 'text-black/40'}`}>
-                                ✓✓
+                              <span className={`text-[10px] ${msg.isRead ? 'text-[#D4AF37]' : 'text-black/40'}`}>
+                                <CheckCircle className="w-3 h-3" />
                               </span>
                             )
                           )}
@@ -1002,11 +1002,11 @@ const ChatModal: React.FC<ChatModalProps> = ({
 
                         {/* Failed sending state with Retry */}
                         {isSent && msg.status === 'error' && (
-                          <div className="mt-2 pt-2 border-t border-red-500/10 flex items-center justify-end gap-1.5">
+                          <div className="mt-2 pt-2 border-t border-zinc-500/10 flex items-center justify-end gap-1.5">
                             <span className="text-red-600 text-[9px] font-bold uppercase tracking-wider font-mono">Failed</span>
                             <button 
                               onClick={() => handleRetryMessage(msg)}
-                              className="bg-black/80 hover:bg-black text-red-500 font-bold px-2 py-0.5 rounded text-[9px] border border-red-500/20 uppercase tracking-widest transition-all"
+                              className="bg-black/80 hover:bg-black text-zinc-400 font-bold px-2 py-0.5 rounded text-[9px] border border-zinc-500/20 uppercase tracking-widest transition-all"
                             >
                               Retry
                             </button>
@@ -1016,7 +1016,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
 
                       {/* Seen / Delivered receipts below last message bubble */}
                       {isSent && msg.id === lastSenderMessageId && (
-                        <div className="text-[9px] mt-1 pr-2 opacity-60 text-slate-400 tracking-wider font-mono">
+                        <div className="text-[9px] mt-1 pr-2 opacity-60 text-zinc-400 tracking-wider font-mono">
                           {msg.status === 'sending' ? 'Sending...' : (msg.status === 'error' ? 'Not Sent' : (msg.isRead ? 'Seen' : 'Delivered'))}
                         </div>
                       )}
@@ -1105,25 +1105,25 @@ const ChatModal: React.FC<ChatModalProps> = ({
                     <p className="text-[10px] font-black uppercase text-[#D4AF37] tracking-[0.2em] mb-1">Transferring Asset</p>
                     <div className="flex items-baseline gap-2">
                       <span className="text-xl font-bold text-white tracking-tight font-mono">{Math.round(uploadProgress)}%</span>
-                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Complete</span>
+                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Complete</span>
                     </div>
                   </div>
                 </div>
               )}
 
               {micPermissionError && (
-                <div id="mic-perm-error-alert" className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-100 text-xs flex items-start gap-2.5 shadow-md">
-                  <span className="text-red-400 font-bold mt-0.5" aria-hidden="true">⚠️</span>
+                <div id="mic-perm-error-alert" className="p-3 bg-zinc-500/10 border border-zinc-500/30 rounded-xl text-zinc-100 text-xs flex items-start gap-2.5 shadow-md">
+                  <AlertTriangle className="w-4 h-4 text-zinc-400 mt-0.5 flex-shrink-0" />
                   <div className="flex-1 space-y-1">
-                    <p className="font-semibold text-red-400">Microphone Access Needed</p>
+                    <p className="font-semibold text-zinc-400">Microphone Access Needed</p>
                     <p className="opacity-90 leading-relaxed text-[11px]">{micPermissionError}</p>
-                    <p className="text-[10px] text-slate-400 leading-relaxed">
-                      💡 **Alternative:** You can record audio on your device and attach the file using the paperclip icon (📎) instead!
+                    <p className="text-[10px] text-zinc-400 leading-relaxed">
+                      Alternative: You can record audio on your device and attach the file using the paperclip icon instead!
                     </p>
                   </div>
                   <button 
                     onClick={() => setMicPermissionError(null)}
-                    className="text-slate-500 hover:text-white transition-colors text-sm px-1.5 focus:outline-none"
+                    className="text-zinc-500 hover:text-white transition-colors text-sm px-1.5 focus:outline-none"
                     aria-label="Dismiss"
                   >
                     ×
@@ -1136,14 +1136,14 @@ const ChatModal: React.FC<ChatModalProps> = ({
                   <>
                     <button 
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center justify-center h-11 w-11 text-slate-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
+                      className="flex items-center justify-center h-11 w-11 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
                       title="Attach file"
                     >
                       <Paperclip className="w-5 h-5" />
                     </button>
                     <button 
                        onClick={startRecording}
-                       className="flex items-center justify-center h-11 w-11 text-slate-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
+                       className="flex items-center justify-center h-11 w-11 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
                        title="Record voice note"
                     >
                        <Mic className="w-5 h-5" />
@@ -1190,10 +1190,10 @@ const ChatModal: React.FC<ChatModalProps> = ({
                     </button>
                   </>
                 ) : (
-                  <div className="flex-1 flex items-center justify-between bg-red-500/10 border border-red-500/20 rounded-xl px-4 h-11 animate-pulse">
+                  <div className="flex-1 flex items-center justify-between bg-zinc-500/10 border border-zinc-500/20 rounded-xl px-4 h-11 animate-pulse">
                     <div className="flex items-center gap-3">
-                       <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                       <span className="text-red-500 text-xs font-bold font-mono">{formatDuration(recordingDuration)}</span>
+                       <div className="w-2 h-2 bg-zinc-700 rounded-full"></div>
+                       <span className="text-zinc-400 text-xs font-bold font-mono">{formatDuration(recordingDuration)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <button 
@@ -1205,7 +1205,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                       </button>
                       <button 
                         onClick={stopRecording}
-                        className="bg-red-500 text-white h-9 w-9 flex items-center justify-center rounded-lg hover:bg-red-600 transition-all flex-shrink-0"
+                        className="bg-zinc-700 text-white h-9 w-9 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-all flex-shrink-0"
                         title="Send recording"
                       >
                         <Send className="w-4 h-4" />

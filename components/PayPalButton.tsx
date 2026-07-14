@@ -32,19 +32,19 @@ const PayPalButton: React.FC<PayPalButtonProps> = ({ amount, onSuccess, onClick 
           
           <div className="p-6 text-center space-y-6">
             <div>
-               <p className="text-slate-500 text-sm mb-1">Total Amount</p>
-               <h3 className="text-3xl font-bold text-slate-800">${amount.toLocaleString()}</h3>
+               <p className="text-zinc-500 text-sm mb-1">Total Amount</p>
+               <h3 className="text-3xl font-bold text-zinc-800">${amount.toLocaleString()}</h3>
             </div>
 
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-left">
-                <p className="text-xs font-bold text-slate-500 uppercase mb-2">Pay with</p>
+            <div className="bg-zinc-50 p-4 rounded-lg border border-zinc-100 text-left">
+                <p className="text-xs font-bold text-zinc-500 uppercase mb-2">Pay with</p>
                 <div className="flex items-center gap-3">
-                    <div className="bg-white p-1 border border-slate-200 rounded">
-                        <CreditCard className="w-6 h-6 text-slate-700" />
+                    <div className="bg-white p-1 border border-zinc-200 rounded">
+                        <CreditCard className="w-6 h-6 text-zinc-700" />
                     </div>
                     <div>
-                        <p className="text-sm font-bold text-slate-800">Visa ending in 4242</p>
-                        <p className="text-xs text-slate-500">Wallet balance: $5,450.00</p>
+                        <p className="text-sm font-bold text-zinc-800">Visa ending in 4242</p>
+                        <p className="text-xs text-zinc-500">Wallet balance: $5,450.00</p>
                     </div>
                 </div>
             </div>
@@ -66,7 +66,7 @@ const PayPalButton: React.FC<PayPalButtonProps> = ({ amount, onSuccess, onClick 
             
             <button 
                 onClick={() => setShowModal(false)}
-                className="text-slate-400 text-sm hover:text-slate-600"
+                className="text-zinc-400 text-sm hover:text-zinc-600"
             >
                 Cancel and return to merchant
             </button>

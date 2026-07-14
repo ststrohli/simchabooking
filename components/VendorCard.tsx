@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Star, MapPin, Lock, ChevronLeft, ChevronRight, PlayCircle, ShieldCheck, Video, MessageCircle, X, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
+import { Star, MapPin, Lock, ChevronLeft, ChevronRight, PlayCircle, ShieldCheck, MessageCircle, X, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Vendor, Review } from '../types';
 
@@ -74,7 +74,7 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
         <div className="absolute inset-0 z-30 bg-black/60 backdrop-blur-[2px] flex flex-col items-center justify-center text-center p-4" aria-hidden="true">
           <Lock className="w-8 h-8 text-[#D4AF37]/50 mb-2" />
           <p className="font-bold text-[#D4AF37] text-lg font-[Cinzel]">Fully Booked</p>
-          <p className="text-xs text-slate-300">on {formatDate(selectedDate)}</p>
+          <p className="text-xs text-zinc-300">on {formatDate(selectedDate)}</p>
         </div>
       )}
 
@@ -91,7 +91,7 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
                     <motion.button 
                       whileTap={{ scale: 0.9 }}
                       onClick={(e) => { e.stopPropagation(); setIsPlaying(false); }} 
-                      className="absolute top-2 right-2 z-20 p-2 bg-black/60 hover:bg-black rounded-full text-white outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]" 
+                      className="absolute top-2 right-2 z-20 p-4 bg-black/60 hover:bg-black rounded-full text-white outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]" 
                       aria-label="Stop video"
                     >
                       <X className="w-4 h-4" />
@@ -113,7 +113,7 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
               <motion.button 
                 whileTap={{ scale: 0.9 }}
                 onClick={prevMedia} 
-                className="z-10 p-2 bg-black/60 rounded-full text-[#D4AF37] hover:bg-black/90 transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]" 
+                className="z-10 p-4 bg-black/60 rounded-full text-[#D4AF37] hover:bg-black/90 transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]" 
                 aria-label="Previous image"
               >
                 <ChevronLeft className="w-5 h-5" />
@@ -121,7 +121,7 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
               <motion.button 
                 whileTap={{ scale: 0.9 }}
                 onClick={nextMedia} 
-                className="z-10 p-2 bg-black/60 rounded-full text-[#D4AF37] hover:bg-black/90 transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]" 
+                className="z-10 p-4 bg-black/60 rounded-full text-[#D4AF37] hover:bg-black/90 transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]" 
                 aria-label="Next image"
               >
                 <ChevronRight className="w-5 h-5" />
@@ -145,7 +145,7 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={(e) => { e.stopPropagation(); onQuickView(vendor); }}
-            className="pointer-events-auto bg-white text-black text-[10px] font-black px-6 py-3 rounded-full uppercase tracking-[0.2em] shadow-2xl transition-all cursor-pointer"
+            className="pointer-events-auto bg-white text-black text-[10px] font-black px-7 py-3 min-h-[44px] flex items-center justify-center rounded-full uppercase tracking-[0.2em] shadow-2xl transition-all cursor-pointer"
           >
             Quick View
           </motion.button>
@@ -159,31 +159,33 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
             whileHover={{ scale: 1.1, backgroundColor: "rgba(212, 175, 55, 0.1)" }}
             whileTap={{ scale: 0.9 }}
             onClick={() => onMessage(vendor)} 
-            className="p-2 text-[#D4AF37]/60 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-full transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] cursor-pointer" 
+            className="p-4 text-[#D4AF37]/60 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-full transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] cursor-pointer" 
             aria-label={`Send message to ${vendor.name}`}
           >
             <MessageCircle className="w-5 h-5" />
           </motion.button>
         </div>
-        <h3 id={`vendor-name-${vendor.id}`} className="font-bold text-xl text-slate-100 font-[Cinzel] mt-2 truncate group-hover:text-[#D4AF37] transition-colors">{vendor.name}</h3>
-        <div className="flex items-center text-slate-500 text-xs mb-4 mt-1.5 font-medium"><MapPin className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]/50" aria-hidden="true" />{vendor.location}</div>
-        <p className="text-slate-400 text-sm line-clamp-2 mb-6 h-10 leading-relaxed font-light">{vendor.description}</p>
+        <h3 id={`vendor-name-${vendor.id}`} className="font-bold text-xl text-zinc-100 font-[Cinzel] mt-2 truncate group-hover:text-[#D4AF37] transition-colors">{vendor.name}</h3>
+        <div className="flex items-center text-zinc-500 text-xs mb-4 mt-1.5 font-medium"><MapPin className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]/50" aria-hidden="true" />{vendor.location}</div>
+        <p className="text-zinc-400 text-sm line-clamp-2 mb-6 h-10 leading-relaxed font-light">{vendor.description}</p>
         
-        <div className="mt-auto flex items-center justify-between pt-5 border-t border-[#D4AF37]/10">
-          <div className="flex-1">
-            <button onClick={() => onMessage(vendor)} className="text-[#D4AF37] hover:text-[#E5C76B] text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-colors border border-[#D4AF37]/30 px-3 py-2 rounded-lg hover:bg-[#D4AF37]/10 w-fit">
-              <MessageSquare className="w-3.5 h-3.5" /> Message
-            </button>
-          </div>
-          <motion.button 
-            whileHover={!isEffectiveBookingDateBlocked ? { scale: 1.03 } : {}}
-            whileTap={!isEffectiveBookingDateBlocked ? { scale: 0.96 } : {}}
-            onClick={() => onBook(vendor)} 
-            disabled={isEffectiveBookingDateBlocked} 
-            className={`px-8 py-2.5 text-xs font-black rounded-xl transition-all uppercase tracking-widest outline-none focus-visible:ring-2 focus-visible:ring-white cursor-pointer ${!isEffectiveBookingDateBlocked ? 'bg-[#D4AF37] text-black hover:bg-[#E5C76B]' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`} 
-            aria-label={isEffectiveBookingDateBlocked ? 'Already booked' : `Book ${vendor.name}`}
+        <div className="mt-auto flex flex-row gap-3 pt-5 border-t border-[#D4AF37]/10">
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => onMessage(vendor)}
+            className="flex-1 bg-black border border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10 min-h-[44px] py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all cursor-pointer"
           >
-            {isEffectiveBookingDateBlocked ? 'Booked' : 'Book'}
+            <MessageSquare className="w-3.5 h-3.5" /> Message
+          </motion.button>
+          
+          <motion.button 
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => onBook(vendor)} 
+            className="flex-1 bg-[#D4AF37] text-black font-semibold hover:bg-[#b5952f] transition-colors min-h-[44px] py-3 px-4 rounded-xl text-[10px] uppercase tracking-widest flex items-center justify-center shadow-[0_0_15px_rgba(212,175,55,0.3)] cursor-pointer"
+          >
+            Book Now
           </motion.button>
         </div>
       </div>
@@ -192,7 +194,7 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
          <motion.button 
             whileTap={{ scale: 0.99 }}
             onClick={() => setShowReviews(!showReviews)} 
-            className="w-full flex items-center justify-between text-slate-500 hover:text-[#D4AF37] text-[10px] font-black uppercase tracking-[0.2em] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] rounded cursor-pointer" 
+            className="w-full flex items-center justify-between text-zinc-500 hover:text-[#D4AF37] text-[10px] font-black uppercase tracking-[0.2em] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] rounded-lg p-3 bg-zinc-900/30 hover:bg-zinc-900/60 cursor-pointer" 
             aria-expanded={showReviews}
          >
             <span className="flex items-center gap-3">CLIENT VOICES <span className="bg-[#D4AF37]/10 px-2 py-0.5 rounded-full text-[#D4AF37]">{vendor.reviews?.length || 0}</span></span>
@@ -205,12 +207,12 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
                     {vendor.reviews?.map(review => (
                          <div key={review.id} role="listitem" className="bg-[#111] p-3.5 rounded-xl border border-[#D4AF37]/10">
                             <div className="flex justify-between items-center mb-2">
-                                <span className="font-black text-[10px] text-slate-200 uppercase tracking-wider">{review.author}</span>
+                                <span className="font-black text-[10px] text-zinc-200 uppercase tracking-wider">{review.author}</span>
                                 <div className="flex text-[#D4AF37] items-center" aria-label={`${review.rating} star rating`}>
                                   <Star className="w-2.5 h-2.5 fill-current" aria-hidden="true" /><span className="text-[10px] ml-1 font-bold">{review.rating}</span>
                                 </div>
                             </div>
-                            <p className="text-[11px] text-slate-400 italic leading-snug">"{review.text}"</p>
+                            <p className="text-[11px] text-zinc-400 italic leading-snug">"{review.text}"</p>
                          </div>
                     ))}
                 </div>
@@ -234,7 +236,7 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.96 }}
                       type="submit" 
-                      className="bg-[#D4AF37] text-black text-[9px] font-black py-2.5 rounded-lg hover:bg-[#E5C76B] outline-none focus-visible:ring-2 focus-visible:ring-white uppercase tracking-[0.25em]"
+                      className="bg-[#D4AF37] text-black text-[9px] font-black min-h-[44px] py-3 px-4 rounded-lg hover:bg-[#E5C76B] outline-none focus-visible:ring-2 focus-visible:ring-white uppercase tracking-[0.25em]"
                     >
                       Submit appraisal
                     </motion.button>

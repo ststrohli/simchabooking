@@ -13,7 +13,7 @@ interface PostsPageProps {
 
 const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVendor }) => {
   return (
-    <div className="min-h-screen bg-black text-slate-100 flex flex-col animate-in fade-in duration-500">
+    <div className="min-h-screen bg-black text-zinc-100 flex flex-col animate-in fade-in duration-500">
       <header className="sticky top-0 z-50 bg-black/90 backdrop-blur-xl border-b border-[#D4AF37]/20 p-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button 
@@ -35,11 +35,11 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
         <div className="text-center space-y-4 max-w-3xl mx-auto">
           <h1 className="text-5xl md:text-7xl font-bold font-[Cinzel] text-[#D4AF37]">The Gallery</h1>
           <div className="h-px w-24 bg-[#D4AF37]/40 mx-auto"></div>
-          <p className="text-slate-400 text-lg font-light leading-relaxed">Visual inspiration for your upcoming celebration. From sacred ceremonies to high-energy celebrations, see what's possible with our elite community of professionals.</p>
+          <p className="text-zinc-400 text-lg font-light leading-relaxed">Visual inspiration for your upcoming celebration. From sacred ceremonies to high-energy celebrations, see what's possible with our elite community of professionals.</p>
         </div>
 
         {posts.length === 0 ? (
-          <div className="py-32 text-center text-slate-700 bg-[#111] rounded-3xl border border-dashed border-[#D4AF37]/10">
+          <div className="py-32 text-center text-zinc-700 bg-[#111] rounded-3xl border border-dashed border-[#D4AF37]/10">
             <Film className="w-16 h-16 mx-auto mb-6 text-[#D4AF37]/10" />
             <p className="text-2xl font-[Cinzel] text-[#D4AF37]/40">Capturing the first moments...</p>
             <p className="text-sm mt-2 tracking-widest uppercase font-bold opacity-30">Check back soon for event highlights</p>
@@ -110,7 +110,7 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
                   </div>
                   
                   <div className="p-8 space-y-6 flex-1 flex flex-col">
-                    <p className="text-slate-400 text-sm leading-relaxed font-light">{post.description}</p>
+                    <p className="text-zinc-400 text-sm leading-relaxed font-light">{post.description}</p>
                     
                     <div className="mt-auto pt-6 border-t border-[#D4AF37]/10 flex flex-col gap-6">
                         {linkedVendor && (
@@ -133,14 +133,14 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
                             <div className="flex items-center gap-4">
                                 <motion.button 
                                     whileTap={{ scale: 0.92 }}
-                                    className="flex items-center gap-1.5 text-slate-500 hover:text-[#D4AF37] transition-colors group/bookmark cursor-pointer"
+                                    className="flex items-center gap-1.5 text-zinc-500 hover:text-[#D4AF37] transition-colors group/bookmark cursor-pointer"
                                 >
                                     <Bookmark className="w-5 h-5 group-hover/bookmark:fill-current" />
                                     <span className="text-[10px] font-black">2.4K</span>
                                 </motion.button>
                                 <motion.button 
                                     whileTap={{ scale: 0.92 }}
-                                    className="flex items-center gap-1.5 text-slate-500 hover:text-[#D4AF37] transition-colors cursor-pointer"
+                                    className="flex items-center gap-1.5 text-zinc-500 hover:text-[#D4AF37] transition-colors cursor-pointer"
                                 >
                                     <Share2 className="w-5 h-5" />
                                     <span className="text-[10px] font-black uppercase tracking-widest">Share</span>
@@ -158,7 +158,7 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
       </main>
       
       <footer className="py-12 text-center border-t border-[#D4AF37]/10">
-          <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.5em]">Mazel Tov Moments • Community Feed</p>
+          <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.5em]">Mazel Tov Moments • Community Feed</p>
       </footer>
     </div>
   );

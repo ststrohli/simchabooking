@@ -51,7 +51,7 @@ const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
       <button 
         onClick={handlePayment}
         disabled={loading}
-        className="bg-black hover:bg-slate-900 text-white font-bold px-4 py-2 rounded-full shadow-sm flex items-center justify-center gap-2 transition-colors text-sm border border-slate-700 w-full"
+        className="bg-black hover:bg-zinc-900 text-white font-bold px-4 py-2 rounded-full shadow-sm flex items-center justify-center gap-2 transition-colors text-sm border border-zinc-700 w-full"
       >
         {loading ? (
           <Loader2 className="w-4 h-4 animate-spin" />
@@ -60,7 +60,7 @@ const StripePaymentModal: React.FC<StripePaymentModalProps> = ({
         )}
         Pay with Card
       </button>
-      {error && <p className="text-[10px] text-red-500 font-bold text-center">{error}</p>}
+      {error && <p className="text-[10px] text-zinc-400 font-bold text-center">{error}</p>}
     </div>
   );
 };

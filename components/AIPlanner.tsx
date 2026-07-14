@@ -58,12 +58,12 @@ export default function AIPlanner() {
                 </div>
                 <div>
                   <h3 className="font-bold font-[Cinzel] text-[#D4AF37] text-sm">Simcha AI Advisor</h3>
-                  <p className="text-[9px] text-slate-500 uppercase tracking-widest">Powered by Gemini 3</p>
+                  <p className="text-[9px] text-zinc-500 uppercase tracking-widest">Powered by Gemini 3</p>
                 </div>
               </div>
               <button 
                 onClick={() => setIsOpen(false)}
-                className="text-slate-500 hover:text-white p-2 transition-colors"
+                className="text-zinc-500 hover:text-white p-2 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -74,7 +74,7 @@ export default function AIPlanner() {
               {!response && !isLoading && (
                 <div className="text-center py-10 opacity-50">
                   <MessageSquare className="w-12 h-12 mx-auto mb-4 text-[#D4AF37]/20" />
-                  <p className="text-sm text-slate-400">Ask me anything about your upcoming event, from Kosher catering tips to traditional ceremony timelines.</p>
+                  <p className="text-sm text-zinc-400">Ask me anything about your upcoming event, from Kosher catering tips to traditional ceremony timelines.</p>
                 </div>
               )}
 
@@ -87,7 +87,7 @@ export default function AIPlanner() {
 
               {response && (
                 <div className="bg-[#111] p-5 rounded-2xl border border-[#D4AF37]/10 animate-in fade-in zoom-in-95 duration-500">
-                  <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{response}</p>
+                  <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">{response}</p>
                 </div>
               )}
             </div>

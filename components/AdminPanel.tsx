@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff, Filter, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType, firebaseConfig } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
-import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, addDoc, where, getDocs, deleteField } from 'firebase/firestore';
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
@@ -160,8 +160,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             icon: "star"
           });
         }
-        window.alert('🎉 Database successfully seeded with Jewish Event Taxonomy!');
-        showNotification('🎉 Database successfully seeded with Jewish Event Taxonomy!', 'success');
+        window.alert('Database successfully seeded with Jewish Event Taxonomy!');
+        showNotification('Database successfully seeded with Jewish Event Taxonomy!', 'success');
       }
     } catch (globalError: any) {
       console.error("Seeding error:", globalError);
@@ -897,10 +897,41 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     setNewSubCategoryInputs(prev => ({ ...prev, [category]: '' }));
   };
 
-  const handleRemoveSubCategory = (category: string, sub: string) => {
-    const currentSubs = { ...categorySubCategories[category] };
-    delete currentSubs[sub];
-    onUpdateCategorySubCategories(category, currentSubs);
+  const handleDeleteSubcategory = async (categoryName: string, subName: string) => {
+    alert("Alert #1: Starting subcategory delete for " + subName + "...");
+    
+    try {
+      const q = query(collection(db, 'categories'), where('name', '==', categoryName));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        alert("CRASH DETECTED: Could not find parent category in database.");
+        return;
+      }
+
+      const parentDoc = snapshot.docs[0];
+      alert("Alert #2: Found parent document ID: " + parentDoc.id);
+
+      await updateDoc(doc(db, 'categories', parentDoc.id), {
+        [`subcategories.${subName}`]: deleteField()
+      });
+
+      alert("Alert #3: Successfully removed subcategory from database!");
+
+      // Instant UI Refresh
+      setLocalCategorySubCategories(prev => {
+        const newSubs = { ...prev };
+        if (newSubs[categoryName]) {
+          const catSubs = { ...newSubs[categoryName] };
+          delete catSubs[subName];
+          newSubs[categoryName] = catSubs;
+        }
+        return newSubs;
+      });
+
+    } catch (error: any) {
+      alert("CRASH DETECTED: " + error.message);
+    }
   };
 
   const handleAddNestedSubCategory = (category: string, sub: string) => {
@@ -918,10 +949,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     setNewNestedSubCategoryInputs(prev => ({ ...prev, [key]: '' }));
   };
 
-  const handleRemoveNestedSubCategory = (category: string, sub: string, nested: string) => {
-    const currentSubs = { ...categorySubCategories[category] };
-    currentSubs[sub] = (currentSubs[sub] || []).filter(n => n !== nested);
-    onUpdateCategorySubCategories(category, currentSubs);
+  const handleRemoveNestedSubCategory = async (category: string, sub: string, nested: string) => {
+    alert("Alert #1: Starting nested subcategory delete for " + nested + "...");
+    try {
+      const q = query(collection(db, 'categories'), where('name', '==', category));
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) return;
+      const parentDoc = snapshot.docs[0];
+      
+      const currentSubs = { ...localCategorySubCategories[category] };
+      currentSubs[sub] = (currentSubs[sub] || []).filter(n => n !== nested);
+      
+      await updateDoc(doc(db, 'categories', parentDoc.id), {
+        [`subcategories.${sub}`]: currentSubs[sub]
+      });
+      
+      setLocalCategorySubCategories(prev => {
+        const newSubs = { ...prev };
+        if (newSubs[category]) {
+          newSubs[category] = currentSubs;
+        }
+        return newSubs;
+      });
+      alert("Alert #2: Successfully removed nested item!");
+    } catch (error: any) {
+      alert("CRASH DETECTED: " + error.message);
+    }
   };
 
   const toggleSubCategorySelection = (sub: string) => {
@@ -937,7 +991,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     onRemoveVendor(id);
   };
 
-  const inputClass = "w-full bg-black border border-[#D4AF37]/20 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-600";
+  const handleDeleteCategory = async (categoryName: string) => {
+    alert("Alert #1: Delete clicked for category: " + categoryName);
+    
+    try {
+      alert("Alert #2: Starting database query...");
+      const q = query(collection(db, 'categories'), where('name', '==', categoryName));
+      const snapshot = await getDocs(q);
+
+      alert("Alert #3: Query finished. Found " + snapshot.docs.length + " matching documents.");
+
+      if (snapshot.empty) {
+        alert("Error: Could not find '" + categoryName + "' in the database. Deletion stopped.");
+        return;
+      }
+
+      for (const document of snapshot.docs) {
+        alert("Alert #4: Deleting database ID: " + document.id);
+        await deleteDoc(doc(db, 'categories', document.id));
+      }
+
+      alert("Alert #5: Successfully deleted from database! Refreshing UI...");
+      
+      // Update the local state so it disappears from the screen immediately
+      setLocalCategories(prev => prev.filter(c => c !== categoryName));
+
+    } catch (error: any) {
+      alert("CRASH DETECTED: " + error.message);
+    }
+  };
+
+  const [localCategories, setLocalCategories] = useState(categories);
+  const [localCategorySubCategories, setLocalCategorySubCategories] = useState(categorySubCategories);
+
+  useEffect(() => {
+    setLocalCategories(categories);
+  }, [categories]);
+
+  useEffect(() => {
+    setLocalCategorySubCategories(categorySubCategories);
+  }, [categorySubCategories]);
+
+  const inputClass = "w-full bg-black border border-[#D4AF37]/20 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-zinc-600";
   const labelClass = "block text-[10px] font-bold text-[#D4AF37]/70 uppercase tracking-widest mb-1.5";
 
   if (!isAuthenticated) {
@@ -949,19 +1044,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <ShieldCheck className="w-8 h-8 text-[#D4AF37]" />
             </div>
             <h2 className="text-2xl font-bold font-[Cinzel] text-[#D4AF37]">Admin Access</h2>
-            <p className="text-slate-500 text-sm">System Restricted Area</p>
+            <p className="text-zinc-500 text-sm">System Restricted Area</p>
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className={labelClass}>Access Code</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3.5 w-5 h-5 text-slate-500" />
+                <Lock className="absolute left-3 top-3.5 w-5 h-5 text-zinc-500" />
                 <input type="password" value={accessCode} onChange={(e) => setAccessCode(e.target.value)} placeholder="Enter code" className={inputClass + " pl-10"} />
               </div>
-              {error && <p className="text-red-500 text-xs mt-2 font-bold">{error}</p>}
+              {error && <p className="text-zinc-400 text-xs mt-2 font-bold">{error}</p>}
             </div>
             <button type="submit" className="w-full bg-[#D4AF37] text-black font-bold py-3 rounded-lg hover:bg-[#E5C76B] transition-all shadow-lg mt-2">Unlock Panel</button>
-            <button type="button" onClick={onBack} className="w-full text-slate-500 text-xs font-bold py-2 hover:text-[#D4AF37] transition-colors uppercase tracking-widest">Back to Marketplace</button>
+            <button type="button" onClick={onBack} className="w-full text-zinc-500 text-xs font-bold py-2 hover:text-[#D4AF37] transition-colors uppercase tracking-widest">Back to Marketplace</button>
           </form>
         </div>
       </div>
@@ -969,16 +1064,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-black text-slate-100">
+    <div className="min-h-screen bg-black text-zinc-100">
       <header className="bg-black border-b border-[#D4AF37]/20 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-3">
              <div className="bg-[#111] p-2 rounded-lg border border-[#D4AF37]/20"><ShieldCheck className="w-6 h-6 text-[#D4AF37]" /></div>
-             <div><h1 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Simcha Admin</h1><p className="text-[10px] text-slate-500 uppercase tracking-widest">Platform Management</p></div>
+             <div><h1 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Simcha Admin</h1><p className="text-[10px] text-zinc-500 uppercase tracking-widest">Platform Management</p></div>
           </div>
           <div className="flex gap-6">
-            <button onClick={onBack} className="text-slate-400 hover:text-[#D4AF37] font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors"><ArrowLeft className="w-4 h-4" /> Marketplace</button>
-            <button onClick={() => setIsAuthenticated(false)} className="text-red-500 hover:text-red-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors"><LogOut className="w-4 h-4" /> Logout</button>
+            <button onClick={onBack} className="text-zinc-400 hover:text-[#D4AF37] font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors"><ArrowLeft className="w-4 h-4" /> Marketplace</button>
+            <button onClick={() => setIsAuthenticated(false)} className="text-zinc-400 hover:text-zinc-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors"><LogOut className="w-4 h-4" /> Logout</button>
           </div>
         </div>
       </header>
@@ -1044,7 +1139,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             className={`px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-200 flex items-center gap-2 shrink-0 ${
                                 isActive 
                                     ? 'bg-[#D4AF37] text-black shadow-lg font-black' 
-                                    : 'text-slate-500 hover:text-white hover:bg-white/[0.02]'
+                                    : 'text-zinc-500 hover:text-white hover:bg-white/[0.02]'
                             }`}
                         >
                             <span>{getTabLabel(tab)}</span>
@@ -1064,7 +1159,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeTab === 'add' && (
             <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl max-w-4xl mx-auto animate-in fade-in duration-300">
                 <div className="bg-black p-6 border-b border-[#D4AF37]/20 flex items-center justify-between">
-                    <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">New Professional</h2><p className="text-slate-500 text-xs">Invite a new service provider to the platform.</p></div>
+                    <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">New Professional</h2><p className="text-zinc-500 text-xs">Invite a new service provider to the platform.</p></div>
                     <Plus className="w-8 h-8 text-[#D4AF37]/20" />
                 </div>
                 <form onSubmit={handleVendorSubmit} className="p-8 space-y-10">
@@ -1079,7 +1174,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             <div className="space-y-4">
                                 <label className={labelClass}>Business Profile Image</label>
                                 <div onClick={() => vendorFileInputRef.current?.click()} className="h-44 bg-black border-2 border-dashed border-[#D4AF37]/20 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-[#D4AF37]/50 transition-all overflow-hidden relative">
-                                    {formData.image ? <img src={formData.image} className="w-full h-full object-cover" /> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-slate-600 font-bold uppercase tracking-widest text-[9px]">Select Image</p></div>}
+                                    {formData.image ? <img src={formData.image} className="w-full h-full object-cover" /> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-zinc-600 font-bold uppercase tracking-widest text-[9px]">Select Image</p></div>}
                                 </div>
                                 <input type="file" accept="image/*" className="hidden" ref={vendorFileInputRef} onChange={handleVendorFileUpload} />
                             </div>
@@ -1104,19 +1199,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border ${
                                                     formData.subCategories.includes(option)
                                                         ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
-                                                        : 'bg-black text-slate-400 border-white/10 hover:border-[#D4AF37]/50'
+                                                        : 'bg-black text-zinc-400 border-white/10 hover:border-[#D4AF37]/50'
                                                 }`}
                                             >
                                                 {option}
                                             </button>
                                         ))}
-                                        {(options as string[]).length === 0 && <p className="text-[9px] text-slate-700 italic">No specific options defined yet.</p>}
+                                        {(options as string[]).length === 0 && <p className="text-[9px] text-zinc-700 italic">No specific options defined yet.</p>}
                                     </div>
                                 </div>
                             ))}
                             {Object.keys(categorySubCategories[formData.category] || {}).length === 0 && (
                                 <div className="py-6 bg-black/40 rounded-xl border border-dashed border-[#D4AF37]/10 text-center">
-                                    <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">No detailed classifications defined for {formData.category}</p>
+                                    <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">No detailed classifications defined for {formData.category}</p>
                                     <button type="button" onClick={() => setActiveTab('categories')} className="text-[9px] text-[#D4AF37] hover:underline mt-2 uppercase tracking-widest">Configure Taxonomy</button>
                                 </div>
                             )}
@@ -1132,7 +1227,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <Tag className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" />
                                     <input required type="number" min="0" max="100" className={inputClass + " pl-10"} value={formData.commissionRate} onChange={(e) => setFormData({...formData, commissionRate: e.target.value})} />
                                 </div>
-                                <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest mt-2">The percentage of each sale that goes to the platform.</p>
+                                <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest mt-2">The percentage of each sale that goes to the platform.</p>
                             </div>
                             <div>
                                 <label className={labelClass}>Starting Fee ($)</label>
@@ -1189,7 +1284,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeTab === 'manage' && (
             <div className="space-y-4 animate-in fade-in duration-300">
                 <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
-                    <Search className="w-5 h-5 text-slate-500" />
+                    <Search className="w-5 h-5 text-zinc-500" />
                     <input 
                         type="text" 
                         placeholder="Filter professionals by name, category, or location..." 
@@ -1201,7 +1296,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <TableContainer>
                     <table className="w-full text-left border-collapse text-xs">
                         <thead>
-                            <tr className="border-b border-white/10 bg-black/40 text-slate-400 font-bold uppercase tracking-widest text-[9px]">
+                            <tr className="border-b border-white/10 bg-black/40 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Professional</th>
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Classification</th>
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Location</th>
@@ -1220,53 +1315,53 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 )
                                 .map(v => (
                                     <tr key={v.id} className="hover:bg-white/[0.02] active:bg-white/[0.03] transition-colors duration-150">
-                                        <td className="p-4 font-bold text-slate-100">
+                                        <td className="p-4 font-bold text-zinc-100">
                                             <div className="flex items-center gap-3">
                                                 <img src={v.image} className="w-10 h-10 rounded-lg object-cover bg-black border border-white/10 shrink-0" />
                                                 <div>
                                                     <div className="font-bold text-white text-sm flex items-center gap-1.5">
                                                         {v.name}
-                                                        {v.isVerified && <ShieldCheck className="w-3.5 h-3.5 text-green-500 fill-green-500/10" />}
+                                                        {v.isVerified && <ShieldCheck className="w-3.5 h-3.5 text-[#D4AF37] fill-[#D4AF37]/10" />}
                                                     </div>
-                                                    <span className="text-[9px] text-slate-500 uppercase tracking-widest">{v.category}</span>
+                                                    <span className="text-[9px] text-zinc-500 uppercase tracking-widest">{v.category}</span>
                                                 </div>
                                             </div>
                                         </td>
                                         <td className="p-4">
                                             <div className="flex flex-wrap gap-1 max-w-[200px]">
                                                 {v.subCategories?.slice(0, 3).map(s => (
-                                                    <span key={s} className="bg-white/5 px-2 py-0.5 rounded text-[8px] font-black uppercase text-slate-400 tracking-widest">{s}</span>
+                                                    <span key={s} className="bg-white/5 px-2 py-0.5 rounded text-[8px] font-black uppercase text-zinc-400 tracking-widest">{s}</span>
                                                 ))}
-                                                {(v.subCategories?.length || 0) > 3 && <span className="text-[8px] text-slate-600 font-bold">+{v.subCategories!.length - 3}</span>}
-                                                {(!v.subCategories || v.subCategories.length === 0) && <span className="text-slate-600 italic">None</span>}
+                                                {(v.subCategories?.length || 0) > 3 && <span className="text-[8px] text-zinc-600 font-bold">+{v.subCategories!.length - 3}</span>}
+                                                {(!v.subCategories || v.subCategories.length === 0) && <span className="text-zinc-600 italic">None</span>}
                                             </div>
                                         </td>
-                                        <td className="p-4 text-slate-400 font-medium">
+                                        <td className="p-4 text-zinc-400 font-medium">
                                             {v.location}
                                         </td>
                                         <td className="p-4 text-[#D4AF37] font-bold font-mono">
                                             ${v.priceStart.toLocaleString()}
                                         </td>
-                                        <td className="p-4 text-slate-400 font-mono text-[11px]">
+                                        <td className="p-4 text-zinc-400 font-mono text-[11px]">
                                             {v.contactEmail || 'N/A'}
                                         </td>
                                         <td className="p-4">
                                             {v.stripeAccountId ? (
-                                                <span className="inline-flex items-center gap-1.5 bg-green-500/15 border border-green-500/20 px-2 py-1 rounded text-[8px] font-black text-green-400 uppercase tracking-widest" title={`Stripe Account ID: ${v.stripeAccountId}`}>
+                                                <span className="inline-flex items-center gap-1.5 bg-[#D4AF37]/15 border border-[#D4AF37]/20 px-2 py-1 rounded text-[8px] font-black text-[#D4AF37] uppercase tracking-widest" title={`Stripe Account ID: ${v.stripeAccountId}`}>
                                                     <CheckSquare className="w-3 h-3" /> Stripe Active
                                                 </span>
                                             ) : (
-                                                <button onClick={() => handleStripeOnboard(v.id, v.contactEmail || '')} className="inline-flex items-center gap-1.5 bg-red-500/10 border border-red-500/20 hover:bg-red-500/25 px-2 py-1 rounded text-[8px] font-black text-red-400 uppercase tracking-widest transition-all cursor-pointer" title="Initiate Connection">
+                                                <button onClick={() => handleStripeOnboard(v.id, v.contactEmail || '')} className="inline-flex items-center gap-1.5 bg-zinc-500/10 border border-zinc-500/20 hover:bg-zinc-700/25 px-2 py-1 rounded text-[8px] font-black text-zinc-400 uppercase tracking-widest transition-all cursor-pointer" title="Initiate Connection">
                                                     <CreditCard className="w-3 h-3" /> Connect Stripe
                                                 </button>
                                             )}
                                         </td>
                                         <td className="p-4 text-right">
                                             <div className="flex items-center justify-end gap-1">
-                                                <button onClick={() => onLoginAsVendor(v.id)} title="Login to Portal" className="p-2 text-slate-500 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><LogIn className="w-4 h-4" /></button>
-                                                <button onClick={() => handleEditVendor(v)} title="Edit Professional" className="p-2 text-slate-500 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
-                                                <button onClick={() => onToggleVerify(v.id)} title="Toggle Verification" className={`p-2 rounded-lg transition-all ${v.isVerified ? 'text-green-500 hover:bg-green-500/10' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}><ShieldCheck className="w-4 h-4" /></button>
-                                                <button onClick={() => handleDeleteVendor(v.id, v.name)} title="Remove Professional" className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                                                <button onClick={() => onLoginAsVendor(v.id)} title="Login to Portal" className="p-2 text-zinc-500 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><LogIn className="w-4 h-4" /></button>
+                                                <button onClick={() => handleEditVendor(v)} title="Edit Professional" className="p-2 text-zinc-500 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
+                                                <button onClick={() => onToggleVerify(v.id)} title="Toggle Verification" className={`p-2 rounded-lg transition-all ${v.isVerified ? 'text-[#D4AF37] hover:bg-[#D4AF37]/10' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}><ShieldCheck className="w-4 h-4" /></button>
+                                                <button onClick={() => handleDeleteVendor(v.id, v.name)} title="Remove Professional" className="p-2 text-zinc-500 hover:text-zinc-400 hover:bg-zinc-500/10 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -1277,7 +1372,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 v.location.toLowerCase().includes(filterText.toLowerCase())
                             ).length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="p-8 text-center text-slate-500 uppercase tracking-widest text-[10px]">No professionals found</td>
+                                    <td colSpan={7} className="p-8 text-center text-zinc-500 uppercase tracking-widest text-[10px]">No professionals found</td>
                                 </tr>
                             )}
                         </tbody>
@@ -1290,7 +1385,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="space-y-12 max-w-5xl mx-auto animate-in fade-in duration-300">
                 <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl overflow-hidden">
                     <div className="bg-black p-6 border-b border-[#D4AF37]/20 flex items-center justify-between">
-                        <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Moment Publisher</h2><p className="text-slate-500 text-xs">Establish new visual highlights.</p></div>
+                        <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Moment Publisher</h2><p className="text-zinc-500 text-xs">Establish new visual highlights.</p></div>
                         <Camera className="w-8 h-8 text-[#D4AF37]/20" />
                     </div>
                     <form onSubmit={handlePostSubmit} className="p-8 space-y-8">
@@ -1316,7 +1411,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     ) : (
                                         <div className="text-center p-8">
                                             <Upload className="w-12 h-12 text-[#D4AF37]/30 mx-auto mb-4" />
-                                            <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">Upload Visual Asset</p>
+                                            <p className="text-zinc-500 font-bold uppercase tracking-widest text-[10px]">Upload Visual Asset</p>
                                         </div>
                                     )}
                                 </div>
@@ -1334,14 +1429,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* Hero Visual System */}
               <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl overflow-hidden">
                   <div className="bg-black p-6 border-b border-[#D4AF37]/20 flex items-center justify-between">
-                      <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Global Aesthetic</h2><p className="text-slate-500 text-xs">Manage the landing page visual identity.</p></div>
+                      <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Global Aesthetic</h2><p className="text-zinc-500 text-xs">Manage the landing page visual identity.</p></div>
                       <Camera className="w-8 h-8 text-[#D4AF37]/20" />
                   </div>
                   <div className="p-8">
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
                         <div className="md:col-span-1 space-y-4">
                            <h3 className={labelClass}>Hero Background</h3>
-                           <p className="text-[10px] text-slate-500 leading-relaxed">This image appears behind the "Celebrate Your Simcha" title. High-resolution horizontal assets work best.</p>
+                           <p className="text-[10px] text-zinc-500 leading-relaxed">This image appears behind the "Celebrate Your Simcha" title. High-resolution horizontal assets work best.</p>
                            <button 
                              onClick={() => heroImageInputRef.current?.click()} 
                              disabled={isUploading}
@@ -1375,7 +1470,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* Add New Category */}
               <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl overflow-hidden">
                   <div className="bg-black p-6 border-b border-[#D4AF37]/20 flex items-center justify-between">
-                      <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Taxonomy Expansion</h2><p className="text-slate-500 text-xs">Establish a new service category for the platform.</p></div>
+                      <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Taxonomy Expansion</h2><p className="text-zinc-500 text-xs">Establish a new service category for the platform.</p></div>
                       <FolderPlus className="w-8 h-8 text-[#D4AF37]/20" />
                   </div>
                   <form onSubmit={handleAddCategorySubmit} className="p-8 space-y-6">
@@ -1385,13 +1480,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                               <div>
                                 <label className={labelClass}>Initial Classification Groups</label>
                                 <input type="text" className={inputClass} placeholder="Style, Tier, Gear (comma separated)" value={newCategoryForm.subCatsString} onChange={e => setNewCategoryForm({...newCategoryForm, subCatsString: e.target.value})} />
-                                <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest mt-2">These serve as headers for granular sub-categories.</p>
+                                <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest mt-2">These serve as headers for granular sub-categories.</p>
                               </div>
                           </div>
                           <div className="space-y-4">
                               <label className={labelClass}>Vertical Hero Asset</label>
                               <div onClick={() => newCatImageInputRef.current?.click()} className="h-44 bg-black border-2 border-dashed border-[#D4AF37]/20 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-[#D4AF37]/50 transition-all overflow-hidden relative">
-                                {newCategoryForm.image ? <img src={newCategoryForm.image} className="w-full h-full object-cover" /> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-slate-600 font-bold uppercase tracking-widest text-[9px]">Select Banner</p></div>}
+                                {newCategoryForm.image ? <img src={newCategoryForm.image} className="w-full h-full object-cover" /> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-zinc-600 font-bold uppercase tracking-widest text-[9px]">Select Banner</p></div>}
                               </div>
                               <input type="file" accept="image/*" className="hidden" ref={el => { newCatImageInputRef.current = el; }} onChange={handleNewCategoryImgUpload} />
                           </div>
@@ -1427,7 +1522,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {categories.map((cat, index) => (
+                    {localCategories.map((cat, index) => (
                         <div key={cat} className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 overflow-hidden flex flex-col shadow-2xl group relative">
                             <div className="relative h-44 bg-black">
                                 <img src={previewUrls[cat] || categoryImages[cat]} className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" />
@@ -1444,7 +1539,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         <ArrowUp className="w-3.5 h-3.5" />
                                     </button>
                                     <button 
-                                        disabled={index === categories.length - 1}
+                                        disabled={index === localCategories.length - 1}
                                         onClick={() => handleMoveCategory(cat, 'down')}
                                         className="p-1 text-[#D4AF37] hover:text-white disabled:opacity-30 disabled:hover:text-[#D4AF37] transition-colors cursor-pointer"
                                         title="Move Down"
@@ -1456,24 +1551,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <div className="absolute top-4 right-4 flex gap-2">
                                     <button 
                                         onClick={() => categoryImageInputRefs.current[cat]?.click()} 
-                                        className="bg-black/60 hover:bg-[#D4AF37] hover:text-black p-2 rounded-lg text-slate-300 transition-all border border-white/10" 
+                                        className="bg-black/60 hover:bg-[#D4AF37] hover:text-black p-2 rounded-lg text-zinc-300 transition-all border border-white/10" 
                                         title="Modify Banner"
                                     >
                                         <Camera className="w-4 h-4" />
                                     </button>
-                                    {onDeleteCategory && (
-                                        <button 
-                                            onClick={() => {
-                                                if (window.confirm(`Are you sure you want to delete the main category "${cat}" and all of its subcategories? This action is irreversible.`)) {
-                                                    onDeleteCategory(cat);
-                                                }
-                                            }}
-                                            className="bg-black/60 hover:bg-red-600 hover:text-white p-2 rounded-lg text-red-500 transition-all border border-white/10" 
-                                            title="Delete Category"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    )}
+                                    <button 
+                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteCategory(cat); }}
+                                        className="bg-black/60 hover:bg-zinc-800 hover:text-white p-2 rounded-lg text-zinc-400 transition-all border border-white/10" 
+                                        title="Delete Category"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
                                 </div>
                                 <input type="file" accept="image/*" className="hidden" ref={el => { categoryImageInputRefs.current[cat] = el; }} onChange={(e) => handleCategoryImageUpload(cat, e)} />
                                 <h3 className="absolute bottom-4 left-6 text-2xl font-bold font-[Cinzel] text-[#D4AF37]">{cat}</h3>
@@ -1496,7 +1585,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </div>
 
                                 <div className="space-y-4">
-                                   {Object.entries(categorySubCategories[cat] || {}).map(([sub, nestedItems]) => {
+                                   {Object.entries(localCategorySubCategories[cat] || {}).map(([sub, nestedItems]) => {
                                       const nestedKey = `${cat}-${sub}`;
                                       const items = nestedItems as string[];
                                       return (
@@ -1504,9 +1593,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                               <div className="p-3 flex items-center justify-between border-b border-white/5 bg-black/20">
                                                   <div className="flex items-center gap-2">
                                                       <Layers className="w-3.5 h-3.5 text-[#D4AF37]/50" />
-                                                      <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">{sub}</span>
+                                                      <span className="text-[10px] font-black uppercase text-zinc-300 tracking-widest">{sub}</span>
                                                   </div>
-                                                  <button onClick={() => handleRemoveSubCategory(cat, sub)} className="text-red-500/30 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                                                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteSubcategory(cat, sub); }} className="text-zinc-400/30 hover:text-zinc-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                                               </div>
                                               <div className="p-4 space-y-4">
                                                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -1531,15 +1620,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                                   )}
                                                               </div>
                                                               <div className="p-2 bg-black border-t border-white/5 flex items-center justify-between">
-                                                                  <span className="text-[10px] font-bold text-slate-300 truncate">{item}</span>
-                                                                  <button onClick={() => handleRemoveNestedSubCategory(cat, sub, item)} className="text-red-500/50 hover:text-red-500 transition-colors shrink-0 ml-2" title="Remove subcategory"><Trash2 className="w-3 h-3" /></button>
+                                                                  <span className="text-[10px] font-bold text-zinc-300 truncate">{item}</span>
+                                                                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRemoveNestedSubCategory(cat, sub, item); }} className="text-zinc-400/50 hover:text-zinc-400 transition-colors shrink-0 ml-2" title="Remove subcategory"><Trash2 className="w-3 h-3" /></button>
                                                               </div>
                                                           </div>
                                                       ))}
-                                                      {items.length === 0 && <span className="text-[9px] text-slate-700 italic col-span-full">No specific sub-category options added.</span>}
+                                                      {items.length === 0 && <span className="text-[9px] text-zinc-700 italic col-span-full">No specific sub-category options added.</span>}
                                                   </div>
                                                   <div className="flex gap-2 pt-1">
-                                                      <input type="text" className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-[10px] text-slate-400 outline-none focus:border-[#D4AF37]/40" placeholder={`Add ${sub} option...`} value={newNestedSubCategoryInputs[nestedKey] || ''} onChange={(e) => setNewNestedSubCategoryInputs({...newNestedSubCategoryInputs, [nestedKey]: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && handleAddNestedSubCategory(cat, sub)} />
+                                                      <input type="text" className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-[10px] text-zinc-400 outline-none focus:border-[#D4AF37]/40" placeholder={`Add ${sub} option...`} value={newNestedSubCategoryInputs[nestedKey] || ''} onChange={(e) => setNewNestedSubCategoryInputs({...newNestedSubCategoryInputs, [nestedKey]: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && handleAddNestedSubCategory(cat, sub)} />
                                                       <button onClick={() => handleAddNestedSubCategory(cat, sub)} className="bg-[#D4AF37]/10 text-[#D4AF37] px-2 rounded-lg hover:bg-[#D4AF37] hover:text-black transition-all"><Plus className="w-4 h-4" /></button>
                                                   </div>
                                               </div>
@@ -1560,17 +1649,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                     <div>
                         <h2 className="text-2xl font-bold font-[Cinzel] text-white">Platform Bookings</h2>
-                        <p className="text-xs text-slate-500 mt-1">Unified transactional records across the entire marketplace.</p>
+                        <p className="text-xs text-zinc-500 mt-1">Unified transactional records across the entire marketplace.</p>
                     </div>
                     <div className="flex items-center gap-3">
-                        <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                        <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
                             Total Bookings: {bookings.length}
                         </div>
                     </div>
                 </div>
 
                 <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
-                    <Search className="w-5 h-5 text-slate-500" />
+                    <Search className="w-5 h-5 text-zinc-500" />
                     <input 
                         type="text" 
                         placeholder="Filter bookings by client name, event name, or professional..." 
@@ -1583,7 +1672,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <TableContainer>
                     <table className="w-full text-left border-collapse text-xs">
                         <thead>
-                            <tr className="border-b border-white/10 bg-black/40 text-slate-400 font-bold uppercase tracking-widest text-[9px]">
+                            <tr className="border-b border-white/10 bg-black/40 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Client & Event</th>
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Professional</th>
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Date</th>
@@ -1616,14 +1705,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     </div>
                                                     <div>
                                                         <h4 className="font-bold text-white text-sm">{b.clientName}</h4>
-                                                        <span className="text-[10px] text-slate-500 uppercase tracking-widest">{b.eventName}</span>
+                                                        <span className="text-[10px] text-zinc-500 uppercase tracking-widest">{b.eventName}</span>
                                                     </div>
                                                 </div>
                                             </td>
                                             <td className="p-4 font-semibold text-[#D4AF37] text-sm">
                                                 {vendor?.name || 'Unknown'}
                                             </td>
-                                            <td className="p-4 text-slate-400 font-mono text-[11px]">
+                                            <td className="p-4 text-zinc-400 font-mono text-[11px]">
                                                 {b.date}
                                             </td>
                                             <td className="p-4 font-bold text-white text-sm font-mono">
@@ -1632,8 +1721,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <td className="p-4">
                                                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
                                                     b.paymentStatus === 'paid' 
-                                                        ? 'bg-green-500/10 text-green-400 border-green-500/20' 
-                                                        : 'bg-red-500/10 text-red-400 border-red-500/20'
+                                                        ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' 
+                                                        : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
                                                 }`}>
                                                     {b.paymentStatus}
                                                 </span>
@@ -1641,8 +1730,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <td className="p-4">
                                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
                                                     b.status === 'confirmed' 
-                                                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' 
-                                                        : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                        ? 'bg-green-500/15 text-green-400 border-green-500/20' 
+                                                        : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20'
                                                 }`}>
                                                     {b.status}
                                                 </span>
@@ -1652,8 +1741,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     onClick={() => onUpdateBookingStatus(b.id, b.status === 'confirmed' ? 'pending' : 'confirmed')}
                                                     className={`p-2 rounded-lg transition-all ${
                                                         b.status === 'confirmed' 
-                                                            ? 'bg-green-500/10 text-green-500' 
-                                                            : 'bg-white/5 text-slate-500 hover:text-[#D4AF37]'
+                                                            ? 'bg-[#D4AF37]/10 text-[#D4AF37]' 
+                                                            : 'bg-white/5 text-zinc-500 hover:text-[#D4AF37]'
                                                     }`}
                                                     title="Toggle Confirmation"
                                                 >
@@ -1673,7 +1762,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 );
                             }).length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="p-8 text-center text-slate-500 uppercase tracking-widest text-[10px]">No bookings logged</td>
+                                    <td colSpan={7} className="p-8 text-center text-zinc-500 uppercase tracking-widest text-[10px]">No bookings logged</td>
                                 </tr>
                             )}
                         </tbody>
@@ -1688,37 +1777,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37] mb-6">Stripe Connection Hub</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                         <div className="bg-black/40 p-6 rounded-2xl border border-white/5">
-                            <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">Connected Vendors</p>
+                            <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest mb-1">Connected Vendors</p>
                             <h4 className="text-3xl font-bold text-white">{vendors.filter(v => !!v.stripeAccountId).length}</h4>
                         </div>
                         <div className="bg-black/40 p-6 rounded-2xl border border-white/5">
-                            <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">Pending Connections</p>
+                            <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest mb-1">Pending Connections</p>
                             <h4 className="text-3xl font-bold text-white">{vendors.filter(v => !v.stripeAccountId).length}</h4>
                         </div>
                         <div className="bg-black/40 p-6 rounded-2xl border border-white/5">
-                            <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">Platform Revenue</p>
+                            <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest mb-1">Platform Revenue</p>
                             <h4 className="text-3xl font-bold text-[#D4AF37]">${totalCommission.toLocaleString()}</h4>
                         </div>
                     </div>
 
                     <div className="space-y-4">
-                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-white/5 pb-2">Vendor Stripe Status</h4>
+                        <h4 className="text-xs font-black text-zinc-400 uppercase tracking-widest border-b border-white/5 pb-2">Vendor Stripe Status</h4>
                         {vendors.map(v => (
                             <div key={v.id} className="flex items-center justify-between p-4 bg-black/20 rounded-xl border border-white/5">
                                 <div className="flex items-center gap-4">
                                     <img src={v.image} className="w-10 h-10 rounded-lg object-cover" />
                                     <div>
                                         <p className="text-sm font-bold text-white">{v.name}</p>
-                                        <p className="text-[9px] text-slate-500 uppercase tracking-widest">{v.contactEmail}</p>
+                                        <p className="text-[9px] text-zinc-500 uppercase tracking-widest">{v.contactEmail}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-4">
                                     {v.stripeAccountId ? (
                                         <div className="flex flex-col items-end">
-                                            <span className="text-[9px] font-black text-green-500 uppercase tracking-widest flex items-center gap-1">
+                                            <span className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest flex items-center gap-1">
                                                 <ShieldCheck className="w-3 h-3" /> Connected
                                             </span>
-                                            <span className="text-[8px] text-slate-600 font-mono">{v.stripeAccountId}</span>
+                                            <span className="text-[8px] text-zinc-600 font-mono">{v.stripeAccountId}</span>
                                             <button 
                                                 onClick={() => handleManualStripeId(v.id)}
                                                 className="text-[8px] text-[#D4AF37] hover:underline mt-1 uppercase tracking-widest font-bold"
@@ -1736,7 +1825,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             </button>
                                             <button 
                                                 onClick={() => handleManualStripeId(v.id)}
-                                                className="p-2 bg-white/5 text-slate-400 border border-white/10 rounded-lg hover:text-white transition-all"
+                                                className="p-2 bg-white/5 text-zinc-400 border border-white/10 rounded-lg hover:text-white transition-all"
                                                 title="Manually Set ID"
                                             >
                                                 <Settings className="w-3 h-3" />
@@ -1756,15 +1845,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                     <div>
                         <h2 className="text-2xl font-bold font-[Cinzel] text-white">User Directory</h2>
-                        <p className="text-xs text-slate-500 mt-1">Manage active platform registrants and client profiles.</p>
+                        <p className="text-xs text-zinc-500 mt-1">Manage active platform registrants and client profiles.</p>
                     </div>
-                    <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                    <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
                         Total Users: {users.length}
                     </div>
                 </div>
 
                 <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
-                    <Search className="w-5 h-5 text-slate-500" />
+                    <Search className="w-5 h-5 text-zinc-500" />
                     <input 
                         type="text" 
                         placeholder="Filter users by name or email..." 
@@ -1777,7 +1866,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <TableContainer>
                     <table className="w-full text-left border-collapse text-xs">
                         <thead>
-                            <tr className="border-b border-white/10 bg-black/40 text-slate-400 font-bold uppercase tracking-widest text-[9px]">
+                            <tr className="border-b border-white/10 bg-black/40 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">User Profile</th>
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">User ID</th>
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Contact Email</th>
@@ -1804,23 +1893,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 )}
                                                 <div>
                                                     <h4 className="font-bold text-white text-sm">{u.name || 'Anonymous User'}</h4>
-                                                    <span className="text-[9px] text-slate-500 uppercase tracking-widest">
+                                                    <span className="text-[9px] text-zinc-500 uppercase tracking-widest">
                                                         {(u as any).role || 'Client'}
                                                     </span>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="p-4 font-mono text-slate-500 text-[10px]">
+                                        <td className="p-4 font-mono text-zinc-500 text-[10px]">
                                             {u.id}
                                         </td>
-                                        <td className="p-4 text-slate-300 font-mono text-xs">
+                                        <td className="p-4 text-zinc-300 font-mono text-xs">
                                             {u.username || 'N/A'}
                                         </td>
                                         <td className="p-4">
                                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
                                                 (u as any).isApproved || (u as any).role === 'admin'
-                                                    ? 'bg-green-500/10 text-green-400 border-green-500/20' 
-                                                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                    ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' 
+                                                    : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20'
                                             }`}>
                                                 {(u as any).isApproved || (u as any).role === 'admin' ? 'Approved' : 'Deactivated'}
                                             </span>
@@ -1842,7 +1931,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                             }
                                                         }}
                                                         title="Approve User Account" 
-                                                        className="p-2 text-slate-500 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-all"
+                                                        className="p-2 text-zinc-500 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-lg transition-all"
                                                     >
                                                         <ShieldCheck className="w-4 h-4" />
                                                     </button>
@@ -1859,7 +1948,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                         }
                                                     }}
                                                     title="Permanently Delete User" 
-                                                    className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                                                    className="p-2 text-zinc-500 hover:text-zinc-400 hover:bg-zinc-500/10 rounded-lg transition-all"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
@@ -1872,7 +1961,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 (u.username || '').toLowerCase().includes(filterText.toLowerCase())
                             ).length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="p-8 text-center text-slate-500 uppercase tracking-widest text-[10px]">No users registered</td>
+                                    <td colSpan={5} className="p-8 text-center text-zinc-500 uppercase tracking-widest text-[10px]">No users registered</td>
                                 </tr>
                             )}
                         </tbody>
@@ -1954,9 +2043,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                         <div>
                             <h2 className="text-2xl font-bold font-[Cinzel] text-white">Moderation Queue</h2>
-                            <p className="text-xs text-slate-500 mt-1">Audit and authorize incoming vendor and client registrants.</p>
+                            <p className="text-xs text-zinc-500 mt-1">Audit and authorize incoming vendor and client registrants.</p>
                         </div>
-                        <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                        <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
                             Pending Audit: {moderationQueueItems.length}
                         </div>
                     </div>
@@ -1964,7 +2053,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <TableContainer>
                         <table className="w-full text-left border-collapse text-xs">
                             <thead>
-                                <tr className="border-b border-white/10 bg-black/40 text-slate-400 font-bold uppercase tracking-widest text-[9px]">
+                                <tr className="border-b border-white/10 bg-black/40 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
                                     <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Applicant profile</th>
                                     <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Request Type</th>
                                     <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Credential Email</th>
@@ -1995,13 +2084,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                         {item.image ? (
                                                             <img src={item.image} className="w-10 h-10 rounded-lg object-cover bg-black border border-white/10 shrink-0" />
                                                         ) : (
-                                                            <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-white/10 flex items-center justify-center font-bold text-slate-400 text-xs shrink-0">
+                                                            <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-white/10 flex items-center justify-center font-bold text-zinc-400 text-xs shrink-0">
                                                                 {item.name.slice(0, 2).toUpperCase()}
                                                             </div>
                                                         )}
                                                         <div>
                                                             <h4 className="font-bold text-white text-sm">{item.name}</h4>
-                                                            <span className="text-[9px] text-slate-500 uppercase tracking-widest">{item.category}</span>
+                                                            <span className="text-[9px] text-zinc-500 uppercase tracking-widest">{item.category}</span>
                                                         </div>
                                                     </div>
                                                 </td>
@@ -2009,15 +2098,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
                                                         item.type === 'professional'
                                                             ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' 
-                                                            : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                                            : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
                                                     }`}>
                                                         {item.type}
                                                     </span>
                                                 </td>
-                                                <td className="p-4 text-slate-300 font-mono text-xs">
+                                                <td className="p-4 text-zinc-300 font-mono text-xs">
                                                     {item.email}
                                                 </td>
-                                                <td className="p-4 text-slate-400">
+                                                <td className="p-4 text-zinc-400">
                                                     {item.details}
                                                 </td>
                                                 <td className="p-4 text-right">
@@ -2027,8 +2116,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                             disabled={!!action}
                                                             className={`p-2 rounded-lg transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
                                                                 action === 'approve'
-                                                                    ? 'bg-green-500/20 text-green-400'
-                                                                    : 'text-slate-500 hover:text-green-500 hover:bg-green-500/10 cursor-pointer'
+                                                                    ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
+                                                                    : 'text-zinc-500 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 cursor-pointer'
                                                             }`}
                                                             title="Approve Registration"
                                                         >
@@ -2036,7 +2125,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                                 <motion.div
                                                                     initial={{ scale: 0.5, rotate: -45 }}
                                                                     animate={{ scale: 1.1, rotate: 0 }}
-                                                                    className="bg-green-500 text-black p-1 rounded-full"
+                                                                    className="bg-[#D4AF37] text-black p-1 rounded-full"
                                                                 >
                                                                     <ShieldCheck className="w-3.5 h-3.5 stroke-[3.5]" />
                                                                 </motion.div>
@@ -2049,8 +2138,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                             disabled={!!action}
                                                             className={`p-2 rounded-lg transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
                                                                 action === 'reject'
-                                                                    ? 'bg-red-500/20 text-red-400'
-                                                                    : 'text-slate-500 hover:text-red-500 hover:bg-red-500/10 cursor-pointer'
+                                                                    ? 'bg-zinc-800 text-zinc-400'
+                                                                    : 'text-zinc-500 hover:text-zinc-400 hover:bg-zinc-500/10 cursor-pointer'
                                                             }`}
                                                             title="Decline registration"
                                                         >
@@ -2058,7 +2147,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                                 <motion.div
                                                                     initial={{ scale: 0.5 }}
                                                                     animate={{ scale: [1.1, 1] }}
-                                                                    className="bg-red-500 text-white p-1 rounded-full"
+                                                                    className="bg-zinc-700 text-white p-1 rounded-full"
                                                                 >
                                                                     <X className="w-3.5 h-3.5 stroke-[3.5]" />
                                                                 </motion.div>
@@ -2074,7 +2163,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </AnimatePresence>
                                 {moderationQueueItems.length === 0 && (
                                     <tr>
-                                        <td colSpan={5} className="p-8 text-center text-slate-500 uppercase tracking-widest text-[10px]">Audit complete! Moderation queue is empty</td>
+                                        <td colSpan={5} className="p-8 text-center text-zinc-500 uppercase tracking-widest text-[10px]">Audit complete! Moderation queue is empty</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -2090,7 +2179,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             messages.forEach(m => {
                 if (!m) return;
                 const cid = m.conversationId || (m.senderId === 'admin' ? `admin_${m.receiverId || 'unknown'}` : `${m.senderId || 'unknown'}_admin`);
-                if (!lastMessagesByConversation[cid] || new Date(m.timestamp) > new Date(lastMessagesByConversation[cid].timestamp)) {
+                const mTime = m.timestamp ? new Date(m.timestamp).getTime() : 0;
+                const lastTime = (lastMessagesByConversation[cid] && lastMessagesByConversation[cid].timestamp) ? new Date(lastMessagesByConversation[cid].timestamp).getTime() : 0;
+                if (!lastMessagesByConversation[cid] || mTime > lastTime) {
                     const msgCopy = { ...m, conversationId: cid };
                     lastMessagesByConversation[cid] = msgCopy;
                 }
@@ -2140,10 +2231,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             });
 
             filteredList.sort((a, b) => {
+                const timeA = a.msg.timestamp ? new Date(a.msg.timestamp).getTime() : 0;
+                const timeB = b.msg.timestamp ? new Date(b.msg.timestamp).getTime() : 0;
                 if (convoSortBy === 'recent') {
-                    return new Date(b.msg.timestamp).getTime() - new Date(a.msg.timestamp).getTime();
+                    return timeB - timeA;
                 } else if (convoSortBy === 'oldest') {
-                    return new Date(a.msg.timestamp).getTime() - new Date(b.msg.timestamp).getTime();
+                    return timeA - timeB;
                 } else {
                     return a.clientDetails.name.localeCompare(b.clientDetails.name);
                 }
@@ -2164,18 +2257,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             <div className="p-4 border-b border-white/5 bg-zinc-950/40 space-y-3">
                                 {/* Search bar */}
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
+                                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
                                     <input
                                         type="text"
                                         value={convoSearchQuery}
                                         onChange={(e) => setConvoSearchQuery(e.target.value)}
                                         placeholder="Search clients, vendors, texts..."
-                                        className="w-full bg-black border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#D4AF37] transition-all"
+                                        className="w-full bg-black border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#D4AF37] transition-all"
                                     />
                                     {convoSearchQuery && (
                                         <button 
                                             onClick={() => setConvoSearchQuery('')}
-                                            className="absolute right-3 top-2.5 text-slate-500 hover:text-white transition-colors"
+                                            className="absolute right-3 top-2.5 text-zinc-500 hover:text-white transition-colors"
                                         >
                                             <X className="w-4 h-4" />
                                         </button>
@@ -2186,35 +2279,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <div className="grid grid-cols-2 gap-2 text-[10px]">
                                     {/* Chat Type */}
                                     <div className="space-y-1">
-                                        <label className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Chat Type</label>
+                                        <label className="text-[9px] font-black uppercase tracking-wider text-zinc-500 block">Chat Type</label>
                                         <div className="relative">
                                             <select
                                                 value={convoTypeFilter}
                                                 onChange={(e) => setConvoTypeFilter(e.target.value as any)}
-                                                className="w-full bg-black border border-white/10 rounded-lg px-2 py-1.5 text-slate-300 focus:outline-none focus:border-[#D4AF37] appearance-none cursor-pointer"
+                                                className="w-full bg-black border border-white/10 rounded-lg px-2 py-1.5 text-zinc-300 focus:outline-none focus:border-[#D4AF37] appearance-none cursor-pointer"
                                             >
                                                 <option value="all">All Chats</option>
                                                 <option value="admin">Support / Admin</option>
                                                 <option value="vendor_client">Vendor-Client</option>
                                             </select>
-                                            <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 text-slate-500 pointer-events-none" />
+                                            <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 text-zinc-500 pointer-events-none" />
                                         </div>
                                     </div>
 
                                     {/* Status */}
                                     <div className="space-y-1">
-                                        <label className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Status</label>
+                                        <label className="text-[9px] font-black uppercase tracking-wider text-zinc-500 block">Status</label>
                                         <div className="relative">
                                             <select
                                                 value={convoReadFilter}
                                                 onChange={(e) => setConvoReadFilter(e.target.value as any)}
-                                                className="w-full bg-black border border-white/10 rounded-lg px-2 py-1.5 text-slate-300 focus:outline-none focus:border-[#D4AF37] appearance-none cursor-pointer"
+                                                className="w-full bg-black border border-white/10 rounded-lg px-2 py-1.5 text-zinc-300 focus:outline-none focus:border-[#D4AF37] appearance-none cursor-pointer"
                                             >
                                                 <option value="all">All Status</option>
                                                 <option value="unread">Unread</option>
                                                 <option value="read">Read</option>
                                             </select>
-                                            <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 text-slate-500 pointer-events-none" />
+                                            <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 text-zinc-500 pointer-events-none" />
                                         </div>
                                     </div>
                                 </div>
@@ -2226,14 +2319,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         <select
                                             value={convoSortBy}
                                             onChange={(e) => setConvoSortBy(e.target.value as any)}
-                                            className="bg-transparent text-slate-300 focus:outline-none cursor-pointer font-medium"
+                                            className="bg-transparent text-zinc-300 focus:outline-none cursor-pointer font-medium"
                                         >
                                             <option value="recent">Newest First</option>
                                             <option value="oldest">Oldest First</option>
                                             <option value="alphabetical">Name A-Z</option>
                                         </select>
                                     </div>
-                                    <span className="text-slate-500 font-bold uppercase tracking-wider text-[8px]">
+                                    <span className="text-zinc-500 font-bold uppercase tracking-wider text-[8px]">
                                         Results: <span className="text-[#D4AF37]">{filteredList.length}</span>
                                     </span>
                                 </div>
@@ -2244,7 +2337,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <div className="p-12 text-center opacity-30 flex flex-col items-center justify-center">
                                         <Bot className="w-12 h-12 mx-auto mb-2 text-[#D4AF37]" />
                                         <p className="text-xs font-[Cinzel] font-bold text-[#D4AF37] uppercase tracking-wider">No chats found</p>
-                                        <p className="text-[10px] mt-1 text-slate-400">Try adjusting your filters or search query.</p>
+                                        <p className="text-[10px] mt-1 text-zinc-400">Try adjusting your filters or search query.</p>
                                     </div>
                                 ) : (
                                     filteredList.map(({ msg, cid, isAdminSupport, hasUnread, vendorDetails, clientDetails, otherUser }) => {
@@ -2286,7 +2379,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                         {hasUnread && (
                                                             <span className="w-2 h-2 rounded-full bg-[#D4AF37] animate-pulse shadow-[0_0_8px_rgba(212,175,55,0.6)] flex-shrink-0"></span>
                                                         )}
-                                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isAdminSupport ? 'bg-emerald-400' : 'bg-[#D4AF37]'}`}></span>
+                                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isAdminSupport ? 'bg-green-400' : 'bg-[#D4AF37]'}`}></span>
                                                         
                                                         <h4 className={`text-white text-sm truncate max-w-[130px] ${hasUnread ? 'font-bold text-[#D4AF37]' : 'font-semibold'}`}>
                                                             {isAdminSupport ? `Support: ${clientDetails.name}` : `${clientDetails.name}`}
@@ -2294,14 +2387,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
                                                         <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
                                                             isAdminSupport 
-                                                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                                                ? 'bg-green-500/10 text-green-400 border border-green-500/20' 
                                                                 : 'bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20'
                                                         }`}>
                                                             {isAdminSupport ? 'Support' : 'Client-Vendor'}
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                        <span className="text-[9px] text-slate-500">
+                                                        <span className="text-[9px] text-zinc-500">
                                                             {msg.timestamp ? new Date(msg.timestamp).toLocaleDateString() : ''}
                                                         </span>
                                                         {isAdminSupport && (
@@ -2313,7 +2406,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                                 {hasUnread ? (
                                                                     <Mail className="w-3.5 h-3.5 text-[#D4AF37]" />
                                                                 ) : (
-                                                                    <MailOpen className="w-3.5 h-3.5 text-slate-500 hover:text-white" />
+                                                                    <MailOpen className="w-3.5 h-3.5 text-zinc-500 hover:text-white" />
                                                                 )}
                                                             </button>
                                                         )}
@@ -2327,10 +2420,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     </p>
                                                 )}
                                                 
-                                                <p className="text-[10px] text-slate-500 truncate">
+                                                <p className="text-[10px] text-zinc-500 truncate">
                                                     {clientDetails.email}
                                                 </p>
-                                                <p className={`text-xs line-clamp-1 ${hasUnread ? 'text-white font-medium' : 'text-slate-300 italic'}`}>
+                                                <p className={`text-xs line-clamp-1 ${hasUnread ? 'text-white font-medium' : 'text-zinc-300 italic'}`}>
                                                     {msg.text || 'Shared attachment'}
                                                 </p>
                                             </div>
@@ -2346,7 +2439,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <MessageSquare className="w-8 h-8" />
                             </div>
                             <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Secure Oversight Console</h3>
-                            <p className="text-slate-400 text-xs max-w-sm mt-3 leading-relaxed">
+                            <p className="text-zinc-400 text-xs max-w-sm mt-3 leading-relaxed">
                                 Choose an active inquiry or support thread from the sidebar. The secure real-time messaging channel will launch instantly in our premium client-support interface.
                             </p>
                         </div>
@@ -2411,7 +2504,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             Operational Intel
                         </span>
                         <h2 className="text-3xl font-bold font-[Cinzel] text-white mt-4 tracking-tight">Booking Funnel Conversion Index</h2>
-                        <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                        <p className="text-sm text-zinc-400 mt-2 leading-relaxed">
                             Monitor client discovery loops, plan additions, submission conversion rates, and revenue acquisitions. Driven in real-time by integrated Firebase Analytics log streams.
                         </p>
                     </div>
@@ -2420,39 +2513,39 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 {/* KPI Metrics List */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
-                        <div className="absolute top-4 right-4 bg-blue-500/10 p-2 rounded-lg border border-blue-500/20">
-                            <Search className="w-5 h-5 text-blue-400" />
+                        <div className="absolute top-4 right-4 bg-zinc-500/10 p-2 rounded-lg border border-zinc-500/20">
+                            <Search className="w-5 h-5 text-zinc-400" />
                         </div>
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">1. Discovery</p>
+                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">1. Discovery</p>
                         <h3 className="text-3xl font-bold text-white mt-4 font-mono">{analyticsStats.view_vendor}</h3>
-                        <p className="text-xs text-slate-400 mt-1">Vendor list & profile views</p>
+                        <p className="text-xs text-zinc-400 mt-1">Vendor list & profile views</p>
                     </div>
                     
                     <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
                         <div className="absolute top-4 right-4 bg-[#D4AF37]/10 p-2 rounded-lg border border-[#D4AF37]/25">
                             <ShoppingBag className="w-5 h-5 text-[#D4AF37]" />
                         </div>
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">2. Plan Intent</p>
+                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">2. Plan Intent</p>
                         <h3 className="text-3xl font-bold text-[#D4AF37] mt-4 font-mono">{analyticsStats.add_to_plan}</h3>
-                        <p className="text-xs text-slate-400 mt-1">{analyticsStats.planRate.toFixed(1)}% loop add-to-plan rate</p>
+                        <p className="text-xs text-zinc-400 mt-1">{analyticsStats.planRate.toFixed(1)}% loop add-to-plan rate</p>
                     </div>
 
                     <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
-                        <div className="absolute top-4 right-4 bg-orange-500/10 p-2 rounded-lg border border-orange-500/20">
-                            <Calendar className="w-5 h-5 text-orange-400" />
+                        <div className="absolute top-4 right-4 bg-zinc-500/10 p-2 rounded-lg border border-[#D4AF37]/20">
+                            <Calendar className="w-5 h-5 text-[#D4AF37]" />
                         </div>
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">3. Book Requests</p>
+                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">3. Book Requests</p>
                         <h3 className="text-3xl font-bold text-white mt-4 font-mono">{analyticsStats.submit_booking_request}</h3>
-                        <p className="text-xs text-slate-400 mt-1">{analyticsStats.requestRate.toFixed(1)}% plan conversion rate</p>
+                        <p className="text-xs text-zinc-400 mt-1">{analyticsStats.requestRate.toFixed(1)}% plan conversion rate</p>
                     </div>
 
                     <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
-                        <div className="absolute top-4 right-4 bg-green-500/10 p-2 rounded-lg border border-green-500/20">
-                            <DollarSign className="w-5 h-5 text-green-400" />
+                        <div className="absolute top-4 right-4 bg-[#D4AF37]/10 p-2 rounded-lg border border-[#D4AF37]/20">
+                            <DollarSign className="w-5 h-5 text-[#D4AF37]" />
                         </div>
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">4. Acquisitions</p>
-                        <h3 className="text-3xl font-bold text-green-400 mt-4 font-mono">{analyticsStats.payment_completed}</h3>
-                        <p className="text-xs text-slate-400 mt-1">{analyticsStats.purchaseRate.toFixed(1)}% booking close rate</p>
+                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">4. Acquisitions</p>
+                        <h3 className="text-3xl font-bold text-[#D4AF37] mt-4 font-mono">{analyticsStats.payment_completed}</h3>
+                        <p className="text-xs text-zinc-400 mt-1">{analyticsStats.purchaseRate.toFixed(1)}% booking close rate</p>
                     </div>
                 </div>
 
@@ -2461,65 +2554,65 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="lg:col-span-2 bg-[#111] p-8 rounded-2xl border border-white/5 shadow-2xl flex flex-col justify-between">
                         <div>
                             <h3 className="text-lg font-bold font-[Cinzel] text-white">Funnel Leakage & Progress Chart</h3>
-                            <p className="text-xs text-slate-500 mt-1">Mathematical representation of client conversion phases.</p>
+                            <p className="text-xs text-zinc-500 mt-1">Mathematical representation of client conversion phases.</p>
                         </div>
 
                         {/* Interactive Bars representing Funnel Volume */}
                         <div className="space-y-6 mt-8">
                             {/* Discovery step */}
                             <div>
-                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">
                                     <span>Step 1: Discovery (Total Card Views)</span>
                                     <span>{analyticsStats.view_vendor} Views (100%)</span>
                                 </div>
-                                <div className="h-4 bg-slate-900 rounded-full overflow-hidden border border-white/5">
-                                    <div className="h-full bg-blue-500 rounded-full transition-all duration-1000" style={{ width: '105%' }}></div>
+                                <div className="h-4 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
+                                    <div className="h-full bg-[#D4AF37] rounded-full transition-all duration-1000" style={{ width: '105%' }}></div>
                                 </div>
                             </div>
 
                             {/* Plan step */}
                             <div>
-                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">
                                     <span>Step 2: Micro-Conversion (Added to Event Plan)</span>
                                     <span>{analyticsStats.add_to_plan} Added ({analyticsStats.planRate.toFixed(1)}%)</span>
                                 </div>
-                                <div className="h-4 bg-slate-900 rounded-full overflow-hidden border border-white/5">
+                                <div className="h-4 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
                                     <div className="h-full bg-[#D4AF37] rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.max(0, analyticsStats.planRate))}%` }}></div>
                                 </div>
                             </div>
 
                             {/* Booking requests step */}
                             <div>
-                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">
                                     <span>Step 3: Intent (Booking Inquiry Sent)</span>
                                     <span>{analyticsStats.submit_booking_request} Enquiries ({analyticsStats.view_vendor > 0 ? ((analyticsStats.submit_booking_request / analyticsStats.view_vendor) * 100).toFixed(1) : 0}%)</span>
                                 </div>
-                                <div className="h-4 bg-slate-900 rounded-full overflow-hidden border border-white/5">
-                                    <div className="h-full bg-orange-400 rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.max(0, analyticsStats.view_vendor > 0 ? (analyticsStats.submit_booking_request / analyticsStats.view_vendor) * 100 : 0))}%` }}></div>
+                                <div className="h-4 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
+                                    <div className="h-full bg-[#D4AF37] rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.max(0, analyticsStats.view_vendor > 0 ? (analyticsStats.submit_booking_request / analyticsStats.view_vendor) * 100 : 0))}%` }}></div>
                                 </div>
                             </div>
 
                             {/* Acquisition/Checkout step */}
                             <div>
-                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
+                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">
                                     <span>Step 4: Ultimate Acquisition (Securely Paid)</span>
                                     <span>{analyticsStats.payment_completed} Orders ({analyticsStats.view_vendor > 0 ? ((analyticsStats.payment_completed / analyticsStats.view_vendor) * 100).toFixed(1) : 0}%)</span>
                                 </div>
-                                <div className="h-4 bg-slate-900 rounded-full overflow-hidden border border-white/5">
-                                    <div className="h-full bg-green-500 rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.max(0, analyticsStats.view_vendor > 0 ? (analyticsStats.payment_completed / analyticsStats.view_vendor) * 100 : 0))}%` }}></div>
+                                <div className="h-4 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
+                                    <div className="h-full bg-[#D4AF37] rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.max(0, analyticsStats.view_vendor > 0 ? (analyticsStats.payment_completed / analyticsStats.view_vendor) * 100 : 0))}%` }}></div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="mt-8 pt-6 border-t border-white/5 flex flex-wrap gap-6 items-center justify-between text-xs text-slate-400">
+                        <div className="mt-8 pt-6 border-t border-white/5 flex flex-wrap gap-6 items-center justify-between text-xs text-zinc-400">
                             <div>
                                 <span className="text-white font-bold font-mono">Overall Close Target:</span> {analyticsStats.overallRate.toFixed(2)}% of visitors convert to revenue.
                             </div>
                             <div className="flex items-center gap-2">
-                                <span className="inline-block w-2.5 h-2.5 bg-blue-500 rounded-full"></span> Discovery
+                                <span className="inline-block w-2.5 h-2.5 bg-[#D4AF37] rounded-full"></span> Discovery
                                 <span className="inline-block w-2.5 h-2.5 bg-[#D4AF37] rounded-full"></span> Interest
-                                <span className="inline-block w-2.5 h-2.5 bg-orange-400 rounded-full"></span> Intent
-                                <span className="inline-block w-2.5 h-2.5 bg-green-500 rounded-full"></span> Purchase
+                                <span className="inline-block w-2.5 h-2.5 bg-[#D4AF37] rounded-full"></span> Intent
+                                <span className="inline-block w-2.5 h-2.5 bg-[#D4AF37] rounded-full"></span> Purchase
                             </div>
                         </div>
                     </div>
@@ -2528,14 +2621,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="bg-[#111] p-8 rounded-2xl border border-white/5 shadow-2xl flex flex-col justify-between">
                         <div>
                             <h3 className="text-lg font-bold font-[Cinzel] text-white">Conversion Funnel Ratios</h3>
-                            <p className="text-xs text-slate-500 mt-1">Leakage between steps & segments.</p>
+                            <p className="text-xs text-zinc-500 mt-1">Leakage between steps & segments.</p>
                         </div>
                         
                         <div className="space-y-6 mt-6">
                             <div className="p-4 bg-zinc-900/60 rounded-xl border border-white/5 flex items-center justify-between">
                                 <div>
-                                    <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Interest Rate</h4>
-                                    <p className="text-[10px] text-slate-500 mt-1">From viewing cards to adding items to plan</p>
+                                    <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider">Interest Rate</h4>
+                                    <p className="text-[10px] text-zinc-500 mt-1">From viewing cards to adding items to plan</p>
                                 </div>
                                 <div className="text-right">
                                     <span className="text-xl font-bold font-mono text-[#D4AF37]">{analyticsStats.planRate.toFixed(1)}%</span>
@@ -2544,26 +2637,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
                             <div className="p-4 bg-zinc-900/60 rounded-xl border border-white/5 flex items-center justify-between">
                                 <div>
-                                    <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Plan Commitment</h4>
-                                    <p className="text-[10px] text-slate-500 mt-1">From adding to plan to submitting booking inquiries</p>
+                                    <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider">Plan Commitment</h4>
+                                    <p className="text-[10px] text-zinc-500 mt-1">From adding to plan to submitting booking inquiries</p>
                                 </div>
                                 <div className="text-right">
-                                    <span className="text-xl font-bold font-mono text-orange-400">{analyticsStats.requestRate.toFixed(1)}%</span>
+                                    <span className="text-xl font-bold font-mono text-[#D4AF37]">{analyticsStats.requestRate.toFixed(1)}%</span>
                                 </div>
                             </div>
 
                             <div className="p-4 bg-zinc-900/60 rounded-xl border border-white/5 flex items-center justify-between">
                                 <div>
-                                    <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Acquisition Fulfillment</h4>
-                                    <p className="text-[10px] text-slate-500 mt-1">From sent inquiries to fully completed payments</p>
+                                    <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider">Acquisition Fulfillment</h4>
+                                    <p className="text-[10px] text-zinc-500 mt-1">From sent inquiries to fully completed payments</p>
                                 </div>
                                 <div className="text-right">
-                                    <span className="text-xl font-bold font-mono text-green-400">{analyticsStats.purchaseRate.toFixed(1)}%</span>
+                                    <span className="text-xl font-bold font-mono text-[#D4AF37]">{analyticsStats.purchaseRate.toFixed(1)}%</span>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="text-[10px] text-slate-600 font-bold uppercase tracking-widest text-center mt-6">
+                        <div className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest text-center mt-6">
                             Secure Zero-Trust ABAC Logging
                         </div>
                     </div>
@@ -2574,10 +2667,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="p-6 border-b border-white/5 bg-black/40 flex justify-between items-center">
                         <div>
                             <h3 className="text-lg font-bold font-[Cinzel] text-white">Live Firebase Analytics Logs</h3>
-                            <p className="text-xs text-slate-500 mt-1">Real-time log entries captured through analytics hooks.</p>
+                            <p className="text-xs text-zinc-500 mt-1">Real-time log entries captured through analytics hooks.</p>
                         </div>
-                        <span className="text-[10px] bg-green-500/10 text-green-500 px-3 py-1 font-bold uppercase tracking-widest border border-green-500/20 rounded-full flex items-center gap-1.5 font-bold">
-                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Live Broadcast
+                        <span className="text-[10px] bg-[#D4AF37]/10 text-[#D4AF37] px-3 py-1 font-bold uppercase tracking-widest border border-[#D4AF37]/20 rounded-full flex items-center gap-1.5 font-bold">
+                            <span className="w-1.5 h-1.5 bg-[#D4AF37] rounded-full animate-pulse"></span> Live Broadcast
                         </span>
                     </div>
 
@@ -2585,7 +2678,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         {isLoadingAnalytics ? (
                             <div className="py-20 text-center flex flex-col items-center justify-center gap-4">
                                 <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Streaming Firebase records...</span>
+                                <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Streaming Firebase records...</span>
                             </div>
                         ) : analyticsLogs.length === 0 ? (
                             <div className="py-20 text-center opacity-40">
@@ -2595,7 +2688,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         ) : (
                             <table className="w-full text-left border-collapse text-xs">
                                 <thead>
-                                    <tr className="border-b border-white/5 bg-black/20 text-slate-500 font-bold uppercase tracking-widest text-[9px]">
+                                    <tr className="border-b border-white/5 bg-black/20 text-zinc-500 font-bold uppercase tracking-widest text-[9px]">
                                         <th className="p-4 bg-[#111]">Timestamp</th>
                                         <th className="p-4 bg-[#111]">Event Name</th>
                                         <th className="p-4 bg-[#111]">User Email</th>
@@ -2605,27 +2698,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
                                     {analyticsLogs.map(log => (
-                                        <tr key={log.id} className="hover:bg-white/[0.02] transition-colors font-mono text-[11px] text-slate-300">
-                                            <td className="p-4 text-slate-500">
+                                        <tr key={log.id} className="hover:bg-white/[0.02] transition-colors font-mono text-[11px] text-zinc-300">
+                                            <td className="p-4 text-zinc-500">
                                                 {log.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A'}
                                             </td>
                                             <td className="p-4">
                                                 <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${
-                                                    log.eventName === 'payment_completed' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
-                                                    log.eventName === 'submit_booking_request' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                                                    log.eventName === 'payment_completed' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' :
+                                                    log.eventName === 'submit_booking_request' ? 'bg-zinc-500/10 text-[#D4AF37] border-[#D4AF37]/20' :
                                                     log.eventName === 'add_to_plan' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' :
-                                                    'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                                    'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
                                                 }`}>
                                                     {log.eventName}
                                                 </span>
                                             </td>
-                                            <td className="p-4 text-slate-400 text-xs font-sans">
+                                            <td className="p-4 text-zinc-400 text-xs font-sans">
                                                 {log.userEmail || 'Anonymous Guest'}
                                             </td>
                                             <td className="p-4 max-w-xs truncate text-[10px]" title={JSON.stringify(log.params)}>
                                                 {log.params ? Object.entries(log.params).map(([k, v]) => `${k}: ${v}`).join(' | ') : 'None'}
                                             </td>
-                                            <td className="p-4 text-slate-500">
+                                            <td className="p-4 text-zinc-500">
                                                 {log.path || '/'}
                                             </td>
                                         </tr>
