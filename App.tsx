@@ -1006,40 +1006,103 @@ function App() {
     }
   };
 
-  const handleConfirmBooking = (d: any) => {
+  const handleConfirmBooking = async (d: any) => {
     if (!bookingVendor) return;
     trackFunnelStep.addToPlan(bookingVendor.id, bookingVendor.name, bookingVendor.category, d.totalAmount);
     
-    const bookingDate = d.date || eventDate || new Date().toISOString().split('T')[0];
-    
-    setCart(prev => [...prev, {
-      vendor: bookingVendor,
-      date: bookingDate,
-      notes: d.notes,
-      clientName: currentAuthenticatedUser.name || d.clientName,
-      eventName: d.eventName,
-      eventLocation: d.eventLocation,
-      eventTime: d.eventTime,
-      contactEmail: currentAuthenticatedUser.username || d.contactEmail,
-      selectedServices: d.selectedServices,
-      amount: d.totalAmount
-    }]);
-    
-    // Suggest other available vendors on the same date
-    const availableOthers = vendors.filter(v => v.id !== bookingVendor.id && !v.unavailableDates?.includes(bookingDate) && cart.findIndex(c => c.vendor.id === v.id) === -1);
-    setSuggestedVendors(availableOthers.sort((a,b) => b.rating - a.rating).slice(0, 4));
-    setSourceVendorForSuggestions(bookingVendor);
-    setIsPriorityLockForSuggestions(!!d.isPriorityDate);
-    setSuggestionsEventDate(bookingDate);
-    
-    if (d.isPriorityDate) {
-      setShowSuggestions(true);
+    const bookingDate = d.date || eventDate || new Date().toLocaleDateString('en-CA');
+    const finalClientName = d.clientName || currentAuthenticatedUser.name || '';
+    const finalContactEmail = d.contactEmail || currentAuthenticatedUser.username || '';
+
+    if (d.isDirectBook) {
+      const newBooking = {
+        vendorId: bookingVendor.id,
+        clientName: finalClientName,
+        eventName: d.eventName,
+        date: bookingDate,
+        status: 'pending' as const,
+        paymentStatus: 'pending' as const,
+        amount: d.totalAmount,
+        contactEmail: finalContactEmail,
+        selectedServices: d.selectedServices || [],
+        eventLocation: d.eventLocation || '',
+        eventTime: d.eventTime || '',
+        notes: d.notes || '',
+        createdAt: new Date().toISOString()
+      };
+
+      try {
+        await addDoc(collection(db, 'bookings'), newBooking);
+        await sendBookingConfirmation(newBooking);
+
+        setCart(prev => [...prev, {
+          vendor: bookingVendor,
+          date: bookingDate,
+          notes: d.notes,
+          clientName: finalClientName,
+          eventName: d.eventName,
+          eventLocation: d.eventLocation,
+          eventTime: d.eventTime,
+          contactEmail: finalContactEmail,
+          selectedServices: d.selectedServices,
+          amount: d.totalAmount
+        }]);
+        
+        // Suggest other available vendors on the same date
+        const availableOthers = vendors.filter(v => v.id !== bookingVendor.id && !v.unavailableDates?.includes(bookingDate) && cart.findIndex(c => c.vendor.id === v.id) === -1);
+        setSuggestedVendors(availableOthers.sort((a,b) => b.rating - a.rating).slice(0, 4));
+        setSourceVendorForSuggestions(bookingVendor);
+        setIsPriorityLockForSuggestions(!!d.isPriorityDate);
+        setSuggestionsEventDate(bookingDate);
+        
+        if (d.isPriorityDate) {
+          setShowSuggestions(true);
+        } else {
+          setShowSuggestions(false);
+        }
+        
+        showNotification(`Booking request submitted directly to ${bookingVendor.name}!`);
+      } catch (err) {
+        console.error("Error creating direct booking:", err);
+        showNotification("Error creating booking. Please try again.");
+        throw err;
+      }
     } else {
-      setShowSuggestions(false);
+      try {
+        setCart(prev => [...prev, {
+          vendor: bookingVendor,
+          date: bookingDate,
+          notes: d.notes,
+          clientName: finalClientName,
+          eventName: d.eventName,
+          eventLocation: d.eventLocation,
+          eventTime: d.eventTime,
+          contactEmail: finalContactEmail,
+          selectedServices: d.selectedServices,
+          amount: d.totalAmount
+        }]);
+        
+        // Suggest other available vendors on the same date
+        const availableOthers = vendors.filter(v => v.id !== bookingVendor.id && !v.unavailableDates?.includes(bookingDate) && cart.findIndex(c => c.vendor.id === v.id) === -1);
+        setSuggestedVendors(availableOthers.sort((a,b) => b.rating - a.rating).slice(0, 4));
+        setSourceVendorForSuggestions(bookingVendor);
+        setIsPriorityLockForSuggestions(!!d.isPriorityDate);
+        setSuggestionsEventDate(bookingDate);
+        
+        if (d.isPriorityDate) {
+          setShowSuggestions(true);
+        } else {
+          setShowSuggestions(false);
+        }
+        
+        setBookingVendor(null);
+        showNotification(`${bookingVendor.name} successfully added to your plan!`);
+      } catch (err) {
+        console.error("Error adding to plan:", err);
+        showNotification("Error adding to plan. Please try again.");
+        throw err;
+      }
     }
-    
-    setBookingVendor(null);
-    showNotification(`${bookingVendor.name} added to plan!`);
   };
 
   const handleEditCartItem = (index: number) => {
@@ -1098,7 +1161,7 @@ function App() {
       const newReview = {
         ...review,
         id: Math.random().toString(36).substr(2, 9),
-        date: new Date().toISOString().split('T')[0]
+        date: new Date().toLocaleDateString('en-CA')
       };
 
       await updateDoc(doc(db, 'vendors', vendorId), {
@@ -2445,7 +2508,6 @@ function App() {
                           <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37]/5 rounded-full blur-2xl pointer-events-none"></div>
                           <p className="text-[10px] font-black uppercase text-[#D4AF37] tracking-[0.3em] mb-1.5">{activeSubCategoryGroup}</p>
                           <h2 className="text-3xl font-extrabold font-[Cinzel] tracking-widest text-white">{activeSubSubCategory}</h2>
-                          <p className="text-zinc-400 text-xs mt-2 font-light">Explore elite professionals specializing in {activeSubSubCategory} for your celebration.</p>
                         </div>
 
                         {/* Premium Vendor Cards List for this specific sub-subcategory */}

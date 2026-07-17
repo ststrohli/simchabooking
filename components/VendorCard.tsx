@@ -36,7 +36,7 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
   }, [vendor]);
 
   const isCurrentlySelectedDateBlocked = selectedDate && vendor.unavailableDates?.includes(selectedDate);
-  const effectiveBookingDate = selectedDate || new Date().toISOString().split('T')[0];
+  const effectiveBookingDate = selectedDate || new Date().toLocaleDateString('en-CA');
   const isEffectiveBookingDateBlocked = vendor.unavailableDates?.includes(effectiveBookingDate);
 
   const formatDate = (dateStr: string) => {
@@ -155,15 +155,6 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
       <div className="p-6 flex-1 flex flex-col bg-[#111]">
         <div className="flex justify-between items-start">
           <span className="text-[10px] font-black text-[#D4AF37]/70 uppercase tracking-[0.25em]">{vendor.category}</span>
-          <motion.button 
-            whileHover={{ scale: 1.1, backgroundColor: "rgba(212, 175, 55, 0.1)" }}
-            whileTap={{ scale: 0.9 }}
-            onClick={() => onMessage(vendor)} 
-            className="p-4 text-[#D4AF37]/60 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-full transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] cursor-pointer" 
-            aria-label={`Send message to ${vendor.name}`}
-          >
-            <MessageCircle className="w-5 h-5" />
-          </motion.button>
         </div>
         <h3 id={`vendor-name-${vendor.id}`} className="font-bold text-xl text-zinc-100 font-[Cinzel] mt-2 truncate group-hover:text-[#D4AF37] transition-colors">{vendor.name}</h3>
         <div className="flex items-center text-zinc-500 text-xs mb-4 mt-1.5 font-medium"><MapPin className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]/50" aria-hidden="true" />{vendor.location}</div>

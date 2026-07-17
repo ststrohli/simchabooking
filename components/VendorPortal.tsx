@@ -1667,7 +1667,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     const daysInMonth = getDaysInMonth(year, month);
     const firstDay = getFirstDayOfMonth(year, month);
     const monthName = viewDate.toLocaleString('default', { month: 'long' });
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = new Date().toLocaleDateString('en-CA');
 
     // Calculate start and end dates for Week View
     const startOfWeek = new Date(viewDate);
@@ -1688,7 +1688,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month, day);
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = date.toLocaleDateString('en-CA');
       const isBlocked = vendor.unavailableDates?.includes(dateStr);
       const isToday = dateStr === todayStr;
       
@@ -1773,7 +1773,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     }
 
     const weekDaysGrid = weekDays.map((dayDate) => {
-      const dateStr = dayDate.toISOString().split('T')[0];
+      const dateStr = dayDate.toLocaleDateString('en-CA');
       const isBlocked = vendor.unavailableDates?.includes(dateStr);
       const isToday = dateStr === todayStr;
       const dayBookings = bookings.filter(b => b.date === dateStr);
