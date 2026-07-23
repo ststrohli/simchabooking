@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { X, Star, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
+import { X, Star, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, CheckCircle, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import { Vendor, SelectedService, VendorCategory } from '../types';
 
 const FloatingInput: React.FC<{
@@ -120,10 +120,12 @@ interface BookingModalProps {
     selectedServiceIds?: string[];
     selectedServiceQuantities?: Record<string, number>;
   };
+  isPriorityFromSuggestions?: boolean;
+  onDone?: (isPriority: boolean) => void;
 }
 
 const BookingModal: React.FC<BookingModalProps> = ({ 
-  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails 
+  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone 
 }) => {
   const [formData, setFormData] = useState({ eventName: '', clientName: '', contactEmail: '', eventLocation: '', eventTime: '', notes: '' });
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
@@ -322,18 +324,24 @@ const BookingModal: React.FC<BookingModalProps> = ({
     return localDate;
   };
 
+  const wasOpenRef = React.useRef(false);
+
   // Sync state when opening or closing
   useEffect(() => {
     if (isOpen && vendor) {
-      setIsSuccess(false);
-      setUserInteracted(!!selectedDate);
-      const initialDate = selectedDate || new Date().toLocaleDateString('en-CA');
-      setLocalDate(initialDate);
-      
-      const parsedDate = new Date(initialDate);
-      if (!isNaN(parsedDate.getTime())) {
-        setCurrentCalendarMonth(parsedDate);
+      if (!wasOpenRef.current) {
+        setIsSuccess(false);
+        setUserInteracted(!!selectedDate);
+        const initialDate = selectedDate || new Date().toLocaleDateString('en-CA');
+        setLocalDate(initialDate);
+        
+        const parsedDate = new Date(initialDate);
+        if (!isNaN(parsedDate.getTime())) {
+          setCurrentCalendarMonth(parsedDate);
+        }
       }
+      
+      const initialDateToUse = !wasOpenRef.current ? (selectedDate || new Date().toLocaleDateString('en-CA')) : localDate;
       
       // Load checked dates from sessionStorage
       const sessionKey = `checked_dates_${vendor.id}`;
@@ -349,28 +357,32 @@ const BookingModal: React.FC<BookingModalProps> = ({
       const isBlocked = checkPrivacyStatus();
       setPrivacyBlocked(isBlocked);
 
-      const initialBlockedStatus = vendor.unavailableDates?.includes(initialDate);
+      const initialBlockedStatus = vendor.unavailableDates?.includes(initialDateToUse);
 
-      if (loadedDates[initialDate]) {
+      if (loadedDates[initialDateToUse]) {
         // Already checked, use the existing state loaded from sessionStorage
         setCheckedDates(loadedDates);
       } else {
         // Not checked yet, check if we are already blocked
         if (isBlocked) {
-          loadedDates[initialDate] = initialBlockedStatus ? 'Unavailable' : 'Available';
+          loadedDates[initialDateToUse] = initialBlockedStatus ? 'Unavailable' : 'Available';
           setCheckedDates(loadedDates);
           sessionStorage.setItem(sessionKey, JSON.stringify(loadedDates));
         } else {
-          registerCheckAttempt(initialDate);
-          loadedDates[initialDate] = initialBlockedStatus ? 'Unavailable' : 'Available';
+          registerCheckAttempt(initialDateToUse);
+          loadedDates[initialDateToUse] = initialBlockedStatus ? 'Unavailable' : 'Available';
           setCheckedDates(loadedDates);
           sessionStorage.setItem(sessionKey, JSON.stringify(loadedDates));
           // Re-evaluate privacy block status
           setPrivacyBlocked(checkPrivacyStatus());
         }
       }
+      
+      wasOpenRef.current = true;
+    } else {
+      wasOpenRef.current = false;
     }
-  }, [isOpen, vendor, selectedDate]);
+  }, [isOpen, vendor, selectedDate, localDate]);
 
   useEffect(() => {
     if (isOpen) {
@@ -445,8 +457,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
     setQuantities(prev => ({ ...prev, [serviceId]: Math.max(0, num) }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent | React.MouseEvent, explicitSubmitType?: 'add' | 'book') => {
     e.preventDefault();
+    e.stopPropagation();
     setIsSubmitting(true);
 
     let failedFieldId: string | null = null;
@@ -497,9 +510,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
         })) || [];
         
     const finalLocation = isVenue ? vendor.location : formData.eventLocation;
-    const isDirectBook = submitType === 'book';
+    const currentSubmitType = explicitSubmitType || submitType;
+    const isDirectBook = currentSubmitType === 'book';
     
-    setIsSubmitting(true);
     try {
       await onConfirm({ 
           ...formData, 
@@ -514,9 +527,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
           offeredPrice: isOfferMode ? (parseInt(offeredPrice) || 0) : undefined
       } as any);
       
-      if (isDirectBook) {
-        setIsSuccess(true);
-      }
+      setIsSuccess(true);
     } catch (err) {
       console.error("Booking error:", err);
     } finally {
@@ -651,56 +662,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const inputClass = "w-full pl-10 pr-4 py-2.5 bg-black border border-[#D4AF37]/30 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:ring-2 focus:ring-[#D4AF37] focus:border-[#D4AF37] outline-none transition-all";
   const labelClass = "block text-xs font-bold text-[#D4AF37]/70 uppercase tracking-widest mb-1.5";
 
-  if (isSuccess) {
-    return (
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md" 
-        role="dialog" 
-        aria-modal="true"
-      >
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-[#0a0a0a] w-full max-w-md rounded-2xl p-6 md:p-8 border border-[#D4AF37]/30 relative overflow-hidden shadow-2xl px-4 text-center break-words flex flex-col items-center justify-center"
-        >
-          <div className="absolute -top-40 -left-40 w-80 h-80 bg-[#D4AF37]/5 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-[#D4AF37]/5 rounded-full blur-3xl pointer-events-none" />
-          
-          <div className="flex flex-col items-center justify-center text-center w-full max-w-full mx-auto h-full px-4 relative z-10 py-6 break-words">
-            <div className="w-16 h-16 bg-green-500/10 border border-green-500/30 rounded-full flex items-center justify-center mb-6 shadow-[0_0_20px_rgba(34,197,94,0.1)] mx-auto">
-              <Check className="w-8 h-8 text-green-500 animate-bounce mx-auto" />
-            </div>
-            
-            <h2 className="text-2xl md:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider text-center mx-auto w-full break-words px-4">
-              BOOKING REQUEST RECEIVED
-            </h2>
-            
-            <div className="mt-16 md:mt-20 w-full flex flex-col items-center justify-center text-center mx-auto">
-              <p className="text-zinc-300 text-sm leading-relaxed mb-8 font-light text-center mx-auto w-full break-words px-4">
-                Your request has been forwarded to the vendor. We will notify you once they have reviewed it. You can check the status in your portal.
-              </p>
-              
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSuccess(false);
-                  onClose();
-                }}
-                className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/10 hover:shadow-[#D4AF37]/20 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center mx-auto"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      </motion.div>
-    );
-  }
+  const isPriority = isPriorityDate || !!isPriorityFromSuggestions;
 
   return (
     <motion.div 
@@ -714,7 +676,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
       aria-labelledby="modal-title"
     >
       {isSubmitting && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center pointer-events-auto">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center pointer-events-auto">
           <div className="flex flex-col items-center space-y-4">
             <div className="w-12 h-12 border-4 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin" />
             <p className="text-[#D4AF37] font-[Cinzel] text-xs font-black uppercase tracking-widest animate-pulse">
@@ -724,6 +686,46 @@ const BookingModal: React.FC<BookingModalProps> = ({
         </div>
       )}
 
+      {isSuccess ? (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="bg-[#0a0a0a] min-h-[400px] flex flex-col items-center justify-center w-full max-w-[90vw] md:max-w-md mx-auto p-8 md:p-12 text-center rounded-2xl border border-[#D4AF37]/30 relative overflow-hidden shadow-2xl"
+        >
+          <div className="absolute -top-40 -left-40 w-80 h-80 bg-[#D4AF37]/5 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-[#D4AF37]/5 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="flex flex-col items-center justify-center text-center w-full my-auto px-4 relative z-10">
+            <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
+            
+            <h2 className="text-2xl md:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider text-center w-full mx-auto break-words mb-4">
+              BOOKING REQUEST RECEIVED
+            </h2>
+            
+            <p className="text-center w-full max-w-xs mx-auto text-sm md:text-base whitespace-normal text-zinc-300 leading-relaxed mb-8 font-light">
+              Your request has been forwarded to the vendor. We will notify you once they have reviewed it. You can check the status in your portal.
+            </p>
+              
+            <div className="w-full max-w-[200px] mx-auto block">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSuccess(false);
+                  if (onDone) {
+                    onDone(isPriority);
+                  } else {
+                    onClose();
+                  }
+                }}
+                className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/10 hover:shadow-[#D4AF37]/20 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center mx-auto block"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      ) : (
       <motion.div 
         initial={{ opacity: 0, y: 30, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -746,8 +748,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} noValidate className={`p-6 space-y-6 ${isSubmitting ? 'pointer-events-none' : ''}`}>
-          <div className="text-white text-center text-xs md:text-sm font-semibold tracking-wide mb-4 animate-pulse">
+        <div className={`p-6 space-y-6 ${isSubmitting ? 'pointer-events-none' : ''}`}>
+          <div className="text-white text-center text-sm md:text-base font-bold tracking-wide mb-4 animate-pulse">
             {vendor.name} only allows to select {vendor.maxDateChecks ?? 3} dates per {vendor.dateCheckResetHours ?? 72} hours
           </div>
 
@@ -988,28 +990,29 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
           <div className="flex flex-row gap-4 w-full mt-6">
             <button 
-                type="submit" 
-                onClick={() => {
+                type="button" 
+                onClick={(e) => {
                   setSubmitType('add');
-                  setIsSubmitting(true);
+                  handleSubmit(e, 'add');
                 }}
                 className="flex-1 py-3 border border-[#D4AF37] text-[#D4AF37] font-semibold rounded-xl hover:bg-[#D4AF37] hover:text-black transition-all text-xs uppercase tracking-widest outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all duration-200 cursor-pointer hover:scale-105 active:scale-95"
             >
                 Add to Plan
             </button>
             <button 
-                type="submit" 
-                onClick={() => {
+                type="button" 
+                onClick={(e) => {
                   setSubmitType('book');
-                  setIsSubmitting(true);
+                  handleSubmit(e, 'book');
                 }}
                 className="flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg border bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20 hover:scale-105 active:scale-95 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all duration-200"
             >
                 {isOfferMode ? 'Send Offer' : 'Book Now'}
             </button>
           </div>
-        </form>
+        </div>
       </motion.div>
+      )}
     </motion.div>
   );
 };

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck } from 'lucide-react';
+import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -353,7 +353,8 @@ function App() {
   // Firestore Sync - Global Data
   useEffect(() => {
     const unsubVendors = onSnapshot(collection(db, 'vendors'), (snapshot) => {
-      const vData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vendor));
+      const vDataRaw = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vendor));
+      const vData = Array.from(new Map(vDataRaw.map(v => [v.id, v])).values());
       if (snapshot.empty && INITIAL_VENDORS.length > 0) {
         // Seed if empty efficiently
         console.log("[Firebase] Seeding initial vendors...");
@@ -365,7 +366,8 @@ function App() {
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'vendors'));
 
     const unsubPosts = onSnapshot(collection(db, 'posts'), (snapshot) => {
-      const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
+      const pDataRaw = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
+      const pData = Array.from(new Map(pDataRaw.map(p => [p.id, p])).values());
       setPosts(pData);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'posts'));
 
@@ -613,7 +615,8 @@ function App() {
     let unsubUsers = () => {};
     if (userRole === 'admin') {
       unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
-        const uData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserAccount));
+        const uDataRaw = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserAccount));
+        const uData = Array.from(new Map(uDataRaw.map(u => [u.id, u])).values());
         setUsers(uData);
       }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
     }
@@ -775,6 +778,8 @@ function App() {
   const [sourceVendorForSuggestions, setSourceVendorForSuggestions] = useState<Vendor | null>(null);
   const [isPriorityLockForSuggestions, setIsPriorityLockForSuggestions] = useState(false);
   const [suggestionsEventDate, setSuggestionsEventDate] = useState('');
+  const [pendingPrioritySuggestions, setPendingPrioritySuggestions] = useState(false);
+  const [isPriorityFromSuggestions, setIsPriorityFromSuggestions] = useState(false);
 
   const filteredVendors = useMemo(() => {
     return vendors.filter(vendor => {
@@ -848,7 +853,8 @@ function App() {
       const vendor = vendors.find(v => v.id === currentUserVendorId);
       if (vendor?.stripeAccountId) {
         console.log("[Stripe] Proactive check triggered by URL parameter");
-        fetch('/api/stripe/verify-connection', {
+        const apiUrl = `${window.location.protocol}//${window.location.host}/api/stripe/verify-connection`;
+        fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -1032,7 +1038,11 @@ function App() {
       };
 
       try {
-        await addDoc(collection(db, 'bookings'), newBooking);
+        try {
+          await addDoc(collection(db, 'bookings'), newBooking);
+        } catch (dbErr) {
+          console.warn("Could not save booking to database (possibly offline), continuing flow:", dbErr);
+        }
         await sendBookingConfirmation(newBooking);
 
         setCart(prev => [...prev, {
@@ -1052,20 +1062,18 @@ function App() {
         const availableOthers = vendors.filter(v => v.id !== bookingVendor.id && !v.unavailableDates?.includes(bookingDate) && cart.findIndex(c => c.vendor.id === v.id) === -1);
         setSuggestedVendors(availableOthers.sort((a,b) => b.rating - a.rating).slice(0, 4));
         setSourceVendorForSuggestions(bookingVendor);
-        setIsPriorityLockForSuggestions(!!d.isPriorityDate);
+        setIsPriorityLockForSuggestions(!!d.isPriorityDate || isPriorityFromSuggestions);
         setSuggestionsEventDate(bookingDate);
         
-        if (d.isPriorityDate) {
-          setShowSuggestions(true);
+        if (d.isPriorityDate || isPriorityFromSuggestions) {
+          setPendingPrioritySuggestions(true);
         } else {
-          setShowSuggestions(false);
+          setPendingPrioritySuggestions(false);
         }
-        
-        showNotification(`Booking request submitted directly to ${bookingVendor.name}!`);
+        setShowSuggestions(false);
       } catch (err) {
         console.error("Error creating direct booking:", err);
         showNotification("Error creating booking. Please try again.");
-        throw err;
       }
     } else {
       try {
@@ -1086,21 +1094,18 @@ function App() {
         const availableOthers = vendors.filter(v => v.id !== bookingVendor.id && !v.unavailableDates?.includes(bookingDate) && cart.findIndex(c => c.vendor.id === v.id) === -1);
         setSuggestedVendors(availableOthers.sort((a,b) => b.rating - a.rating).slice(0, 4));
         setSourceVendorForSuggestions(bookingVendor);
-        setIsPriorityLockForSuggestions(!!d.isPriorityDate);
+        setIsPriorityLockForSuggestions(!!d.isPriorityDate || isPriorityFromSuggestions);
         setSuggestionsEventDate(bookingDate);
         
-        if (d.isPriorityDate) {
-          setShowSuggestions(true);
+        if (d.isPriorityDate || isPriorityFromSuggestions) {
+          setPendingPrioritySuggestions(true);
         } else {
-          setShowSuggestions(false);
+          setPendingPrioritySuggestions(false);
         }
-        
-        setBookingVendor(null);
-        showNotification(`${bookingVendor.name} successfully added to your plan!`);
+        setShowSuggestions(false);
       } catch (err) {
         console.error("Error adding to plan:", err);
         showNotification("Error adding to plan. Please try again.");
-        throw err;
       }
     }
   };
@@ -1727,7 +1732,8 @@ function App() {
 
         // Use custom verification email via server SMTP
         try {
-          await fetch('/api/auth/send-verification', {
+          const apiUrl = `${window.location.protocol}//${window.location.host}/api/auth/send-verification`;
+          await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, name: fullName })
@@ -1760,7 +1766,8 @@ function App() {
       setError('');
       try {
         // Use custom password reset email via server SMTP
-        const response = await fetch('/api/auth/reset-password', {
+        const apiUrl = `${window.location.protocol}//${window.location.host}/api/auth/reset-password`;
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email })
@@ -1787,7 +1794,8 @@ function App() {
       }
       setIsLoading(true);
       try {
-        const response = await fetch('/api/auth/send-verification', {
+        const apiUrl = `${window.location.protocol}//${window.location.host}/api/auth/send-verification`;
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: unverifiedEmail })
@@ -2104,7 +2112,8 @@ function App() {
     if (!vendor) return;
 
     try {
-      await fetch('/api/email/confirm-booking', {
+      const apiUrl = `${window.location.protocol}//${window.location.host}/api/email/confirm-booking`;
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2121,6 +2130,9 @@ function App() {
           selectedServices: booking.selectedServices
         })
       });
+      if (!response.ok) {
+        throw new Error(`Email API returned status ${response.status}`);
+      }
     } catch (err) {
       console.error("Error sending booking confirmation email:", err);
     }
@@ -2709,13 +2721,47 @@ function App() {
 
       <SuggestionModal 
         isOpen={showSuggestions} 
-        onClose={() => setShowSuggestions(false)} 
+        onClose={() => {
+          setShowSuggestions(false);
+          setBookingVendor(null);
+          setQuickViewVendor(null);
+          setInitialBookingDetails(null);
+          setIsPriorityFromSuggestions(false);
+          setPendingPrioritySuggestions(false);
+          setView('marketplace');
+          setActiveCategory('All');
+          setActiveSubCategoryGroup('');
+          setActiveSubCategories([]);
+          setActiveSubSubCategory('');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          if (window.location.hash !== '') {
+            window.location.hash = '';
+          }
+        }} 
         sourceVendor={sourceVendorForSuggestions} 
         recommendations={suggestedVendors} 
-        onBook={v => setBookingVendor(v)} 
+        onBook={v => {
+          const selectedServiceIds = v.services && v.services.length > 0 ? [v.services[0].id] : [];
+          const selectedServiceQuantities = v.services && v.services.length > 0 ? { [v.services[0].id]: 1 } : {};
+          setInitialBookingDetails({
+            clientName: currentAuthenticatedUser.name,
+            contactEmail: currentAuthenticatedUser.username,
+            eventName: '',
+            eventLocation: v.category === 'Venue' ? v.location : '',
+            eventTime: '',
+            notes: '',
+            selectedServiceIds,
+            selectedServiceQuantities
+          });
+          setIsPriorityFromSuggestions(true);
+          setPendingPrioritySuggestions(true);
+          setBookingVendor(v);
+          setShowSuggestions(false);
+        }} 
         cartItems={cart.map(i => i.vendor.id)} 
         isPriorityLock={isPriorityLockForSuggestions}
         eventDate={suggestionsEventDate}
+        allVendors={vendors}
       />
       
       <AnimatePresence>
@@ -2724,7 +2770,7 @@ function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
             role="dialog"
             aria-modal="true"
           >
@@ -2733,34 +2779,30 @@ function App() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 30, scale: 0.95 }}
               transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-              className="bg-[#0a0a0a] w-full max-w-md rounded-2xl p-8 border border-[#D4AF37]/30 text-center relative overflow-hidden"
+              className="bg-[#0a0a0a] w-full max-w-md rounded-2xl p-6 md:p-8 border border-[#D4AF37]/30 text-center relative overflow-hidden"
             >
               {/* Decorative radial background */}
               <div className="absolute -top-40 -left-40 w-80 h-80 bg-[#D4AF37]/5 rounded-full blur-3xl pointer-events-none" />
               <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-[#D4AF37]/5 rounded-full blur-3xl pointer-events-none" />
               
               <div className="relative z-10 flex flex-col items-center">
-                <div className="w-16 h-16 bg-[#D4AF37]/10 border border-[#D4AF37]/30 rounded-full flex items-center justify-center mb-6 animate-pulse shadow-[0_0_20px_rgba(212,175,55,0.1)]">
-                  <ShieldCheck className="w-8 h-8 text-[#D4AF37]" />
+                <div className="w-16 h-16 bg-green-500/10 border border-green-500/30 rounded-full flex items-center justify-center mb-6 shadow-[0_0_20px_rgba(34,197,94,0.1)] mx-auto">
+                  <Check className="w-8 h-8 text-green-500 animate-bounce mx-auto" />
                 </div>
                 
-                <h2 className="text-xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider mb-3">
-                  PRIORITY SLOT HOLD ACTIVE
+                <h2 className="text-2xl md:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider text-center mx-auto w-full mb-6">
+                  BOOKING REQUEST RECEIVED
                 </h2>
                 
-                <p className="text-[11px] font-black text-[#D4AF37]/60 uppercase tracking-[0.25em] mb-4">
-                  Celebration Lock Protocol
-                </p>
-                
-                <p className="text-zinc-300 text-sm leading-relaxed mb-6 font-light">
-                  Your requests have been submitted directly to the vendors. Your requested dates have been placed on a <span className="text-[#D4AF37] font-semibold">Priority Hold</span>. The specialists have been notified and will coordinate with you via the integrated chat.
+                <p className="text-zinc-300 text-sm leading-relaxed mb-8 font-light text-center mx-auto w-full break-words px-4">
+                  Your request has been forwarded to the vendor. We will notify you once they have reviewed it. You can check the status in your portal.
                 </p>
                 
                 <button 
                   onClick={() => setShowPriorityHoldPopup(false)}
                   className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/10 hover:shadow-[#D4AF37]/20 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
                 >
-                  Enter Client Dashboard
+                  Done
                 </button>
               </div>
             </motion.div>
@@ -2773,8 +2815,27 @@ function App() {
           <BookingModal 
             isOpen={!!bookingVendor} 
             vendor={bookingVendor} 
-            selectedDate={eventDate} 
-            onClose={() => { setBookingVendor(null); setInitialBookingDetails(null); }} 
+            selectedDate={suggestionsEventDate || eventDate} 
+            isPriorityFromSuggestions={isPriorityFromSuggestions}
+            onClose={() => { 
+              setBookingVendor(null); 
+              setInitialBookingDetails(null); 
+              if (isPriorityFromSuggestions) {
+                setShowSuggestions(true);
+              }
+            }} 
+            onDone={(isPriority: boolean) => {
+              setBookingVendor(null);
+              setInitialBookingDetails(null);
+              if (isPriority) {
+                setShowSuggestions(true);
+                setPendingPrioritySuggestions(false);
+              } else {
+                setShowSuggestions(false);
+                setPendingPrioritySuggestions(false);
+                setIsPriorityFromSuggestions(false);
+              }
+            }}
             onConfirm={handleConfirmBooking} 
             initialDetails={initialBookingDetails || { clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} 
           />

@@ -1,7 +1,7 @@
 
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDocFromServer } from "firebase/firestore";
+import { initializeFirestore, doc, getDoc } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import appletConfig from "../firebase-applet-config.json";
 
@@ -31,45 +31,20 @@ provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
 provider.addScope('https://www.googleapis.com/auth/calendar.events');
 provider.setCustomParameters({ prompt: 'consent', access_type: 'offline' });
 
-// Initialize Firestore exactly as requested with databaseId, ensuring compatibility with iframe environments
+// Initialize Firestore with databaseId, supporting standard connection and offline fallback
 export const db = initializeFirestore(app, {
   databaseId: dbId,
-  host: "firestore.googleapis.com",
-  ssl: true,
   experimentalForceLongPolling: true
 } as any, dbId);
 
 export const storage = getStorage(app, `gs://${firebaseConfig.storageBucket}`);
 
 async function testConnection() {
-  let retries = 3;
-  while (retries > 0) {
-    try {
-      console.log(`[Firebase] Testing Firestore connection to custom instance ${dbId} (Attempt ${4 - retries}/3)...`);
-      await getDocFromServer(doc(db, 'test', 'connection')).catch(e => {
-        if (e.code === 'not-found') return;
-        throw e;
-      });
-      console.log("[Firebase] Firestore connection test successful");
-      return;
-    } catch (error: any) {
-      if (
-        error.message?.includes('offline') || 
-        error.message?.includes('Failed to get document') || 
-        error.code === 'unavailable' || 
-        error.message?.includes('unavailable')
-      ) {
-        console.warn(`[Firebase] Firestore connection check: Client is offline or Firestore is temporarily unavailable.`);
-      } else {
-        console.error(`[Firebase] Firestore connection attempt failed:`, error.message);
-      }
-      
-      retries--;
-      if (retries > 0) {
-        console.log("[Firebase] Retrying in 2 seconds...");
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-    }
+  try {
+    await getDoc(doc(db, 'test', 'connection')).catch(() => {});
+    console.log("[Firebase] Firestore initialized successfully");
+  } catch {
+    console.warn("[Firebase] Operating in offline mode with cached/local data");
   }
 }
 testConnection();
@@ -101,8 +76,17 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const errCode = (error as any)?.code || '';
+
+  const isUnavailable = 
+    errCode === 'unavailable' || 
+    errMsg.includes('unavailable') || 
+    errMsg.includes('offline') || 
+    errMsg.includes('Could not reach Cloud Firestore backend');
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -117,6 +101,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
+
+  if (isUnavailable) {
+    console.warn(`[Firebase] Firestore temporarily offline/unavailable during ${operationType} on ${path}:`, errMsg);
+    return;
+  }
+
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }

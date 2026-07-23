@@ -376,7 +376,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
             ) : (
               <div className="space-y-6">
                 {cart.map((item, index) => (
-                  <div key={item.vendor.id} className="flex flex-col sm:flex-row gap-5 p-6 bg-[#111] rounded-3xl border border-[#D4AF37]/10 group transition-all items-center">
+                  <div key={`${item.vendor.id}-${index}`} className="flex flex-col sm:flex-row gap-5 p-6 bg-[#111] rounded-3xl border border-[#D4AF37]/10 group transition-all items-center">
                     <img src={item.vendor.image} alt="" className="w-24 h-24 rounded-2xl object-cover border border-white/5" />
                     <div className="flex-1 min-w-0 text-center sm:text-left">
                       <h4 className="font-bold text-xl text-zinc-100 font-[Cinzel]">{item.vendor.name}</h4>

@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Star, MapPin, Lock, ChevronLeft, ChevronRight, PlayCircle, ShieldCheck, MessageCircle, X, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
+import { Star, MapPin, Lock, ChevronLeft, ChevronRight, PlayCircle, ShieldCheck, MessageCircle, X, ChevronDown, ChevronUp, MessageSquare, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Vendor, Review } from '../types';
+import { MOCK_BOOKINGS } from '../services/mockData';
 
 interface VendorCardProps {
   vendor: Vendor;
@@ -33,6 +34,27 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
     } 
     if (items.length === 0) items.push({ type: 'image', url: vendor.image || 'https://picsum.photos/800/600' });
     return items;
+  }, [vendor]);
+
+  const estimatedResponseTime = useMemo(() => {
+    // Calculate a typical response time based on booking history and rating
+    const vendorBookings = MOCK_BOOKINGS.filter(b => b.vendorId === vendor.id);
+    const bookingsCount = vendorBookings.length;
+    const completedCount = vendorBookings.filter(b => b.status === 'completed' || b.status === 'confirmed').length;
+    
+    // Calculate a score where active bookings and higher rating result in faster typical response times
+    const completionRate = bookingsCount > 0 ? (completedCount / bookingsCount) : 0.8;
+    const score = (vendor.rating * 10) + (completionRate * 20) + (bookingsCount * 5);
+    
+    if (score >= 65) {
+      return 'Under 1 hour';
+    } else if (score >= 50) {
+      return 'Under 2 hours';
+    } else if (score >= 35) {
+      return 'Under 4 hours';
+    } else {
+      return 'Within 24 hours';
+    }
   }, [vendor]);
 
   const isCurrentlySelectedDateBlocked = selectedDate && vendor.unavailableDates?.includes(selectedDate);
@@ -130,8 +152,14 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
           )}
         </div>
 
-        <div className="absolute top-4 right-4 z-10 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-[11px] font-black text-[#D4AF37] flex items-center gap-1.5 border border-[#D4AF37]/30 shadow-xl" aria-label={`Rating: ${vendor.rating.toFixed(1)} out of 5 stars`}>
-          <Star className="w-3.5 h-3.5 fill-[#D4AF37]" aria-hidden="true" />{vendor.rating.toFixed(1)}
+        <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-1.5">
+          <div className="bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-[11px] font-black text-[#D4AF37] flex items-center gap-1.5 border border-[#D4AF37]/30 shadow-xl" aria-label={`Rating: ${vendor.rating.toFixed(1)} out of 5 stars`}>
+            <Star className="w-3.5 h-3.5 fill-[#D4AF37]" aria-hidden="true" />{vendor.rating.toFixed(1)}
+          </div>
+          <div className="bg-zinc-800/95 backdrop-blur-md px-2 py-0.5 rounded-lg text-[9px] font-bold text-zinc-300 flex items-center gap-1 border border-zinc-700/50 shadow-md">
+            <Clock className="w-2.5 h-2.5 text-zinc-400" aria-hidden="true" />
+            <span>{estimatedResponseTime}</span>
+          </div>
         </div>
 
         <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
@@ -159,6 +187,12 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
         <h3 id={`vendor-name-${vendor.id}`} className="font-bold text-xl text-zinc-100 font-[Cinzel] mt-2 truncate group-hover:text-[#D4AF37] transition-colors">{vendor.name}</h3>
         <div className="flex items-center text-zinc-500 text-xs mb-4 mt-1.5 font-medium"><MapPin className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]/50" aria-hidden="true" />{vendor.location}</div>
         <p className="text-zinc-400 text-sm line-clamp-2 mb-6 h-10 leading-relaxed font-light">{vendor.description}</p>
+        
+        {/* Estimated Response Time Indicator */}
+        <div className="flex items-center gap-2 text-[11px] text-zinc-400 bg-zinc-900/40 border border-[#D4AF37]/10 rounded-lg px-3 py-2 w-full mb-5">
+          <Clock className="w-3.5 h-3.5 text-[#D4AF37]" aria-hidden="true" />
+          <span>Typical response time: <span className="text-[#D4AF37] font-semibold">{estimatedResponseTime}</span></span>
+        </div>
         
         <div className="mt-auto flex flex-row gap-3 pt-5 border-t border-[#D4AF37]/10">
           <motion.button

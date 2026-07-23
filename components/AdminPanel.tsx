@@ -10,6 +10,7 @@ import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadSe
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import ChatModal from './ChatModal';
 import { Vendor, VendorCategory, Post, Booking, UserAccount, Message } from '../types';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const getSecondaryAuth = () => {
   const apps = getApps();
@@ -220,6 +221,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       overallRate
     };
   }, [analyticsLogs]);
+
+  const bookingChartData = React.useMemo(() => {
+    const data: Record<string, number> = {};
+    const today = new Date();
+    
+    // Initialize the last 30 days with 0
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      data[dateStr] = 0;
+    }
+
+    bookings.forEach(booking => {
+      if (booking.createdAt) {
+        let dateStr = '';
+        if (typeof booking.createdAt === 'string') {
+           dateStr = booking.createdAt.split('T')[0];
+        } else if ((booking.createdAt as any).toDate) {
+           dateStr = (booking.createdAt as any).toDate().toISOString().split('T')[0];
+        } else if ((booking.createdAt as any) instanceof Date) {
+           dateStr = (booking.createdAt as any).toISOString().split('T')[0];
+        }
+        if (dateStr && data[dateStr] !== undefined) {
+           data[dateStr]++;
+        }
+      }
+    });
+
+    return Object.keys(data).map(date => {
+      // Format as "MMM DD"
+      const d = new Date(date);
+      // Fix for timezone offset so it doesn't jump back a day
+      d.setMinutes(d.getMinutes() + d.getTimezoneOffset());
+      const formatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return {
+        date: formatted,
+        fullDate: date,
+        requests: data[date]
+      };
+    });
+  }, [bookings]);
 
   useEffect(() => {
     if (activeTab === 'analytics') {
@@ -1975,7 +2018,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             const pendingUsers = users.filter(u => !(u as any).isApproved && (u as any).role !== 'admin' && !removedModerationIds.includes(u.id));
             
             const moderationQueueItems = [
-                ...pendingVendors.map(v => ({
+                ...pendingVendors.map((v, idx) => ({
+                    queueKey: `vendor-${v.id}-${idx}`,
                     id: v.id,
                     type: 'professional' as const,
                     name: v.name,
@@ -1985,7 +2029,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     details: `${v.location} • Starting $${v.priceStart.toLocaleString()}`,
                     raw: v,
                 })),
-                ...pendingUsers.map(u => ({
+                ...pendingUsers.map((u, idx) => ({
+                    queueKey: `user-${u.id}-${idx}`,
                     id: u.id,
                     type: 'client' as const,
                     name: u.name || 'Anonymous Client',
@@ -2067,7 +2112,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         const action = moderationActioning[item.id];
                                         return (
                                             <motion.tr 
-                                                key={item.id}
+                                                key={item.queueKey}
                                                 layout
                                                 initial={{ opacity: 0, y: 12 }}
                                                 animate={{ opacity: 1, y: 0 }}
@@ -2340,7 +2385,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         <p className="text-[10px] mt-1 text-zinc-400">Try adjusting your filters or search query.</p>
                                     </div>
                                 ) : (
-                                    filteredList.map(({ msg, cid, isAdminSupport, hasUnread, vendorDetails, clientDetails, otherUser }) => {
+                                    filteredList.map(({ msg, cid, isAdminSupport, hasUnread, vendorDetails, clientDetails, otherUser }, idx) => {
                                         const isSelected = selectedConversationId === cid || selectedInquiryEmail === otherUser.email;
                                         const itemBgClass = isSelected 
                                             ? 'bg-[#D4AF37]/5 border-r-2 border-r-[#D4AF37]' 
@@ -2348,7 +2393,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         
                                         return (
                                             <div 
-                                                key={cid || otherUser.id}
+                                                key={cid ? `${cid}-${idx}` : `${otherUser.id}-${idx}`}
                                                 role="button"
                                                 tabIndex={0}
                                                 onClick={() => {
@@ -2659,6 +2704,49 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest text-center mt-6">
                             Secure Zero-Trust ABAC Logging
                         </div>
+                    </div>
+                </div>
+
+                {/* Booking Trends Line Chart */}
+                <div className="bg-[#111] p-8 rounded-2xl border border-white/5 shadow-2xl">
+                    <div className="mb-6">
+                        <h3 className="text-lg font-bold font-[Cinzel] text-white">Booking Request Trends (Last 30 Days)</h3>
+                        <p className="text-xs text-zinc-500 mt-1">Daily booking request volume identifying platform activity peaks.</p>
+                    </div>
+                    <div className="h-[300px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={bookingChartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                                <XAxis 
+                                    dataKey="date" 
+                                    stroke="#52525b" 
+                                    fontSize={10}
+                                    tickMargin={10}
+                                    axisLine={false}
+                                    tickLine={false}
+                                />
+                                <YAxis 
+                                    stroke="#52525b" 
+                                    fontSize={10}
+                                    tickMargin={10}
+                                    axisLine={false}
+                                    tickLine={false}
+                                />
+                                <Tooltip 
+                                    contentStyle={{ backgroundColor: '#111', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '8px' }}
+                                    itemStyle={{ color: '#D4AF37' }}
+                                />
+                                <Line 
+                                    type="monotone" 
+                                    dataKey="requests" 
+                                    name="Booking Requests"
+                                    stroke="#D4AF37" 
+                                    strokeWidth={2}
+                                    dot={{ r: 3, fill: '#D4AF37', strokeWidth: 0 }}
+                                    activeDot={{ r: 5, fill: '#E5C76B' }}
+                                />
+                            </LineChart>
+                        </ResponsiveContainer>
                     </div>
                 </div>
 
