@@ -1,7 +1,7 @@
 
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { initializeFirestore, doc, getDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, getDocs, getDocFromCache, getDocsFromCache, DocumentReference, Query, DocumentSnapshot, QuerySnapshot } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import appletConfig from "../firebase-applet-config.json";
 
@@ -18,9 +18,6 @@ export const firebaseConfig = {
 
 const targetProjectId = firebaseConfig.projectId;
 
-// Explicitly use the database ID requested by the user for this AI Studio environment
-const dbId = 'ai-studio-b85c10e8-0729-4d1f-841b-60b5c119be28';
-
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
@@ -31,11 +28,8 @@ provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
 provider.addScope('https://www.googleapis.com/auth/calendar.events');
 provider.setCustomParameters({ prompt: 'consent', access_type: 'offline' });
 
-// Initialize Firestore with databaseId, supporting standard connection and offline fallback
-export const db = initializeFirestore(app, {
-  databaseId: dbId,
-  experimentalForceLongPolling: true
-} as any, dbId);
+// Initialize Firestore
+export const db = getFirestore(app, 'ai-studio-b85c10e8-0729-4d1f-841b-60b5c119be28');
 
 export const storage = getStorage(app, `gs://${firebaseConfig.storageBucket}`);
 
@@ -48,6 +42,52 @@ async function testConnection() {
   }
 }
 testConnection();
+
+export async function getDocSafe(docRef: DocumentReference): Promise<DocumentSnapshot> {
+  try {
+    return await getDoc(docRef);
+  } catch (err: any) {
+    const isOffline = err?.code === 'unavailable' || 
+                      err?.message?.includes('offline') || 
+                      err?.message?.includes('Failed to get document');
+    if (isOffline) {
+      try {
+        return await getDocFromCache(docRef);
+      } catch {
+        return {
+          exists: () => false,
+          data: () => undefined,
+          id: docRef.id,
+          ref: docRef,
+        } as any;
+      }
+    }
+    throw err;
+  }
+}
+
+export async function getDocsSafe(queryRef: Query): Promise<QuerySnapshot> {
+  try {
+    return await getDocs(queryRef);
+  } catch (err: any) {
+    const isOffline = err?.code === 'unavailable' || 
+                      err?.message?.includes('offline') || 
+                      err?.message?.includes('Failed to get document');
+    if (isOffline) {
+      try {
+        return await getDocsFromCache(queryRef);
+      } catch {
+        return {
+          empty: true,
+          size: 0,
+          docs: [],
+          forEach: () => {},
+        } as any;
+      }
+    }
+    throw err;
+  }
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -83,7 +123,9 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     errCode === 'unavailable' || 
     errMsg.includes('unavailable') || 
     errMsg.includes('offline') || 
-    errMsg.includes('Could not reach Cloud Firestore backend');
+    errMsg.includes('Could not reach Cloud Firestore backend') ||
+    errMsg.includes('Failed to get document') ||
+    errMsg.includes('client is offline');
 
   const errInfo: FirestoreErrorInfo = {
     error: errMsg,

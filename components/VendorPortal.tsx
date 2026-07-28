@@ -24,10 +24,15 @@ interface VendorPortalProps {
   showNotification: (message: string, type?: 'success' | 'info') => void;
   onLogout: () => void;
   onSwitchToClientView?: () => void;
+  initialTab?: string;
 }
 
-const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'history' | 'calendar' | 'profile' | 'messages'>('overview');
+const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, initialTab }) => {
+  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'history' | 'calendar' | 'profile' | 'messages'>(initialTab as any || 'overview');
+  
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab as any);
+  }, [initialTab]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedBookingForDetail, setSelectedBookingForDetail] = useState<Booking | null>(null);
   const [selectedCalendarEvent, setSelectedCalendarEvent] = useState<{
@@ -2290,7 +2295,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       Make Offer
                     </motion.button>
                     <motion.button 
-                      whileHover={{ scale: 1.02, backgroundColor: '#16a34a' }}
+                      initial={{ backgroundColor: '#16a34a' }}
+                      whileHover={{ scale: 1.02, backgroundColor: '#15803d' }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => { 
                         onUpdateBookingStatus(selectedCalendarEvent.id, 'confirmed'); 

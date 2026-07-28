@@ -67,7 +67,13 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
                   key={post.id} 
                   variants={{
                     hidden: { opacity: 0, y: 20 },
-                    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100, damping: 15 } }
+                    show: { 
+                      opacity: 1, 
+                      y: 0, 
+                      borderColor: "rgba(212, 175, 55, 0.1)",
+                      boxShadow: "0 0px 0px rgba(212, 175, 55, 0)",
+                      transition: { type: "spring", stiffness: 100, damping: 15 } 
+                    }
                   }}
                   whileHover={{ 
                     y: -6, 

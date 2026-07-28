@@ -15,7 +15,7 @@ import {
   increment,
   limit
 } from 'firebase/firestore';
-import { db, auth, OperationType, handleFirestoreError } from './firebase';
+import { db, auth, OperationType, handleFirestoreError, getDocSafe, getDocsSafe } from './firebase';
 import { Message } from '../types';
 
 /**
@@ -83,7 +83,7 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
     ? 'admin_support' 
     : 'booking';
 
-  const isNewConversation = !(await getDoc(conDocSnapRef)).exists();
+  const isNewConversation = !(await getDocSafe(conDocSnapRef)).exists();
 
   const conversationUpdate: Partial<Conversation> & Record<string, any> = {
     type,
@@ -228,7 +228,7 @@ export async function markChatAsRead(conversationId: string, userId: string) {
     // We cannot query Map keys directly easily without reading all messages in limits or checking.
     // So let's fetch active messages in the conversation (e.g. limit 50 or those where read_by.{userId} is not present)
     const q = query(messagesColRef, limit(50));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocsSafe(q);
 
     const batch = writeBatch(db);
     const timestamp = serverTimestamp();
@@ -271,7 +271,7 @@ export async function ensureAdminSupportConversation(currentUserId: string, admi
   const conDocRef = doc(db, 'conversations', conversationId);
   
   try {
-    const snap = await getDoc(conDocRef);
+    const snap = await getDocSafe(conDocRef);
     if (!snap.exists()) {
       await setDoc(conDocRef, {
         type: 'admin_support',

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff, Filter, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType, firebaseConfig } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
-import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, addDoc, where, getDocs, deleteField } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, addDoc, where, getDocs, getDoc, deleteField } from 'firebase/firestore';
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
@@ -107,13 +107,12 @@ const TableContainer: React.FC<{ children: React.ReactNode }> = ({ children }) =
   );
 };
 
-const ADMIN_CODE = "ss-77859";
 const COMMISSION_RATE = 0.10;
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
     vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder, onDeleteCategory
 }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated] = useState(true);
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'posts' | 'categories' | 'bookings' | 'stripe' | 'users' | 'messages' | 'analytics' | 'moderation'>('manage');
@@ -187,6 +186,43 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [moderationActioning, setModerationActioning] = useState<Record<string, 'approve' | 'reject'>>({});
   const [removedModerationIds, setRemovedModerationIds] = useState<string[]>([]);
   const [filterText, setFilterText] = useState('');
+  
+  const [pendingVendors, setPendingVendors] = useState<any[]>([]);
+
+  useEffect(() => {
+    const q = query(collection(db, 'user_roles'), where('role', '==', 'pending_vendor'));
+    const unsub = onSnapshot(q, async (snap) => {
+      const pv: any[] = [];
+      for (const docSnap of snap.docs) {
+        const uid = docSnap.id;
+        try {
+          const userDoc = await getDoc(doc(db, 'users', uid));
+          if (userDoc.exists()) {
+            pv.push({ id: uid, ...docSnap.data(), user: userDoc.data() });
+          } else {
+            pv.push({ id: uid, ...docSnap.data(), user: { name: 'Unknown User', email: '' } });
+          }
+        } catch(e) {
+          pv.push({ id: uid, ...docSnap.data(), user: { name: 'Unknown User', email: '' } });
+        }
+      }
+      setPendingVendors(pv);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleApproveVendor = async (uid: string) => {
+    try {
+      await updateDoc(doc(db, 'user_roles', uid), {
+        role: 'vendor',
+        updatedAt: new Date().toISOString()
+      });
+      showNotification('Vendor approved successfully!', 'success');
+    } catch (error) {
+      console.error("Error approving vendor:", error);
+      showNotification('Failed to approve vendor.', 'error');
+    }
+  };
 
   const [analyticsLogs, setAnalyticsLogs] = useState<any[]>([]);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
@@ -525,8 +561,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (accessCode === ADMIN_CODE) { setIsAuthenticated(true); setError(''); }
-    else setError('Invalid Access Code');
   };
 
   const uploadFile = async (file: File, path: string): Promise<string> => {
@@ -1116,7 +1150,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
           <div className="flex gap-6">
             <button onClick={onBack} className="text-zinc-400 hover:text-[#D4AF37] font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors"><ArrowLeft className="w-4 h-4" /> Marketplace</button>
-            <button onClick={() => setIsAuthenticated(false)} className="text-zinc-400 hover:text-zinc-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors"><LogOut className="w-4 h-4" /> Logout</button>
+            <button onClick={onBack} className="text-zinc-400 hover:text-zinc-200 font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors"><LogOut className="w-4 h-4" /> Exit Admin</button>
           </div>
         </div>
       </header>
@@ -1888,12 +1922,50 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                     <div>
                         <h2 className="text-2xl font-bold font-[Cinzel] text-white">User Directory</h2>
-                        <p className="text-xs text-zinc-500 mt-1">Manage active platform registrants and client profiles.</p>
+                        <p className="text-xs text-zinc-500 mt-1">Manage active platform registrants and pending vendors.</p>
                     </div>
                     <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
                         Total Users: {users.length}
                     </div>
                 </div>
+
+                {pendingVendors.length > 0 && (
+                  <div className="mb-10">
+                    <h3 className="text-lg font-bold font-[Cinzel] text-[#D4AF37] mb-4">Pending Vendors ({pendingVendors.length})</h3>
+                    <TableContainer>
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b border-white/10 bg-black/40 text-[#D4AF37] font-bold uppercase tracking-widest text-[9px]">
+                            <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Name / Email</th>
+                            <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Application Date</th>
+                            <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {pendingVendors.map(pv => (
+                            <tr key={pv.id} className="hover:bg-white/5 transition-colors group">
+                              <td className="p-4">
+                                <div className="font-bold text-white">{pv.user?.name || 'Unknown'}</div>
+                                <div className="text-zinc-500 text-[10px]">{pv.user?.email || 'No email provided'}</div>
+                              </td>
+                              <td className="p-4 text-zinc-400">
+                                {pv.createdAt ? new Date(pv.createdAt).toLocaleDateString() : 'Unknown'}
+                              </td>
+                              <td className="p-4 text-right">
+                                <button 
+                                  onClick={() => handleApproveVendor(pv.id)}
+                                  className="bg-[#D4AF37]/20 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black border border-[#D4AF37]/30 px-4 py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-all"
+                                >
+                                  Approve Vendor
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </TableContainer>
+                  </div>
+                )}
 
                 <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
                     <Search className="w-5 h-5 text-zinc-500" />
@@ -2524,7 +2596,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 user={{
                                     id: 'admin',
                                     name: 'Admin support',
-                                    username: 'admin@simchabooking.com'
+                                    username: 'Admin'
                                 }}
                                 recipientUid={otherUser.id || otherUser.email}
                                 recipientName={otherUser.name || 'User'}

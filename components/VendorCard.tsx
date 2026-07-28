@@ -83,6 +83,10 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
 
   return (
     <motion.article 
+      initial={{ 
+        borderColor: "rgba(212, 175, 55, 0.1)", 
+        boxShadow: "0 0px 0px rgba(212, 175, 55, 0)" 
+      }}
       whileHover={{ 
         y: -6, 
         boxShadow: "0 20px 40px rgba(212, 175, 55, 0.12)",

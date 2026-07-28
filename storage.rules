@@ -2,11 +2,50 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // Global Rule: Allow read and write access to all files
-    // This unblocks video and image uploads across the entire app for all users and vendors.
+    // Default deny
     match /{allPaths=**} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.get('role', '') == 'admin'
+      );
+    }
+
+    // Public read for all uploaded assets so the frontend can display them
+    match /{allPaths=**} {
+      allow read: if true;
+    }
+
+    match /user_uploads/{userId}/{allPaths=**} {
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    match /vendors/{vendorId}/{allPaths=**} {
+      // Vendor can write their own folder
+      allow write: if isAuthenticated() && (request.auth.uid == vendorId || isAdmin());
+    }
+
+    match /chats/{allPaths=**} {
+      // Anyone authenticated can upload to chats (messages, attachments)
+      allow write: if isAuthenticated();
+    }
+
+    match /taxonomy/{allPaths=**} {
+      allow write: if isAdmin();
     }
     
+    match /categories/{allPaths=**} {
+      allow write: if isAdmin();
+    }
+    
+    match /hero/{allPaths=**} {
+      allow write: if isAdmin();
+    }
   }
 }

@@ -30,12 +30,17 @@ interface ClientPortalProps {
   onUpdateProfile: (data: { name: string, photoURL: string, photoStoragePath?: string }) => void;
   onDeleteAccount: () => void;
   onMessageVendor: (vendor: Vendor) => void;
+  initialTab?: string;
 }
 
 const ClientPortal: React.FC<ClientPortalProps> = ({ 
-  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor
+  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor, initialTab
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile'>(initialTab as any || 'overview');
+  
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab as any);
+  }, [initialTab]);
 
   const handleTabChange = (tab: typeof activeTab) => {
     setActiveTab(tab);

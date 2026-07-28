@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check } from 'lucide-react';
+import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check, ShieldAlert } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -16,7 +16,7 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, onSnapshot, query, where, orderBy, getDocs, addDoc, arrayUnion, arrayRemove, deleteField, limit, or, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { auth, db, storage } from './services/firebase';
+import { auth, db, storage, getDocSafe, getDocsSafe } from './services/firebase';
 import { uploadFileRobustly } from './services/uploadService';
 import { trackFunnelStep } from './services/analyticsService';
 import { sendNewMessage, subscribeToUserInbox, ensureAdminSupportConversation } from './services/messagingService';
@@ -28,6 +28,7 @@ import AdminPanel from './components/AdminPanel';
 import PayPalButton from './components/PayPalButton';
 import ContactModal from './components/ContactModal';
 import PostsPage from './components/PostsPage';
+import BottomNav from './components/BottomNav';
 import ChatModal from './components/ChatModal';
 import SuggestionModal from './components/SuggestionModal';
 import ClientPortal from './components/ClientPortal';
@@ -48,9 +49,56 @@ const clean = (obj: any) => {
   }
 };
 
-const ADMIN_EMAILS = ['bookingsimcha@gmail.com', 'ststrohli@gmail.com'];
-const isUserAdmin = (email: string | null | undefined): boolean => {
-  return typeof email === 'string' && ADMIN_EMAILS.includes(email.trim().toLowerCase());
+const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | 'client' | 'pending_vendor'> => {
+  try {
+    // 1. Check Custom Claims in Auth token
+    const tokenResult = await user.getIdTokenResult();
+    if (tokenResult.claims.role === 'admin') return 'admin';
+    if (tokenResult.claims.role === 'vendor') return 'vendor';
+
+    // 2. Query secure user_roles/{uid} collection
+    try {
+      const userRoleDocRef = doc(db, 'user_roles', user.uid);
+      const userRoleDocSnap = await getDocSafe(userRoleDocRef);
+      if (userRoleDocSnap.exists()) {
+        const data = userRoleDocSnap.data();
+        const roleVal = typeof data?.role === 'string' ? data.role.toLowerCase() : '';
+        if (roleVal === 'admin' || data?.isAdmin === true) return 'admin';
+        if (roleVal === 'vendor' || data?.isVendor === true) return 'vendor';
+        if (roleVal === 'pending_vendor') return 'pending_vendor';
+        if (roleVal === 'client') return 'client';
+      }
+    } catch (err) {}
+    
+    // 3. Query roles/{uid} collection
+    try {
+      const roleDocRef = doc(db, 'roles', user.uid);
+      const roleDocSnap = await getDocSafe(roleDocRef);
+      if (roleDocSnap.exists()) {
+        const data = roleDocSnap.data();
+        const roleVal = typeof data?.role === 'string' ? data.role.toLowerCase() : '';
+        if (roleVal === 'admin' || data?.isAdmin === true) return 'admin';
+        if (roleVal === 'vendor' || data?.isVendor === true) return 'vendor';
+        if (roleVal === 'pending_vendor') return 'pending_vendor';
+        if (roleVal === 'client') return 'client';
+      }
+    } catch (err) {}
+
+    // 4. Query users/{uid} collection
+    const userDocRef = doc(db, 'users', user.uid);
+    const userDocSnap = await getDocSafe(userDocRef);
+    if (userDocSnap.exists()) {
+      const data = userDocSnap.data();
+      const roleVal = typeof data?.role === 'string' ? data.role.toLowerCase() : '';
+      if (roleVal === 'admin' || data?.isAdmin === true) return 'admin';
+      if (roleVal === 'vendor' || data?.isVendor === true) return 'vendor';
+      if (roleVal === 'pending_vendor') return 'pending_vendor';
+      if (roleVal === 'client') return 'client';
+    }
+  } catch (err) {
+    console.warn("[Auth] Error fetching user role from token or roles collection:", err);
+  }
+  return 'client';
 };
 
 const SimchaLogo = ({ className = "h-10 w-10" }: { className?: string }) => (
@@ -243,9 +291,41 @@ const JEWISH_TAXONOMY: Record<string, { icon: string; image: string; subcategori
   }
 };
 
-const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
+const handleFirestoreError = (
+  error: unknown, 
+  operationType: OperationType, 
+  path: string | null,
+  onNotify?: (msg: string, type?: 'success' | 'info' | 'error') => void
+) => {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const errCode = (error as any)?.code || '';
+  const isOffline = errCode === 'unavailable' || 
+                    errMsg.includes('unavailable') || 
+                    errMsg.includes('offline') || 
+                    errMsg.includes('Failed to get document') || 
+                    errMsg.includes('client is offline');
+
+  if (isOffline) {
+    console.warn(`[App] Firestore operation/listener offline for ${operationType} on ${path}:`, errMsg);
+    return;
+  }
+
+  const isPermissionDenied = errCode === 'permission-denied' || 
+                             errMsg.includes('permission-denied') || 
+                             errMsg.includes('Missing or insufficient permissions') ||
+                             errMsg.includes('Insufficient permissions');
+
+  if (isPermissionDenied) {
+    console.warn(`[App] Permission denied for ${operationType} on ${path}:`, errMsg);
+    const friendlyMsg = `Access restricted: You do not have permission to access ${path ? `'${path}'` : 'this resource'}.`;
+    if (onNotify) {
+      onNotify(friendlyMsg, 'error');
+    }
+    return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -261,35 +341,34 @@ const handleFirestoreError = (error: unknown, operationType: OperationType, path
     },
     operationType,
     path
-  }
+  };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  // throw new Error(JSON.stringify(errInfo));
 };
 
 function App() {
   const [view, setView] = useState<'marketplace' | 'vendor-portal' | 'admin' | 'posts' | 'client-portal' | 'payment-success' | 'verify-account' | 'portal'>('marketplace');
   const [portalTab, setPortalTab] = useState<'client' | 'vendor'>('client');
+  const [portalInitialTab, setPortalInitialTab] = useState<string>('overview');
+  const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'bookings' | 'portal' | 'admin'>('home');
   const welcomeScheduled = React.useRef(false);
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
   const [userDocData, setUserDocData] = useState<any>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [permissionErrorBanner, setPermissionErrorBanner] = useState<string | null>(null);
   
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [users, setUsers] = useState<UserAccount[]>([]);
-  const [userRole, setUserRole] = useState<'client' | 'vendor' | 'admin' | null>(null);
+  const [userRole, setUserRole] = useState<'client' | 'vendor' | 'admin' | 'pending_vendor' | null>(null);
   const [currentUserVendorId, setCurrentUserVendorId] = useState<string | null>(null);
   const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
   const [paymentVendorId, setPaymentVendorId] = useState<string | null>(null);
 
   const isActuallyVendor = useMemo(() => {
-    if (!fbUser?.email) return false;
-    return userRole === 'vendor' || 
-           userDocData?.role === 'vendor' || 
-           vendors.some(v => v.username?.toLowerCase() === fbUser.email?.toLowerCase());
-  }, [fbUser, userRole, userDocData, vendors]);
+    return userRole === 'vendor';
+  }, [userRole]);
 
   const vendorProfileId = useMemo(() => {
     if (!fbUser?.email) return null;
@@ -308,7 +387,7 @@ function App() {
   const syncUserProfile = async (user: FirebaseUser, additionalData: { fullName?: string, photoURL?: string, photoStoragePath?: string } = {}) => {
     try {
       const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
+      const userDoc = await getDocSafe(userDocRef);
       
       const userData: any = {
         uid: user.uid,
@@ -352,6 +431,11 @@ function App() {
 
   // Firestore Sync - Global Data
   useEffect(() => {
+    const notifyErr = (msg: string, type: 'success' | 'info' | 'error' = 'error') => {
+      setPermissionErrorBanner(msg);
+      showNotification(msg, type);
+    };
+
     const unsubVendors = onSnapshot(collection(db, 'vendors'), (snapshot) => {
       const vDataRaw = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vendor));
       const vData = Array.from(new Map(vDataRaw.map(v => [v.id, v])).values());
@@ -359,17 +443,17 @@ function App() {
         // Seed if empty efficiently
         console.log("[Firebase] Seeding initial vendors...");
         Promise.all(INITIAL_VENDORS.map(v => setDoc(doc(db, 'vendors', v.id), clean(v))))
-          .catch(err => console.error("Error seeding vendors:", err));
+          .catch(err => handleFirestoreError(err, OperationType.CREATE, 'vendors', notifyErr));
       } else {
         setVendors(vData);
       }
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'vendors'));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'vendors', notifyErr));
 
     const unsubPosts = onSnapshot(collection(db, 'posts'), (snapshot) => {
       const pDataRaw = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
       const pData = Array.from(new Map(pDataRaw.map(p => [p.id, p])).values());
       setPosts(pData);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'posts'));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'posts', notifyErr));
 
     const unsubMetadata = onSnapshot(doc(db, 'metadata', 'app_config'), (docSnap) => {
       if (docSnap.exists()) {
@@ -383,9 +467,9 @@ function App() {
           categorySubCategories: {},
           subCategoryImages: {},
           heroBackgroundUrl: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80"
-        });
+        }).catch(err => handleFirestoreError(err, OperationType.CREATE, 'metadata/app_config', notifyErr));
       }
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'metadata/app_config'));
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'metadata/app_config', notifyErr));
 
     const unsubCategories = onSnapshot(
       query(collection(db, 'categories'), orderBy('order', 'asc')),
@@ -428,7 +512,7 @@ function App() {
           setCategorySubCategories({});
         }
       },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'categories')
+      (err) => handleFirestoreError(err, OperationType.LIST, 'categories', notifyErr)
     );
 
     return () => {
@@ -470,6 +554,11 @@ function App() {
       return;
     }
 
+    const notifyErr = (msg: string, type: 'success' | 'info' | 'error' = 'error') => {
+      setPermissionErrorBanner(msg);
+      showNotification(msg, type);
+    };
+
     // Bookings
     let bookingsQuery;
     if (userRole === 'admin') {
@@ -483,7 +572,7 @@ function App() {
     const unsubBookings = onSnapshot(bookingsQuery, (snapshot) => {
       const bData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
       setBookings(bData);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'bookings'));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'bookings', notifyErr));
 
     // Messages (Subcollection aggregation to keep existing UI fully intact without deep structural rewrite of all panels)
     let unsubMessages = () => {};
@@ -558,7 +647,7 @@ function App() {
             allConvoMessages.set(cid, msgs);
             rebuildMergedMessages();
           }, (err) => {
-            console.warn(`Fallback for message listener on ${cid}:`, err);
+            handleFirestoreError(err, OperationType.LIST, `conversations/${cid}/messages`, notifyErr);
             // Fallback without ordering
             const fallbackQuery = collection(db, 'conversations', cid, 'messages');
             const unsubFallback = onSnapshot(fallbackQuery, (msgSnap) => {
@@ -582,7 +671,7 @@ function App() {
               allConvoMessages.set(cid, msgs);
               rebuildMergedMessages();
             }, (err2) => {
-              console.error(`Fallback failed on conversation messages query for ${cid}:`, err2);
+              handleFirestoreError(err2, OperationType.LIST, `conversations/${cid}/messages`, notifyErr);
             });
             activeListeners.set(cid + '_fallback', unsubFallback);
           });
@@ -596,7 +685,7 @@ function App() {
         rebuildMergedMessages();
       }
     }, (err) => {
-      console.error("Error subscribing to user conversations:", err);
+      handleFirestoreError(err, OperationType.LIST, 'conversations', notifyErr);
     });
 
     unsubMessages = () => {
@@ -609,7 +698,7 @@ function App() {
       if (docSnap.exists()) {
         setCart(docSnap.data().items || []);
       }
-    }, (err) => handleFirestoreError(err, OperationType.GET, `users/${fbUser.uid}/cart/current`));
+    }, (err) => handleFirestoreError(err, OperationType.GET, `users/${fbUser.uid}/cart/current`, notifyErr));
 
     // Users (Admin only)
     let unsubUsers = () => {};
@@ -618,7 +707,7 @@ function App() {
         const uDataRaw = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserAccount));
         const uData = Array.from(new Map(uDataRaw.map(u => [u.id, u])).values());
         setUsers(uData);
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'users', notifyErr));
     }
 
     return () => {
@@ -646,17 +735,17 @@ function App() {
       if (!user.emailVerified) {
         let isVendor = false;
         try {
-          const vendorDoc = await getDoc(doc(db, 'vendors', user.uid));
+          const vendorDoc = await getDocSafe(doc(db, 'vendors', user.uid));
           if (vendorDoc.exists()) {
             isVendor = true;
           } else if (user.email) {
             const q = query(collection(db, 'vendors'), where('contactEmail', '==', user.email));
-            const snapshot = await getDocs(q);
+            const snapshot = await getDocsSafe(q);
             if (!snapshot.empty) {
               isVendor = true;
             } else {
               const q2 = query(collection(db, 'vendors'), where('username', '==', user.email));
-              const snapshot2 = await getDocs(q2);
+              const snapshot2 = await getDocsSafe(q2);
               if (!snapshot2.empty) {
                 isVendor = true;
               }
@@ -687,18 +776,56 @@ function App() {
       
       // Fetch user doc data
       try {
+        const secureRole = await fetchUserRole(user);
+        let finalRole = secureRole;
+        
         const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
+        const userDoc = await getDocSafe(userDocRef);
         if (userDoc.exists()) {
           const data = userDoc.data();
           setUserDocData(data);
-          const role = data.role || (isUserAdmin(user.email) ? 'admin' : 'client');
-          setUserRole(role);
+          // If fetchUserRole returned 'client' but the doc has something else (unlikely now since we check users collection, but just in case)
+          if (finalRole === 'client' && data.role) {
+             const docRole = typeof data.role === 'string' ? data.role.toLowerCase() : '';
+             if (docRole === 'admin' || data.isAdmin === true) finalRole = 'admin';
+             else if (docRole === 'vendor' || data.isVendor === true) finalRole = 'vendor';
+             else finalRole = data.role;
+          }
+          setUserRole(finalRole);
           setCurrentUserVendorId(data.vendorId || null);
         } else {
           // Default for new users
-          setUserRole(isUserAdmin(user.email) ? 'admin' : 'client');
+          setUserRole(finalRole);
           setCurrentUserVendorId(null);
+        }
+        console.log("Logged in UID:", user.uid, "| Detected Role:", finalRole);
+        
+        // Auto-provision user_roles document
+        try {
+          const userRolesRef = doc(db, 'user_roles', user.uid);
+          const roleSnap = await getDocSafe(userRolesRef);
+          if (!roleSnap.exists()) {
+            const adminEmails = ['bookingsimcha@gmail.com', 'shimpose@gmail.com'];
+            const userEmail = user.email ? user.email.toLowerCase() : '';
+            const signupRole = localStorage.getItem('signupRole');
+            const provisionRole = adminEmails.includes(userEmail) ? 'admin' : (signupRole === 'vendor' ? 'pending_vendor' : 'client');
+            
+            await setDoc(userRolesRef, {
+              role: provisionRole,
+              createdAt: new Date().toISOString()
+            }, { merge: true });
+            localStorage.removeItem('signupRole');
+            
+            console.log("Auto-provisioned user_roles for UID:", user.uid);
+            
+            // Immediate role state refresh
+            if (provisionRole !== finalRole) {
+              finalRole = provisionRole;
+              setUserRole(provisionRole);
+            }
+          }
+        } catch (e) {
+          console.error("Auto-provision error:", e);
         }
       } catch (err: any) {
         if (err.message?.includes('offline') || err.message?.includes('Failed to get document')) {
@@ -715,7 +842,9 @@ function App() {
 
   useEffect(() => {
     if (fbUser && userRole) {
-      updateDoc(doc(db, 'users', fbUser.uid), { role: userRole, vendorId: currentUserVendorId });
+      setDoc(doc(db, 'users', fbUser.uid), { role: userRole, vendorId: currentUserVendorId }, { merge: true }).catch(err => {
+        console.warn("User profile role sync warning:", err);
+      });
     }
   }, [userRole, currentUserVendorId, fbUser]);
 
@@ -905,6 +1034,50 @@ function App() {
     window.scrollTo(0, 0);
   };
 
+  useEffect(() => {
+    if (view === 'marketplace') setActiveBottomTab('home');
+    else if (view === 'portal') {
+      if (portalTab === 'client' && portalInitialTab === 'events') setActiveBottomTab('bookings');
+      else if (portalTab === 'vendor' && portalInitialTab === 'bookings') setActiveBottomTab('bookings');
+      else setActiveBottomTab('portal');
+    }
+  }, [view, portalTab, portalInitialTab]);
+
+  const handleBottomNav = (tab: 'home' | 'search' | 'bookings' | 'portal' | 'admin') => {
+    setActiveBottomTab(tab);
+    if (tab === 'home') {
+      setView('marketplace');
+    } else if (tab === 'search') {
+      setView('marketplace');
+      setTimeout(() => {
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    } else if (tab === 'bookings') {
+      if (isActuallyVendor) {
+        setPortalTab('vendor');
+        setPortalInitialTab('bookings');
+      } else {
+        setPortalTab('client');
+        setPortalInitialTab('events');
+      }
+      setView('portal');
+    } else if (tab === 'portal') {
+      if (isActuallyVendor) {
+        setPortalTab('vendor');
+      } else {
+        setPortalTab('client');
+      }
+      setPortalInitialTab('overview');
+      setView('portal');
+    } else if (tab === 'admin') {
+      setView('admin');
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       await signOut(auth);
@@ -978,6 +1151,7 @@ function App() {
     if (!fbUser) return;
     try {
       const newBookings = cart.map(item => ({
+        userId: fbUser.uid,
         vendorId: item.vendor.id,
         clientName: item.clientName,
         eventName: item.eventName,
@@ -1022,6 +1196,7 @@ function App() {
 
     if (d.isDirectBook) {
       const newBooking = {
+        userId: fbUser?.uid || currentAuthenticatedUser.id || 'anonymous',
         vendorId: bookingVendor.id,
         clientName: finalClientName,
         eventName: d.eventName,
@@ -1239,7 +1414,7 @@ function App() {
   };
 
   const handleSeedTaxonomy = async () => {
-    if (!isUserAdmin(fbUser?.email)) return;
+    if (userRole !== 'admin') return;
     
     try {
       const batch = writeBatch(db);
@@ -1575,19 +1750,19 @@ function App() {
         let isVendor = false;
         let matchedVendor = null;
         try {
-          const vendorDoc = await getDoc(doc(db, 'vendors', user.uid));
+          const vendorDoc = await getDocSafe(doc(db, 'vendors', user.uid));
           if (vendorDoc.exists()) {
             isVendor = true;
             matchedVendor = { id: vendorDoc.id, ...vendorDoc.data() } as Vendor;
           } else {
             const q = query(collection(db, 'vendors'), where('contactEmail', '==', email.trim()));
-            const qSnap = await getDocs(q);
+            const qSnap = await getDocsSafe(q);
             if (!qSnap.empty) {
               isVendor = true;
               matchedVendor = { id: qSnap.docs[0].id, ...qSnap.docs[0].data() } as Vendor;
             } else {
               const q2 = query(collection(db, 'vendors'), where('username', '==', email.trim()));
-              const qSnap2 = await getDocs(q2);
+              const qSnap2 = await getDocsSafe(q2);
               if (!qSnap2.empty) {
                 isVendor = true;
                 matchedVendor = { id: qSnap2.docs[0].id, ...qSnap2.docs[0].data() } as Vendor;
@@ -1888,10 +2063,15 @@ function App() {
 
           {step === 'choice' ? (
             <nav className="flex flex-col gap-6" aria-label="Account Type Selection">
-              <button onClick={() => { setTargetRole('client'); setStep('login'); }} className="group bg-black/40 border border-[#D4AF37]/20 p-10 rounded-3xl hover:border-[#D4AF37] focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all text-center outline-none">
+              <button onClick={() => { setTargetRole('client'); localStorage.setItem('signupRole', 'client'); setStep('login'); }} className="group bg-black/40 border border-[#D4AF37]/20 p-10 rounded-3xl hover:border-[#D4AF37] focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all text-center outline-none">
                 <div className="w-16 h-16 bg-[#D4AF37]/10 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-[#D4AF37] transition-colors" aria-hidden="true"><User className="w-8 h-8 text-[#D4AF37] group-hover:text-black" /></div>
                 <h2 className="text-white font-bold uppercase tracking-[0.3em] text-lg mb-2">simcha sign in</h2>
                 <p className="text-xs text-zinc-400 font-light px-4 leading-relaxed">The perfect platform to book and manage your simcha</p>
+              </button>
+              <button onClick={() => { setTargetRole('vendor'); localStorage.setItem('signupRole', 'vendor'); setStep('login'); }} className="group bg-black/40 border border-[#D4AF37]/20 p-10 rounded-3xl hover:border-[#D4AF37] focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all text-center outline-none">
+                <div className="w-16 h-16 bg-[#D4AF37]/10 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-[#D4AF37] transition-colors" aria-hidden="true"><Star className="w-8 h-8 text-[#D4AF37] group-hover:text-black" /></div>
+                <h2 className="text-white font-bold uppercase tracking-[0.3em] text-lg mb-2">Become a Vendor</h2>
+                <p className="text-xs text-zinc-400 font-light px-4 leading-relaxed">Join our elite network of simcha professionals</p>
               </button>
             </nav>
           ) : step === 'login' ? (
@@ -2172,7 +2352,7 @@ function App() {
   }
 
   if (view === 'admin') {
-    if (!isUserAdmin(fbUser?.email)) {
+    if (userRole !== 'admin') {
       setView('marketplace');
       return null;
     }
@@ -2229,7 +2409,7 @@ function App() {
   };
 
   if (view === 'portal' && fbUser) {
-    const isVendor = isActuallyVendor;
+    const isVendor = userRole === 'vendor' || userRole === 'pending_vendor';
 
     const renderVendorToggle = () => {
       if (!isVendor) return null;
@@ -2261,7 +2441,37 @@ function App() {
       );
     };
 
-    if (portalTab === 'vendor' && isVendor && currentUserVendorId) {
+    if (portalTab === 'vendor' && isVendor) {
+      if (userRole === 'pending_vendor') {
+        return (
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="min-h-screen bg-black flex flex-col"
+          >
+            {renderVendorToggle()}
+            <div className="flex-grow flex items-center justify-center p-8 text-center">
+              <div className="bg-[#111] border border-[#D4AF37]/30 p-12 rounded-3xl max-w-lg shadow-2xl">
+                <div className="w-20 h-20 bg-[#D4AF37]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Clock className="w-10 h-10 text-[#D4AF37]" />
+                </div>
+                <h2 className="text-2xl font-[Cinzel] text-[#D4AF37] mb-4 uppercase tracking-wider">Application Under Review</h2>
+                <p className="text-zinc-400 mb-8 leading-relaxed">
+                  Your vendor application is currently under review by our team. You will receive an email once your account has been approved.
+                </p>
+                <button 
+                  onClick={() => setPortalTab('client')}
+                  className="bg-[#D4AF37] text-black px-8 py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-[#D4AF37]/90 transition-all"
+                >
+                  Go to Client Portal
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        );
+      }
+
       const v = vendors.find(v => v.id === currentUserVendorId);
       if (v) {
         return (
@@ -2275,6 +2485,7 @@ function App() {
             <div className="flex-grow flex flex-col">
               <VendorPortal 
                 vendor={v} 
+                initialTab={portalInitialTab}
                 bookings={bookings.filter(b => b.vendorId === v.id)} 
                 messages={messages.filter(m => m.receiverId === v.id || m.senderId === v.id)} 
                 onUpdateVendor={handleUpdateVendor} 
@@ -2304,6 +2515,7 @@ function App() {
         <div className="flex-grow flex flex-col">
           <ClientPortal 
             user={currentAuthenticatedUser} 
+            initialTab={portalInitialTab}
             cart={cart} 
             bookings={myBookings} 
             messages={myMessages} 
@@ -2380,6 +2592,21 @@ function App() {
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className="min-h-screen bg-black text-zinc-100 flex flex-col"
     >
+      {permissionErrorBanner && (
+        <div className="bg-red-950/80 border-b border-red-500/40 px-4 py-3 text-red-200 text-xs font-medium flex items-center justify-between gap-3 backdrop-blur-md sticky top-0 z-[120]">
+          <div className="flex items-center gap-2 max-w-7xl mx-auto w-full">
+            <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
+            <span className="flex-1 font-semibold">{permissionErrorBanner}</span>
+            <button 
+              onClick={() => setPermissionErrorBanner(null)} 
+              className="text-red-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+              aria-label="Dismiss message"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-lg focus:font-bold">Skip to main content</a>
       <nav className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -2417,12 +2644,24 @@ function App() {
                     }
                     setView('portal');
                   }} 
-                  className="flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/20 px-4 py-2 rounded-full transition-all text-[10px] font-black uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-white outline-none cursor-pointer" 
+                  className="hidden md:flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/20 px-4 py-2 rounded-full transition-all text-[10px] font-black uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-white outline-none cursor-pointer" 
                   aria-label="Open My Portal"
                 >
                   <LayoutDashboard className="w-4 h-4" aria-hidden="true" />
                   <span>My Portal</span>
                 </motion.button>
+                {userRole === 'admin' && (
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setView('admin')} 
+                    className="hidden md:flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/20 px-4 py-2 rounded-full transition-all text-[10px] font-black uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-white outline-none cursor-pointer" 
+                    aria-label="Admin Panel"
+                  >
+                    <Shield className="w-4 h-4" aria-hidden="true" />
+                    <span>Admin</span>
+                  </motion.button>
+                )}
                 <motion.button 
                   whileTap={{ scale: 0.9 }}
                   onClick={handleSignOut} 
@@ -2436,7 +2675,7 @@ function App() {
         </div>
       </nav>
 
-      <main id="main-content" className="flex-1 flex flex-col">
+      <main id="main-content" className="flex-1 flex flex-col pb-36 md:pb-0">
         <section className="relative bg-black text-white overflow-hidden" aria-labelledby="hero-title">
           <div className="absolute inset-0" aria-hidden="true">
             <img src={heroBackgroundUrl} alt="" className="w-full h-full object-cover opacity-80" />
@@ -2470,6 +2709,7 @@ function App() {
                         {activeCategories.map((cat) => (
                             <motion.button 
                               key={cat} 
+                              initial={{ borderColor: "rgba(212, 175, 55, 0.2)" }}
                               whileHover={{ scale: 1.03, y: -4, borderColor: "rgba(212, 175, 55, 0.4)" }}
                               whileTap={{ scale: 0.97 }}
                               transition={{ type: "spring", stiffness: 300, damping: 20 }}
@@ -2524,7 +2764,8 @@ function App() {
 
                         {/* Premium Vendor Cards List for this specific sub-subcategory */}
                         <motion.div 
-                          key={`subsubcategory-vendors-${activeSubSubCategory}-${filteredVendors.length}`}
+                          layout
+                          key={`subsubcategory-vendors-${activeSubSubCategory}`}
                           variants={{
                             hidden: { opacity: 0 },
                             show: {
@@ -2538,26 +2779,30 @@ function App() {
                           animate="show"
                           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8"
                         >
-                          {filteredVendors.map(v => (
-                            <motion.div
-                              variants={{
-                                hidden: { opacity: 0, y: 30 },
-                                show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 15 } }
-                              }}
-                              key={v.id}
-                              id={`vendor-${v.id}`}
-                              className="outline-none focus:ring-2 focus:ring-[#D4AF37] rounded-xl"
-                            >
-                              <VendorCard 
-                                vendor={v}
-                                onBook={vendor => setBookingVendor(vendor)}
-                                onMessage={vendor => setChatVendor(vendor)}
-                                onQuickView={handleViewVendor}
-                                selectedDate={eventDate}
-                                onAddReview={handleAddReview}
-                              />
-                            </motion.div>
-                          ))}
+                          <AnimatePresence mode="popLayout">
+                            {filteredVendors.map(v => (
+                              <motion.div
+                                layout
+                                exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+                                variants={{
+                                  hidden: { opacity: 0, y: 30 },
+                                  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 15 } }
+                                }}
+                                key={v.id}
+                                id={`vendor-${v.id}`}
+                                className="outline-none focus:ring-2 focus:ring-[#D4AF37] rounded-xl"
+                              >
+                                <VendorCard 
+                                  vendor={v}
+                                  onBook={vendor => setBookingVendor(vendor)}
+                                  onMessage={vendor => setChatVendor(vendor)}
+                                  onQuickView={handleViewVendor}
+                                  selectedDate={eventDate}
+                                  onAddReview={handleAddReview}
+                                />
+                              </motion.div>
+                            ))}
+                          </AnimatePresence>
                         </motion.div>
 
                         {filteredVendors.length === 0 && (
@@ -2644,7 +2889,8 @@ function App() {
                 {(!categorySubCategories[activeCategory] || Object.keys(categorySubCategories[activeCategory]).length === 0 || activeCategory === 'All' || (activeSubCategories.length > 0 && !activeSubSubCategory)) && !activeSubSubCategory && (
                   <>
                   <motion.div 
-                    key={`${activeCategory}-${activeSubCategoryGroup}-${activeSubCategories.join(',')}-${searchTerm}-${filteredVendors.length}`}
+                    layout
+                    key={`${activeCategory}-${activeSubCategoryGroup}-${activeSubCategories.join(',')}-${searchTerm}`}
                     variants={{
                       hidden: { opacity: 0 },
                       show: {
@@ -2659,8 +2905,11 @@ function App() {
                     viewport={{ once: true, amount: 0.02 }}
                     className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8"
                 >
+                  <AnimatePresence mode="popLayout">
                     {filteredVendors.map(v => (
                       <motion.div 
+                        layout
+                        exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
                         variants={{
                           hidden: { opacity: 0, y: 30 },
                           show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100, damping: 15 } }
@@ -2680,6 +2929,7 @@ function App() {
                         />
                       </motion.div>
                     ))}
+                  </AnimatePresence>
                 </motion.div>
                 {filteredVendors.length === 0 && (
                     <div className="py-20 text-center opacity-40" role="status">
@@ -2710,7 +2960,7 @@ function App() {
                     </div>
                     <div className="flex flex-col gap-3 items-center md:items-start">
                         <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Access</p>
-                        { isUserAdmin(fbUser?.email) && (
+                        { userRole === 'admin' && (
                           <button onClick={() => setView('admin')} className="text-zinc-400 hover:text-[#D4AF37] text-sm flex items-center gap-1.5 transition-colors outline-none focus-visible:underline"><Shield className="w-3.5 h-3.5" aria-hidden="true" /> Administration</button>
                         )}
                     </div>
@@ -2861,13 +3111,16 @@ function App() {
             }
             setIsAdminChatOpen(true);
           }}
-          className="fixed bottom-8 right-8 z-40 w-14 h-14 bg-[#D4AF37] text-black rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all group shadow-[#D4AF37]/20"
+          className="fixed bottom-28 right-4 z-40 w-14 h-14 bg-[#D4AF37] text-black rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all group shadow-[#D4AF37]/20"
           aria-label="Contact Support"
         >
           <div className="absolute -top-12 right-0 bg-black text-[#D4AF37] px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border border-[#D4AF37]/30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xl">
             Need Help?
           </div>
-          <AlertCircle className="w-6 h-6" />
+          <div className="relative flex items-center justify-center">
+            <MessageSquare className="w-7 h-7 fill-black text-black" />
+            <span className="absolute text-[12px] font-black text-[#D4AF37] -mt-0.5">?</span>
+          </div>
         </button>
       )}
 
@@ -2893,6 +3146,10 @@ function App() {
             <span className={`font-bold text-sm flex-1 ${notification.type === 'error' ? 'text-red-200' : 'text-green-200'}`}>{notification.message}</span>
           </div>
         </div>
+      )}
+      
+      {currentAuthenticatedUser && (
+        <BottomNav currentView={activeBottomTab} onNavigate={handleBottomNav} isAdmin={userRole === 'admin'} />
       )}
     </motion.div>
   );
