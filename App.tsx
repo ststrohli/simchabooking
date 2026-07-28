@@ -49,8 +49,13 @@ const clean = (obj: any) => {
   }
 };
 
-const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | 'client' | 'pending_vendor'> => {
+const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | 'client'> => {
   try {
+    const userEmail = user.email ? user.email.toLowerCase() : '';
+    if (userEmail && ['bookingsimcha@gmail.com', 'shimpose@gmail.com', 'ststrohli@gmail.com'].includes(userEmail)) {
+      return 'admin';
+    }
+
     // 1. Check Custom Claims in Auth token
     const tokenResult = await user.getIdTokenResult();
     if (tokenResult.claims.role === 'admin') return 'admin';
@@ -65,7 +70,6 @@ const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | '
         const roleVal = typeof data?.role === 'string' ? data.role.toLowerCase() : '';
         if (roleVal === 'admin' || data?.isAdmin === true) return 'admin';
         if (roleVal === 'vendor' || data?.isVendor === true) return 'vendor';
-        if (roleVal === 'pending_vendor') return 'pending_vendor';
         if (roleVal === 'client') return 'client';
       }
     } catch (err) {}
@@ -79,7 +83,6 @@ const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | '
         const roleVal = typeof data?.role === 'string' ? data.role.toLowerCase() : '';
         if (roleVal === 'admin' || data?.isAdmin === true) return 'admin';
         if (roleVal === 'vendor' || data?.isVendor === true) return 'vendor';
-        if (roleVal === 'pending_vendor') return 'pending_vendor';
         if (roleVal === 'client') return 'client';
       }
     } catch (err) {}
@@ -92,7 +95,6 @@ const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | '
       const roleVal = typeof data?.role === 'string' ? data.role.toLowerCase() : '';
       if (roleVal === 'admin' || data?.isAdmin === true) return 'admin';
       if (roleVal === 'vendor' || data?.isVendor === true) return 'vendor';
-      if (roleVal === 'pending_vendor') return 'pending_vendor';
       if (roleVal === 'client') return 'client';
     }
   } catch (err) {
@@ -361,7 +363,7 @@ function App() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [users, setUsers] = useState<UserAccount[]>([]);
-  const [userRole, setUserRole] = useState<'client' | 'vendor' | 'admin' | 'pending_vendor' | null>(null);
+  const [userRole, setUserRole] = useState<'client' | 'vendor' | 'admin' | null>(null);
   const [currentUserVendorId, setCurrentUserVendorId] = useState<string | null>(null);
   const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
   const [paymentVendorId, setPaymentVendorId] = useState<string | null>(null);
@@ -805,18 +807,30 @@ function App() {
           const userRolesRef = doc(db, 'user_roles', user.uid);
           const roleSnap = await getDocSafe(userRolesRef);
           if (!roleSnap.exists()) {
-            const adminEmails = ['bookingsimcha@gmail.com', 'shimpose@gmail.com'];
+            const adminEmails = ['bookingsimcha@gmail.com', 'shimpose@gmail.com', 'ststrohli@gmail.com'];
             const userEmail = user.email ? user.email.toLowerCase() : '';
-            const signupRole = localStorage.getItem('signupRole');
-            const provisionRole = adminEmails.includes(userEmail) ? 'admin' : (signupRole === 'vendor' ? 'pending_vendor' : 'client');
+            let provisionRole: 'admin' | 'vendor' | 'client' = adminEmails.includes(userEmail) ? 'admin' : 'client';
+            
+            if (provisionRole !== 'admin' && userEmail) {
+              const inviteDocId = `invite_${userEmail.replace(/[^a-z0-9]/g, '_')}`;
+              const inviteSnap = await getDocSafe(doc(db, 'user_roles', inviteDocId));
+              if (inviteSnap.exists() && inviteSnap.data()?.role === 'vendor') {
+                provisionRole = 'vendor';
+                try {
+                  await deleteDoc(doc(db, 'user_roles', inviteDocId));
+                } catch (delErr) {
+                  console.warn("Could not cleanup invite doc:", delErr);
+                }
+              }
+            }
             
             await setDoc(userRolesRef, {
               role: provisionRole,
+              email: userEmail,
               createdAt: new Date().toISOString()
             }, { merge: true });
-            localStorage.removeItem('signupRole');
             
-            console.log("Auto-provisioned user_roles for UID:", user.uid);
+            console.log("Auto-provisioned user_roles for UID:", user.uid, "Role:", provisionRole);
             
             // Immediate role state refresh
             if (provisionRole !== finalRole) {
@@ -1725,7 +1739,7 @@ function App() {
   };
 
   const AuthWall = () => {
-    const [step, setStep] = useState<'choice' | 'login' | 'register' | 'verification' | 'forgot-password' | 'reset-success'>('choice');
+    const [step, setStep] = useState<'login' | 'register' | 'verification' | 'forgot-password' | 'reset-success'>('login');
     const [targetRole, setTargetRole] = useState<'client' | 'vendor' | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     
@@ -2061,20 +2075,7 @@ function App() {
             <p className="text-[10px] text-zinc-500 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
           </header>
 
-          {step === 'choice' ? (
-            <nav className="flex flex-col gap-6" aria-label="Account Type Selection">
-              <button onClick={() => { setTargetRole('client'); localStorage.setItem('signupRole', 'client'); setStep('login'); }} className="group bg-black/40 border border-[#D4AF37]/20 p-10 rounded-3xl hover:border-[#D4AF37] focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all text-center outline-none">
-                <div className="w-16 h-16 bg-[#D4AF37]/10 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-[#D4AF37] transition-colors" aria-hidden="true"><User className="w-8 h-8 text-[#D4AF37] group-hover:text-black" /></div>
-                <h2 className="text-white font-bold uppercase tracking-[0.3em] text-lg mb-2">simcha sign in</h2>
-                <p className="text-xs text-zinc-400 font-light px-4 leading-relaxed">The perfect platform to book and manage your simcha</p>
-              </button>
-              <button onClick={() => { setTargetRole('vendor'); localStorage.setItem('signupRole', 'vendor'); setStep('login'); }} className="group bg-black/40 border border-[#D4AF37]/20 p-10 rounded-3xl hover:border-[#D4AF37] focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all text-center outline-none">
-                <div className="w-16 h-16 bg-[#D4AF37]/10 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:bg-[#D4AF37] transition-colors" aria-hidden="true"><Star className="w-8 h-8 text-[#D4AF37] group-hover:text-black" /></div>
-                <h2 className="text-white font-bold uppercase tracking-[0.3em] text-lg mb-2">Become a Vendor</h2>
-                <p className="text-xs text-zinc-400 font-light px-4 leading-relaxed">Join our elite network of simcha professionals</p>
-              </button>
-            </nav>
-          ) : step === 'login' ? (
+          {step === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-6">
               <div className="space-y-2">
                 <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Email Address</label>
@@ -2136,7 +2137,6 @@ function App() {
               </button>
               
               <div className="flex flex-col gap-4 mt-6">
-                <button type="button" onClick={() => setStep('choice')} className="text-zinc-500 hover:text-white text-[10px] font-black uppercase tracking-widest">Return to Roles</button>
                 <button type="button" onClick={() => setStep('register')} className="text-[#D4AF37] hover:underline text-[10px] font-black uppercase tracking-widest">
                   Need an account? Register here
                 </button>
@@ -2409,7 +2409,7 @@ function App() {
   };
 
   if (view === 'portal' && fbUser) {
-    const isVendor = userRole === 'vendor' || userRole === 'pending_vendor';
+    const isVendor = userRole === 'vendor';
 
     const renderVendorToggle = () => {
       if (!isVendor) return null;
@@ -2442,36 +2442,6 @@ function App() {
     };
 
     if (portalTab === 'vendor' && isVendor) {
-      if (userRole === 'pending_vendor') {
-        return (
-          <motion.div 
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            className="min-h-screen bg-black flex flex-col"
-          >
-            {renderVendorToggle()}
-            <div className="flex-grow flex items-center justify-center p-8 text-center">
-              <div className="bg-[#111] border border-[#D4AF37]/30 p-12 rounded-3xl max-w-lg shadow-2xl">
-                <div className="w-20 h-20 bg-[#D4AF37]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Clock className="w-10 h-10 text-[#D4AF37]" />
-                </div>
-                <h2 className="text-2xl font-[Cinzel] text-[#D4AF37] mb-4 uppercase tracking-wider">Application Under Review</h2>
-                <p className="text-zinc-400 mb-8 leading-relaxed">
-                  Your vendor application is currently under review by our team. You will receive an email once your account has been approved.
-                </p>
-                <button 
-                  onClick={() => setPortalTab('client')}
-                  className="bg-[#D4AF37] text-black px-8 py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-[#D4AF37]/90 transition-all"
-                >
-                  Go to Client Portal
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        );
-      }
-
       const v = vendors.find(v => v.id === currentUserVendorId);
       if (v) {
         return (

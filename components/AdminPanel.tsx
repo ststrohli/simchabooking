@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff, Filter, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff, Filter, ArrowUpDown, ArrowUp, ArrowDown, UserPlus, UserCheck, Clock } from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType, firebaseConfig } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
-import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, addDoc, where, getDocs, getDoc, deleteField } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, addDoc, setDoc, where, getDocs, getDoc, deleteField } from 'firebase/firestore';
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
@@ -115,9 +115,94 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isAuthenticated] = useState(true);
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'posts' | 'categories' | 'bookings' | 'stripe' | 'users' | 'messages' | 'analytics' | 'moderation'>('manage');
+  const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'invite' | 'posts' | 'categories' | 'bookings' | 'stripe' | 'users' | 'messages' | 'analytics' | 'moderation'>('manage');
   const [isUploading, setIsUploading] = useState(false);
   const [isSeedingTaxonomy, setIsSeedingTaxonomy] = useState(false);
+
+  // Vendor Invite states and user_roles Firestore listener
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [isInvitingVendor, setIsInvitingVendor] = useState(false);
+  const [vendorUserRoles, setVendorUserRoles] = useState<any[]>([]);
+
+  useEffect(() => {
+    const q = query(collection(db, 'user_roles'), where('role', '==', 'vendor'));
+    const unsub = onSnapshot(q, (snap) => {
+      const roles: any[] = [];
+      snap.forEach(docSnap => {
+        roles.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setVendorUserRoles(roles);
+    }, (err) => {
+      console.warn("Could not fetch user_roles:", err);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleInviteVendor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = inviteEmail.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      showNotification('Please enter a valid email address.', 'info');
+      return;
+    }
+
+    setIsInvitingVendor(true);
+    try {
+      // 1. Check if user exists in the registered users list
+      const existingUser = users.find(u => ((u as any).email || (u as any).username)?.trim().toLowerCase() === cleanEmail);
+
+      if (existingUser) {
+        // User is already registered! Set user_roles/UID and update users/UID
+        const roleRef = doc(db, 'user_roles', existingUser.id);
+        await setDoc(roleRef, {
+          role: 'vendor',
+          email: cleanEmail,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+
+        const userRef = doc(db, 'users', existingUser.id);
+        await setDoc(userRef, {
+          role: 'vendor',
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+
+        showNotification(`Vendor role assigned to registered user (${cleanEmail})!`, 'success');
+      } else {
+        // User not registered yet! Write an invite document to user_roles
+        const inviteDocId = `invite_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+        const inviteRef = doc(db, 'user_roles', inviteDocId);
+        await setDoc(inviteRef, {
+          role: 'vendor',
+          email: cleanEmail,
+          isInvite: true,
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+
+        showNotification(`Vendor invitation created in 'user_roles' for ${cleanEmail}! They will automatically receive vendor access upon sign-up.`, 'success');
+      }
+
+      setInviteEmail('');
+    } catch (err: any) {
+      console.error("Error inviting vendor:", err);
+      showNotification(err.message || 'Failed to assign vendor role.', 'error');
+    } finally {
+      setIsInvitingVendor(false);
+    }
+  };
+
+  const handleRevokeVendorRole = async (docId: string, email: string) => {
+    if (!window.confirm(`Are you sure you want to revoke vendor role for ${email}?`)) return;
+    try {
+      await deleteDoc(doc(db, 'user_roles', docId));
+      if (!docId.startsWith('invite_')) {
+        await setDoc(doc(db, 'users', docId), { role: 'client', updatedAt: new Date().toISOString() }, { merge: true });
+      }
+      showNotification(`Vendor access revoked for ${email}.`, 'info');
+    } catch (err: any) {
+      console.error("Error revoking vendor role:", err);
+      showNotification('Failed to revoke vendor role.', 'error');
+    }
+  };
 
   const handleMoveCategory = (cat: string, direction: 'up' | 'down') => {
     const currentIndex = categories.indexOf(cat);
@@ -187,43 +272,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [removedModerationIds, setRemovedModerationIds] = useState<string[]>([]);
   const [filterText, setFilterText] = useState('');
   
-  const [pendingVendors, setPendingVendors] = useState<any[]>([]);
-
-  useEffect(() => {
-    const q = query(collection(db, 'user_roles'), where('role', '==', 'pending_vendor'));
-    const unsub = onSnapshot(q, async (snap) => {
-      const pv: any[] = [];
-      for (const docSnap of snap.docs) {
-        const uid = docSnap.id;
-        try {
-          const userDoc = await getDoc(doc(db, 'users', uid));
-          if (userDoc.exists()) {
-            pv.push({ id: uid, ...docSnap.data(), user: userDoc.data() });
-          } else {
-            pv.push({ id: uid, ...docSnap.data(), user: { name: 'Unknown User', email: '' } });
-          }
-        } catch(e) {
-          pv.push({ id: uid, ...docSnap.data(), user: { name: 'Unknown User', email: '' } });
-        }
-      }
-      setPendingVendors(pv);
-    });
-    return () => unsub();
-  }, []);
-
-  const handleApproveVendor = async (uid: string) => {
-    try {
-      await updateDoc(doc(db, 'user_roles', uid), {
-        role: 'vendor',
-        updatedAt: new Date().toISOString()
-      });
-      showNotification('Vendor approved successfully!', 'success');
-    } catch (error) {
-      console.error("Error approving vendor:", error);
-      showNotification('Failed to approve vendor.', 'error');
-    }
-  };
-
   const [analyticsLogs, setAnalyticsLogs] = useState<any[]>([]);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
 
@@ -1157,7 +1205,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
       <main className="max-w-7xl mx-auto px-4 py-12">
         {/* Stats Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
             <div className="bg-[#111] p-6 rounded-2xl border border-[#D4AF37]/10 shadow-xl">
                 <p className="text-[10px] font-black text-[#D4AF37]/60 uppercase tracking-widest mb-2">Total Volume</p>
                 <div className="flex items-center justify-between">
@@ -1180,12 +1228,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <User className="w-8 h-8 text-[#D4AF37]/20" />
                 </div>
             </div>
+            <div className="bg-[#111] p-6 rounded-2xl border border-emerald-500/20 shadow-xl relative">
+                <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Registered Vendor Roles</p>
+                    <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                        <ShieldCheck className="w-2.5 h-2.5" /> Whitelisted
+                    </span>
+                </div>
+                <div className="flex items-center justify-between">
+                    <h3 className="text-3xl font-bold text-emerald-400">{vendorUserRoles.length}</h3>
+                    <UserCheck className="w-8 h-8 text-emerald-500/30" />
+                </div>
+            </div>
         </div>
 
         {/* Tab Navigation */}
         <div className="flex justify-start md:justify-center mb-10 overflow-x-auto pb-3 scrollbar-none">
             <div className="bg-[#111] p-1.5 rounded-xl border border-white/5 flex shrink-0 gap-1">
-                {['manage', 'users', 'moderation', 'bookings', 'messages', 'stripe', 'posts', 'categories', 'analytics', 'add'].map(tab => {
+                {['manage', 'invite', 'users', 'moderation', 'bookings', 'messages', 'stripe', 'posts', 'categories', 'analytics', 'add'].map(tab => {
                     const pendingVendorsCount = vendors.filter(v => !v.isVerified && !removedModerationIds.includes(v.id)).length;
                     const pendingUsersCount = users.filter(u => !(u as any).isApproved && !removedModerationIds.includes(u.id)).length;
                     const totalPendingCount = pendingVendorsCount + pendingUsersCount;
@@ -1193,6 +1253,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     const getTabLabel = (t: string) => {
                         if (t === 'add') return editingVendor ? 'Edit Professional' : 'Add New';
                         if (t === 'manage') return 'Professionals';
+                        if (t === 'invite') return 'Invite Vendor';
                         if (t === 'users') return 'User Directory';
                         if (t === 'moderation') return 'Moderation Queue';
                         if (t === 'analytics') return 'Funnel Insights';
@@ -1220,6 +1281,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             }`}
                         >
                             <span>{getTabLabel(tab)}</span>
+                            {tab === 'invite' && vendorUserRoles.length > 0 && (
+                                <span className={`px-1.5 py-0.5 text-[8px] font-bold rounded-full ${
+                                    isActive ? 'bg-black text-[#D4AF37]' : 'bg-[#D4AF37] text-black'
+                                }`}>
+                                    {vendorUserRoles.length}
+                                </span>
+                            )}
                             {tab === 'moderation' && totalPendingCount > 0 && (
                                 <span className={`px-1.5 py-0.5 text-[8px] font-bold rounded-full ${
                                     isActive ? 'bg-black text-[#D4AF37]' : 'bg-[#D4AF37] text-black animate-pulse'
@@ -1355,6 +1423,199 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         )}
                     </div>
                 </form>
+            </div>
+        )}
+
+        {activeTab === 'invite' && (
+            <div className="space-y-10 max-w-4xl mx-auto animate-in fade-in duration-300">
+                {/* Invite Form Card */}
+                <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/20 shadow-2xl p-8">
+                    <div className="flex items-center gap-3 mb-6 border-b border-[#D4AF37]/10 pb-4">
+                        <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
+                            <Mail className="w-5 h-5 text-[#D4AF37]" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Invite Vendor Account</h2>
+                            <p className="text-xs text-zinc-400">Assign vendor permissions directly to an email address in the user_roles Firestore collection.</p>
+                        </div>
+                    </div>
+
+                    <form onSubmit={handleInviteVendor} className="space-y-6">
+                        <div className="space-y-2">
+                            <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                                Vendor Email Address
+                            </label>
+                            <div className="relative">
+                                <input 
+                                    type="email"
+                                    required
+                                    value={inviteEmail}
+                                    onChange={(e) => setInviteEmail(e.target.value)}
+                                    placeholder="vendor@example.com"
+                                    className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#D4AF37] transition-colors"
+                                />
+                            </div>
+                            <p className="text-[11px] text-zinc-500 leading-relaxed">
+                                • If an account with this email already exists, their account role will immediately elevate to <strong className="text-emerald-400 font-bold">vendor</strong>.<br />
+                                • If no account exists yet, a pre-authorized document will be stored in <code className="text-[#D4AF37] bg-black px-1.5 py-0.5 rounded text-[10px]">user_roles</code>. When they register with this email, they will automatically gain vendor access.
+                            </p>
+                        </div>
+
+                        <button 
+                            type="submit" 
+                            disabled={isInvitingVendor}
+                            className="w-full md:w-auto bg-[#D4AF37] text-black font-bold px-8 py-3.5 rounded-xl hover:bg-[#E5C76B] transition-all shadow-lg font-[Cinzel] text-sm uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {isInvitingVendor ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                            Assign Vendor Role
+                        </button>
+                    </form>
+                </div>
+
+                {/* Currently Registered & Invited Vendors Visual Indicator Table */}
+                <div className="bg-[#111] rounded-2xl border border-white/10 shadow-xl p-8">
+                    <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
+                        <div>
+                            <h3 className="text-lg font-bold font-[Cinzel] text-white flex items-center gap-2">
+                                <ShieldCheck className="w-5 h-5 text-emerald-400" /> Currently Whitelisted & Registered Vendors
+                            </h3>
+                            <p className="text-xs text-zinc-500 mt-0.5">Live list of all records in the <code className="text-zinc-300">user_roles</code> Firestore collection with vendor permissions.</p>
+                        </div>
+                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            {vendorUserRoles.length} Authorized
+                        </span>
+                    </div>
+
+                    {vendorUserRoles.length === 0 ? (
+                        <div className="text-center py-12 text-zinc-500 text-sm bg-black/30 rounded-xl border border-dashed border-white/5">
+                            No vendor roles currently stored in user_roles. Use the form above to invite your first vendor.
+                        </div>
+                    ) : (
+                        <TableContainer>
+                            <table className="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr className="border-b border-white/10 bg-black/40 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
+                                        <th className="p-4">Email / ID</th>
+                                        <th className="p-4">Role Status</th>
+                                        <th className="p-4">Date Added</th>
+                                        <th className="p-4 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {vendorUserRoles.map(roleItem => {
+                                        const isInviteOnly = roleItem.isInvite || roleItem.id.startsWith('invite_');
+                                        const displayEmail = roleItem.email || roleItem.id;
+                                        const matchedUser = users.find(u => u.id === roleItem.id || ((u as any).email || (u as any).username)?.trim().toLowerCase() === roleItem.email?.trim().toLowerCase());
+
+                                        return (
+                                            <tr key={roleItem.id} className="hover:bg-white/5 transition-colors">
+                                                <td className="p-4">
+                                                    <div className="font-bold text-white flex items-center gap-2">
+                                                        {displayEmail}
+                                                        {matchedUser && (
+                                                            <span className="text-[10px] text-zinc-400 font-normal">
+                                                                ({matchedUser.name})
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-[10px] text-zinc-600 font-mono">ID: {roleItem.id}</div>
+                                                </td>
+                                                <td className="p-4">
+                                                    {isInviteOnly ? (
+                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                                            <Clock className="w-3 h-3" /> Invited (Pending Registration)
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                                            <ShieldCheck className="w-3 h-3" /> Registered Vendor Account
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="p-4 text-zinc-400 text-[11px]">
+                                                    {roleItem.updatedAt || roleItem.createdAt || roleItem.invitedAt ? (
+                                                        new Date(roleItem.updatedAt || roleItem.createdAt || roleItem.invitedAt).toLocaleDateString()
+                                                    ) : 'Active'}
+                                                </td>
+                                                <td className="p-4 text-right">
+                                                    <button 
+                                                        onClick={() => handleRevokeVendorRole(roleItem.id, displayEmail)}
+                                                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors"
+                                                    >
+                                                        Revoke Role
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </TableContainer>
+                    )}
+                </div>
+
+                {/* Currently Registered Vendors Collection Table */}
+                <div className="bg-[#111] rounded-2xl border border-white/10 shadow-xl p-8">
+                    <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
+                        <div>
+                            <h3 className="text-lg font-bold font-[Cinzel] text-white flex items-center gap-2">
+                                <ShoppingBag className="w-5 h-5 text-[#D4AF37]" /> Marketplace Vendor Profiles ({vendors.length})
+                            </h3>
+                            <p className="text-xs text-zinc-500 mt-0.5">Profiles currently published or saved in the <code className="text-zinc-300">vendors</code> Firestore collection.</p>
+                        </div>
+                        <button 
+                            onClick={() => setActiveTab('manage')}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37] hover:text-black transition-all"
+                        >
+                            Manage All Profiles →
+                        </button>
+                    </div>
+
+                    {vendors.length === 0 ? (
+                        <div className="text-center py-12 text-zinc-500 text-sm bg-black/30 rounded-xl border border-dashed border-white/5">
+                            No vendor profiles in the 'vendors' collection yet.
+                        </div>
+                    ) : (
+                        <TableContainer>
+                            <table className="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr className="border-b border-white/10 bg-black/40 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
+                                        <th className="p-4">Business Name</th>
+                                        <th className="p-4">Category</th>
+                                        <th className="p-4">Contact Email</th>
+                                        <th className="p-4">Location</th>
+                                        <th className="p-4 text-right">Verification</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {vendors.slice(0, 10).map(v => (
+                                        <tr key={v.id} className="hover:bg-white/5 transition-colors">
+                                            <td className="p-4 font-bold text-white">
+                                                {v.name}
+                                                <div className="text-[10px] text-zinc-600 font-mono">ID: {v.id}</div>
+                                            </td>
+                                            <td className="p-4">
+                                                <span className="px-2 py-0.5 rounded text-[10px] bg-white/5 border border-white/10 text-zinc-300">
+                                                    {v.category}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-zinc-300">{v.contactEmail || 'N/A'}</td>
+                                            <td className="p-4 text-zinc-400">{v.location || 'N/A'}</td>
+                                            <td className="p-4 text-right">
+                                                {v.isVerified ? (
+                                                    <span className="inline-flex items-center gap-1 text-emerald-400 font-bold text-[10px]">
+                                                        <ShieldCheck className="w-3 h-3" /> Verified
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-amber-400 text-[10px] font-bold">Unverified</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </TableContainer>
+                    )}
+                </div>
             </div>
         )}
 
@@ -1922,50 +2183,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                     <div>
                         <h2 className="text-2xl font-bold font-[Cinzel] text-white">User Directory</h2>
-                        <p className="text-xs text-zinc-500 mt-1">Manage active platform registrants and pending vendors.</p>
+                        <p className="text-xs text-zinc-500 mt-1">Manage active platform registrants and client profiles.</p>
                     </div>
                     <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
                         Total Users: {users.length}
                     </div>
                 </div>
-
-                {pendingVendors.length > 0 && (
-                  <div className="mb-10">
-                    <h3 className="text-lg font-bold font-[Cinzel] text-[#D4AF37] mb-4">Pending Vendors ({pendingVendors.length})</h3>
-                    <TableContainer>
-                      <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="border-b border-white/10 bg-black/40 text-[#D4AF37] font-bold uppercase tracking-widest text-[9px]">
-                            <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Name / Email</th>
-                            <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Application Date</th>
-                            <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                          {pendingVendors.map(pv => (
-                            <tr key={pv.id} className="hover:bg-white/5 transition-colors group">
-                              <td className="p-4">
-                                <div className="font-bold text-white">{pv.user?.name || 'Unknown'}</div>
-                                <div className="text-zinc-500 text-[10px]">{pv.user?.email || 'No email provided'}</div>
-                              </td>
-                              <td className="p-4 text-zinc-400">
-                                {pv.createdAt ? new Date(pv.createdAt).toLocaleDateString() : 'Unknown'}
-                              </td>
-                              <td className="p-4 text-right">
-                                <button 
-                                  onClick={() => handleApproveVendor(pv.id)}
-                                  className="bg-[#D4AF37]/20 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black border border-[#D4AF37]/30 px-4 py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-all"
-                                >
-                                  Approve Vendor
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </TableContainer>
-                  </div>
-                )}
 
                 <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
                     <Search className="w-5 h-5 text-zinc-500" />

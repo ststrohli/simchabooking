@@ -22,7 +22,10 @@ service cloud.firestore {
     }
 
     function isHardcodedAdmin() {
-      return isAuthenticated() && request.auth.token != null && request.auth.token.get('email', '') in ['bookingsimcha@gmail.com', 'shimpose@gmail.com'];
+      return isAuthenticated() && request.auth.token != null && (
+        request.auth.token.get('email', '').toLowerCase() in ['bookingsimcha@gmail.com', 'shimpose@gmail.com', 'ststrohli@gmail.com'] ||
+        (request.auth.token.email != null && request.auth.token.email.toLowerCase() in ['bookingsimcha@gmail.com', 'shimpose@gmail.com', 'ststrohli@gmail.com'])
+      );
     }
 
     function getUserRole() {
@@ -72,20 +75,20 @@ service cloud.firestore {
     }
 
     match /user_roles/{userId} {
-      // Users can read their own role or admins can read any role (isHardcodedAdmin or custom claims)
-      allow read: if isAuthenticated() && (isOwner(userId) || isHardcodedAdmin() || (request.auth.token != null && request.auth.token.get('role', '') == 'admin'));
+      // Users can read their own role or admins can read any role
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
 
-      // Allows initial auto-provisioning create while preventing unauthorized admin escalation
-      allow create, update: if isAuthenticated() && (
-        isHardcodedAdmin() ||
+      // Auto-provisioning by public user: strictly 'client' role allowed (or 'admin' if hardcoded admin)
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
         (isOwner(userId) && (
           (request.resource.data.get('role', '') == 'admin' && isHardcodedAdmin()) ||
-          (request.resource.data.get('role', '') in ['client', 'pending_vendor', 'vendor'] && request.resource.data.get('role', '') != 'admin')
+          (request.resource.data.get('role', '') in ['client', 'vendor'] && request.resource.data.get('role', '') != 'admin')
         ))
       );
 
-      // Strictly blocks non-admin users from deleting or elevating roles
-      allow delete: if isAuthenticated() && (isHardcodedAdmin() || (request.auth.token != null && request.auth.token.get('role', '') == 'admin'));
+      // Strictly blocks non-admin users from updating or deleting roles. Only admins can update or delete user roles.
+      allow update, delete: if isAuthenticated() && isAdmin();
     }
 
     // ===============================================================
