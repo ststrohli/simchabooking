@@ -1,21 +1,27 @@
 import React from 'react';
-import { Home, Search, Calendar, User, Shield } from 'lucide-react';
+import { Home, ClipboardList, CalendarHeart, MessageCircle, User, Calendar, BookText } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface BottomNavProps {
   currentView: string;
-  onNavigate: (tab: 'home' | 'search' | 'bookings' | 'portal' | 'admin') => void;
-  isAdmin?: boolean;
+  onNavigate: (tab: string) => void;
+  isVendorView?: boolean;
 }
 
-const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isAdmin }) => {
-  const tabs = [
+const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isVendorView }) => {
+  const tabs = isVendorView ? [
     { id: 'home', label: 'Home', icon: Home },
-    { id: 'search', label: 'Search', icon: Search },
-    { id: 'bookings', label: 'Bookings', icon: Calendar },
-    { id: 'portal', label: 'Portal', icon: User },
-    ...(isAdmin ? [{ id: 'admin', label: 'Admin', icon: Shield }] : [])
-  ] as { id: 'home' | 'search' | 'bookings' | 'portal' | 'admin', label: string, icon: any }[];
+    { id: 'bookings', label: 'Bookings', icon: BookText },
+    { id: 'calendar', label: 'Calendar', icon: Calendar },
+    { id: 'chat', label: 'Chat', icon: MessageCircle },
+    { id: 'profile', label: 'Profile', icon: User },
+  ] : [
+    { id: 'home', label: 'Home', icon: Home },
+    { id: 'plan', label: 'Plan', icon: ClipboardList },
+    { id: 'events', label: 'Events', icon: CalendarHeart },
+    { id: 'chat', label: 'Chat', icon: MessageCircle },
+    { id: 'profile', label: 'Profile', icon: User },
+  ];
 
   return (
     <nav className="fixed bottom-6 left-4 right-4 max-w-sm mx-auto rounded-[32px] bg-gradient-to-b from-zinc-900/90 via-black/90 to-black/95 backdrop-blur-2xl border border-white/20 shadow-[0_12px_40px_rgba(0,0,0,0.85),0_0_20px_rgba(255,255,255,0.06)] pb-safe md:hidden z-50 overflow-hidden">

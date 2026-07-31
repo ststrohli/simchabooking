@@ -351,7 +351,7 @@ function App() {
   const [view, setView] = useState<'marketplace' | 'vendor-portal' | 'admin' | 'posts' | 'client-portal' | 'payment-success' | 'verify-account' | 'portal'>('marketplace');
   const [portalTab, setPortalTab] = useState<'client' | 'vendor'>('client');
   const [portalInitialTab, setPortalInitialTab] = useState<string>('overview');
-  const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'bookings' | 'portal' | 'admin'>('home');
+  const [activeBottomTab, setActiveBottomTab] = useState<string>('home');
   const welcomeScheduled = React.useRef(false);
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
   const [userDocData, setUserDocData] = useState<any>(null);
@@ -371,6 +371,8 @@ function App() {
   const isActuallyVendor = useMemo(() => {
     return userRole === 'vendor';
   }, [userRole]);
+
+  const [isVendorView, setIsVendorView] = useState(false);
 
   const vendorProfileId = useMemo(() => {
     if (!fbUser?.email) return null;
@@ -1051,44 +1053,60 @@ function App() {
   useEffect(() => {
     if (view === 'marketplace') setActiveBottomTab('home');
     else if (view === 'portal') {
-      if (portalTab === 'client' && portalInitialTab === 'events') setActiveBottomTab('bookings');
-      else if (portalTab === 'vendor' && portalInitialTab === 'bookings') setActiveBottomTab('bookings');
-      else setActiveBottomTab('portal');
+      if (portalTab === 'client') {
+        if (['plan', 'events', 'chats', 'profile'].includes(portalInitialTab)) {
+          setActiveBottomTab(portalInitialTab === 'chats' ? 'chat' : portalInitialTab);
+        } else {
+          setActiveBottomTab('home');
+        }
+      } else if (portalTab === 'vendor') {
+        if (['bookings', 'calendar', 'messages', 'profile'].includes(portalInitialTab)) {
+          setActiveBottomTab(portalInitialTab === 'messages' ? 'chat' : portalInitialTab);
+        } else {
+          setActiveBottomTab('home');
+        }
+      }
     }
   }, [view, portalTab, portalInitialTab]);
 
-  const handleBottomNav = (tab: 'home' | 'search' | 'bookings' | 'portal' | 'admin') => {
+  const handleBottomNav = (tab: string) => {
     setActiveBottomTab(tab);
     if (tab === 'home') {
       setView('marketplace');
-    } else if (tab === 'search') {
-      setView('marketplace');
-      setTimeout(() => {
-        const searchInput = document.getElementById('search-input');
-        if (searchInput) {
-          searchInput.focus();
-          searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 100);
+    } else if (tab === 'plan') {
+      setPortalTab('client');
+      setPortalInitialTab('plan');
+      setView('portal');
+    } else if (tab === 'events') {
+      setPortalTab('client');
+      setPortalInitialTab('events');
+      setView('portal');
+    } else if (tab === 'chat') {
+      if (isVendorView) {
+        setPortalTab('vendor');
+        setPortalInitialTab('messages');
+      } else {
+        setPortalTab('client');
+        setPortalInitialTab('chats');
+      }
+      setView('portal');
+    } else if (tab === 'profile') {
+      if (isVendorView) {
+        setPortalTab('vendor');
+        setPortalInitialTab('profile');
+      } else {
+        setPortalTab('client');
+        setPortalInitialTab('profile');
+      }
+      setView('portal');
     } else if (tab === 'bookings') {
-      if (isActuallyVendor) {
-        setPortalTab('vendor');
-        setPortalInitialTab('bookings');
-      } else {
-        setPortalTab('client');
-        setPortalInitialTab('events');
-      }
+      setPortalTab('vendor');
+      setPortalInitialTab('bookings');
       setView('portal');
-    } else if (tab === 'portal') {
-      if (isActuallyVendor) {
-        setPortalTab('vendor');
-      } else {
-        setPortalTab('client');
-      }
-      setPortalInitialTab('overview');
+    } else if (tab === 'calendar') {
+      setPortalTab('vendor');
+      setPortalInitialTab('calendar');
       setView('portal');
-    } else if (tab === 'admin') {
-      setView('admin');
     }
   };
 
@@ -1739,7 +1757,7 @@ function App() {
   };
 
   const AuthWall = () => {
-    const [step, setStep] = useState<'login' | 'register' | 'verification' | 'forgot-password' | 'reset-success'>('login');
+    const [step, setStep] = useState<'welcome' | 'login' | 'register' | 'verification' | 'forgot-password' | 'reset-success'>('welcome');
     const [targetRole, setTargetRole] = useState<'client' | 'vendor' | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     
@@ -2075,8 +2093,34 @@ function App() {
             <p className="text-[10px] text-zinc-500 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
           </header>
 
-          {step === 'login' ? (
+          {step === 'welcome' ? (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div
+                onClick={() => setStep('login')}
+                className="bg-[#0d0d0d] border border-[#D4AF37]/30 rounded-2xl p-8 text-center cursor-pointer hover:border-[#D4AF37] hover:bg-black/60 hover:scale-[1.02] transition-all duration-300 shadow-xl group"
+              >
+                <div className="bg-[#D4AF37]/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#D4AF37]/20 group-hover:border-[#D4AF37]/40 group-hover:bg-[#D4AF37]/20 transition-all">
+                  <User className="w-8 h-8 text-[#D4AF37]" />
+                </div>
+                <h2 className="text-lg font-bold font-[Cinzel] text-white tracking-[0.2em] uppercase mb-2 group-hover:text-[#D4AF37] transition-colors">
+                  SIMCHA SIGN IN
+                </h2>
+                <p className="text-xs text-zinc-400 font-medium">
+                  The perfect platform to book and manage your simcha
+                </p>
+              </div>
+            </div>
+          ) : step === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-6">
+              <div className="flex justify-start mb-2">
+                <button
+                  type="button"
+                  onClick={() => setStep('welcome')}
+                  className="text-xs text-zinc-500 hover:text-[#D4AF37] flex items-center gap-1 font-bold uppercase tracking-wider transition-colors"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Back
+                </button>
+              </div>
               <div className="space-y-2">
                 <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Email Address</label>
                 <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
@@ -2168,6 +2212,15 @@ function App() {
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
+              <div className="flex justify-start mb-2">
+                <button
+                  type="button"
+                  onClick={() => setStep('welcome')}
+                  className="text-xs text-zinc-500 hover:text-[#D4AF37] flex items-center gap-1 font-bold uppercase tracking-wider transition-colors"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Back
+                </button>
+              </div>
               <div className="flex flex-col items-center mb-4">
                 <label className="relative group cursor-pointer">
                    <div className="w-20 h-20 bg-black/60 border-2 border-dashed border-[#D4AF37]/30 rounded-full flex items-center justify-center overflow-hidden transition-all group-hover:border-[#D4AF37]">
@@ -2581,21 +2634,45 @@ function App() {
       <nav className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
-            <motion.button 
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="flex items-center gap-3 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-lg p-1" 
-              onClick={() => { setView('marketplace'); setActiveCategory('All'); }} 
-              aria-label="Simcha Booking Home"
-            >
-                <SimchaLogo className="h-9 w-9 group-hover:scale-110 transition-transform" />
-                <div className="text-left">
-                    <h1 className="text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
-                      <span className="block md:inline">Simcha</span><span className="block md:inline md:ml-1.5">Booking</span>
-                    </h1>
+            <div className="flex items-center gap-4 md:gap-8">
+              <motion.button 
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="flex items-center gap-3 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-lg p-1" 
+                onClick={() => { setView('marketplace'); setActiveCategory('All'); }} 
+                aria-label="Simcha Booking Home"
+              >
+                  <SimchaLogo className="h-9 w-9 group-hover:scale-110 transition-transform" />
+                  <div className="text-left">
+                      <h1 className="text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
+                        <span className="block md:inline">Simcha</span><span className="block md:inline md:ml-1.5">Booking</span>
+                      </h1>
+                  </div>
+              </motion.button>
+              
+              {isActuallyVendor && (
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-[#D4AF37]/30">
+                   <span className={`text-[10px] font-bold uppercase tracking-wider ${!isVendorView ? 'text-white' : 'text-zinc-500'}`}>Client</span>
+                   <button 
+                     onClick={() => setIsVendorView(!isVendorView)}
+                     className={`w-9 h-5 rounded-full relative transition-colors ${isVendorView ? 'bg-[#D4AF37]' : 'bg-zinc-700'}`}
+                   >
+                     <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-black transition-transform ${isVendorView ? 'translate-x-4' : 'translate-x-0'}`} />
+                   </button>
+                   <span className={`text-[10px] font-bold uppercase tracking-wider ${isVendorView ? 'text-[#D4AF37]' : 'text-zinc-500'}`}>Vendor</span>
                 </div>
-            </motion.button>
+              )}
+            </div>
+            
             <div className="flex items-center gap-6">
+                {userRole === 'admin' && (
+                  <button 
+                    onClick={() => setView('admin')} 
+                    className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-[#D4AF37] transition-colors"
+                  >
+                    Admin Panel
+                  </button>
+                )}
                 <motion.button 
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setView('posts')} 
@@ -3119,7 +3196,7 @@ function App() {
       )}
       
       {currentAuthenticatedUser && (
-        <BottomNav currentView={activeBottomTab} onNavigate={handleBottomNav} isAdmin={userRole === 'admin'} />
+        <BottomNav currentView={activeBottomTab} onNavigate={handleBottomNav} isVendorView={isVendorView && isActuallyVendor} />
       )}
     </motion.div>
   );
