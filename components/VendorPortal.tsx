@@ -24,15 +24,26 @@ interface VendorPortalProps {
   showNotification: (message: string, type?: 'success' | 'info') => void;
   onLogout: () => void;
   onSwitchToClientView?: () => void;
+  onActiveChatChange?: (isActive: boolean) => void;
+  onTabChange?: (tab: string) => void;
   initialTab?: string;
 }
 
-const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, initialTab }) => {
+const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, onActiveChatChange, onTabChange, initialTab }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'history' | 'calendar' | 'profile' | 'messages'>(initialTab as any || 'overview');
   
+  const onTabChangeRef = useRef(onTabChange);
+  useEffect(() => {
+    onTabChangeRef.current = onTabChange;
+  }, [onTabChange]);
+
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab as any);
   }, [initialTab]);
+
+  useEffect(() => {
+    if (onTabChangeRef.current) onTabChangeRef.current(activeTab);
+  }, [activeTab]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedBookingForDetail, setSelectedBookingForDetail] = useState<Booking | null>(null);
   const [selectedCalendarEvent, setSelectedCalendarEvent] = useState<{
@@ -316,9 +327,6 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [stripeMessage, setStripeMessage] = useState<string | null>(null);
-  const [manualStripeKey, setManualStripeKey] = useState('');
-  const [isUpdatingKey, setIsUpdatingKey] = useState(false);
-  const [keyUpdateSuccess, setKeyUpdateSuccess] = useState(false);
   
   // Email Debug State
   const [testEmail, setTestEmail] = useState('');
@@ -631,41 +639,21 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
   // Auto-select the first thread (the one with the most recent message) when activeTab is messages and no thread is selected
   useEffect(() => {
-    if (activeTab === 'messages' && !selectedThreadEmail && messageThreads.length > 0) {
+    if (activeTab === 'messages' && !selectedThreadEmail && messageThreads.length > 0 && window.innerWidth >= 1024) {
       setSelectedThreadEmail(messageThreads[0][0]);
     }
   }, [activeTab, selectedThreadEmail, messageThreads]);
 
-  const handleManualKeyUpdate = async () => {
-    if (!manualStripeKey || manualStripeKey.length !== 107 || !manualStripeKey.startsWith('sk_')) {
-      alert("Please enter a valid 107-character Stripe Secret Key starting with 'sk_'.");
-      return;
-    }
+  const onActiveChatChangeRef = useRef(onActiveChatChange);
+  useEffect(() => {
+    onActiveChatChangeRef.current = onActiveChatChange;
+  }, [onActiveChatChange]);
 
-    setIsUpdatingKey(true);
-    try {
-      const response = await fetch('/api/stripe/update-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: manualStripeKey.trim() })
-      });
-
-      if (response.ok) {
-        setKeyUpdateSuccess(true);
-        setManualStripeKey('');
-        setOnboardingError(null);
-        setTimeout(() => setKeyUpdateSuccess(false), 5000);
-      } else {
-        const data = await response.json();
-        alert(data.error || "Failed to update key.");
-      }
-    } catch (err) {
-      console.error("Key update error:", err);
-      alert("An error occurred while updating the key.");
-    } finally {
-      setIsUpdatingKey(false);
+  useEffect(() => {
+    if (onActiveChatChangeRef.current) {
+      onActiveChatChangeRef.current(!!selectedThreadEmail && activeTab === 'messages');
     }
-  };
+  }, [selectedThreadEmail, activeTab]);
 
   const handleSendTestEmail = async () => {
     if (!testEmail || !testEmail.includes('@')) {
@@ -2337,6 +2325,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       </AnimatePresence>
 
       {/* Mobile Toggle */}
+      {!['overview', 'bookings', 'calendar', 'messages', 'profile'].includes(activeTab) && (
       <div className="md:hidden bg-[#0a0a0a] border-b border-[#D4AF37]/10 p-4 flex justify-between items-center z-30 sticky top-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-[#D4AF37] rounded-lg flex items-center justify-center text-black font-bold font-[Cinzel] shrink-0">V</div>
@@ -2354,6 +2343,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           )}
         </div>
       </div>
+      )}
 
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
@@ -2386,23 +2376,12 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           <NavItem id="profile" icon={Settings} label="Business Profile" />
         </nav>
         <div className="p-6 border-t border-white/5 bg-black space-y-3">
-          {onSwitchToClientView && (
-            <div className="flex bg-[#111] border border-[#D4AF37]/30 p-1.5 rounded-xl items-center w-full justify-between">
-              <span className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest pl-1.5">View Selector</span>
-              <button 
-                onClick={onSwitchToClientView}
-                className="bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] font-black px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-wider transition-all border border-[#D4AF37]/30 flex items-center gap-1.5"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" /> Back
-              </button>
-            </div>
-          )}
           <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-400 transition-colors text-xs font-black uppercase tracking-widest"><LogOut className="w-5 h-5" /> Terminate Session</button>
         </div>
       </aside>
 
       {/* Main Container */}
-      <main className="flex-1 h-screen overflow-y-auto bg-[#050505] relative">
+      <main className="flex-1 h-screen overflow-y-auto bg-[#050505] relative pb-36 md:pb-0">
         <header className="sticky top-0 z-30 bg-[#050505]/95 backdrop-blur-md px-4 md:px-10 py-5 md:py-6 border-b border-white/5">
           <div className="flex flex-col gap-4">
             <div className="flex justify-between items-start">
@@ -2411,14 +2390,6 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                 <p className="text-[#D4AF37]/60 text-[9px] font-black uppercase tracking-[0.4em] mt-2">{vendor.name}</p>
               </div>
               <div className="flex items-center gap-4 pt-1">
-                 {onSwitchToClientView && (
-                   <button 
-                     onClick={onSwitchToClientView}
-                     className="hidden md:flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] font-black px-4 py-2 rounded-full text-[10px] uppercase tracking-widest transition-all border border-[#D4AF37]/30"
-                   >
-                     <ArrowLeft className="w-4 h-4" /> Client View
-                   </button>
-                 )}
                  {pendingRequests > 0 && (
                    <div className="hidden sm:flex items-center gap-2 bg-zinc-800 border border-zinc-500/30 px-3 py-1.5 rounded-full animate-pulse">
                      <Bell className="w-3.5 h-3.5 text-zinc-400" />
@@ -2574,59 +2545,17 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           <div className="pt-3 border-t border-zinc-500/10 space-y-3">
                             <div className="flex items-center gap-2">
                               <div className="h-px flex-1 bg-zinc-800"></div>
-                              <p className="text-[9px] text-zinc-400/60 uppercase tracking-widest font-black">Action Required</p>
+                              <p className="text-[9px] text-zinc-400/60 uppercase tracking-widest font-black">Secure Express Onboarding</p>
                               <div className="h-px flex-1 bg-zinc-800"></div>
                             </div>
                             
                             <div className="bg-black/20 rounded-xl p-3 space-y-2 border border-zinc-500/10">
-                              <div className="flex justify-between items-center mb-1">
-                                <p className="text-[10px] text-zinc-300 leading-relaxed">
-                                  Your key is currently <span className="text-zinc-400 font-bold">truncated</span>.
-                                </p>
-                                <div className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-500/30">
-                                  <p className="text-[8px] font-mono text-zinc-400">Length: 28/107</p>
-                                </div>
-                              </div>
-                              
-                              <div className="p-2 bg-black/40 rounded border border-white/5 font-mono text-[9px] text-zinc-400 break-all">
-                                Current: <span className="text-zinc-400">sk_test_...99iz</span>
-                              </div>
-
-                              <ol className="text-[10px] text-zinc-300 space-y-2 list-decimal ml-4 leading-relaxed pt-1">
-                                <li>Go to <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noreferrer" className="text-[#D4AF37] font-bold underline hover:text-white transition-colors">Stripe API Keys</a></li>
-                                <li>Click <strong className="text-white">"Reveal test key"</strong></li>
-                                <li><strong className="text-white">Click the key itself</strong> to copy the full 107-character string</li>
-                                <li>Open <strong className="text-white">Settings (<Settings className="inline w-3 h-3 mx-0.5" />) &gt; Secrets</strong> (top-right of this screen)</li>
-                                <li>Delete <code>STRIPE_SECRET_KEY</code> and paste the <strong className="text-white">full key</strong></li>
-                                <li>Press <strong className="text-white">Enter</strong> to save and try again</li>
-                              </ol>
-
-                              <div className="pt-3 border-t border-white/5 space-y-2">
-                                <p className="text-[9px] text-zinc-400 uppercase tracking-widest font-bold">Emergency Key Update</p>
-                                <p className="text-[9px] text-zinc-500 leading-relaxed">If you can't find the Secrets menu, paste the full key here to update it directly in the database:</p>
-                                <div className="flex gap-2">
-                                  <input 
-                                    type="password"
-                                    value={manualStripeKey}
-                                    onChange={(e) => setManualStripeKey(e.target.value)}
-                                    placeholder="sk_test_..."
-                                    className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] text-white font-mono focus:outline-none focus:border-[#D4AF37]/50"
-                                  />
-                                  <button 
-                                    type="button"
-                                    onClick={handleManualKeyUpdate}
-                                    disabled={isUpdatingKey}
-                                    className="px-3 py-1.5 bg-[#D4AF37] text-black text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-white transition-colors disabled:opacity-50"
-                                  >
-                                    {isUpdatingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : "Update"}
-                                  </button>
-                                </div>
-                                {keyUpdateSuccess && (
-                                  <p className="text-[9px] text-green-500 font-bold flex items-center gap-1">
-                                    <Check className="w-3 h-3" /> Key updated successfully!
-                                  </p>
-                                )}
-                              </div>
+                              <p className="text-[10px] text-zinc-300 leading-relaxed">
+                                Click <strong className="text-white">Connect Stripe</strong> above to securely enter bank account and tax details directly on Stripe's Express onboarding page.
+                              </p>
+                              <p className="text-[9px] text-zinc-400 leading-relaxed">
+                                Once completed, event payments (Credit Cards & ACH Direct Debit) will be automatically split and routed directly to your connected bank account.
+                              </p>
                             </div>
                           </div>
 
@@ -2962,9 +2891,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           )}
 
           {activeTab === 'messages' && (
-            <div className="flex flex-col lg:flex-row bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden min-h-[600px] animate-in fade-in duration-500">
+            <div className="flex flex-col lg:flex-row bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden min-h-[600px] animate-in fade-in duration-500 relative">
                {/* Thread List */}
-               <div className="w-full lg:w-80 border-r border-white/5 bg-black/20 overflow-y-auto">
+               <div className={`w-full lg:w-80 border-r border-white/5 bg-black/20 overflow-y-auto ${selectedThreadEmail ? 'hidden lg:block' : 'block'}`}>
                   <div className="p-6 border-b border-white/5 bg-black/40">
                     <h3 className="text-sm font-bold text-[#D4AF37] uppercase tracking-widest">Client Inquiries</h3>
                   </div>
@@ -3009,11 +2938,17 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                </div>
 
                {/* Chat Pane */}
-               <div className="flex-1 flex flex-col bg-black/40">
+               <div className={`flex-1 flex-col bg-black/40 ${selectedThreadEmail ? 'flex' : 'hidden lg:flex'}`}>
                   {selectedThreadEmail ? (
                     <>
                       <div className="p-6 border-b border-white/5 bg-black/40 flex items-center justify-between">
                          <div className="flex items-center gap-3">
+                            <button 
+                              onClick={() => setSelectedThreadEmail(null)} 
+                              className="lg:hidden p-2 -ml-2 mr-1 text-zinc-400 hover:text-white rounded-full hover:bg-white/10"
+                            >
+                              <ArrowLeft className="w-5 h-5" />
+                            </button>
                             <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] font-bold">
                               {messageThreads.find(t => t[0] === selectedThreadEmail)?.[1].name[0]}
                             </div>

@@ -22,6 +22,23 @@ import {
   sendBookingConfirmation
 } from "./services/emailService.ts";
 
+// Global process error handlers to prevent app crash on socket disconnects (EPIPE, ECONNRESET)
+process.on('uncaughtException', (err: any) => {
+  if (err?.code === 'EPIPE' || err?.code === 'ECONNRESET' || err?.code === 'ECANCELED') {
+    console.warn(`[Server] Ignored transient network socket error (${err.code}):`, err.message);
+    return;
+  }
+  console.error('[Server] Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  if (reason?.code === 'EPIPE' || reason?.code === 'ECONNRESET' || reason?.code === 'ECANCELED') {
+    console.warn(`[Server] Ignored transient network socket rejection (${reason.code}):`, reason?.message);
+    return;
+  }
+  console.error('[Server] Unhandled Rejection:', reason);
+});
+
 const __filename_val = typeof __filename !== 'undefined' ? __filename : '';
 const __dirname_val = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
@@ -347,7 +364,7 @@ async function getStripe(): Promise<Stripe> {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 8080;
+  const PORT = 3000;
   const searchTracker = new Map<string, number>();
   setInterval(() => searchTracker.clear(), 24 * 60 * 60 * 1000);
 
@@ -476,8 +493,10 @@ async function startServer() {
 
       let session;
       try {
+        const baseUrl = process.env.APP_URL || "https://ais-dev-cbsdxwd34vvmza2vvckdfs-61889936560.us-west2.run.app";
         const sessionParams: any = {
-          payment_method_types: ["card"],
+          ui_mode: "embedded",
+          payment_method_types: ["card", "us_bank_account"],
           line_items: [
             {
               price_data: {
@@ -495,8 +514,7 @@ async function startServer() {
             bookingId: (bookingId as string) || 'none',
             vendorId: (vendorId as string) || 'none'
           },
-          success_url: `${process.env.APP_URL}/payment-success?bookingId=${bookingId}&vendorId=${vendorId}`,
-          cancel_url: `${process.env.APP_URL}/payment-cancel?bookingId=${bookingId}`,
+          return_url: `${baseUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}&bookingId=${bookingId}&vendorId=${vendorId}`,
         };
 
         // Add payment_intent_data for Destination Charges
@@ -526,8 +544,13 @@ async function startServer() {
         return res.status(400).json({ error: stripeError.message });
       }
       
-      // Return JSON for all requests
-      return res.json({ url: session.url });
+      // Return client_secret & clientSecret for embedded checkout
+      return res.json({ 
+        clientSecret: session.client_secret,
+        client_secret: session.client_secret,
+        sessionId: session.id,
+        url: session.url
+      });
     } catch (error: any) {
       console.error("Payment Route Error:", error);
       return res.status(500).json({ error: error.message });
@@ -850,6 +873,139 @@ async function startServer() {
     });
   });
 
+  // Admin Cleanup Orphaned Data Endpoint
+  app.post("/api/admin/cleanup-orphaned-data", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Unauthorized: Missing authentication token." });
+      }
+
+      const idToken = authHeader.split("Bearer ")[1];
+      let decodedToken;
+      try {
+        decodedToken = await admin.auth().verifyIdToken(idToken);
+      } catch (authErr: any) {
+        return res.status(401).json({ error: "Unauthorized: Invalid authentication token." });
+      }
+
+      const callerUid = decodedToken.uid;
+      const callerRoleDoc = await safeFirestoreOp(async (database) => {
+        return await database.collection("user_roles").doc(callerUid).get();
+      }, "Verify Admin Role", "user_roles", callerUid);
+
+      const isCallerAdmin = callerRoleDoc?.exists && callerRoleDoc.data()?.role === "admin";
+      if (!isCallerAdmin) {
+        return res.status(403).json({ error: "Forbidden: Admin access required." });
+      }
+
+      console.log(`[Admin Endpoint] Orphaned data cleanup triggered by admin UID: ${callerUid}`);
+
+      // 1. Fetch active users in Auth
+      const activeAuthUids = new Set<string>();
+      let nextPageToken: string | undefined = undefined;
+      do {
+        const listResult = await admin.auth().listUsers(1000, nextPageToken);
+        listResult.users.forEach((u) => activeAuthUids.add(u.uid));
+        nextPageToken = listResult.pageToken;
+      } while (nextPageToken);
+
+      const activeVendorIdsFromRoles = new Set<string>();
+
+      // 2. Scan user_roles
+      const userRolesSnap = await db.collection("user_roles").get();
+      const orphanedRoleRefs: admin.firestore.DocumentReference[] = [];
+      userRolesSnap.forEach((doc) => {
+        if (!activeAuthUids.has(doc.id) && !doc.id.startsWith("invite_")) {
+          orphanedRoleRefs.push(doc.ref);
+        } else {
+          const data = doc.data();
+          if (data?.vendorId) activeVendorIdsFromRoles.add(data.vendorId);
+        }
+      });
+
+      // 3. Scan users
+      const usersSnap = await db.collection("users").get();
+      const orphanedUserRefs: admin.firestore.DocumentReference[] = [];
+      usersSnap.forEach((doc) => {
+        if (!activeAuthUids.has(doc.id)) {
+          orphanedUserRefs.push(doc.ref);
+        } else {
+          const data = doc.data();
+          if (data?.vendorId) activeVendorIdsFromRoles.add(data.vendorId);
+        }
+      });
+
+      // 4. Scan vendors
+      const vendorsSnap = await db.collection("vendors").get();
+      const orphanedVendorRefs: admin.firestore.DocumentReference[] = [];
+      const orphanedVendorIds: string[] = [];
+      vendorsSnap.forEach((doc) => {
+        const vendorId = doc.id;
+        const data = doc.data();
+        const vendorUserId = data?.userId || data?.uid || data?.ownerId;
+
+        const isValidVendor =
+          activeAuthUids.has(vendorId) ||
+          (vendorUserId && activeAuthUids.has(vendorUserId)) ||
+          activeVendorIdsFromRoles.has(vendorId);
+
+        if (!isValidVendor) {
+          orphanedVendorRefs.push(doc.ref);
+          orphanedVendorIds.push(vendorId);
+        }
+      });
+
+      // 5. Scan posts
+      const orphanedPostRefs: admin.firestore.DocumentReference[] = [];
+      if (orphanedVendorIds.length > 0) {
+        const postsSnap = await db.collection("posts").get();
+        postsSnap.forEach((doc) => {
+          const postVendorId = doc.data()?.vendorId;
+          if (postVendorId && orphanedVendorIds.includes(postVendorId)) {
+            orphanedPostRefs.push(doc.ref);
+          }
+        });
+      }
+
+      const allOrphanedRefs = [
+        ...orphanedRoleRefs,
+        ...orphanedUserRefs,
+        ...orphanedVendorRefs,
+        ...orphanedPostRefs,
+      ];
+
+      for (let i = 0; i < allOrphanedRefs.length; i += 400) {
+        const batch = db.batch();
+        const chunk = allOrphanedRefs.slice(i, i + 400);
+        chunk.forEach((ref) => batch.delete(ref));
+        await batch.commit();
+      }
+
+      return res.json({
+        success: true,
+        message: "Orphaned data scan and cleanup completed successfully.",
+        stats: {
+          deletedUserRolesCount: orphanedRoleRefs.length,
+          deletedUsersCount: orphanedUserRefs.length,
+          deletedVendorsCount: orphanedVendorRefs.length,
+          deletedPostsCount: orphanedPostRefs.length,
+          totalDeleted: allOrphanedRefs.length,
+          activeAuthUsersCount: activeAuthUids.size,
+        },
+      });
+    } catch (err: any) {
+      console.error("[Admin Endpoint] Error during orphaned data cleanup:", err);
+      return res.status(500).json({ error: err.message || "Failed to cleanup orphaned data." });
+    }
+  });
+
+  // Stripe Publishable Key Config
+  app.get("/api/stripe/config", (req, res) => {
+    const publishableKey = process.env.VITE_STRIPE_PUBLISHABLE_KEY || process.env.STRIPE_PUBLISHABLE_KEY || "pk_test_51PxyzSamplePublishableKey";
+    res.json({ publishableKey });
+  });
+
   // Stripe Health Check
   app.get("/api/stripe/health", async (req, res) => {
     const diag = getKeyDiagnostics();
@@ -870,30 +1026,6 @@ async function startServer() {
     }
   });
 
-  // Manual Key Update (Firestore Fallback)
-  app.post("/api/stripe/update-key", async (req, res) => {
-    try {
-      const { key } = req.body;
-      if (!key || key.length !== 107 || !key.startsWith('sk_')) {
-        return res.status(400).json({ error: "Invalid key format. Must be a 107-character Secret Key (sk_...)." });
-      }
-
-      await safeFirestoreOp(async (dbInstance) => {
-        await dbInstance.collection('settings').doc('stripe').set({
-          secretKey: key,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-      }, "Update Stripe Key", "settings", "stripe");
-
-      // Clear the cached client to force re-initialization
-      stripeClient = null;
-      
-      res.json({ status: "ok", message: "Key updated successfully in database." });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
   // Stripe Connect Onboarding
   app.post("/api/stripe/onboard", async (req, res) => {
     const diag = getKeyDiagnostics();
@@ -907,7 +1039,7 @@ async function startServer() {
       }
       
       const stripe = await getStripe();
-      // Create a Stripe Connect account
+      // Create a Stripe Connect Express account
       const account = await stripe.accounts.create({
         type: "express",
         email: email,
@@ -917,6 +1049,7 @@ async function startServer() {
         capabilities: {
           card_payments: { requested: true },
           transfers: { requested: true },
+          us_bank_account_ach_payments: { requested: true },
         },
       });
 
@@ -1680,7 +1813,21 @@ async function startServer() {
     });
   }
 
-  app.listen(Number(PORT), '0.0.0.0', () => { console.log('Server is live'); });
+  const server = app.listen(Number(PORT), '0.0.0.0', () => { console.log('Server is live'); });
+  server.on('error', (err: any) => {
+    if (err?.code === 'EPIPE' || err?.code === 'ECONNRESET') {
+      console.warn(`[Server] Handled socket error on HTTP server (${err.code}):`, err.message);
+    } else {
+      console.error('[Server] HTTP Server error:', err);
+    }
+  });
+  server.on('clientError', (err: any, socket: any) => {
+    if (err?.code === 'ECONNRESET' || err?.code === 'EPIPE') {
+      socket.destroy();
+      return;
+    }
+    socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+  });
 }
 
 async function runDailyCheckIn() {

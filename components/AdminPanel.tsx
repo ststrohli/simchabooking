@@ -272,6 +272,46 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [removedModerationIds, setRemovedModerationIds] = useState<string[]>([]);
   const [filterText, setFilterText] = useState('');
   
+  // Orphaned Data Cleanup state
+  const [isRunningCleanup, setIsRunningCleanup] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<any>(null);
+
+  const handleRunOrphanedCleanup = async () => {
+    if (!window.confirm("Run Orphaned Data Scan & Cleanup?\n\nThis will scan Firestore user_roles, users, and vendors collections, cross-reference with active Firebase Auth accounts, and delete any Firestore documents that lack a matching active user in Auth.")) {
+      return;
+    }
+    setIsRunningCleanup(true);
+    setCleanupResult(null);
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        showNotification("Authentication required to run cleanup.", "error");
+        setIsRunningCleanup(false);
+        return;
+      }
+      const token = await currentUser.getIdToken();
+      const res = await fetch("/api/admin/cleanup-orphaned-data", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setCleanupResult(data.stats);
+        showNotification(`Cleanup complete! Removed ${data.stats.totalDeleted} orphaned document(s).`, "success");
+      } else {
+        throw new Error(data.error || "Failed to execute cleanup");
+      }
+    } catch (err: any) {
+      console.error("Cleanup error:", err);
+      showNotification(err.message || "Failed to execute orphaned data cleanup.", "error");
+    } finally {
+      setIsRunningCleanup(false);
+    }
+  };
+  
   const [analyticsLogs, setAnalyticsLogs] = useState<any[]>([]);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
 
@@ -2180,6 +2220,45 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {activeTab === 'users' && (
             <div className="space-y-6 animate-in fade-in duration-300">
+                {/* Database Integrity & Orphaned Data Cleanup Card */}
+                <div className="bg-[#111] p-6 rounded-2xl border border-[#D4AF37]/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <ShieldCheck className="w-5 h-5 text-[#D4AF37]" />
+                            <h3 className="text-base font-bold font-[Cinzel] text-white">Database Integrity & Cleanup</h3>
+                        </div>
+                        <p className="text-xs text-zinc-400 max-w-xl">
+                            Scan Firestore collections (<code className="text-[#D4AF37]">user_roles</code>, <code className="text-[#D4AF37]">users</code>, <code className="text-[#D4AF37]">vendors</code>) and cross-reference with active Firebase Auth accounts to scrub orphaned data.
+                        </p>
+                        {cleanupResult && (
+                            <div className="mt-3 p-3 bg-black/60 rounded-xl border border-emerald-500/30 text-xs text-emerald-400 flex flex-wrap gap-4">
+                                <div><strong>Deleted Roles:</strong> {cleanupResult.deletedUserRolesCount}</div>
+                                <div><strong>Deleted Users:</strong> {cleanupResult.deletedUsersCount}</div>
+                                <div><strong>Deleted Vendors:</strong> {cleanupResult.deletedVendorsCount}</div>
+                                <div><strong>Deleted Posts:</strong> {cleanupResult.deletedPostsCount}</div>
+                                <div><strong>Active Auth Users:</strong> {cleanupResult.activeAuthUsersCount}</div>
+                            </div>
+                        )}
+                    </div>
+                    <button
+                        onClick={handleRunOrphanedCleanup}
+                        disabled={isRunningCleanup}
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-900/80 to-red-600/80 hover:from-red-800 hover:to-red-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-lg hover:shadow-red-900/40 disabled:opacity-50 shrink-0 cursor-pointer"
+                    >
+                        {isRunningCleanup ? (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                                <span>Scanning Firestore...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Trash2 className="w-4 h-4 text-white" />
+                                <span>Scrub Orphaned Data</span>
+                            </>
+                        )}
+                    </button>
+                </div>
+
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                     <div>
                         <h2 className="text-2xl font-bold font-[Cinzel] text-white">User Directory</h2>

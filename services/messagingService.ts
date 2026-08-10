@@ -143,6 +143,11 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
     vendorEmail: payload.vendorEmail || null,
   };
 
+  const payloadSize = JSON.stringify(messageData).length;
+  if (payloadSize > 800000) {
+    throw new Error(`Message payload size (${Math.round(payloadSize / 1024)}KB) exceeds the Firestore document limit of 1MB. Please compress or attach a smaller file.`);
+  }
+
   batch.set(msgDocSnapRef, messageData);
 
   // Increment unread_count on members/{userId} for other participants

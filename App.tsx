@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check, ShieldAlert } from 'lucide-react';
+import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check, ShieldAlert, HelpCircle } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -21,11 +21,11 @@ import { uploadFileRobustly } from './services/uploadService';
 import { trackFunnelStep } from './services/analyticsService';
 import { sendNewMessage, subscribeToUserInbox, ensureAdminSupportConversation } from './services/messagingService';
 import VendorCard from './components/VendorCard';
+import VendorCardSkeleton from './components/VendorCardSkeleton';
 import QuickViewModal from './components/QuickViewModal';
 import BookingModal from './components/BookingModal';
 import VendorPortal from './components/VendorPortal';
 import AdminPanel from './components/AdminPanel';
-import PayPalButton from './components/PayPalButton';
 import ContactModal from './components/ContactModal';
 import PostsPage from './components/PostsPage';
 import BottomNav from './components/BottomNav';
@@ -52,14 +52,19 @@ const clean = (obj: any) => {
 const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | 'client'> => {
   try {
     const userEmail = user.email ? user.email.toLowerCase() : '';
-    if (userEmail && ['bookingsimcha@gmail.com', 'shimpose@gmail.com', 'ststrohli@gmail.com'].includes(userEmail)) {
+    const adminEmails = ['bookingsimcha@gmail.com', 'shimpose@gmail.com', 'ststrohli@gmail.com'];
+    if (userEmail && adminEmails.includes(userEmail)) {
       return 'admin';
     }
 
     // 1. Check Custom Claims in Auth token
-    const tokenResult = await user.getIdTokenResult();
-    if (tokenResult.claims.role === 'admin') return 'admin';
-    if (tokenResult.claims.role === 'vendor') return 'vendor';
+    try {
+      const tokenResult = await user.getIdTokenResult();
+      if (tokenResult.claims.role === 'admin') return 'admin';
+      if (tokenResult.claims.role === 'vendor') return 'vendor';
+    } catch (err) {}
+
+    let foundVendor = false;
 
     // 2. Query secure user_roles/{uid} collection
     try {
@@ -69,11 +74,10 @@ const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | '
         const data = userRoleDocSnap.data();
         const roleVal = typeof data?.role === 'string' ? data.role.toLowerCase() : '';
         if (roleVal === 'admin' || data?.isAdmin === true) return 'admin';
-        if (roleVal === 'vendor' || data?.isVendor === true) return 'vendor';
-        if (roleVal === 'client') return 'client';
+        if (roleVal === 'vendor' || data?.isVendor === true) foundVendor = true;
       }
     } catch (err) {}
-    
+
     // 3. Query roles/{uid} collection
     try {
       const roleDocRef = doc(db, 'roles', user.uid);
@@ -82,21 +86,42 @@ const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | '
         const data = roleDocSnap.data();
         const roleVal = typeof data?.role === 'string' ? data.role.toLowerCase() : '';
         if (roleVal === 'admin' || data?.isAdmin === true) return 'admin';
-        if (roleVal === 'vendor' || data?.isVendor === true) return 'vendor';
-        if (roleVal === 'client') return 'client';
+        if (roleVal === 'vendor' || data?.isVendor === true) foundVendor = true;
       }
     } catch (err) {}
 
     // 4. Query users/{uid} collection
-    const userDocRef = doc(db, 'users', user.uid);
-    const userDocSnap = await getDocSafe(userDocRef);
-    if (userDocSnap.exists()) {
-      const data = userDocSnap.data();
-      const roleVal = typeof data?.role === 'string' ? data.role.toLowerCase() : '';
-      if (roleVal === 'admin' || data?.isAdmin === true) return 'admin';
-      if (roleVal === 'vendor' || data?.isVendor === true) return 'vendor';
-      if (roleVal === 'client') return 'client';
-    }
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDocSnap = await getDocSafe(userDocRef);
+      if (userDocSnap.exists()) {
+        const data = userDocSnap.data();
+        const roleVal = typeof data?.role === 'string' ? data.role.toLowerCase() : '';
+        if (roleVal === 'admin' || data?.isAdmin === true) return 'admin';
+        if (roleVal === 'vendor' || data?.isVendor === true || data?.vendorId) foundVendor = true;
+      }
+    } catch (err) {}
+
+    // 5. Query vendors collection by uid or email
+    try {
+      const vendorDocRef = doc(db, 'vendors', user.uid);
+      const vendorDocSnap = await getDocSafe(vendorDocRef);
+      if (vendorDocSnap.exists()) foundVendor = true;
+
+      if (!foundVendor && userEmail) {
+        const q1 = query(collection(db, 'vendors'), where('contactEmail', '==', userEmail));
+        const snap1 = await getDocsSafe(q1);
+        if (!snap1.empty) foundVendor = true;
+
+        if (!foundVendor) {
+          const q2 = query(collection(db, 'vendors'), where('username', '==', userEmail));
+          const snap2 = await getDocsSafe(q2);
+          if (!snap2.empty) foundVendor = true;
+        }
+      }
+    } catch (err) {}
+
+    if (foundVendor) return 'vendor';
   } catch (err) {
     console.warn("[Auth] Error fetching user role from token or roles collection:", err);
   }
@@ -356,9 +381,11 @@ function App() {
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
   const [userDocData, setUserDocData] = useState<any>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isRoleLoading, setIsRoleLoading] = useState(true);
   const [permissionErrorBanner, setPermissionErrorBanner] = useState<string | null>(null);
   
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [isLoadingVendors, setIsLoadingVendors] = useState(true);
   const [posts, setPosts] = useState<Post[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -368,12 +395,6 @@ function App() {
   const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
   const [paymentVendorId, setPaymentVendorId] = useState<string | null>(null);
 
-  const isActuallyVendor = useMemo(() => {
-    return userRole === 'vendor';
-  }, [userRole]);
-
-  const [isVendorView, setIsVendorView] = useState(false);
-
   const vendorProfileId = useMemo(() => {
     if (!fbUser?.email) return null;
     if (currentUserVendorId) return currentUserVendorId;
@@ -381,6 +402,52 @@ function App() {
     const matchedVendor = vendors.find(v => v.username?.toLowerCase() === fbUser.email?.toLowerCase());
     return matchedVendor ? matchedVendor.id : null;
   }, [fbUser, currentUserVendorId, userDocData, vendors]);
+
+  const isAdmin = useMemo(() => {
+    if (isRoleLoading) return false;
+    return userRole === 'admin' || userDocData?.role === 'admin' || userDocData?.isAdmin === true;
+  }, [isRoleLoading, userRole, userDocData]);
+
+  const isActuallyVendor = useMemo(() => {
+    if (isRoleLoading) return false;
+    if (userRole === 'client') return false;
+    return userRole === 'vendor' || userRole === 'admin' || userDocData?.role === 'vendor' || userDocData?.role === 'admin' || userDocData?.isVendor === true;
+  }, [isRoleLoading, userRole, userDocData]);
+
+  const [isVendorView, setIsVendorView] = useState(false);
+
+  const handleToggleVendor = () => {
+    const nextVendorView = !isVendorView;
+    setIsVendorView(nextVendorView);
+    
+    // Only update portalTab if user is currently inside the portal view - DO NOT redirect!
+    if (view === 'portal') {
+      setPortalTab(nextVendorView ? 'vendor' : 'client');
+      if (nextVendorView) {
+        if (activeBottomTab === 'plan' || activeBottomTab === 'events') {
+          setPortalInitialTab('overview');
+          setActiveBottomTab('home');
+        } else if (activeBottomTab === 'chat') {
+          setPortalInitialTab('messages');
+        } else if (activeBottomTab === 'profile') {
+          setPortalInitialTab('profile');
+        } else if (activeBottomTab === 'home') {
+          setPortalInitialTab('overview');
+        }
+      } else {
+        if (activeBottomTab === 'bookings' || activeBottomTab === 'calendar') {
+          setPortalInitialTab('overview');
+          setActiveBottomTab('home');
+        } else if (activeBottomTab === 'chat') {
+          setPortalInitialTab('chats');
+        } else if (activeBottomTab === 'profile') {
+          setPortalInitialTab('profile');
+        } else if (activeBottomTab === 'home') {
+          setPortalInitialTab('overview');
+        }
+      }
+    }
+  };
   
   const [activeCategories, setActiveCategories] = useState<string[]>(Object.values(VendorCategory));
   const [categoryImages, setCategoryImages] = useState<Record<string, string>>(INITIAL_CATEGORY_IMAGES);
@@ -447,11 +514,16 @@ function App() {
         // Seed if empty efficiently
         console.log("[Firebase] Seeding initial vendors...");
         Promise.all(INITIAL_VENDORS.map(v => setDoc(doc(db, 'vendors', v.id), clean(v))))
-          .catch(err => handleFirestoreError(err, OperationType.CREATE, 'vendors', notifyErr));
+          .catch(err => handleFirestoreError(err, OperationType.CREATE, 'vendors', notifyErr))
+          .finally(() => setIsLoadingVendors(false));
       } else {
         setVendors(vData);
+        setIsLoadingVendors(false);
       }
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'vendors', notifyErr));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'vendors', notifyErr);
+      setIsLoadingVendors(false);
+    });
 
     const unsubPosts = onSnapshot(collection(db, 'posts'), (snapshot) => {
       const pDataRaw = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
@@ -700,7 +772,12 @@ function App() {
 
     const unsubCart = onSnapshot(doc(db, 'users', fbUser.uid, 'cart', 'current'), (docSnap) => {
       if (docSnap.exists()) {
-        setCart(docSnap.data().items || []);
+        const incomingItems = docSnap.data().items || [];
+        const incomingJson = JSON.stringify(clean(incomingItems));
+        if (incomingJson !== lastSyncedCartJsonRef.current) {
+          lastSyncedCartJsonRef.current = incomingJson;
+          setCart(incomingItems);
+        }
       }
     }, (err) => handleFirestoreError(err, OperationType.GET, `users/${fbUser.uid}/cart/current`, notifyErr));
 
@@ -731,9 +808,12 @@ function App() {
         setUserDocData(null);
         setUserRole(null);
         setCurrentUserVendorId(null);
+        setIsRoleLoading(false);
         setIsInitializing(false);
         return;
       }
+
+      setIsRoleLoading(true);
 
       // If logged in but email not verified, we also treat it as not fully authenticated for the app, EXCEPT if they are a vendor!
       if (!user.emailVerified) {
@@ -768,6 +848,7 @@ function App() {
 
         if (!isVendor) {
           setFbUser(null);
+          setIsRoleLoading(false);
           setIsInitializing(false);
           return;
         }
@@ -788,7 +869,6 @@ function App() {
         if (userDoc.exists()) {
           const data = userDoc.data();
           setUserDocData(data);
-          // If fetchUserRole returned 'client' but the doc has something else (unlikely now since we check users collection, but just in case)
           if (finalRole === 'client' && data.role) {
              const docRole = typeof data.role === 'string' ? data.role.toLowerCase() : '';
              if (docRole === 'admin' || data.isAdmin === true) finalRole = 'admin';
@@ -796,10 +876,12 @@ function App() {
              else finalRole = data.role;
           }
           setUserRole(finalRole);
+          try { localStorage.setItem('simcha_user_role', finalRole); } catch (e) {}
           setCurrentUserVendorId(data.vendorId || null);
         } else {
           // Default for new users
           setUserRole(finalRole);
+          try { localStorage.setItem('simcha_user_role', finalRole); } catch (e) {}
           setCurrentUserVendorId(null);
         }
         console.log("Logged in UID:", user.uid, "| Detected Role:", finalRole);
@@ -808,37 +890,21 @@ function App() {
         try {
           const userRolesRef = doc(db, 'user_roles', user.uid);
           const roleSnap = await getDocSafe(userRolesRef);
+          const userEmail = user.email ? user.email.toLowerCase() : '';
+
           if (!roleSnap.exists()) {
-            const adminEmails = ['bookingsimcha@gmail.com', 'shimpose@gmail.com', 'ststrohli@gmail.com'];
-            const userEmail = user.email ? user.email.toLowerCase() : '';
-            let provisionRole: 'admin' | 'vendor' | 'client' = adminEmails.includes(userEmail) ? 'admin' : 'client';
-            
-            if (provisionRole !== 'admin' && userEmail) {
-              const inviteDocId = `invite_${userEmail.replace(/[^a-z0-9]/g, '_')}`;
-              const inviteSnap = await getDocSafe(doc(db, 'user_roles', inviteDocId));
-              if (inviteSnap.exists() && inviteSnap.data()?.role === 'vendor') {
-                provisionRole = 'vendor';
-                try {
-                  await deleteDoc(doc(db, 'user_roles', inviteDocId));
-                } catch (delErr) {
-                  console.warn("Could not cleanup invite doc:", delErr);
-                }
-              }
-            }
-            
             await setDoc(userRolesRef, {
-              role: provisionRole,
+              role: finalRole,
               email: userEmail,
               createdAt: new Date().toISOString()
             }, { merge: true });
             
-            console.log("Auto-provisioned user_roles for UID:", user.uid, "Role:", provisionRole);
-            
-            // Immediate role state refresh
-            if (provisionRole !== finalRole) {
-              finalRole = provisionRole;
-              setUserRole(provisionRole);
-            }
+            console.log("Auto-provisioned user_roles for UID:", user.uid, "Role:", finalRole);
+          } else if (roleSnap.data()?.role !== finalRole && finalRole !== 'client') {
+            await setDoc(userRolesRef, {
+              role: finalRole,
+              email: userEmail
+            }, { merge: true });
           }
         } catch (e) {
           console.error("Auto-provision error:", e);
@@ -850,6 +916,7 @@ function App() {
           console.error("Error fetching user document:", err);
         }
       } finally {
+        setIsRoleLoading(false);
         setIsInitializing(false);
       }
     });
@@ -865,19 +932,23 @@ function App() {
   }, [userRole, currentUserVendorId, fbUser]);
 
   const [cart, setCart] = useState<CartItem[]>([]);
+  const lastSyncedCartJsonRef = useRef<string>('');
   
   // Sync cart to Firestore
   useEffect(() => {
     if (fbUser) {
-      const cartRef = doc(db, 'users', fbUser.uid, 'cart', 'current');
-      if (cart.length > 0) {
-        setDoc(cartRef, { items: clean(cart) }).catch(err => {
-          console.error("Error syncing cart to Firestore:", err);
-          handleFirestoreError(err, OperationType.WRITE, `users/${fbUser.uid}/cart/current`);
-        });
-      } else {
-        // If cart is empty, we can either delete the doc or set items to empty array
-        setDoc(cartRef, { items: [] }).catch(() => {});
+      const currentCartJson = JSON.stringify(clean(cart));
+      if (currentCartJson !== lastSyncedCartJsonRef.current) {
+        lastSyncedCartJsonRef.current = currentCartJson;
+        const cartRef = doc(db, 'users', fbUser.uid, 'cart', 'current');
+        if (cart.length > 0) {
+          setDoc(cartRef, { items: clean(cart) }).catch(err => {
+            console.error("Error syncing cart to Firestore:", err);
+            handleFirestoreError(err, OperationType.WRITE, `users/${fbUser.uid}/cart/current`);
+          });
+        } else {
+          setDoc(cartRef, { items: [] }).catch(() => {});
+        }
       }
     }
   }, [cart, fbUser]);
@@ -899,6 +970,7 @@ function App() {
   };
   const [chatVendor, setChatVendor] = useState<Vendor | null>(null);
   const [isAdminChatOpen, setIsAdminChatOpen] = useState(false);
+  const [isPortalChatActive, setIsPortalChatActive] = useState(false);
   const [adminInquiryText, setAdminInquiryText] = useState('');
 
   const handleSendAdminInquiry = async () => {
@@ -1060,8 +1132,14 @@ function App() {
           setActiveBottomTab('home');
         }
       } else if (portalTab === 'vendor') {
-        if (['bookings', 'calendar', 'messages', 'profile'].includes(portalInitialTab)) {
-          setActiveBottomTab(portalInitialTab === 'messages' ? 'chat' : portalInitialTab);
+        if (['bookings', 'calendar', 'messages', 'profile', 'overview'].includes(portalInitialTab)) {
+          if (portalInitialTab === 'messages') {
+            setActiveBottomTab('chat');
+          } else if (portalInitialTab === 'overview') {
+            setActiveBottomTab('home');
+          } else {
+            setActiveBottomTab(portalInitialTab);
+          }
         } else {
           setActiveBottomTab('home');
         }
@@ -1071,42 +1149,36 @@ function App() {
 
   const handleBottomNav = (tab: string) => {
     setActiveBottomTab(tab);
-    if (tab === 'home') {
-      setView('marketplace');
-    } else if (tab === 'plan') {
-      setPortalTab('client');
-      setPortalInitialTab('plan');
-      setView('portal');
-    } else if (tab === 'events') {
-      setPortalTab('client');
-      setPortalInitialTab('events');
-      setView('portal');
-    } else if (tab === 'chat') {
-      if (isVendorView) {
-        setPortalTab('vendor');
+    if (isVendorView && isActuallyVendor) {
+      setPortalTab('vendor');
+      if (tab === 'home') {
+        setPortalInitialTab('overview');
+      } else if (tab === 'bookings') {
+        setPortalInitialTab('bookings');
+      } else if (tab === 'calendar') {
+        setPortalInitialTab('calendar');
+      } else if (tab === 'chat') {
         setPortalInitialTab('messages');
-      } else {
-        setPortalTab('client');
-        setPortalInitialTab('chats');
-      }
-      setView('portal');
-    } else if (tab === 'profile') {
-      if (isVendorView) {
-        setPortalTab('vendor');
-        setPortalInitialTab('profile');
-      } else {
-        setPortalTab('client');
+      } else if (tab === 'profile') {
         setPortalInitialTab('profile');
       }
       setView('portal');
-    } else if (tab === 'bookings') {
-      setPortalTab('vendor');
-      setPortalInitialTab('bookings');
-      setView('portal');
-    } else if (tab === 'calendar') {
-      setPortalTab('vendor');
-      setPortalInitialTab('calendar');
-      setView('portal');
+    } else {
+      if (tab === 'home') {
+        setView('marketplace');
+      } else {
+        setPortalTab('client');
+        if (tab === 'plan') {
+          setPortalInitialTab('plan');
+        } else if (tab === 'events') {
+          setPortalInitialTab('events');
+        } else if (tab === 'chat') {
+          setPortalInitialTab('chats');
+        } else if (tab === 'profile') {
+          setPortalInitialTab('profile');
+        }
+        setView('portal');
+      }
     }
   };
 
@@ -1115,6 +1187,9 @@ function App() {
       await signOut(auth);
       setCart([]);
       setUserRole(null);
+      setUserDocData(null);
+      setIsRoleLoading(false);
+      try { localStorage.removeItem('simcha_user_role'); } catch (e) {}
       setCurrentUserVendorId(null);
       setView('marketplace');
       showNotification('Signed out safely.');
@@ -1923,10 +1998,15 @@ function App() {
           }
         }
 
-        await updateProfile(user, {
-          displayName: fullName,
-          photoURL: photoURL
-        });
+        const safeAuthPhotoURL = (photoURL && photoURL.length <= 2000 && !photoURL.startsWith('data:')) ? photoURL : undefined;
+        try {
+          await updateProfile(user, {
+            displayName: fullName,
+            photoURL: safeAuthPhotoURL
+          });
+        } catch (authErr: any) {
+          console.warn("Firebase Auth updateProfile non-fatal error during registration:", authErr);
+        }
 
         await syncUserProfile(user, { fullName, photoURL, photoStoragePath });
 
@@ -2315,10 +2395,16 @@ function App() {
   const handleUpdateProfile = async (data: { name: string, photoURL: string, photoStoragePath?: string }) => {
     if (!fbUser) return;
     try {
-      await updateProfile(fbUser, {
-        displayName: data.name,
-        photoURL: data.photoURL
-      });
+      const safeAuthPhotoURL = (data.photoURL && data.photoURL.length <= 2000 && !data.photoURL.startsWith('data:')) ? data.photoURL : undefined;
+      try {
+        await updateProfile(fbUser, {
+          displayName: data.name,
+          photoURL: safeAuthPhotoURL
+        });
+      } catch (authProfileErr: any) {
+        console.warn("Firebase Auth updateProfile non-fatal warning (e.g. photo URL length):", authProfileErr);
+      }
+
       await syncUserProfile(fbUser, { 
         fullName: data.name, 
         photoURL: data.photoURL,
@@ -2404,53 +2490,6 @@ function App() {
     );
   }
 
-  if (view === 'admin') {
-    if (userRole !== 'admin') {
-      setView('marketplace');
-      return null;
-    }
-    return (
-      <motion.div 
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        className="min-h-screen bg-black"
-      >
-        <AdminPanel 
-          vendors={vendors} 
-          posts={posts} 
-          bookings={bookings} 
-          users={users}
-          onAddVendor={handleAdminAddVendor} 
-          onUpdateVendor={handleUpdateVendor}
-          onRemoveVendor={handleAdminRemoveVendor} 
-          onToggleVerify={handleAdminToggleVerify} 
-          onUpdateBookingStatus={handleUpdateBookingStatus}
-          onLoginAsVendor={id => { setCurrentUserVendorId(id); setUserRole('vendor'); setView('marketplace'); }} 
-          onAddPost={handleAdminAddPost} 
-          onRemovePost={handleAdminRemovePost} 
-          onBack={() => setView('marketplace')} 
-          categoryImages={categoryImages} 
-          onUpdateCategoryImage={handleAdminUpdateCategoryImage} 
-          categories={activeCategories} 
-          onAddCategory={handleAdminAddCategory} 
-          categorySubCategories={categorySubCategories} 
-          onUpdateCategorySubCategories={handleAdminUpdateCategorySubCategories} 
-          subCategoryImages={subCategoryImages}
-          onUpdateSubCategoryImage={handleAdminUpdateSubCategoryImage}
-          heroBackgroundUrl={heroBackgroundUrl}
-          onUpdateHeroBackground={handleAdminUpdateHeroBackground}
-          messages={messages}
-          onSendMessage={handleSendMessage}
-          showNotification={showNotification}
-          onSeedTaxonomy={handleSeedTaxonomy}
-          onUpdateCategoryOrder={handleAdminUpdateCategoryOrder}
-          onDeleteCategory={handleAdminDeleteCategory}
-        />
-      </motion.div>
-    );
-  }
-
   if (!fbUser) return <AuthWall />;
 
   const currentAuthenticatedUser: UserAccount = {
@@ -2461,160 +2500,207 @@ function App() {
     photoStoragePath: userDocData?.photoStoragePath || ''
   };
 
-  if (view === 'portal' && fbUser) {
-    const isVendor = userRole === 'vendor';
-
-    const renderVendorToggle = () => {
-      if (!isVendor) return null;
+  const renderActiveView = () => {
+    if (view === 'admin') {
+      if (userRole !== 'admin') {
+        setView('marketplace');
+        return null;
+      }
       return (
-        <div className="bg-[#111] border-b border-[#D4AF37]/20 py-4 px-4 flex justify-center gap-4 sticky top-0 z-50">
-          <div className="flex bg-black border border-[#D4AF37]/30 p-1.5 rounded-full items-center">
-            <button 
-              onClick={() => setPortalTab('client')}
-              className={`px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all ${
-                portalTab === 'client'
-                  ? 'bg-[#D4AF37] text-black shadow-lg font-black'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
+        <motion.div 
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="min-h-screen bg-black"
+        >
+          <AdminPanel 
+            vendors={vendors} 
+            posts={posts} 
+            bookings={bookings} 
+            users={users}
+            onAddVendor={handleAdminAddVendor} 
+            onUpdateVendor={handleUpdateVendor}
+            onRemoveVendor={handleAdminRemoveVendor} 
+            onToggleVerify={handleAdminToggleVerify} 
+            onUpdateBookingStatus={handleUpdateBookingStatus}
+            onLoginAsVendor={id => { setCurrentUserVendorId(id); setUserRole('vendor'); setView('marketplace'); }} 
+            onAddPost={handleAdminAddPost} 
+            onRemovePost={handleAdminRemovePost} 
+            onBack={() => setView('marketplace')} 
+            categoryImages={categoryImages} 
+            onUpdateCategoryImage={handleAdminUpdateCategoryImage} 
+            categories={activeCategories} 
+            onAddCategory={handleAdminAddCategory} 
+            categorySubCategories={categorySubCategories} 
+            onUpdateCategorySubCategories={handleAdminUpdateCategorySubCategories} 
+            subCategoryImages={subCategoryImages}
+            onUpdateSubCategoryImage={handleAdminUpdateSubCategoryImage}
+            heroBackgroundUrl={heroBackgroundUrl}
+            onUpdateHeroBackground={handleAdminUpdateHeroBackground}
+            messages={messages}
+            onSendMessage={handleSendMessage}
+            showNotification={showNotification}
+            onSeedTaxonomy={handleSeedTaxonomy}
+            onUpdateCategoryOrder={handleAdminUpdateCategoryOrder}
+            onDeleteCategory={handleAdminDeleteCategory}
+          />
+        </motion.div>
+      );
+    }
+
+    if (view === 'portal' && fbUser) {
+      const isVendor = isActuallyVendor;
+
+      const renderVendorToggle = () => {
+        if (!isVendor) return null;
+        return (
+          <div className="bg-[#111] border-b border-[#D4AF37]/20 py-4 px-4 flex justify-center gap-4 sticky top-0 z-50">
+            <div className="flex bg-black border border-[#D4AF37]/30 p-1.5 rounded-full items-center">
+              <button 
+                onClick={() => setPortalTab('client')}
+                className={`px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all ${
+                  portalTab === 'client'
+                    ? 'bg-[#D4AF37] text-black shadow-lg font-black'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                Client Portal
+              </button>
+              <button 
+                onClick={() => setPortalTab('vendor')}
+                className={`px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all ${
+                  portalTab === 'vendor'
+                    ? 'bg-[#D4AF37] text-black shadow-lg font-black'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                Vendor Portal
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      if (portalTab === 'vendor' && isVendor) {
+        const v = vendors.find(v => v.id === currentUserVendorId);
+        if (v) {
+          return (
+            <motion.div 
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              className="min-h-screen bg-black flex flex-col"
             >
-              Client Portal
-            </button>
+              {renderVendorToggle()}
+              <div className="flex-grow flex flex-col">
+                <VendorPortal 
+                  vendor={v} 
+                  initialTab={portalInitialTab}
+                  bookings={bookings.filter(b => b.vendorId === v.id)} 
+                  messages={messages.filter(m => m.receiverId === v.id || m.senderId === v.id)} 
+                  onUpdateVendor={handleUpdateVendor} 
+                  onUpdateBookingStatus={handleUpdateBookingStatus} 
+                  onReplyMessage={handleReplyMessage} 
+                  onLogout={handleSignOut} 
+                  showNotification={showNotification}
+                  onSwitchToClientView={() => setView('marketplace')}
+                  onActiveChatChange={setIsPortalChatActive}
+                  onTabChange={tab => setPortalInitialTab(tab)}
+                />
+              </div>
+            </motion.div>
+          );
+        }
+      }
+
+      // Otherwise render client portal
+      const myBookings = bookings.filter(b => b.contactEmail === fbUser.email);
+      const myMessages = messages.filter(m => m.clientEmail === fbUser.email);
+      return (
+        <motion.div 
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="min-h-screen bg-black flex flex-col"
+        >
+          {renderVendorToggle()}
+          <div className="flex-grow flex flex-col">
+            <ClientPortal 
+              user={currentAuthenticatedUser} 
+              initialTab={portalInitialTab}
+              cart={cart} 
+              bookings={myBookings} 
+              messages={myMessages} 
+              vendors={vendors} 
+              onRemoveFromCart={handleRemoveFromCart} 
+              onEditCartItem={handleEditCartItem}
+              onProcessCart={handleProcessCart} 
+              onPaymentSuccess={handlePaymentSuccess} 
+              onLogout={handleSignOut} 
+              onClose={() => setView('marketplace')} 
+              onUpdateProfile={handleUpdateProfile} 
+              onDeleteAccount={handleDeleteAccount} 
+              onMessageVendor={v => setChatVendor(v)}
+              onActiveChatChange={setIsPortalChatActive}
+              onTabChange={tab => setPortalInitialTab(tab)}
+            />
+          </div>
+        </motion.div>
+      );
+    }
+
+    if (view === 'posts') {
+      return (
+        <motion.div 
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="min-h-screen bg-black flex flex-col"
+        >
+          <PostsPage posts={posts} vendors={vendors} onBack={() => setView('marketplace')} onViewVendor={navigateToVendor} />
+        </motion.div>
+      );
+    }
+
+    if (view === 'payment-success') {
+      return (
+        <motion.div 
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="min-h-screen bg-black flex flex-col"
+        >
+          <PaymentSuccess 
+            bookingId={paymentBookingId || ''} 
+            vendorId={paymentVendorId || ''} 
+            onReturn={() => { setPortalTab('client'); setView('portal'); }} 
+          />
+        </motion.div>
+      );
+    }
+
+    if (view === 'verify-account') {
+      return (
+        <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4">
+          <div className="max-w-md w-full bg-[#111] border border-[#D4AF37] p-8 rounded-2xl text-center shadow-2xl">
+            <div className="flex justify-center mb-6">
+              <CheckCircle className="w-16 h-16 text-[#D4AF37]" />
+            </div>
+            <h2 className="text-3xl font-bold font-[Cinzel] text-[#D4AF37] mb-4">Account Verified!</h2>
+            <p className="text-zinc-300 mb-8">Your email has been successfully verified. You can now access all features of Simcha Booking.</p>
             <button 
-              onClick={() => setPortalTab('vendor')}
-              className={`px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all ${
-                portalTab === 'vendor'
-                  ? 'bg-[#D4AF37] text-black shadow-lg font-black'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
+              onClick={() => setView('marketplace')}
+              className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-4 rounded-xl uppercase tracking-widest transition-all"
             >
-              Vendor Portal
+              Go to Marketplace
             </button>
           </div>
         </div>
       );
-    };
-
-    if (portalTab === 'vendor' && isVendor) {
-      const v = vendors.find(v => v.id === currentUserVendorId);
-      if (v) {
-        return (
-          <motion.div 
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            className="min-h-screen bg-black flex flex-col"
-          >
-            {renderVendorToggle()}
-            <div className="flex-grow flex flex-col">
-              <VendorPortal 
-                vendor={v} 
-                initialTab={portalInitialTab}
-                bookings={bookings.filter(b => b.vendorId === v.id)} 
-                messages={messages.filter(m => m.receiverId === v.id || m.senderId === v.id)} 
-                onUpdateVendor={handleUpdateVendor} 
-                onUpdateBookingStatus={handleUpdateBookingStatus} 
-                onReplyMessage={handleReplyMessage} 
-                onLogout={handleSignOut} 
-                showNotification={showNotification}
-                onSwitchToClientView={() => setView('marketplace')}
-              />
-            </div>
-          </motion.div>
-        );
-      }
     }
 
-    // Otherwise render client portal
-    const myBookings = bookings.filter(b => b.contactEmail === fbUser.email);
-    const myMessages = messages.filter(m => m.clientEmail === fbUser.email);
     return (
-      <motion.div 
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        className="min-h-screen bg-black flex flex-col"
-      >
-        {renderVendorToggle()}
-        <div className="flex-grow flex flex-col">
-          <ClientPortal 
-            user={currentAuthenticatedUser} 
-            initialTab={portalInitialTab}
-            cart={cart} 
-            bookings={myBookings} 
-            messages={myMessages} 
-            vendors={vendors} 
-            onRemoveFromCart={handleRemoveFromCart} 
-            onEditCartItem={handleEditCartItem}
-            onProcessCart={handleProcessCart} 
-            onPaymentSuccess={handlePaymentSuccess} 
-            onLogout={handleSignOut} 
-            onClose={() => setView('marketplace')} 
-            onUpdateProfile={handleUpdateProfile} 
-            onDeleteAccount={handleDeleteAccount} 
-            onMessageVendor={v => setChatVendor(v)}
-          />
-        </div>
-      </motion.div>
-    );
-  }
-
-  if (view === 'posts') {
-    return (
-      <motion.div 
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        className="min-h-screen bg-black flex flex-col"
-      >
-        <PostsPage posts={posts} vendors={vendors} onBack={() => setView('marketplace')} onViewVendor={navigateToVendor} />
-      </motion.div>
-    );
-  }
-
-  if (view === 'payment-success') {
-    return (
-      <motion.div 
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        className="min-h-screen bg-black flex flex-col"
-      >
-        <PaymentSuccess 
-          bookingId={paymentBookingId || ''} 
-          vendorId={paymentVendorId || ''} 
-          onReturn={() => { setPortalTab('client'); setView('portal'); }} 
-        />
-      </motion.div>
-    );
-  }
-
-  if (view === 'verify-account') {
-    return (
-      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4">
-        <div className="max-w-md w-full bg-[#111] border border-[#D4AF37] p-8 rounded-2xl text-center shadow-2xl">
-          <div className="flex justify-center mb-6">
-            <CheckCircle className="w-16 h-16 text-[#D4AF37]" />
-          </div>
-          <h2 className="text-3xl font-bold font-[Cinzel] text-[#D4AF37] mb-4">Account Verified!</h2>
-          <p className="text-zinc-300 mb-8">Your email has been successfully verified. You can now access all features of Simcha Booking.</p>
-          <button 
-            onClick={() => setView('marketplace')}
-            className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-4 rounded-xl uppercase tracking-widest transition-all"
-          >
-            Go to Marketplace
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-      className="min-h-screen bg-black text-zinc-100 flex flex-col"
-    >
+      <>
       {permissionErrorBanner && (
         <div className="bg-red-950/80 border-b border-red-500/40 px-4 py-3 text-red-200 text-xs font-medium flex items-center justify-between gap-3 backdrop-blur-md sticky top-0 z-[120]">
           <div className="flex items-center gap-2 max-w-7xl mx-auto w-full">
@@ -2631,6 +2717,7 @@ function App() {
         </div>
       )}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-lg focus:font-bold">Skip to main content</a>
+      {view !== 'portal' && (
       <nav className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
@@ -2650,29 +2737,10 @@ function App() {
                   </div>
               </motion.button>
               
-              {isActuallyVendor && (
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-[#D4AF37]/30">
-                   <span className={`text-[10px] font-bold uppercase tracking-wider ${!isVendorView ? 'text-white' : 'text-zinc-500'}`}>Client</span>
-                   <button 
-                     onClick={() => setIsVendorView(!isVendorView)}
-                     className={`w-9 h-5 rounded-full relative transition-colors ${isVendorView ? 'bg-[#D4AF37]' : 'bg-zinc-700'}`}
-                   >
-                     <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-black transition-transform ${isVendorView ? 'translate-x-4' : 'translate-x-0'}`} />
-                   </button>
-                   <span className={`text-[10px] font-bold uppercase tracking-wider ${isVendorView ? 'text-[#D4AF37]' : 'text-zinc-500'}`}>Vendor</span>
-                </div>
-              )}
             </div>
             
-            <div className="flex items-center gap-6">
-                {userRole === 'admin' && (
-                  <button 
-                    onClick={() => setView('admin')} 
-                    className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-[#D4AF37] transition-colors"
-                  >
-                    Admin Panel
-                  </button>
-                )}
+            <div className="flex items-center gap-4 md:gap-6">
+                
                 <motion.button 
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setView('posts')} 
@@ -2680,6 +2748,7 @@ function App() {
                 >
                   Moments
                 </motion.button>
+                
                 <motion.button 
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -2697,18 +2766,19 @@ function App() {
                   <LayoutDashboard className="w-4 h-4" aria-hidden="true" />
                   <span>My Portal</span>
                 </motion.button>
-                {userRole === 'admin' && (
+
+                {isAdmin && (
                   <motion.button 
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileTap={{ scale: 0.9 }}
                     onClick={() => setView('admin')} 
-                    className="hidden md:flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/20 px-4 py-2 rounded-full transition-all text-[10px] font-black uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-white outline-none cursor-pointer" 
+                    className="text-zinc-500 hover:text-[#D4AF37] transition-colors focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded-lg p-1 cursor-pointer" 
                     aria-label="Admin Panel"
+                    title="Admin Panel"
                   >
-                    <Shield className="w-4 h-4" aria-hidden="true" />
-                    <span>Admin</span>
+                    <Shield className="w-5 h-5" />
                   </motion.button>
                 )}
+
                 <motion.button 
                   whileTap={{ scale: 0.9 }}
                   onClick={handleSignOut} 
@@ -2721,6 +2791,7 @@ function App() {
           </div>
         </div>
       </nav>
+      )}
 
       <main id="main-content" className="flex-1 flex flex-col pb-36 md:pb-0">
         <section className="relative bg-black text-white overflow-hidden" aria-labelledby="hero-title">
@@ -2827,32 +2898,47 @@ function App() {
                           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8"
                         >
                           <AnimatePresence mode="popLayout">
-                            {filteredVendors.map(v => (
-                              <motion.div
-                                layout
-                                exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-                                variants={{
-                                  hidden: { opacity: 0, y: 30 },
-                                  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 15 } }
-                                }}
-                                key={v.id}
-                                id={`vendor-${v.id}`}
-                                className="outline-none focus:ring-2 focus:ring-[#D4AF37] rounded-xl"
-                              >
-                                <VendorCard 
-                                  vendor={v}
-                                  onBook={vendor => setBookingVendor(vendor)}
-                                  onMessage={vendor => setChatVendor(vendor)}
-                                  onQuickView={handleViewVendor}
-                                  selectedDate={eventDate}
-                                  onAddReview={handleAddReview}
-                                />
-                              </motion.div>
-                            ))}
+                            {isLoadingVendors ? (
+                              Array.from({ length: 4 }).map((_, i) => (
+                                <motion.div
+                                  key={`skeleton-sub-${i}`}
+                                  variants={{
+                                    hidden: { opacity: 0, y: 30 },
+                                    show: { opacity: 1, y: 0 }
+                                  }}
+                                  className="outline-none rounded-xl h-[450px]"
+                                >
+                                  <VendorCardSkeleton />
+                                </motion.div>
+                              ))
+                            ) : (
+                              filteredVendors.map(v => (
+                                <motion.div
+                                  layout
+                                  exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+                                  variants={{
+                                    hidden: { opacity: 0, y: 30 },
+                                    show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 15 } }
+                                  }}
+                                  key={v.id}
+                                  id={`vendor-${v.id}`}
+                                  className="outline-none focus:ring-2 focus:ring-[#D4AF37] rounded-xl"
+                                >
+                                  <VendorCard 
+                                    vendor={v}
+                                    onBook={vendor => setBookingVendor(vendor)}
+                                    onMessage={vendor => setChatVendor(vendor)}
+                                    onQuickView={handleViewVendor}
+                                    selectedDate={eventDate}
+                                    onAddReview={handleAddReview}
+                                  />
+                                </motion.div>
+                              ))
+                            )}
                           </AnimatePresence>
                         </motion.div>
 
-                        {filteredVendors.length === 0 && (
+                        {!isLoadingVendors && filteredVendors.length === 0 && (
                           <div className="py-20 text-center opacity-40" role="status">
                             <Search className="w-16 h-16 mx-auto mb-4 text-[#D4AF37]" aria-hidden="true" />
                             <p className="text-xl font-[Cinzel] text-zinc-300">No vendors specializing in {activeSubSubCategory} yet.</p>
@@ -2953,32 +3039,47 @@ function App() {
                     className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8"
                 >
                   <AnimatePresence mode="popLayout">
-                    {filteredVendors.map(v => (
-                      <motion.div 
-                        layout
-                        exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-                        variants={{
-                          hidden: { opacity: 0, y: 30 },
-                          show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100, damping: 15 } }
-                        }}
-                        id={`vendor-${v.id}`} 
-                        key={v.id} 
-                        tabIndex={-1} 
-                        className="outline-none focus:ring-2 focus:ring-[#D4AF37] rounded-xl"
-                      >
-                        <VendorCard 
-                          vendor={v} 
-                          onBook={v => setBookingVendor(v)} 
-                          onMessage={v => setChatVendor(v)} 
-                          onQuickView={handleViewVendor}
-                          selectedDate={eventDate} 
-                          onAddReview={handleAddReview} 
-                        />
-                      </motion.div>
-                    ))}
+                    {isLoadingVendors ? (
+                      Array.from({ length: 8 }).map((_, i) => (
+                        <motion.div
+                          key={`skeleton-main-${i}`}
+                          variants={{
+                            hidden: { opacity: 0, y: 30 },
+                            show: { opacity: 1, y: 0 }
+                          }}
+                          className="outline-none rounded-xl h-[450px]"
+                        >
+                          <VendorCardSkeleton />
+                        </motion.div>
+                      ))
+                    ) : (
+                      filteredVendors.map(v => (
+                        <motion.div 
+                          layout
+                          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+                          variants={{
+                            hidden: { opacity: 0, y: 30 },
+                            show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100, damping: 15 } }
+                          }}
+                          id={`vendor-${v.id}`} 
+                          key={v.id} 
+                          tabIndex={-1} 
+                          className="outline-none focus:ring-2 focus:ring-[#D4AF37] rounded-xl"
+                        >
+                          <VendorCard 
+                            vendor={v} 
+                            onBook={v => setBookingVendor(v)} 
+                            onMessage={v => setChatVendor(v)} 
+                            onQuickView={handleViewVendor}
+                            selectedDate={eventDate} 
+                            onAddReview={handleAddReview} 
+                          />
+                        </motion.div>
+                      ))
+                    )}
                   </AnimatePresence>
                 </motion.div>
-                {filteredVendors.length === 0 && (
+                {!isLoadingVendors && filteredVendors.length === 0 && (
                     <div className="py-20 text-center opacity-40" role="status">
                       <Search className="w-16 h-16 mx-auto mb-4 text-[#D4AF37]" aria-hidden="true" />
                       <p className="text-xl font-[Cinzel]">No vendors match your query.</p>
@@ -3007,7 +3108,7 @@ function App() {
                     </div>
                     <div className="flex flex-col gap-3 items-center md:items-start">
                         <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Access</p>
-                        { userRole === 'admin' && (
+                        { isAdmin && (
                           <button onClick={() => setView('admin')} className="text-zinc-400 hover:text-[#D4AF37] text-sm flex items-center gap-1.5 transition-colors outline-none focus-visible:underline"><Shield className="w-3.5 h-3.5" aria-hidden="true" /> Administration</button>
                         )}
                     </div>
@@ -3015,6 +3116,18 @@ function App() {
             </div>
         </div>
       </footer>
+      </>
+    );
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      className="min-h-screen bg-black text-zinc-100 flex flex-col relative pb-28"
+    >
+      {renderActiveView()}
 
       <SuggestionModal 
         isOpen={showSuggestions} 
@@ -3150,7 +3263,7 @@ function App() {
       />
 
       {/* Floating Support Button */}
-      {view === 'marketplace' && userDocData?.role !== 'admin' && !isAdminChatOpen && !chatVendor && (
+      {view === 'marketplace' && !isAdmin && !isAdminChatOpen && !chatVendor && !bookingVendor && !quickViewVendor && !showSuggestions && !showPriorityHoldPopup && (
         <button 
           onClick={() => {
             if (fbUser) {
@@ -3195,8 +3308,21 @@ function App() {
         </div>
       )}
       
-      {currentAuthenticatedUser && (
-        <BottomNav currentView={activeBottomTab} onNavigate={handleBottomNav} isVendorView={isVendorView && isActuallyVendor} />
+      {currentAuthenticatedUser && 
+        !bookingVendor && 
+        !quickViewVendor && 
+        !showSuggestions && 
+        !showPriorityHoldPopup && 
+        !chatVendor && 
+        !isAdminChatOpen && 
+        !isPortalChatActive && (
+        <BottomNav 
+          currentView={activeBottomTab} 
+          onNavigate={handleBottomNav} 
+          isVendorView={isVendorView && isActuallyVendor}
+          showVendorToggle={isActuallyVendor}
+          onToggleVendor={handleToggleVendor}
+        />
       )}
     </motion.div>
   );

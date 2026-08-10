@@ -1,13 +1,70 @@
 import { ref, uploadBytes, getDownloadURL, uploadBytesResumable, UploadTaskSnapshot, SettableMetadata } from 'firebase/storage';
 import { storage } from './firebase';
 
-const fileToDataURL = (file: File | Blob): Promise<string> => {
-  return new Promise((resolve, reject) => {
+const fileToDataURL = async (file: File | Blob): Promise<string> => {
+  const isImage = file.type.startsWith('image/');
+  
+  if (isImage) {
+    try {
+      const compressed = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const maxWidth = 1000;
+            const maxHeight = 1000;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > maxWidth || height > maxHeight) {
+              if (width / height > maxWidth / maxHeight) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+              } else {
+                width = Math.round((width * maxHeight) / height);
+                height = maxHeight;
+              }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              resolve(e.target?.result as string);
+              return;
+            }
+
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.7));
+          };
+          img.onerror = () => resolve(e.target?.result as string);
+          img.src = e.target?.result as string;
+        };
+        reader.onerror = (err) => reject(err);
+        reader.readAsDataURL(file);
+      });
+
+      if (compressed.length <= 750000) {
+        return compressed;
+      }
+    } catch (e) {
+      console.warn("[Upload] Image compression fallback warning:", e);
+    }
+  }
+
+  const rawDataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = (err) => reject(err);
     reader.readAsDataURL(file);
   });
+
+  if (rawDataUrl.length > 750000) {
+    throw new Error(`File is too large (${Math.round(rawDataUrl.length / 1024)}KB) to attach directly without cloud storage. Please attach a file under 700KB.`);
+  }
+
+  return rawDataUrl;
 };
 
 /**

@@ -3,16 +3,16 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, ShoppingBag, Calendar, MessageSquare, LogOut, Trash2, 
   ChevronRight, MapPin, Clock, CreditCard, CheckCircle, Bell, X, Menu, Send,
-  FileText, Upload, Download, Loader2, Plus, Search, Edit3, ArrowLeft
+  FileText, Upload, Download, Loader2, Plus, Search, Edit3, ArrowLeft, ShieldCheck
 } from 'lucide-react';
 import { CartItem, Booking, Message, Vendor, UserAccount } from '../types';
-import PayPalButton from './PayPalButton';
 import { storage, db } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import { trackFunnelStep } from '../services/analyticsService';
+import { EmbeddedCheckoutModal } from './EmbeddedCheckoutModal';
 import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 
 interface ClientPortalProps {
@@ -30,17 +30,28 @@ interface ClientPortalProps {
   onUpdateProfile: (data: { name: string, photoURL: string, photoStoragePath?: string }) => void;
   onDeleteAccount: () => void;
   onMessageVendor: (vendor: Vendor) => void;
+  onActiveChatChange?: (isActive: boolean) => void;
+  onTabChange?: (tab: string) => void;
   initialTab?: string;
 }
 
 const ClientPortal: React.FC<ClientPortalProps> = ({ 
-  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor, initialTab
+  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor, onActiveChatChange, onTabChange, initialTab
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile'>(initialTab as any || 'overview');
   
+  const onTabChangeRef = useRef(onTabChange);
+  useEffect(() => {
+    onTabChangeRef.current = onTabChange;
+  }, [onTabChange]);
+
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab as any);
   }, [initialTab]);
+
+  useEffect(() => {
+    if (onTabChangeRef.current) onTabChangeRef.current(activeTab);
+  }, [activeTab]);
 
   const handleTabChange = (tab: typeof activeTab) => {
     setActiveTab(tab);
@@ -67,6 +78,8 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
+  const [checkoutBookingInfo, setCheckoutBookingInfo] = useState<{ id: string; amount: number; vendorName?: string } | null>(null);
   const profilePhotoInputRef = useRef<HTMLInputElement>(null);
 
   const handleProfilePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -120,6 +133,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   };
 
   const handlePay = async (bookingId: string, vendorId: string, amount: number) => {
+    setIsProcessingPayment(true);
     try {
       trackFunnelStep.initiatePayment(bookingId, vendorId, amount, 'Stripe');
       const response = await fetch(`/api/stripe/create-checkout-session?vendorId=${vendorId}&amount=${amount}&bookingId=${bookingId}`);
@@ -128,18 +142,32 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         throw new Error(errorText || 'Failed to create checkout session');
       }
       const data = await response.json();
-      if (data.url) {
-        // BREAKOUT: Try window.top.location.href first, fallback to window.open if blocked
+      const clientSecret = data.clientSecret || data.client_secret;
+
+      if (clientSecret) {
+        const vendor = vendors.find(v => v.id === vendorId);
+        setCheckoutBookingInfo({
+          id: bookingId,
+          amount,
+          vendorName: vendor?.name
+        });
+        setCheckoutClientSecret(clientSecret);
+      } else if (data.url) {
+        // Fallback redirect if server returned URL
         try {
           window.top!.location.href = data.url;
         } catch (e) {
           console.warn('window.top navigation blocked, falling back to window.open', e);
           window.open(data.url, '_blank');
         }
+      } else {
+        throw new Error('No client secret returned from payment server.');
       }
     } catch (error: any) {
       console.error('Payment Error:', error);
       alert(`Payment Error: ${error.message || 'Failed to start payment. Please try again.'}`);
+    } finally {
+      setIsProcessingPayment(false);
     }
   };
 
@@ -202,10 +230,21 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
   // Auto-select the first thread (the one with the most recent message) when activeTab is chats and no thread is selected
   useEffect(() => {
-    if (activeTab === 'chats' && !selectedThreadVendorId && chatThreads.length > 0) {
+    if (activeTab === 'chats' && !selectedThreadVendorId && chatThreads.length > 0 && window.innerWidth >= 1024) {
       setSelectedThreadVendorId(chatThreads[0][0]);
     }
   }, [activeTab, selectedThreadVendorId, chatThreads]);
+
+  const onActiveChatChangeRef = useRef(onActiveChatChange);
+  useEffect(() => {
+    onActiveChatChangeRef.current = onActiveChatChange;
+  }, [onActiveChatChange]);
+
+  useEffect(() => {
+    if (onActiveChatChangeRef.current) {
+      onActiveChatChangeRef.current(!!selectedThreadVendorId && activeTab === 'chats');
+    }
+  }, [selectedThreadVendorId, activeTab]);
 
   // Automatically mark unread messages as read when viewing a thread
   useEffect(() => {
@@ -275,6 +314,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   return (
     <div className="min-h-screen bg-black text-zinc-100 flex flex-col md:flex-row overflow-hidden relative">
       {/* Mobile Header Toggle */}
+      {!['overview', 'plan', 'events', 'chats', 'profile'].includes(activeTab) && (
       <div className="md:hidden bg-[#0a0a0a] border-b border-[#D4AF37]/10 p-4 flex justify-between items-center z-30 sticky top-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-[#D4AF37] rounded-lg flex items-center justify-center text-black font-bold font-[Cinzel]">P</div>
@@ -292,6 +332,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           )}
         </div>
       </div>
+      )}
 
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
@@ -343,12 +384,9 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto bg-[#050505] p-6 md:p-10">
+      <main className="flex-1 overflow-y-auto bg-[#050505] p-6 pb-36 md:p-10 md:pb-10">
         <header className="mb-10 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
           <div className="flex flex-col items-start gap-4">
-            <button onClick={onClose} className="text-[#D4AF37] hover:text-[#E5C76B] font-bold text-[10px] uppercase tracking-widest flex items-center gap-1.5 transition-colors border border-[#D4AF37]/30 px-3 py-1.5 rounded-full hover:bg-[#D4AF37]/10 w-fit">
-              <ArrowLeft className="w-3.5 h-3.5" /> Back to Marketplace
-            </button>
             <div>
               <h1 className="text-3xl font-bold font-[Cinzel] text-white capitalize tracking-tight">{activeTab}</h1>
               <p className="text-[#D4AF37]/60 text-[10px] font-black uppercase tracking-[0.4em] mt-1.5">Managing your celebrations</p>
@@ -483,31 +521,27 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                         <MessageSquare className="w-4 h-4" /> Message Professional
                       </button>
                       {booking.status === 'confirmed' && booking.paymentStatus === 'pending' && (
-                        <>
-                          <PayPalButton 
-                            amount={booking.amount} 
-                            onSuccess={() => onPaymentSuccess(booking.id, 'PayPal')} 
-                            onClick={() => trackFunnelStep.initiatePayment(booking.id, booking.vendorId, booking.amount, 'PayPal')}
-                          />
-                          {(vendor.stripeConnected || vendor.stripeAccountId) && (
-                            <button 
-                              onClick={() => handlePay(
-                                booking.id, 
+                        <div className="flex flex-col gap-2">
+                          <button 
+                            onClick={() => handlePay(
+                              booking.id, 
                               booking.vendorId, 
                               booking.amount
                             )}
                             disabled={isProcessingPayment}
-                            className="bg-black hover:bg-zinc-900 text-white font-bold px-4 py-3 rounded-full shadow-sm flex items-center justify-center gap-2 transition-colors text-sm border border-zinc-700 w-full"
+                            className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-extrabold px-4 py-3.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all text-xs uppercase tracking-wider w-full cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
                           >
                             {isProcessingPayment ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
-                              <CreditCard className="w-4 h-4" />
+                              <ShieldCheck className="w-4 h-4 text-black" />
                             )}
-                            Pay with Card
+                            Pay Securely (Card or ACH)
                           </button>
-                        )}
-                        </>
+                          <p className="text-[9px] text-zinc-400 text-center font-medium leading-tight">
+                            Powered by Stripe Connect. Direct bank transfer (ACH) available for 0.8% fee savings.
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -518,9 +552,9 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         )}
 
         {activeTab === 'chats' && (
-          <div className="flex flex-col lg:flex-row bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden min-h-[500px] animate-in fade-in duration-500">
+          <div className="flex flex-col lg:flex-row bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden min-h-[500px] animate-in fade-in duration-500 relative">
              {/* Thread List */}
-             <div className="w-full lg:w-80 border-r border-white/5 bg-black/20 overflow-y-auto">
+             <div className={`w-full lg:w-80 border-r border-white/5 bg-black/20 overflow-y-auto ${selectedThreadVendorId ? 'hidden lg:block' : 'block'}`}>
                 <div className="p-6 border-b border-white/5 bg-black/40">
                   <h3 className="text-xs font-black text-[#D4AF37] uppercase tracking-widest">Conversations</h3>
                 </div>
@@ -565,7 +599,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
              </div>
 
              {/* Chat Pane */}
-             <div className="flex-1 flex flex-col bg-black/40">
+             <div className={`flex-1 flex-col bg-black/40 ${selectedThreadVendorId ? 'flex' : 'hidden lg:flex'}`}>
                 {selectedThreadVendorId ? (
                   <>
                     {(() => {
@@ -574,6 +608,12 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                        return (
                          <div className="p-6 border-b border-white/5 bg-black/40 flex items-center justify-between">
                             <div className="flex items-center gap-3">
+                               <button 
+                                 onClick={() => setSelectedThreadVendorId(null)} 
+                                 className="lg:hidden p-2 -ml-2 mr-1 text-zinc-400 hover:text-white rounded-full hover:bg-white/10"
+                               >
+                                 <ArrowLeft className="w-5 h-5" />
+                               </button>
                                {displayVendor?.image ? (
                                  <img src={displayVendor.image} className="w-10 h-10 rounded-full object-cover border border-[#D4AF37]/30 animate-in fade-in duration-300" alt="" />
                                ) : (
@@ -782,6 +822,20 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           </div>
         )}
       </main>
+      {/* Embedded Stripe Paywall Modal */}
+      {checkoutClientSecret && (
+        <EmbeddedCheckoutModal
+          clientSecret={checkoutClientSecret}
+          bookingId={checkoutBookingInfo?.id}
+          amount={checkoutBookingInfo?.amount}
+          vendorName={checkoutBookingInfo?.vendorName}
+          onClose={() => {
+            setCheckoutClientSecret(null);
+            setCheckoutBookingInfo(null);
+          }}
+        />
+      )}
+
       {/* Fullscreen Media Viewer */}
       <AnimatePresence>
         {fullscreenMedia && (
