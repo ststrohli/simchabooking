@@ -24,16 +24,14 @@ import {
 
 // Global process error handlers to prevent app crash on socket disconnects (EPIPE, ECONNRESET)
 process.on('uncaughtException', (err: any) => {
-  if (err?.code === 'EPIPE' || err?.code === 'ECONNRESET' || err?.code === 'ECANCELED') {
-    console.warn(`[Server] Ignored transient network socket error (${err.code}):`, err.message);
+  if (err?.code === 'EPIPE' || err?.code === 'ECONNRESET' || err?.code === 'ECANCELED' || err?.code === 'ERR_STREAM_DESTROYED') {
     return;
   }
   console.error('[Server] Uncaught Exception:', err);
 });
 
 process.on('unhandledRejection', (reason: any) => {
-  if (reason?.code === 'EPIPE' || reason?.code === 'ECONNRESET' || reason?.code === 'ECANCELED') {
-    console.warn(`[Server] Ignored transient network socket rejection (${reason.code}):`, reason?.message);
+  if (reason?.code === 'EPIPE' || reason?.code === 'ECONNRESET' || reason?.code === 'ECANCELED' || reason?.code === 'ERR_STREAM_DESTROYED') {
     return;
   }
   console.error('[Server] Unhandled Rejection:', reason);
@@ -1815,11 +1813,10 @@ async function startServer() {
 
   const server = app.listen(Number(PORT), '0.0.0.0', () => { console.log('Server is live'); });
   server.on('error', (err: any) => {
-    if (err?.code === 'EPIPE' || err?.code === 'ECONNRESET') {
-      console.warn(`[Server] Handled socket error on HTTP server (${err.code}):`, err.message);
-    } else {
-      console.error('[Server] HTTP Server error:', err);
+    if (err?.code === 'EPIPE' || err?.code === 'ECONNRESET' || err?.code === 'ECANCELED' || err?.code === 'ERR_STREAM_DESTROYED') {
+      return;
     }
+    console.error('[Server] HTTP Server error:', err);
   });
   server.on('clientError', (err: any, socket: any) => {
     if (err?.code === 'ECONNRESET' || err?.code === 'EPIPE') {
