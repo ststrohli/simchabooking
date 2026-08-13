@@ -49,6 +49,9 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 40, scale: 0.92 }}
         transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quick-view-title"
         className="bg-[#111] w-full max-w-4xl rounded-3xl border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative"
       >
         <button 
@@ -102,8 +105,8 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
 
             {mediaItems.length > 1 && !isPlaying && (
               <div className="absolute inset-0 flex items-center justify-between p-4">
-                <button onClick={prevMedia} className="p-3 bg-black/60 rounded-full text-[#D4AF37] hover:bg-black transition-all"><ChevronLeft className="w-6 h-6" /></button>
-                <button onClick={nextMedia} className="p-3 bg-black/60 rounded-full text-[#D4AF37] hover:bg-black transition-all"><ChevronRight className="w-6 h-6" /></button>
+                <button onClick={prevMedia} aria-label="Previous image" className="p-3 bg-black/60 rounded-full text-[#D4AF37] hover:bg-black transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"><ChevronLeft className="w-6 h-6" /></button>
+                <button onClick={nextMedia} aria-label="Next image" className="p-3 bg-black/60 rounded-full text-[#D4AF37] hover:bg-black transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"><ChevronRight className="w-6 h-6" /></button>
               </div>
             )}
             
@@ -124,31 +127,31 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
                 {vendor.category}
               </span>
               {vendor.isVerified && (
-                <span className="flex items-center gap-1 text-[10px] font-bold text-green-500 bg-green-500/10 px-3 py-1 rounded-full">
+                <span className="flex items-center gap-1 text-[10px] font-bold text-green-400 bg-green-500/10 px-3 py-1 rounded-full">
                   <ShieldCheck className="w-3 h-3" /> Verified
                 </span>
               )}
             </div>
 
-            <h2 className="text-3xl font-bold text-white font-[Cinzel] mb-2">{vendor.name}</h2>
+            <h2 id="quick-view-title" className="text-3xl font-bold text-white font-[Cinzel] mb-2">{vendor.name}</h2>
             
             <div className="flex items-center gap-4 mb-6">
               <div className="flex items-center gap-1.5 text-[#D4AF37]">
                 <Star className="w-4 h-4 fill-current" />
                 <span className="text-sm font-black">{vendor.rating.toFixed(1)}</span>
-                <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider ml-1">
+                <span className="text-[10px] text-zinc-300 font-bold uppercase tracking-wider ml-1">
                   ({vendor.reviews?.length || 0} Reviews)
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 text-zinc-400">
-                <MapPin className="w-4 h-4" />
+              <div className="flex items-center gap-1.5 text-zinc-300">
+                <MapPin className="w-4 h-4 text-[#D4AF37]" />
                 <span className="text-sm font-medium">{vendor.location}</span>
               </div>
             </div>
 
             <div className="space-y-6 flex-1">
               <div>
-                <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.3em] mb-3">About the Professional</h3>
+                <h3 className="text-[10px] font-black text-zinc-300 uppercase tracking-[0.3em] mb-3">About the Professional</h3>
                 <p className="text-zinc-300 text-sm leading-relaxed font-light">
                   {vendor.description}
                 </p>

@@ -85,7 +85,12 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
       <div className="fixed inset-0 bg-black/90 backdrop-blur-md" onClick={onClose} aria-hidden="true" />
       
       {/* Main modal container */}
-      <div className="bg-[#0a0a0a] w-full max-w-4xl min-h-screen md:min-h-0 md:max-h-[92vh] md:rounded-3xl shadow-2xl overflow-hidden border border-[#D4AF37]/30 flex flex-col relative z-10 my-auto">
+      <div 
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="suggestion-modal-title"
+        className="bg-[#0a0a0a] w-full max-w-4xl min-h-screen md:min-h-0 md:max-h-[92vh] md:rounded-3xl shadow-2xl overflow-hidden border border-[#D4AF37]/30 flex flex-col relative z-10 my-auto"
+      >
         
         {/* Fixed/Absolute Close Button */}
         <button 
@@ -112,7 +117,7 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
               </span>
             </div>
             
-            <h2 className="text-2xl font-bold font-[Cinzel] relative z-10 text-[#D4AF37] flex items-center justify-center text-center flex-wrap leading-tight">
+            <h2 id="suggestion-modal-title" className="text-2xl font-bold font-[Cinzel] relative z-10 text-[#D4AF37] flex items-center justify-center text-center flex-wrap leading-tight">
               {isPriorityLock ? <><Crown className="w-6 h-6 mr-2 animate-bounce text-[#D4AF37]" /> Priority Date Lock Active!</> : 'Excellent Choice!'}
             </h2>
             
@@ -149,6 +154,7 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
                     <button
                       key={cat}
                       onClick={() => setActiveTab(cat)}
+                      aria-pressed={isActive}
                       className={`px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest transition-all cursor-pointer flex-shrink-0 ${
                         isActive
                           ? 'bg-[#D4AF37] text-black shadow-lg shadow-[#D4AF37]/20 font-black'

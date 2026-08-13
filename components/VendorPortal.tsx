@@ -13,6 +13,7 @@ import { doc, updateDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
+import LocationAutocomplete from './LocationAutocomplete';
 
 interface VendorPortalProps {
   vendor: Vendor;
@@ -3305,6 +3306,16 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               value={editForm.contactEmail}
                               onChange={e => setEditForm({...editForm, contactEmail: e.target.value})}
                               placeholder="hello@business.com"
+                            />
+                          </div>
+                          <div className="space-y-3">
+                            <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Location / Base Service Area</label>
+                            <LocationAutocomplete
+                              id="vendor-profile-location"
+                              floating={false}
+                              placeholder="e.g. Brooklyn, NY or 123 Main St..."
+                              value={editForm.location || ''}
+                              onChange={(val) => setEditForm({...editForm, location: val})}
                             />
                           </div>
                        </div>

@@ -9,6 +9,7 @@ import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth'
 import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import ChatModal from './ChatModal';
+import LocationAutocomplete from './LocationAutocomplete';
 import { Vendor, VendorCategory, Post, Booking, UserAccount, Message } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -1427,7 +1428,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="space-y-6">
                         <h3 className="text-xs font-black text-[#D4AF37] uppercase tracking-[0.2em] border-b border-[#D4AF37]/10 pb-2 flex items-center gap-2"><MapPin className="w-4 h-4" /> Logistics</h3>
                         <div className="grid grid-cols-1 gap-6">
-                            <div><label className={labelClass}>Location (City, State)</label><input required type="text" className={inputClass} value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})} /></div>
+                            <div>
+                                <label className={labelClass}>Location (City, State / Full Address)</label>
+                                <LocationAutocomplete
+                                    id="admin-vendor-location"
+                                    required
+                                    floating={false}
+                                    placeholder="Type address or city, state..."
+                                    value={formData.location}
+                                    onChange={(val) => setFormData({...formData, location: val})}
+                                />
+                            </div>
                         </div>
                     </div>
 

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check, ShieldAlert, HelpCircle } from 'lucide-react';
+import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check, ShieldAlert, HelpCircle, UserRound, Store } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -997,6 +997,7 @@ function App() {
   const [suggestionsEventDate, setSuggestionsEventDate] = useState('');
   const [pendingPrioritySuggestions, setPendingPrioritySuggestions] = useState(false);
   const [isPriorityFromSuggestions, setIsPriorityFromSuggestions] = useState(false);
+  const [isBookingModalSuccess, setIsBookingModalSuccess] = useState(false);
 
   const filteredVendors = useMemo(() => {
     return vendors.filter(vendor => {
@@ -2717,21 +2718,75 @@ function App() {
         </div>
       )}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-lg focus:font-bold">Skip to main content</a>
+      {/* Floating Header Controls (? Ask & Role Switcher) */}
+      <div className="fixed top-3 left-3 sm:top-4 sm:left-5 md:left-6 lg:top-5 lg:left-6 xl:left-8 2xl:left-10 z-50 flex items-center pointer-events-auto">
+        <motion.button 
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          type="button" 
+          onClick={() => {
+            if (fbUser) {
+              ensureAdminSupportConversation(fbUser.uid, 'admin').catch(console.error);
+            }
+            setIsAdminChatOpen(true);
+          }}
+          className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-zinc-950/90 border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-extrabold text-[11px] sm:text-xs tracking-wider uppercase shadow-[0_4px_15px_rgba(0,0,0,0.8),0_0_10px_rgba(212,175,55,0.2)] backdrop-blur-md transition-all duration-300 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+          aria-label="Ask Support"
+        >
+          <HelpCircle className="w-3.5 h-3.5 stroke-[2.5]" />
+          <span>Ask</span>
+        </motion.button>
+      </div>
+
+      {isActuallyVendor && (
+        <div className="fixed top-3 right-3 sm:top-4 sm:right-5 md:right-6 lg:top-5 lg:right-6 xl:right-8 2xl:right-10 z-50 flex items-center pointer-events-auto">
+          <div className="flex items-center bg-zinc-950/95 border border-[#D4AF37]/40 backdrop-blur-xl rounded-full p-0.5 sm:p-1 shadow-[0_8px_20px_rgba(0,0,0,0.9),0_0_12px_rgba(212,175,55,0.2)] text-[9px] sm:text-[10px] tracking-wider uppercase font-bold">
+            <button
+              type="button"
+              onClick={() => { if (isVendorView) handleToggleVendor(); }}
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1 rounded-full transition-all duration-300 ${
+                !isVendorView
+                  ? 'bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] text-black font-black border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.5)] scale-100'
+                  : 'text-zinc-400 hover:text-white cursor-pointer'
+              }`}
+              aria-label="Switch to Client View"
+            >
+              <UserRound className="w-3 h-3" />
+              <span>Client</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { if (!isVendorView) handleToggleVendor(); }}
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1 rounded-full transition-all duration-300 ${
+                isVendorView
+                  ? 'bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] text-black font-black border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.5)] scale-100'
+                  : 'text-zinc-400 hover:text-white cursor-pointer'
+              }`}
+              aria-label="Switch to Vendor View"
+            >
+              <Store className="w-3 h-3" />
+              <span>Vendor</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {view !== 'portal' && (
       <nav className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
-            <div className="flex items-center gap-4 md:gap-8">
+            <div className="flex items-center gap-4 md:gap-8 ml-14 md:ml-0">
               <motion.button 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="flex items-center gap-3 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-lg p-1" 
+                className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-lg p-1" 
                 onClick={() => { setView('marketplace'); setActiveCategory('All'); }} 
                 aria-label="Simcha Booking Home"
               >
-                  <SimchaLogo className="h-9 w-9 group-hover:scale-110 transition-transform" />
+                  <SimchaLogo className="h-8 w-8 sm:h-9 sm:w-9 group-hover:scale-110 transition-transform" />
                   <div className="text-left">
-                      <h1 className="text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
+                      <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
                         <span className="block md:inline">Simcha</span><span className="block md:inline md:ml-1.5">Booking</span>
                       </h1>
                   </div>
@@ -2739,7 +2794,7 @@ function App() {
               
             </div>
             
-            <div className="flex items-center gap-4 md:gap-6">
+            <div className={`flex items-center gap-3 md:gap-6 ${isActuallyVendor ? 'mr-32 md:mr-0' : 'mr-0'}`}>
                 
                 <motion.button 
                   whileTap={{ scale: 0.95 }}
@@ -2802,18 +2857,28 @@ function App() {
           <div className="relative max-w-7xl mx-auto px-4 py-16 md:py-32 text-center">
             <h2 id="hero-title" className="text-4xl md:text-7xl font-bold font-[Cinzel] mb-6 tracking-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)]">Celebrate Your <span className="text-[#D4AF37]">Simcha.</span> <br /> <span className="text-3xl md:text-5xl opacity-90">Book Perfection.</span></h2>
             <p className="mb-10 text-zinc-300 text-base md:text-lg font-light max-w-2xl mx-auto leading-relaxed">From world-class kosher caterers to soulful bands, curate your complete simcha in one place.</p>
-            <div className="max-w-4xl mx-auto bg-[#111] rounded-2xl md:rounded-full p-2 flex flex-col md:flex-row items-stretch md:items-center shadow-2xl border border-[#D4AF37]/20 gap-2 md:gap-0">
-              <div className="flex-1 flex items-center px-6 py-3">
+            <div className="max-w-3xl mx-auto bg-zinc-950/90 rounded-full p-1.5 pl-4 sm:pl-6 flex items-center shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_15px_rgba(212,175,55,0.15)] border border-[#D4AF37]/30 backdrop-blur-md">
+              <div className="flex-1 flex items-center min-w-0 pr-2">
                 <label htmlFor="search-input" className="sr-only">Search vendors</label>
-                <Search className="w-5 h-5 text-[#D4AF37]/50 mr-3 flex-shrink-0" aria-hidden="true" />
-                <input id="search-input" type="text" placeholder="Search elite vendors..." className="flex-1 focus:outline-none text-zinc-100 placeholder:text-zinc-600 bg-transparent h-10 md:h-14 font-medium" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                <Search className="w-4 h-4 sm:w-5 sm:h-5 text-[#D4AF37] mr-2.5 sm:mr-3 shrink-0" aria-hidden="true" />
+                <input 
+                  id="search-input" 
+                  type="text" 
+                  placeholder="Search elite vendors..." 
+                  className="w-full focus:outline-none text-zinc-100 placeholder:text-zinc-500 bg-transparent h-9 sm:h-11 text-xs sm:text-base font-medium truncate" 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                />
               </div>
               <motion.button 
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
-                className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black px-10 py-4 rounded-xl md:rounded-full font-black uppercase tracking-widest text-sm transition-all shadow-xl focus-visible:ring-2 focus-visible:ring-white outline-none cursor-pointer"
+                onClick={() => {
+                  if (activeCategory !== 'All') setActiveCategory('All');
+                }}
+                className="bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] hover:bg-[#E5C76B] text-black px-4 sm:px-6 py-2 sm:py-2.5 rounded-full font-black uppercase tracking-wider text-xs sm:text-sm transition-all shadow-lg border border-[#FFF8D1]/50 shrink-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-white flex items-center gap-1.5"
               >
-                Search
+                <span>Search</span>
               </motion.button>
             </div>
           </div>
@@ -3227,7 +3292,9 @@ function App() {
             vendor={bookingVendor} 
             selectedDate={suggestionsEventDate || eventDate} 
             isPriorityFromSuggestions={isPriorityFromSuggestions}
+            onSuccessStateChange={(isSuccess) => setIsBookingModalSuccess(isSuccess)}
             onClose={() => { 
+              setIsBookingModalSuccess(false);
               setBookingVendor(null); 
               setInitialBookingDetails(null); 
               if (isPriorityFromSuggestions) {
@@ -3235,6 +3302,7 @@ function App() {
               }
             }} 
             onDone={(isPriority: boolean) => {
+              setIsBookingModalSuccess(false);
               setBookingVendor(null);
               setInitialBookingDetails(null);
               if (isPriority) {
@@ -3244,6 +3312,10 @@ function App() {
                 setShowSuggestions(false);
                 setPendingPrioritySuggestions(false);
                 setIsPriorityFromSuggestions(false);
+                setView('marketplace');
+                setActiveCategory('All');
+                setSearchTerm('');
+                setActiveBottomTab('home');
               }
             }}
             onConfirm={handleConfirmBooking} 
@@ -3309,7 +3381,7 @@ function App() {
       )}
       
       {currentAuthenticatedUser && 
-        !bookingVendor && 
+        (!bookingVendor || isBookingModalSuccess) && 
         !quickViewVendor && 
         !showSuggestions && 
         !showPriorityHoldPopup && 
@@ -3320,7 +3392,7 @@ function App() {
           currentView={activeBottomTab} 
           onNavigate={handleBottomNav} 
           isVendorView={isVendorView && isActuallyVendor}
-          showVendorToggle={isActuallyVendor}
+          showVendorToggle={false}
           onToggleVendor={handleToggleVendor}
         />
       )}

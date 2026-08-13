@@ -177,6 +177,7 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={(e) => { e.stopPropagation(); onQuickView(vendor); }}
+            aria-label={`Quick view details for ${vendor.name}`}
             className="pointer-events-auto bg-white text-black text-[10px] font-black px-7 py-3 min-h-[44px] flex items-center justify-center rounded-full uppercase tracking-[0.2em] shadow-2xl transition-all cursor-pointer"
           >
             Quick View
@@ -189,11 +190,11 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
           <span className="text-[10px] font-black text-[#D4AF37]/70 uppercase tracking-[0.25em]">{vendor.category}</span>
         </div>
         <h3 id={`vendor-name-${vendor.id}`} className="font-bold text-xl text-zinc-100 font-[Cinzel] mt-2 truncate group-hover:text-[#D4AF37] transition-colors">{vendor.name}</h3>
-        <div className="flex items-center text-zinc-500 text-xs mb-4 mt-1.5 font-medium"><MapPin className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]/50" aria-hidden="true" />{vendor.location}</div>
-        <p className="text-zinc-400 text-sm line-clamp-2 mb-6 h-10 leading-relaxed font-light">{vendor.description}</p>
+        <div className="flex items-center text-zinc-300 text-xs mb-4 mt-1.5 font-medium"><MapPin className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]" aria-hidden="true" />{vendor.location}</div>
+        <p className="text-zinc-300 text-sm line-clamp-2 mb-6 h-10 leading-relaxed font-light">{vendor.description}</p>
         
         {/* Estimated Response Time Indicator */}
-        <div className="flex items-center gap-2 text-[11px] text-zinc-400 bg-zinc-900/40 border border-[#D4AF37]/10 rounded-lg px-3 py-2 w-full mb-5">
+        <div className="flex items-center gap-2 text-[11px] text-zinc-300 bg-zinc-900/60 border border-[#D4AF37]/20 rounded-lg px-3 py-2 w-full mb-5">
           <Clock className="w-3.5 h-3.5 text-[#D4AF37]" aria-hidden="true" />
           <span>Typical response time: <span className="text-[#D4AF37] font-semibold">{estimatedResponseTime}</span></span>
         </div>
@@ -223,15 +224,16 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onBook, onMessage, onQu
          <motion.button 
             whileTap={{ scale: 0.99 }}
             onClick={() => setShowReviews(!showReviews)} 
-            className="w-full flex items-center justify-between text-zinc-500 hover:text-[#D4AF37] text-[10px] font-black uppercase tracking-[0.2em] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] rounded-lg p-3 bg-zinc-900/30 hover:bg-zinc-900/60 cursor-pointer" 
+            className="w-full flex items-center justify-between text-zinc-300 hover:text-[#D4AF37] text-[10px] font-black uppercase tracking-[0.2em] transition-colors outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] rounded-lg p-3 bg-zinc-900/50 hover:bg-zinc-900/80 cursor-pointer" 
             aria-expanded={showReviews}
+            aria-controls={`reviews-${vendor.id}`}
          >
-            <span className="flex items-center gap-3">CLIENT VOICES <span className="bg-[#D4AF37]/10 px-2 py-0.5 rounded-full text-[#D4AF37]">{vendor.reviews?.length || 0}</span></span>
+            <span className="flex items-center gap-3">CLIENT VOICES <span className="bg-[#D4AF37]/20 px-2 py-0.5 rounded-full text-[#D4AF37]">{vendor.reviews?.length || 0}</span></span>
             {showReviews ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
          </motion.button>
          
          {showReviews && (
-            <div className="mt-5 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div id={`reviews-${vendor.id}`} className="mt-5 space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="space-y-3 max-h-40 overflow-y-auto pr-2 custom-scrollbar" role="list">
                     {vendor.reviews?.map(review => (
                          <div key={review.id} role="listitem" className="bg-[#111] p-3.5 rounded-xl border border-[#D4AF37]/10">

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { X, Star, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, CheckCircle, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import { Vendor, SelectedService, VendorCategory } from '../types';
+import LocationAutocomplete from './LocationAutocomplete';
 
 const FloatingInput: React.FC<{
   id: string;
@@ -122,10 +123,11 @@ interface BookingModalProps {
   };
   isPriorityFromSuggestions?: boolean;
   onDone?: (isPriority: boolean) => void;
+  onSuccessStateChange?: (isSuccess: boolean) => void;
 }
 
 const BookingModal: React.FC<BookingModalProps> = ({ 
-  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone 
+  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone, onSuccessStateChange 
 }) => {
   const [formData, setFormData] = useState({ eventName: '', clientName: '', contactEmail: '', eventLocation: '', eventTime: '', notes: '' });
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
@@ -147,6 +149,12 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [userInteracted, setUserInteracted] = useState(!!selectedDate);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  useEffect(() => {
+    if (onSuccessStateChange) {
+      onSuccessStateChange(isSuccess);
+    }
+  }, [isSuccess, onSuccessStateChange]);
   const [checkedDates, setCheckedDates] = useState<Record<string, 'Available' | 'Unavailable'>>(() => {
     if (!vendor?.id) return {};
     const sessionKey = `checked_dates_${vendor.id}`;
@@ -691,23 +699,28 @@ const BookingModal: React.FC<BookingModalProps> = ({
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-[#0a0a0a] min-h-[400px] flex flex-col items-center justify-center w-full max-w-[90vw] md:max-w-md mx-auto p-8 md:p-12 text-center rounded-2xl border border-[#D4AF37]/30 relative overflow-hidden shadow-2xl"
+          className="bg-[#0a0a0a] min-h-[380px] flex flex-col items-center justify-center w-full max-w-[92vw] sm:max-w-md mx-auto p-8 md:p-10 text-center rounded-2xl border border-[#D4AF37]/40 relative overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.9),0_0_30px_rgba(212,175,55,0.2)]"
         >
-          <div className="absolute -top-40 -left-40 w-80 h-80 bg-[#D4AF37]/5 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-[#D4AF37]/5 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -top-40 -left-40 w-80 h-80 bg-[#D4AF37]/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-[#D4AF37]/10 rounded-full blur-3xl pointer-events-none" />
           
-          <div className="flex flex-col items-center justify-center text-center w-full my-auto px-4 relative z-10">
-            <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
+          <div className="flex flex-col items-center justify-center text-center w-full my-auto px-2 relative z-10">
+            <div className="w-16 h-16 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center mb-5 shadow-lg">
+              <Check className="w-9 h-9 text-[#D4AF37] stroke-[3]" />
+            </div>
             
-            <h2 className="text-2xl md:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider text-center w-full mx-auto break-words mb-4">
-              BOOKING REQUEST RECEIVED
+            <h2 className="text-2xl md:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider text-center w-full mx-auto break-words mb-4 uppercase">
+              {submitType === 'add' ? 'Added to Plan' : 'Booking Request Received'}
             </h2>
             
-            <p className="text-center w-full max-w-xs mx-auto text-sm md:text-base whitespace-normal text-zinc-300 leading-relaxed mb-8 font-light">
-              Your request has been forwarded to the vendor. We will notify you once they have reviewed it. You can check the status in your portal.
+            <p className="text-center w-full max-w-sm mx-auto text-sm md:text-base whitespace-normal text-zinc-200 leading-relaxed mb-8 font-light">
+              {submitType === 'add'
+                ? 'Item added to your plan! To review and finalize your bookings, visit your Plan tab.'
+                : 'Your booking request has been sent to the vendor! We will notify you once they confirm. You can check the status anytime in your Events.'
+              }
             </p>
               
-            <div className="w-full max-w-[200px] mx-auto block">
+            <div className="w-full max-w-[220px] mx-auto block">
               <button
                 type="button"
                 onClick={() => {
@@ -718,9 +731,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
                     onClose();
                   }
                 }}
-                className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/10 hover:shadow-[#D4AF37]/20 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center mx-auto block"
+                className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/30 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center mx-auto block"
               >
-                Done
+                I'm Done
               </button>
             </div>
           </div>
@@ -731,12 +744,15 @@ const BookingModal: React.FC<BookingModalProps> = ({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 30, scale: 0.95 }}
         transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-        className="bg-[#0a0a0a] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto border border-[#D4AF37]/20 relative"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        className="bg-[#0a0a0a] w-full h-full sm:h-auto max-h-none sm:max-h-[90vh] sm:max-w-xl sm:rounded-2xl rounded-none shadow-2xl overflow-hidden overflow-y-auto border-0 sm:border border-[#D4AF37]/30 relative flex flex-col"
       >
         <div className="bg-black p-6 text-white flex justify-between items-start sticky top-0 z-10 border-b border-[#D4AF37]/20">
           <div>
             <h2 id="modal-title" className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">{initialDetails ? 'Update Your Selection' : 'Book Service'}</h2>
-            <p className="text-zinc-500 text-xs mt-1">Vendor: <span className="text-zinc-100 font-bold">{vendor.name}</span></p>
+            <p className="text-zinc-300 text-xs mt-1">Vendor: <span className="text-zinc-100 font-bold">{vendor.name}</span></p>
           </div>
           <button 
             onClick={onClose} 
@@ -868,14 +884,15 @@ const BookingModal: React.FC<BookingModalProps> = ({
             </div>
 
             {!isVenue && (
-              <FloatingInput 
+              <LocationAutocomplete 
                 id="event-location" 
                 required 
                 label="Location" 
                 icon={MapPin} 
                 value={formData.eventLocation} 
-                onChange={(e) => setFormData({...formData, eventLocation: e.target.value})} 
+                onChange={(val) => setFormData({...formData, eventLocation: val})} 
                 highlighted={highlightedField === 'event-location'}
+                floating
               />
             )}
 
