@@ -13,7 +13,8 @@ service firebase.storage {
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.get('role', '') == 'admin'
+        firestore.get(/databases/ai-studio-b85c10e8-0729-4d1f-841b-60b5c119be28/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        firestore.get(/databases/ai-studio-b85c10e8-0729-4d1f-841b-60b5c119be28/documents/user_roles/$(request.auth.uid)).data.role == 'admin'
       );
     }
 

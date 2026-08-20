@@ -40,7 +40,7 @@ const FloatingInput: React.FC<{
           className={`absolute pointer-events-none transition-all duration-300 leading-none ${Icon ? 'left-10' : 'left-4'} 
             ${(focused || isFilled) 
               ? 'top-2 text-[9px] text-[#D4AF37] font-black uppercase tracking-widest' 
-              : 'top-4 text-xs text-zinc-500 font-medium'
+              : 'top-4 text-xs text-zinc-300 font-medium'
             }`}
         >
           {label}
@@ -85,7 +85,7 @@ const FloatingTextarea: React.FC<{
           className={`absolute pointer-events-none transition-all duration-300 leading-none ${Icon ? 'left-10' : 'left-4'} 
             ${(focused || isFilled) 
               ? 'top-2 text-[9px] text-[#D4AF37] font-black uppercase tracking-widest' 
-              : 'top-4 text-xs text-zinc-500 font-medium'
+              : 'top-4 text-xs text-zinc-300 font-medium'
             }`}
         >
           {label}
@@ -919,7 +919,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
           <div className="flex flex-col gap-3 pt-4 border-t border-[#D4AF37]/20">
              <div className="flex justify-between items-end">
                 <div className="flex flex-col">
-                    <span className="text-zinc-500 text-[10px] uppercase tracking-widest font-black">{isOfferMode ? 'My Proposed Price' : 'Estimated Total'}</span>
+                    <span className="text-zinc-300 text-[10px] uppercase tracking-widest font-black">{isOfferMode ? 'My Proposed Price' : 'Estimated Total'}</span>
                     <div className="flex items-center gap-2">
                         {isOfferMode ? (
                             <div className="flex items-center text-3xl font-bold text-white">
@@ -951,13 +951,13 @@ const BookingModal: React.FC<BookingModalProps> = ({
                     <button 
                         type="button" 
                         onClick={() => setIsOfferMode(false)}
-                        className="text-[10px] font-black text-zinc-500 hover:text-white transition-all uppercase tracking-widest cursor-pointer"
+                        className="text-[10px] font-black text-zinc-300 hover:text-white transition-all uppercase tracking-widest cursor-pointer"
                     >
                         Standard Price
                     </button>
                 )}
              </div>
-             {isOfferMode && <p className="text-[10px] text-zinc-500 leading-relaxed italic">Propose your desired price to the vendor. They will review and respond to your inquiry.</p>}
+             {isOfferMode && <p className="text-[10px] text-zinc-300 leading-relaxed italic">Propose your desired price to the vendor. They will review and respond to your inquiry.</p>}
           </div>
 
           {/* Priority Event Toggle */}

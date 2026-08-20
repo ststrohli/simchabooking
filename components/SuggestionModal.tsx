@@ -155,10 +155,10 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
                       key={cat}
                       onClick={() => setActiveTab(cat)}
                       aria-pressed={isActive}
-                      className={`px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest transition-all cursor-pointer flex-shrink-0 ${
+                      className={`px-6 py-3.5 rounded-full text-xs font-black uppercase tracking-widest transition-all cursor-pointer flex-shrink-0 shadow-sm ${
                         isActive
-                          ? 'bg-[#D4AF37] text-black shadow-lg shadow-[#D4AF37]/20 font-black'
-                          : 'border border-[#D4AF37]/40 text-white hover:border-[#D4AF37] hover:bg-[#D4AF37]/10'
+                          ? 'bg-[#D4AF37] text-black shadow-lg shadow-[#D4AF37]/20 font-black border-2 border-[#D4AF37]'
+                          : 'border-2 border-[#D4AF37]/40 text-white hover:border-[#D4AF37] hover:bg-[#D4AF37]/10'
                       }`}
                     >
                       {cat}

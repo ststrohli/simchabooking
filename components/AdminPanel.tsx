@@ -1231,7 +1231,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   return (
     <div className="min-h-screen bg-black text-zinc-100">
-      <header className="bg-black border-b border-[#D4AF37]/20 sticky top-0 z-30">
+      <div className="bg-black border-b border-[#D4AF37]/20 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-3">
              <div className="bg-[#111] p-2 rounded-lg border border-[#D4AF37]/20"><ShieldCheck className="w-6 h-6 text-[#D4AF37]" /></div>
@@ -1242,9 +1242,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <button onClick={onBack} className="text-zinc-400 hover:text-zinc-200 font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors"><LogOut className="w-4 h-4" /> Exit Admin</button>
           </div>
         </div>
-      </header>
+      </div>
 
-      <main className="max-w-7xl mx-auto px-4 py-12">
+      <div className="max-w-7xl mx-auto px-4 py-12">
         {/* Stats Section */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
             <div className="bg-[#111] p-6 rounded-2xl border border-[#D4AF37]/10 shadow-xl">
@@ -3203,7 +3203,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
             </div>
         )}
-      </main>
+      </div>
 
 
 

@@ -351,7 +351,8 @@ export const createCheckoutSession = functions.https.onCall(async (data: any, co
   const platformFeeInCents = Math.round(amountInCents * (commissionRate / 100));
   const originUrl = baseUrl || "https://ais-dev-cbsdxwd34vvmza2vvckdfs-61889936560.us-west2.run.app";
 
-  const session = await stripe.checkout.sessions.create({
+  let session;
+  const sessionParams: any = {
     ui_mode: "embedded",
     payment_method_types: ["card", "us_bank_account"],
     line_items: [
@@ -385,7 +386,24 @@ export const createCheckoutSession = functions.https.onCall(async (data: any, co
       clientId: context.auth.uid,
     },
     return_url: `${originUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}&bookingId=${bookingId}&vendorId=${vendorId}`,
-  });
+  };
+
+  try {
+    session = await stripe.checkout.sessions.create(sessionParams);
+  } catch (stripeError: any) {
+    if (
+      stripeError.message?.includes("capabilities") ||
+      stripeError.message?.includes("transfers") ||
+      stripeError.message?.includes("destination account")
+    ) {
+      console.warn(`[Stripe Cloud Function] Account ${stripeAccountId} lacks transfer capabilities. Retrying without destination transfer_data...`);
+      delete sessionParams.payment_intent_data.transfer_data;
+      delete sessionParams.payment_intent_data.application_fee_amount;
+      session = await stripe.checkout.sessions.create(sessionParams);
+    } else {
+      throw stripeError;
+    }
+  }
 
   return {
     success: true,

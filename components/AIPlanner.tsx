@@ -58,12 +58,12 @@ export default function AIPlanner() {
                 </div>
                 <div>
                   <h3 className="font-bold font-[Cinzel] text-[#D4AF37] text-sm">Simcha AI Advisor</h3>
-                  <p className="text-[9px] text-zinc-500 uppercase tracking-widest">Powered by Gemini 3</p>
+                  <p className="text-[9px] text-zinc-300 uppercase tracking-widest">Powered by Gemini 3</p>
                 </div>
               </div>
               <button 
                 onClick={() => setIsOpen(false)}
-                className="text-zinc-500 hover:text-white p-2 transition-colors"
+                className="text-zinc-300 hover:text-white p-2 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>

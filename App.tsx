@@ -51,11 +51,7 @@ const clean = (obj: any) => {
 
 const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | 'client'> => {
   try {
-    const userEmail = user.email ? user.email.toLowerCase() : '';
-    const adminEmails = ['bookingsimcha@gmail.com', 'shimpose@gmail.com', 'ststrohli@gmail.com'];
-    if (userEmail && adminEmails.includes(userEmail)) {
-      return 'admin';
-    }
+    const userEmail = user.email ? user.email.trim().toLowerCase() : '';
 
     // 1. Check Custom Claims in Auth token
     try {
@@ -404,15 +400,22 @@ function App() {
   }, [fbUser, currentUserVendorId, userDocData, vendors]);
 
   const isAdmin = useMemo(() => {
-    if (isRoleLoading) return false;
-    return userRole === 'admin' || userDocData?.role === 'admin' || userDocData?.isAdmin === true;
-  }, [isRoleLoading, userRole, userDocData]);
+    if (isInitializing || isRoleLoading) return false;
+    if (!fbUser || !userDocData) return false;
+    return userDocData.isAdmin === true || userDocData.role === 'admin' || userRole === 'admin';
+  }, [isInitializing, isRoleLoading, fbUser, userDocData, userRole]);
 
   const isActuallyVendor = useMemo(() => {
-    if (isRoleLoading) return false;
-    if (userRole === 'client') return false;
-    return userRole === 'vendor' || userRole === 'admin' || userDocData?.role === 'vendor' || userDocData?.role === 'admin' || userDocData?.isVendor === true;
-  }, [isRoleLoading, userRole, userDocData]);
+    if (isInitializing || isRoleLoading) return false;
+    if (!fbUser || !userDocData) return false;
+    return userDocData.isVendor === true || userDocData.role === 'vendor' || userRole === 'vendor';
+  }, [isInitializing, isRoleLoading, fbUser, userDocData, userRole]);
+
+  useEffect(() => {
+    if (!isInitializing && !isRoleLoading) {
+      console.log(`[Role Validation Completed] Auth User: ${fbUser ? fbUser.email : 'Guest'} | Profile Loaded: ${!!userDocData} | isAdmin: ${isAdmin} | isVendor: ${isActuallyVendor}`);
+    }
+  }, [isInitializing, isRoleLoading, fbUser, userDocData, isAdmin, isActuallyVendor]);
 
   const [isVendorView, setIsVendorView] = useState(false);
 
@@ -642,7 +645,7 @@ function App() {
     } else if (userRole === 'vendor' && currentUserVendorId) {
       bookingsQuery = query(collection(db, 'bookings'), where('vendorId', '==', currentUserVendorId));
     } else {
-      bookingsQuery = query(collection(db, 'bookings'), where('contactEmail', '==', fbUser.email));
+      bookingsQuery = query(collection(db, 'bookings'), where('clientId', '==', fbUser.uid));
     }
 
     const unsubBookings = onSnapshot(bookingsQuery, (snapshot) => {
@@ -814,6 +817,8 @@ function App() {
       }
 
       setIsRoleLoading(true);
+      setUserDocData(null);
+      setUserRole(null);
 
       // If logged in but email not verified, we also treat it as not fully authenticated for the app, EXCEPT if they are a vendor!
       if (!user.emailVerified) {
@@ -859,13 +864,14 @@ function App() {
       // Non-blocking profile sync
       syncUserProfile(user).catch(err => console.error("Background profile sync failed:", err));
       
-      // Fetch user doc data
+      // Fetch user doc data securely from Firestore
       try {
         const secureRole = await fetchUserRole(user);
         let finalRole = secureRole;
-        
+        const userEmail = user.email ? user.email.trim().toLowerCase() : '';
         const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDocSafe(userDocRef);
+
         if (userDoc.exists()) {
           const data = userDoc.data();
           setUserDocData(data);
@@ -880,41 +886,27 @@ function App() {
           setCurrentUserVendorId(data.vendorId || null);
         } else {
           // Default for new users
+          const defaultUserData = {
+            role: finalRole,
+            isAdmin: finalRole === 'admin',
+            isVendor: finalRole === 'vendor',
+            email: userEmail
+          };
+          setUserDocData(defaultUserData);
           setUserRole(finalRole);
           try { localStorage.setItem('simcha_user_role', finalRole); } catch (e) {}
           setCurrentUserVendorId(null);
         }
         console.log("Logged in UID:", user.uid, "| Detected Role:", finalRole);
-        
-        // Auto-provision user_roles document
-        try {
-          const userRolesRef = doc(db, 'user_roles', user.uid);
-          const roleSnap = await getDocSafe(userRolesRef);
-          const userEmail = user.email ? user.email.toLowerCase() : '';
-
-          if (!roleSnap.exists()) {
-            await setDoc(userRolesRef, {
-              role: finalRole,
-              email: userEmail,
-              createdAt: new Date().toISOString()
-            }, { merge: true });
-            
-            console.log("Auto-provisioned user_roles for UID:", user.uid, "Role:", finalRole);
-          } else if (roleSnap.data()?.role !== finalRole && finalRole !== 'client') {
-            await setDoc(userRolesRef, {
-              role: finalRole,
-              email: userEmail
-            }, { merge: true });
-          }
-        } catch (e) {
-          console.error("Auto-provision error:", e);
-        }
       } catch (err: any) {
         if (err.message?.includes('offline') || err.message?.includes('Failed to get document')) {
           console.warn("User document fetch paused (offline mode):", err.message);
         } else {
           console.error("Error fetching user document:", err);
         }
+        // Fallback default role on error
+        setUserRole('client');
+        setUserDocData({ role: 'client', isAdmin: false, isVendor: false, email: user.email || '' });
       } finally {
         setIsRoleLoading(false);
         setIsInitializing(false);
@@ -922,14 +914,6 @@ function App() {
     });
     return () => unsubscribe();
   }, []);
-
-  useEffect(() => {
-    if (fbUser && userRole) {
-      setDoc(doc(db, 'users', fbUser.uid), { role: userRole, vendorId: currentUserVendorId }, { merge: true }).catch(err => {
-        console.warn("User profile role sync warning:", err);
-      });
-    }
-  }, [userRole, currentUserVendorId, fbUser]);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const lastSyncedCartJsonRef = useRef<string>('');
@@ -1904,15 +1888,6 @@ function App() {
              setCurrentUserVendorId(vendor.id);
              setUserRole('vendor');
              setView('marketplace');
-             // Put role and vendorId inside the update so it's fully persistent in firestore
-             await setDoc(doc(db, 'users', user.uid), {
-               uid: user.uid,
-               email: user.email,
-               name: vendor.name,
-               role: 'vendor',
-               vendorId: vendor.id,
-               updatedAt: new Date().toISOString()
-             }, { merge: true });
            } else {
              setUserRole('client');
              setView('marketplace');
@@ -1947,15 +1922,6 @@ function App() {
             setCurrentUserVendorId(vendor.id);
             setUserRole('vendor');
             setView('marketplace');
-            // Put role and vendorId inside the update so it's fully persistent in firestore
-            await setDoc(doc(db, 'users', user.uid), {
-              uid: user.uid,
-              email: user.email,
-              name: vendor.name,
-              role: 'vendor',
-              vendorId: vendor.id,
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
           } else {
             setUserRole('client');
             setView('marketplace');
@@ -2165,14 +2131,14 @@ function App() {
     }
 
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden" role="main">
+      <div className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-[#D4AF37]/5 via-black to-black" aria-hidden="true"></div>
         <div className="bg-[#111] rounded-3xl p-8 md:p-12 max-w-lg w-full border border-[#D4AF37]/20 shadow-2xl animate-in zoom-in-95 duration-500 relative z-10">
-          <header className="text-center mb-10">
+          <div className="text-center mb-10">
             <div className="flex items-center justify-center mx-auto mb-6"><SimchaLogo className="w-20 h-20" /></div>
             <h1 className="text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">WELCOME TO SIMCHA BOOKING</h1>
-            <p className="text-[10px] text-zinc-500 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
-          </header>
+            <p className="text-[10px] text-zinc-300 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
+          </div>
 
           {step === 'welcome' ? (
             <div className="space-y-6 animate-in fade-in duration-300">
@@ -2197,18 +2163,18 @@ function App() {
                 <button
                   type="button"
                   onClick={() => setStep('welcome')}
-                  className="text-xs text-zinc-500 hover:text-[#D4AF37] flex items-center gap-1 font-bold uppercase tracking-wider transition-colors"
+                  className="text-xs text-zinc-300 hover:text-[#D4AF37] flex items-center gap-1 font-bold uppercase tracking-wider transition-colors"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" /> Back
                 </button>
               </div>
               <div className="space-y-2">
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Email Address</label>
+                <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
                 <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Password</label>
+                  <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
                   <button type="button" onClick={() => setStep('forgot-password')} className="text-[10px] text-[#D4AF37] hover:underline font-bold uppercase tracking-widest">Forgot password?</button>
                 </div>
                 <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
@@ -2230,7 +2196,7 @@ function App() {
                   <div className="w-full border-t border-white/10"></div>
                 </div>
                 <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-                  <span className="bg-[#111] px-4 text-zinc-500 font-black">Or continue with</span>
+                  <span className="bg-[#111] px-4 text-zinc-300 font-black">Or continue with</span>
                 </div>
               </div>
 
@@ -2274,10 +2240,10 @@ function App() {
                </div>
                <div className="text-center mb-6">
                   <h2 className="text-white font-bold uppercase tracking-widest text-sm mb-2">Password Reset</h2>
-                  <p className="text-[10px] text-zinc-500 uppercase leading-relaxed px-4">Enter your email and we'll send you a link to regain access to your simcha planning.</p>
+                  <p className="text-[10px] text-zinc-300 uppercase leading-relaxed px-4">Enter your email and we'll send you a link to regain access to your simcha planning.</p>
                </div>
                <div className="space-y-2">
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Email Address</label>
+                <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
                 <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
               </div>
               {error && (
@@ -2289,7 +2255,7 @@ function App() {
               <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Get Reset Link'}
               </button>
-              <button type="button" onClick={() => setStep('login')} className="w-full text-zinc-500 hover:text-white text-[10px] font-black uppercase tracking-widest">Return to Login</button>
+              <button type="button" onClick={() => setStep('login')} className="w-full text-zinc-300 hover:text-white text-[10px] font-black uppercase tracking-widest">Return to Login</button>
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
@@ -2297,7 +2263,7 @@ function App() {
                 <button
                   type="button"
                   onClick={() => setStep('welcome')}
-                  className="text-xs text-zinc-500 hover:text-[#D4AF37] flex items-center gap-1 font-bold uppercase tracking-wider transition-colors"
+                  className="text-xs text-zinc-300 hover:text-[#D4AF37] flex items-center gap-1 font-bold uppercase tracking-wider transition-colors"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" /> Back
                 </button>
@@ -2312,24 +2278,24 @@ function App() {
                      <Plus className="w-3 h-3" />
                    </div>
                 </label>
-                <p className="text-[8px] text-zinc-500 font-black uppercase tracking-widest mt-2">Upload Profile Photo</p>
+                <p className="text-[8px] text-zinc-300 font-black uppercase tracking-widest mt-2">Upload Profile Photo</p>
               </div>
 
               <div className="space-y-2">
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Full Name</label>
+                <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Full Name</label>
                 <input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="Sarah Cohen" />
               </div>
               <div className="space-y-2">
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Email Address</label>
+                <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
                 <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Password</label>
+                  <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
                   <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Repeat Password</label>
+                  <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Repeat Password</label>
                   <input required type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
                 </div>
               </div>
@@ -2350,7 +2316,7 @@ function App() {
                   <div className="w-full border-t border-white/10"></div>
                 </div>
                 <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-                  <span className="bg-[#111] px-4 text-zinc-500 font-black">Or join with</span>
+                  <span className="bg-[#111] px-4 text-zinc-300 font-black">Or join with</span>
                 </div>
               </div>
 
@@ -2381,7 +2347,7 @@ function App() {
                 Google
               </button>
               
-              <button type="button" onClick={() => setStep('login')} className="w-full text-zinc-500 hover:text-white text-[10px] font-black uppercase tracking-widest mt-2">
+              <button type="button" onClick={() => setStep('login')} className="w-full text-zinc-300 hover:text-white text-[10px] font-black uppercase tracking-widest mt-2">
                 Already registered? Sign in
               </button>
             </form>
@@ -2718,28 +2684,9 @@ function App() {
         </div>
       )}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-lg focus:font-bold">Skip to main content</a>
-      {/* Floating Header Controls (? Ask & Role Switcher) */}
-      <div className="fixed top-3 left-3 sm:top-4 sm:left-5 md:left-6 lg:top-5 lg:left-6 xl:left-8 2xl:left-10 z-50 flex items-center pointer-events-auto">
-        <motion.button 
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          type="button" 
-          onClick={() => {
-            if (fbUser) {
-              ensureAdminSupportConversation(fbUser.uid, 'admin').catch(console.error);
-            }
-            setIsAdminChatOpen(true);
-          }}
-          className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-zinc-950/90 border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-extrabold text-[11px] sm:text-xs tracking-wider uppercase shadow-[0_4px_15px_rgba(0,0,0,0.8),0_0_10px_rgba(212,175,55,0.2)] backdrop-blur-md transition-all duration-300 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
-          aria-label="Ask Support"
-        >
-          <HelpCircle className="w-3.5 h-3.5 stroke-[2.5]" />
-          <span>Ask</span>
-        </motion.button>
-      </div>
-
-      {isActuallyVendor && (
-        <div className="fixed top-3 right-3 sm:top-4 sm:right-5 md:right-6 lg:top-5 lg:right-6 xl:right-8 2xl:right-10 z-50 flex items-center pointer-events-auto">
+      {/* Floating Header Controls (? Ask on Right & Role Switcher on Left below header) */}
+      {!isInitializing && !isRoleLoading && !!fbUser && !!userDocData && isActuallyVendor && (
+        <div className="fixed top-22 sm:top-24 left-3 sm:left-5 md:left-6 lg:left-8 xl:left-10 z-50 flex items-center pointer-events-auto">
           <div className="flex items-center bg-zinc-950/95 border border-[#D4AF37]/40 backdrop-blur-xl rounded-full p-0.5 sm:p-1 shadow-[0_8px_20px_rgba(0,0,0,0.9),0_0_12px_rgba(212,175,55,0.2)] text-[9px] sm:text-[10px] tracking-wider uppercase font-bold">
             <button
               type="button"
@@ -2772,11 +2719,30 @@ function App() {
         </div>
       )}
 
+      <div className="fixed top-22 sm:top-24 right-3 sm:right-5 md:right-6 lg:right-8 xl:right-10 z-50 flex items-center pointer-events-auto">
+        <motion.button 
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          type="button" 
+          onClick={() => {
+            if (fbUser) {
+              ensureAdminSupportConversation(fbUser.uid, 'admin').catch(console.error);
+            }
+            setIsAdminChatOpen(true);
+          }}
+          className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-zinc-950/90 border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-extrabold text-[11px] sm:text-xs tracking-wider uppercase shadow-[0_4px_15px_rgba(0,0,0,0.8),0_0_10px_rgba(212,175,55,0.2)] backdrop-blur-md transition-all duration-300 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+          aria-label="Ask Support"
+        >
+          <HelpCircle className="w-3.5 h-3.5 stroke-[2.5]" />
+          <span>Ask</span>
+        </motion.button>
+      </div>
+
       {view !== 'portal' && (
-      <nav className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
+      <header className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
-            <div className="flex items-center gap-4 md:gap-8 ml-14 md:ml-0">
+            <div className="flex items-center gap-4 md:gap-8 ml-0">
               <motion.button 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
@@ -2794,7 +2760,7 @@ function App() {
               
             </div>
             
-            <div className={`flex items-center gap-3 md:gap-6 ${isActuallyVendor ? 'mr-32 md:mr-0' : 'mr-0'}`}>
+            <div className="flex items-center gap-3 md:gap-6 mr-0">
                 
                 <motion.button 
                   whileTap={{ scale: 0.95 }}
@@ -2822,11 +2788,11 @@ function App() {
                   <span>My Portal</span>
                 </motion.button>
 
-                {isAdmin && (
+                {!isInitializing && !isRoleLoading && !!fbUser && !!userDocData && isAdmin && (
                   <motion.button 
                     whileTap={{ scale: 0.9 }}
                     onClick={() => setView('admin')} 
-                    className="text-zinc-500 hover:text-[#D4AF37] transition-colors focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded-lg p-1 cursor-pointer" 
+                    className="text-zinc-300 hover:text-[#D4AF37] transition-colors focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded-lg p-1 cursor-pointer" 
                     aria-label="Admin Panel"
                     title="Admin Panel"
                   >
@@ -2837,7 +2803,7 @@ function App() {
                 <motion.button 
                   whileTap={{ scale: 0.9 }}
                   onClick={handleSignOut} 
-                  className="text-zinc-500 hover:text-zinc-400 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-lg p-1 cursor-pointer" 
+                  className="text-zinc-300 hover:text-zinc-200 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-lg p-1 cursor-pointer" 
                   aria-label="Sign Out"
                 >
                   <LogOut className="w-5 h-5" />
@@ -2845,7 +2811,7 @@ function App() {
             </div>
           </div>
         </div>
-      </nav>
+      </header>
       )}
 
       <main id="main-content" className="flex-1 flex flex-col pb-36 md:pb-0">
@@ -2865,7 +2831,7 @@ function App() {
                   id="search-input" 
                   type="text" 
                   placeholder="Search elite vendors..." 
-                  className="w-full focus:outline-none text-zinc-100 placeholder:text-zinc-500 bg-transparent h-9 sm:h-11 text-xs sm:text-base font-medium truncate" 
+                  className="w-full focus:outline-none text-zinc-100 placeholder:text-zinc-300 bg-transparent h-9 sm:h-11 text-xs sm:text-base font-medium truncate" 
                   value={searchTerm} 
                   onChange={(e) => setSearchTerm(e.target.value)} 
                 />
@@ -2885,42 +2851,43 @@ function App() {
         </section>
 
         {activeCategory === 'All' && !searchTerm ? (
-            <section className="py-12 bg-black flex-1" aria-labelledby="categories-heading">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="text-center mb-10"><h2 id="categories-heading" className="text-3xl font-bold font-[Cinzel] mb-4 text-[#D4AF37]">Explore Signature Categories</h2></div>
-                    <nav className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4" aria-label="Category Browser">
+            <div className="py-4 sm:py-6 bg-black flex-1 border-b border-[#D4AF37]/10">
+                <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+                    <nav className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4" aria-label="Category Browser">
                         {activeCategories.map((cat) => (
                             <motion.button 
                               key={cat} 
                               initial={{ borderColor: "rgba(212, 175, 55, 0.2)" }}
-                              whileHover={{ scale: 1.03, y: -4, borderColor: "rgba(212, 175, 55, 0.4)" }}
+                              whileHover={{ scale: 1.02, y: -2, borderColor: "rgba(212, 175, 55, 0.5)" }}
                               whileTap={{ scale: 0.97 }}
                               transition={{ type: "spring", stiffness: 300, damping: 20 }}
                               onClick={() => setActiveCategory(cat)} 
-                              className="group relative h-40 rounded-xl overflow-hidden border border-[#D4AF37]/20 hover:border-[#D4AF37]/50 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-all cursor-pointer"
+                              className="group relative h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-all cursor-pointer shadow-lg"
                             >
-                                <img src={categoryImages[cat]} alt="" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform" aria-hidden="true" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
-                                <div className="absolute inset-0 flex items-center justify-center p-2 text-center"><h3 className="text-[#D4AF37] font-bold text-lg font-[Cinzel] tracking-wide">{cat}</h3></div>
+                                <img src={categoryImages[cat]} alt="" className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500" aria-hidden="true" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                                <div className="absolute inset-0 flex items-center justify-center p-3.5 sm:p-4 text-center">
+                                  <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{cat}</h3>
+                                </div>
                             </motion.button>
                         ))}
                     </nav>
                 </div>
-            </section>
+            </div>
         ) : (
-            <section className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 w-full animate-in fade-in" aria-labelledby="results-heading">
-                <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+            <div className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 w-full animate-in fade-in">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                      <nav className="flex flex-wrap items-center gap-2" aria-label="Breadcrumb">
                         <motion.button 
                           whileTap={{ scale: 0.95 }}
                           onClick={() => setActiveCategory('All')} 
-                          className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all border outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] cursor-pointer ${activeCategory === 'All' ? 'bg-[#D4AF37] text-black border-[#D4AF37]' : 'bg-black text-[#D4AF37]/70 hover:bg-[#D4AF37]/10 border-[#D4AF37]/30'}`}
+                          className={`px-6 py-3 rounded-full text-sm sm:text-base font-extrabold uppercase tracking-wider transition-all border-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] cursor-pointer shadow-md ${activeCategory === 'All' ? 'bg-[#D4AF37] text-black border-[#D4AF37]' : 'bg-black text-[#D4AF37] hover:bg-[#D4AF37]/10 border-[#D4AF37]/40'}`}
                         >
                           All Categories
                         </motion.button>
-                        {activeCategory !== 'All' && <><span className="text-zinc-600" aria-hidden="true">/</span><span id="results-heading" className="font-bold text-[#D4AF37]">{activeCategory}</span></>}
+                        {activeCategory !== 'All' && <><span className="text-zinc-600" aria-hidden="true">/</span><span id="results-heading" className="font-extrabold text-base text-[#D4AF37]">{activeCategory}</span></>}
                      </nav>
-                </header>
+                </div>
 
                 {activeCategory !== 'All' && categorySubCategories?.[activeCategory] && Object.keys(categorySubCategories[activeCategory]).length > 0 && (
                   <div className="mb-12 animate-in slide-in-from-top-4 duration-500">
@@ -3007,7 +2974,7 @@ function App() {
                           <div className="py-20 text-center opacity-40" role="status">
                             <Search className="w-16 h-16 mx-auto mb-4 text-[#D4AF37]" aria-hidden="true" />
                             <p className="text-xl font-[Cinzel] text-zinc-300">No vendors specializing in {activeSubSubCategory} yet.</p>
-                            <p className="text-xs text-zinc-500 mt-2 max-w-sm mx-auto">Please check other subcategories or search for similar services.</p>
+                            <p className="text-xs text-zinc-300 mt-2 max-w-sm mx-auto">Please check other subcategories or search for similar services.</p>
                           </div>
                         )}
                       </div>
@@ -3026,7 +2993,7 @@ function App() {
                             <span className="text-zinc-400 uppercase tracking-widest text-xs">{activeSubCategoryGroup}</span>
                           </div>
                         )}
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3">
                           {!activeSubCategoryGroup ? (
                             // Render Subcategory Groups (Tier 2)
                             Object.keys(categorySubCategories[activeCategory] || {}).map(group => (
@@ -3035,7 +3002,7 @@ function App() {
                                 whileHover={{ scale: 1.02 }}
                                 whileTap={{ scale: 0.98 }}
                                 onClick={() => setActiveSubCategoryGroup(group)}
-                                className="relative h-40 rounded-xl overflow-hidden border border-white/10 hover:border-[#D4AF37]/50 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all cursor-pointer group shadow-lg"
+                                className="relative h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-white/15 hover:border-[#D4AF37]/80 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all cursor-pointer group shadow-lg"
                               >
                                  {subCategoryImages[group] ? (
                                    <img src={subCategoryImages[group]} alt={group} className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700" />
@@ -3045,8 +3012,8 @@ function App() {
                                     </div>
                                  )}
                                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
-                                 <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
-                                   <h3 className="text-[#D4AF37] font-bold text-lg font-[Cinzel] tracking-wide">{group}</h3>
+                                 <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
+                                   <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider">{group}</h3>
                                  </div>
                               </motion.button>
                             ))
@@ -3058,10 +3025,10 @@ function App() {
                                 whileHover={{ scale: 1.02 }}
                                 whileTap={{ scale: 0.98 }}
                                 onClick={() => setActiveSubSubCategory(sub)}
-                                className={`relative h-40 rounded-xl overflow-hidden border outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all cursor-pointer group ${
+                                className={`relative h-32 sm:h-36 rounded-xl overflow-hidden border-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all cursor-pointer group ${
                                   activeSubSubCategory === sub
                                     ? 'border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.3)]'
-                                    : 'border-white/10 hover:border-[#D4AF37]/50'
+                                    : 'border-white/15 hover:border-[#D4AF37]/80'
                                 }`}
                               >
                                 {subCategoryImages[sub] ? (
@@ -3072,8 +3039,8 @@ function App() {
                                   </div>
                                 )}
                                 <div className={`absolute inset-0 bg-gradient-to-t ${activeSubSubCategory === sub ? 'from-[#D4AF37]/40 via-black/60 to-black/20' : 'from-black via-black/40 to-transparent'}`}></div>
-                                <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
-                                  <h3 className="text-white font-bold text-lg font-[Cinzel] tracking-wide">{sub}</h3>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
+                                  <h3 className="text-white font-black text-base sm:text-lg font-[Cinzel] tracking-wider">{sub}</h3>
                                 </div>
                               </motion.button>
                             ))
@@ -3152,11 +3119,11 @@ function App() {
                 )}
                 </>
                 )}
-            </section>
+            </div>
         )}
       </main>
 
-      <footer className="bg-black border-t border-[#D4AF37]/10 py-16" role="contentinfo">
+      <footer className="bg-black border-t border-[#D4AF37]/10 py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex flex-col md:flex-row justify-between items-center gap-10">
                 <div className="flex flex-col items-center md:items-start gap-4">
@@ -3173,7 +3140,7 @@ function App() {
                     </div>
                     <div className="flex flex-col gap-3 items-center md:items-start">
                         <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Access</p>
-                        { isAdmin && (
+                        {!isInitializing && !isRoleLoading && !!fbUser && !!userDocData && isAdmin && (
                           <button onClick={() => setView('admin')} className="text-zinc-400 hover:text-[#D4AF37] text-sm flex items-center gap-1.5 transition-colors outline-none focus-visible:underline"><Shield className="w-3.5 h-3.5" aria-hidden="true" /> Administration</button>
                         )}
                     </div>
@@ -3333,28 +3300,6 @@ function App() {
         onClose={() => { setChatVendor(null); setIsAdminChatOpen(false); }} 
         showNotification={showNotification}
       />
-
-      {/* Floating Support Button */}
-      {view === 'marketplace' && !isAdmin && !isAdminChatOpen && !chatVendor && !bookingVendor && !quickViewVendor && !showSuggestions && !showPriorityHoldPopup && (
-        <button 
-          onClick={() => {
-            if (fbUser) {
-              ensureAdminSupportConversation(fbUser.uid, 'admin').catch(console.error);
-            }
-            setIsAdminChatOpen(true);
-          }}
-          className="fixed bottom-28 right-4 z-40 w-14 h-14 bg-[#D4AF37] text-black rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all group shadow-[#D4AF37]/20"
-          aria-label="Contact Support"
-        >
-          <div className="absolute -top-12 right-0 bg-black text-[#D4AF37] px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border border-[#D4AF37]/30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xl">
-            Need Help?
-          </div>
-          <div className="relative flex items-center justify-center">
-            <MessageSquare className="w-7 h-7 fill-black text-black" />
-            <span className="absolute text-[12px] font-black text-[#D4AF37] -mt-0.5">?</span>
-          </div>
-        </button>
-      )}
 
       <AnimatePresence>
         {quickViewVendor && (

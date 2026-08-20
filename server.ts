@@ -464,8 +464,7 @@ async function startServer() {
         return res.status(400).json({ error: "The calculated platform fee exceeds the total payment amount. Please check the commission rate." });
       }
 
-      // 2. SAFETY: Self-transfer protection
-      // If the destination is the same as the platform account, Stripe will crash.
+      // 2. SAFETY: Self-transfer and destination account capabilities check
       let transferData: any = undefined;
       try {
         // Retrieve the platform's own account ID to avoid self-transfer
@@ -478,8 +477,21 @@ async function startServer() {
         }
       } catch (e) {
         console.warn("[Stripe] Could not verify platform account ID for self-transfer check.", e);
-        // If we can't verify, but we have an acct_ ID, we'll try it
         transferData = { destination: vendorStripeAccountId };
+      }
+
+      // Check destination account capabilities if transferData is set
+      if (transferData) {
+        try {
+          const destAccount = await stripe.accounts.retrieve(vendorStripeAccountId);
+          const transfersCap = destAccount.capabilities?.transfers || destAccount.capabilities?.legacy_payments;
+          if (destAccount.capabilities && transfersCap !== 'active' && transfersCap !== 'pending') {
+            console.warn(`[Stripe] Destination account ${vendorStripeAccountId} does not have active transfer capabilities (status: ${transfersCap || 'disabled'}). Skipping transfer_data to process standard charge.`);
+            transferData = undefined;
+          }
+        } catch (accCheckErr: any) {
+          console.warn(`[Stripe] Destination account check note for ${vendorStripeAccountId}:`, accCheckErr.message);
+        }
       }
 
       // EXACT LOGS REQUESTED BY USER
@@ -487,7 +499,6 @@ async function startServer() {
       console.log('Vendor ID from DB:', vendorStripeAccountId);
       console.log('Commission Rate:', commissionRate);
       console.log('Calculated Fee (cents):', platformCutInCents);
-      // Full Vendor Data log is already added above inside the try block
 
       let session;
       try {
@@ -526,8 +537,6 @@ async function startServer() {
             transfer_data: transferData,
           };
         } else {
-          // This case should theoretically be caught by the error check above, 
-          // but we keep it for self-transfer bypass safety.
           sessionParams.payment_intent_data = {
             metadata: {
               bookingId: (bookingId as string) || 'none',
@@ -536,7 +545,25 @@ async function startServer() {
           };
         }
 
-        session = await stripe.checkout.sessions.create(sessionParams);
+        try {
+          session = await stripe.checkout.sessions.create(sessionParams);
+        } catch (stripeError: any) {
+          // If destination account lacks transfer capability or raises invalid_request_error for transfers
+          if (
+            stripeError.message?.includes('capabilities') ||
+            stripeError.message?.includes('transfers') ||
+            stripeError.message?.includes('destination account') ||
+            stripeError.type === 'StripeInvalidRequestError' ||
+            stripeError.rawType === 'invalid_request_error'
+          ) {
+            console.warn(`[Stripe] Connected account ${vendorStripeAccountId} lacks transfer capabilities (${stripeError.message}). Retrying checkout session as direct platform charge...`);
+            delete sessionParams.payment_intent_data.transfer_data;
+            delete sessionParams.payment_intent_data.application_fee_amount;
+            session = await stripe.checkout.sessions.create(sessionParams);
+          } else {
+            throw stripeError;
+          }
+        }
       } catch (stripeError: any) {
         console.error("Stripe Session Creation Error:", stripeError);
         return res.status(400).json({ error: stripeError.message });

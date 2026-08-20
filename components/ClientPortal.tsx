@@ -368,7 +368,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
+        <nav aria-label="Client Portal Navigation" className="flex-1 p-4 space-y-1.5 overflow-y-auto">
           <NavItem id="overview" icon={LayoutDashboard} label="Dashboard" />
           <NavItem id="plan" icon={ShoppingBag} label="My Plan" badge={cart.length > 0 ? cart.length : undefined} />
           <NavItem id="events" icon={Calendar} label="My Events" badge={clientBookings.filter(b => b.status === 'pending').length || undefined} />
@@ -385,14 +385,14 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto bg-[#050505] p-6 pb-36 md:p-10 md:pb-10">
-        <header className="mb-10 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+        <div className="mb-10 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
           <div className="flex flex-col items-start gap-4">
             <div>
               <h1 className="text-3xl font-bold font-[Cinzel] text-white capitalize tracking-tight">{activeTab}</h1>
               <p className="text-[#D4AF37]/60 text-[10px] font-black uppercase tracking-[0.4em] mt-1.5">Managing your celebrations</p>
             </div>
           </div>
-        </header>
+        </div>
 
         {activeTab === 'overview' && (
           <div className="space-y-8 animate-in fade-in duration-500">

@@ -14,7 +14,7 @@ interface PostsPageProps {
 const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVendor }) => {
   return (
     <div className="min-h-screen bg-black text-zinc-100 flex flex-col animate-in fade-in duration-500">
-      <header className="sticky top-0 z-50 bg-black/90 backdrop-blur-xl border-b border-[#D4AF37]/20 p-4">
+      <div className="sticky top-0 z-50 bg-black/90 backdrop-blur-xl border-b border-[#D4AF37]/20 p-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button 
             onClick={onBack}
@@ -29,9 +29,9 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
           </div>
           <div className="w-24 hidden md:block"></div> 
         </div>
-      </header>
+      </div>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-12 space-y-16">
+      <div className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-12 space-y-16">
         <div className="text-center space-y-4 max-w-3xl mx-auto">
           <h1 className="text-5xl md:text-7xl font-bold font-[Cinzel] text-[#D4AF37]">The Gallery</h1>
           <div className="h-px w-24 bg-[#D4AF37]/40 mx-auto"></div>
@@ -161,11 +161,11 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
             })}
           </motion.div>
         )}
-      </main>
+      </div>
       
-      <footer className="py-12 text-center border-t border-[#D4AF37]/10">
+      <div className="py-12 text-center border-t border-[#D4AF37]/10">
           <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.5em]">Mazel Tov Moments • Community Feed</p>
-      </footer>
+      </div>
     </div>
   );
 };
