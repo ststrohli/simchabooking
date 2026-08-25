@@ -2762,31 +2762,6 @@ function App() {
             
             <div className="flex items-center gap-3 md:gap-6 mr-0">
                 
-                <motion.button 
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setView('posts')} 
-                  className="hidden md:block text-zinc-300 hover:text-[#D4AF37] transition-colors text-sm font-bold uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded p-1 cursor-pointer"
-                >
-                  Moments
-                </motion.button>
-                
-                <motion.button 
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    if (isActuallyVendor) {
-                      setPortalTab('vendor');
-                    } else {
-                      setPortalTab('client');
-                    }
-                    setView('portal');
-                  }} 
-                  className="hidden md:flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/20 px-4 py-2 rounded-full transition-all text-[10px] font-black uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-white outline-none cursor-pointer" 
-                  aria-label="Open My Portal"
-                >
-                  <LayoutDashboard className="w-4 h-4" aria-hidden="true" />
-                  <span>My Portal</span>
-                </motion.button>
 
                 {!isInitializing && !isRoleLoading && !!fbUser && !!userDocData && isAdmin && (
                   <motion.button 
@@ -2881,7 +2856,7 @@ function App() {
                         <motion.button 
                           whileTap={{ scale: 0.95 }}
                           onClick={() => setActiveCategory('All')} 
-                          className={`px-6 py-3 rounded-full text-sm sm:text-base font-extrabold uppercase tracking-wider transition-all border-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] cursor-pointer shadow-md ${activeCategory === 'All' ? 'bg-[#D4AF37] text-black border-[#D4AF37]' : 'bg-black text-[#D4AF37] hover:bg-[#D4AF37]/10 border-[#D4AF37]/40'}`}
+                          className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em] transition-all border-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] cursor-pointer shadow-md ${activeCategory === 'All' ? 'bg-[#D4AF37] text-black border-[#D4AF37]' : 'bg-black text-[#D4AF37] hover:bg-[#D4AF37]/10 border-[#D4AF37]/40'}`}
                         >
                           All Categories
                         </motion.button>
@@ -2898,7 +2873,7 @@ function App() {
                         <div className="flex items-center gap-2 mb-6 text-sm">
                           <button 
                             onClick={() => setActiveSubSubCategory(null)} 
-                            className="text-[#D4AF37] hover:text-[#FFDF73] flex items-center transition-colors font-bold uppercase tracking-[0.2em] text-[10px] py-1.5 px-3.5 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/30 rounded-lg shadow-sm cursor-pointer"
+                            className="text-[#D4AF37] hover:text-[#FFDF73] flex items-center transition-colors font-bold uppercase tracking-[0.2em] text-[10px] py-1.5 px-3.5 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/30 rounded-full shadow-sm cursor-pointer"
                           >
                             <ChevronLeft className="w-4 h-4 mr-1.5" />
                             Back to {activeSubCategoryGroup}
@@ -2927,7 +2902,7 @@ function App() {
                           }}
                           initial="hidden"
                           animate="show"
-                          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8"
+                          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4"
                         >
                           <AnimatePresence mode="popLayout">
                             {isLoadingVendors ? (
@@ -2938,7 +2913,7 @@ function App() {
                                     hidden: { opacity: 0, y: 30 },
                                     show: { opacity: 1, y: 0 }
                                   }}
-                                  className="outline-none rounded-xl h-[450px]"
+                                  className="outline-none rounded-xl w-full aspect-[4/5]"
                                 >
                                   <VendorCardSkeleton />
                                 </motion.div>
@@ -2984,7 +2959,7 @@ function App() {
                           <div className="flex items-center gap-2 mb-6 text-sm">
                             <button 
                               onClick={() => setActiveSubCategoryGroup(null)} 
-                              className="text-[#D4AF37] hover:text-[#FFDF73] flex items-center transition-colors font-bold uppercase tracking-widest text-xs cursor-pointer"
+                              className="text-[#D4AF37] hover:text-[#FFDF73] flex items-center transition-colors font-bold uppercase tracking-[0.2em] text-[10px] py-1.5 px-3.5 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/30 rounded-full shadow-sm cursor-pointer"
                             >
                               <ChevronLeft className="w-4 h-4 mr-1" />
                               Back to {activeCategory}
@@ -3068,7 +3043,7 @@ function App() {
                     initial="hidden"
                     whileInView="show"
                     viewport={{ once: true, amount: 0.02 }}
-                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8"
+                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4"
                 >
                   <AnimatePresence mode="popLayout">
                     {isLoadingVendors ? (
@@ -3079,7 +3054,7 @@ function App() {
                             hidden: { opacity: 0, y: 30 },
                             show: { opacity: 1, y: 0 }
                           }}
-                          className="outline-none rounded-xl h-[450px]"
+                          className="outline-none rounded-xl w-full aspect-[4/5]"
                         >
                           <VendorCardSkeleton />
                         </motion.div>
@@ -3308,6 +3283,7 @@ function App() {
             onClose={() => setQuickViewVendor(null)} 
             onBook={(v) => { setQuickViewVendor(null); setBookingVendor(v); }}
             onMessage={(v) => { setQuickViewVendor(null); setChatVendor(v); }}
+            onAddReview={handleAddReview}
           />
         )}
       </AnimatePresence>
