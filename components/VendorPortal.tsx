@@ -32,15 +32,20 @@ interface VendorPortalProps {
 
 const isVideo = (url?: string | null) => {
   if (!url) return false;
-  return !!(url.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || url.includes('video%2F') || url.includes('video/'));
+  return !!(
+    url.startsWith('data:video/') ||
+    url.match(/\.(mp4|webm|ogg|mov|m4v|avi|ogv)(?:\?|$|%)/i) || 
+    url.includes('video%2F') || 
+    url.includes('video/')
+  );
 };
 
 const renderMedia = (url: string | undefined | null, className: string, defaultContent?: React.ReactNode) => {
   if (!url) return defaultContent || null;
   if (isVideo(url)) {
-    return <video src={url} className={className} autoPlay muted loop playsInline />;
+    return <video controls autoPlay muted loop playsInline src={url} className={className} />;
   }
-  return <img src={url} className={className} />;
+  return <img src={url} className={className} alt="" />;
 };
 
 const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, onActiveChatChange, onTabChange, initialTab }) => {
@@ -3668,24 +3673,17 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                       {editForm.gallery?.map((url, idx) => {
-                        const isVideo = !!(url.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || url.includes('video%2F') || url.includes('video/'));
+                        const isVid = isVideo(url);
                         return (
                           <div key={idx} className="relative aspect-square bg-black rounded-2xl overflow-hidden border border-white/5 group ring-1 ring-white/5 shadow-2xl">
                             <div 
-                              onClick={() => setFullscreenMedia({ url, type: isVideo ? 'video' : 'image' })}
+                              onClick={() => setFullscreenMedia({ url, type: isVid ? 'video' : 'image' })}
                               className="w-full h-full cursor-pointer relative"
                             >
-                              {isVideo ? (
-                                <>
-                                  <video src={url} className="w-full h-full object-cover" />
-                                  <div className="absolute inset-0 bg-black/20 flex items-center justify-center group-hover:bg-black/40 transition-colors">
-                                    <div className="w-10 h-10 bg-[#D4AF37] text-black rounded-full flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
-                                      <Play className="w-5 h-5 fill-current ml-0.5" />
-                                    </div>
-                                  </div>
-                                </>
+                              {isVid ? (
+                                <video controls autoPlay muted loop playsInline src={url} className="w-full h-full object-cover" />
                               ) : (
-                                <img src={url} className="w-full h-full object-cover" />
+                                <img src={url} className="w-full h-full object-cover" alt="" />
                               )}
                             </div>
                             <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col items-center justify-center p-2 text-center pointer-events-none group-hover:pointer-events-auto">
@@ -3696,7 +3694,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
-                            {isVideo && (
+                            {isVid && (
                               <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded-md text-[8px] font-black text-[#D4AF37] border border-[#D4AF37]/30 flex items-center gap-1">
                                 <Video className="w-2.5 h-2.5" /> VIDEO
                               </div>

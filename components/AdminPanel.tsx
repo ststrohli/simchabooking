@@ -112,15 +112,20 @@ const COMMISSION_RATE = 0.10;
 
 const isVideo = (url?: string | null) => {
   if (!url) return false;
-  return !!(url.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || url.includes('video%2F') || url.includes('video/'));
+  return !!(
+    url.startsWith('data:video/') ||
+    url.match(/\.(mp4|webm|ogg|mov|m4v|avi|ogv)(?:\?|$|%)/i) || 
+    url.includes('video%2F') || 
+    url.includes('video/')
+  );
 };
 
 const renderMedia = (url: string | undefined | null, className: string, defaultContent?: React.ReactNode) => {
   if (!url) return defaultContent || null;
   if (isVideo(url)) {
-    return <video src={url} className={className} autoPlay muted loop playsInline />;
+    return <video controls autoPlay muted loop playsInline src={url} className={className} />;
   }
-  return <img src={url} className={className} />;
+  return <img src={url} className={className} alt="" />;
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
@@ -1809,7 +1814,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     {isUploading ? (
                                         <Loader2 className="w-10 h-10 text-[#D4AF37] animate-spin" />
                                     ) : postForm.url ? (
-                                        <>{postForm.type === 'video' ? <video src={postForm.url} className="w-full h-full object-cover" /> : <img src={postForm.url} className="w-full h-full object-cover" />}</>
+                                        <>{postForm.type === 'video' || isVideo(postForm.url) ? <video controls autoPlay muted loop playsInline src={postForm.url} className="w-full h-full object-cover" /> : <img src={postForm.url} className="w-full h-full object-cover" alt="" />}</>
                                     ) : (
                                         <div className="text-center p-8">
                                             <Upload className="w-12 h-12 text-[#D4AF37]/30 mx-auto mb-4" />

@@ -88,7 +88,10 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
                         src={post.url} 
                         className="w-full h-full object-cover"
                         controls
+                        autoPlay
                         muted
+                        loop
+                        playsInline
                       />
                     ) : (
                       <img 

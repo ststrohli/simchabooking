@@ -49,15 +49,25 @@ const clean = (obj: any) => {
   }
 };
 
+const ADMIN_EMAILS = ['bookingsimcha@gmail.com', 'shimpose@gmail.com'];
+const CLIENT_OVERRIDE_EMAILS = ['ststrohli@gmail.com'];
+
+const isWhitelistedAdminEmail = (email?: string | null): boolean => {
+  if (!email) return false;
+  const userEmail = email.trim().toLowerCase();
+  if (CLIENT_OVERRIDE_EMAILS.includes(userEmail)) return false;
+  return ADMIN_EMAILS.includes(userEmail);
+};
+
 const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | 'client'> => {
   try {
     const userEmail = user.email ? user.email.trim().toLowerCase() : '';
 
-    if (userEmail === 'bookingsimcha@gmail.com' || userEmail === 'shimpose@gmail.com') {
+    if (isWhitelistedAdminEmail(userEmail)) {
       return 'admin';
     }
     
-    if (userEmail === 'ststrohli@gmail.com') {
+    if (CLIENT_OVERRIDE_EMAILS.includes(userEmail)) {
       return 'client';
     }
 
@@ -421,12 +431,13 @@ function App() {
   }, [fbUser, currentUserVendorId, userDocData, vendors]);
 
   const isAdmin = useMemo(() => {
-    if (fbUser?.email === 'ststrohli@gmail.com') return false;
+    const email = fbUser?.email?.trim().toLowerCase();
+    if (email && CLIENT_OVERRIDE_EMAILS.includes(email)) return false;
+    if (email && isWhitelistedAdminEmail(email)) return true;
     if (userRole === 'admin') return true;
-    if (isInitializing || isRoleLoading) return false;
-    if (!fbUser || !userDocData) return false;
-    return userDocData.isAdmin === true || userDocData.role === 'admin';
-  }, [isInitializing, isRoleLoading, fbUser, userDocData, userRole]);
+    if (userDocData?.isAdmin === true || userDocData?.role === 'admin') return true;
+    return false;
+  }, [fbUser, userDocData, userRole]);
 
   const isActuallyVendor = useMemo(() => {
     if (userRole === 'vendor') return true;
@@ -808,9 +819,39 @@ function App() {
       }
     }, (err) => handleFirestoreError(err, OperationType.GET, `users/${fbUser.uid}/cart/current`, notifyErr));
 
+    // Real-time listener for current user document for instant role & admin toggling
+    const unsubUserDoc = onSnapshot(doc(db, 'users', fbUser.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setUserDocData(data);
+        const userEmail = fbUser.email ? fbUser.email.trim().toLowerCase() : '';
+        if (isWhitelistedAdminEmail(userEmail)) {
+          setUserRole('admin');
+          try { localStorage.setItem('simcha_user_role', 'admin'); } catch (e) {}
+        } else if (CLIENT_OVERRIDE_EMAILS.includes(userEmail)) {
+          setUserRole('client');
+          try { localStorage.setItem('simcha_user_role', 'client'); } catch (e) {}
+        } else if (data.role || data.isAdmin !== undefined) {
+          const docRole = typeof data.role === 'string' ? data.role.toLowerCase() : '';
+          if (docRole === 'admin' || data.isAdmin === true) {
+            setUserRole('admin');
+            try { localStorage.setItem('simcha_user_role', 'admin'); } catch (e) {}
+          } else if (docRole === 'vendor' || data.isVendor === true) {
+            setUserRole('vendor');
+            try { localStorage.setItem('simcha_user_role', 'vendor'); } catch (e) {}
+          } else if (data.role) {
+            setUserRole(data.role);
+            try { localStorage.setItem('simcha_user_role', data.role); } catch (e) {}
+          }
+        }
+      }
+    }, (err) => {
+      // Non-blocking sync error
+    });
+
     // Users (Admin only)
     let unsubUsers = () => {};
-    if (userRole === 'admin') {
+    if (isAdmin || userRole === 'admin') {
       unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
         const uDataRaw = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserAccount));
         const uData = Array.from(new Map(uDataRaw.map(u => [u.id, u])).values());
@@ -822,9 +863,10 @@ function App() {
       unsubBookings();
       unsubMessages();
       unsubCart();
+      unsubUserDoc();
       unsubUsers();
     };
-  }, [fbUser, userRole, currentUserVendorId]);
+  }, [fbUser, userRole, currentUserVendorId, isAdmin]);
 
   // Firebase Auth Observer
   useEffect(() => {
@@ -844,8 +886,27 @@ function App() {
       setUserDocData(null);
       setUserRole(null);
 
-      // If logged in but email not verified, we also treat it as not fully authenticated for the app, EXCEPT if they are a vendor!
-      if (!user.emailVerified) {
+      setFbUser(user);
+      const userEmail = user.email ? user.email.trim().toLowerCase() : '';
+      
+      // Fast-path whitelist check for instant admin role derivation without waiting for network
+      if (isWhitelistedAdminEmail(userEmail)) {
+        setUserRole('admin');
+        setUserDocData((prev: any) => ({
+          ...prev,
+          role: 'admin',
+          isAdmin: true,
+          isVendor: false,
+          email: userEmail
+        }));
+        setIsRoleLoading(false);
+        setIsInitializing(false);
+      } else if (CLIENT_OVERRIDE_EMAILS.includes(userEmail)) {
+        setUserRole('client');
+      }
+
+      // If logged in but email not verified, we also treat it as not fully authenticated for the app, EXCEPT if they are a vendor or admin!
+      if (!user.emailVerified && !isWhitelistedAdminEmail(userEmail)) {
         let isVendor = false;
         try {
           const vendorDoc = await getDocSafe(doc(db, 'vendors', user.uid));
@@ -883,8 +944,6 @@ function App() {
         }
       }
 
-      setFbUser(user);
-      
       // Non-blocking profile sync
       syncUserProfile(user).catch(err => console.error("Background profile sync failed:", err));
       
@@ -892,13 +951,12 @@ function App() {
       try {
         const secureRole = await fetchUserRole(user);
         let finalRole = secureRole;
-        const userEmail = user.email ? user.email.trim().toLowerCase() : '';
         
         // Instant state updates for predefined roles
-        if (userEmail === 'bookingsimcha@gmail.com' || userEmail === 'shimpose@gmail.com') {
+        if (isWhitelistedAdminEmail(userEmail)) {
           finalRole = 'admin';
           setUserRole('admin');
-        } else if (userEmail === 'ststrohli@gmail.com') {
+        } else if (CLIENT_OVERRIDE_EMAILS.includes(userEmail)) {
           finalRole = 'client';
           setUserRole('client');
         } else {
@@ -911,7 +969,9 @@ function App() {
         if (userDoc.exists()) {
           const data = userDoc.data();
           setUserDocData(data);
-          if (finalRole === 'client' && data.role && userEmail !== 'ststrohli@gmail.com') {
+          if (isWhitelistedAdminEmail(userEmail)) {
+            finalRole = 'admin';
+          } else if (finalRole === 'client' && data.role && !CLIENT_OVERRIDE_EMAILS.includes(userEmail)) {
              const docRole = typeof data.role === 'string' ? data.role.toLowerCase() : '';
              if (docRole === 'admin' || data.isAdmin === true) finalRole = 'admin';
              else if (docRole === 'vendor' || data.isVendor === true) finalRole = 'vendor';
@@ -941,8 +1001,13 @@ function App() {
           console.error("Error fetching user document:", err);
         }
         // Fallback default role on error
-        setUserRole('client');
-        setUserDocData({ role: 'client', isAdmin: false, isVendor: false, email: user.email || '' });
+        if (isWhitelistedAdminEmail(userEmail)) {
+          setUserRole('admin');
+          setUserDocData({ role: 'admin', isAdmin: true, isVendor: false, email: userEmail });
+        } else {
+          setUserRole('client');
+          setUserDocData({ role: 'client', isAdmin: false, isVendor: false, email: user.email || '' });
+        }
       } finally {
         setIsRoleLoading(false);
         setIsInitializing(false);
@@ -2505,7 +2570,7 @@ function App() {
 
   const renderActiveView = () => {
     if (view === 'admin') {
-      if (userRole !== 'admin') {
+      if (!isAdmin && userRole !== 'admin') {
         setView('marketplace');
         return null;
       }
@@ -2799,7 +2864,7 @@ function App() {
             <div className="flex items-center gap-3 md:gap-6 mr-0">
                 
 
-                {!isInitializing && !isRoleLoading && !!fbUser && !!userDocData && isAdmin && (
+                {!!fbUser && isAdmin && (
                   <motion.button 
                     whileTap={{ scale: 0.9 }}
                     onClick={() => setView('admin')} 
