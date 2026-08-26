@@ -1210,19 +1210,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <ShieldCheck className="w-8 h-8 text-[#D4AF37]" />
             </div>
             <h2 className="text-2xl font-bold font-[Cinzel] text-[#D4AF37]">Admin Access</h2>
-            <p className="text-zinc-500 text-sm">System Restricted Area</p>
+            <p className="text-zinc-400 text-sm">System Restricted Area</p>
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className={labelClass}>Access Code</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3.5 w-5 h-5 text-zinc-500" />
+                <Lock className="absolute left-3 top-3.5 w-5 h-5 text-zinc-400" />
                 <input type="password" value={accessCode} onChange={(e) => setAccessCode(e.target.value)} placeholder="Enter code" className={inputClass + " pl-10"} />
               </div>
               {error && <p className="text-zinc-400 text-xs mt-2 font-bold">{error}</p>}
             </div>
             <button type="submit" className="w-full bg-[#D4AF37] text-black font-bold py-3 rounded-lg hover:bg-[#E5C76B] transition-all shadow-lg mt-2">Unlock Panel</button>
-            <button type="button" onClick={onBack} className="w-full text-zinc-500 text-xs font-bold py-2 hover:text-[#D4AF37] transition-colors uppercase tracking-widest">Back to Marketplace</button>
+            <button type="button" onClick={onBack} className="w-full text-zinc-400 text-xs font-bold py-2 hover:text-[#D4AF37] transition-colors uppercase tracking-widest">Back to Marketplace</button>
           </form>
         </div>
       </div>
@@ -1235,7 +1235,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-3">
              <div className="bg-[#111] p-2 rounded-lg border border-[#D4AF37]/20"><ShieldCheck className="w-6 h-6 text-[#D4AF37]" /></div>
-             <div><h1 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Simcha Admin</h1><p className="text-[10px] text-zinc-500 uppercase tracking-widest">Platform Management</p></div>
+             <div><h1 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Simcha Admin</h1><p className="text-[10px] text-zinc-400 uppercase tracking-widest">Platform Management</p></div>
           </div>
           <div className="flex gap-6">
             <button onClick={onBack} className="text-zinc-400 hover:text-[#D4AF37] font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors"><ArrowLeft className="w-4 h-4" /> Marketplace</button>
@@ -1318,7 +1318,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             className={`px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-200 flex items-center gap-2 shrink-0 ${
                                 isActive 
                                     ? 'bg-[#D4AF37] text-black shadow-lg font-black' 
-                                    : 'text-zinc-500 hover:text-white hover:bg-white/[0.02]'
+                                    : 'text-zinc-400 hover:text-white hover:bg-white/[0.02]'
                             }`}
                         >
                             <span>{getTabLabel(tab)}</span>
@@ -1345,7 +1345,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeTab === 'add' && (
             <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl max-w-4xl mx-auto animate-in fade-in duration-300">
                 <div className="bg-black p-6 border-b border-[#D4AF37]/20 flex items-center justify-between">
-                    <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">New Professional</h2><p className="text-zinc-500 text-xs">Invite a new service provider to the platform.</p></div>
+                    <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">New Professional</h2><p className="text-zinc-400 text-xs">Invite a new service provider to the platform.</p></div>
                     <Plus className="w-8 h-8 text-[#D4AF37]/20" />
                 </div>
                 <form onSubmit={handleVendorSubmit} className="p-8 space-y-10">
@@ -1506,7 +1506,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#D4AF37] transition-colors"
                                 />
                             </div>
-                            <p className="text-[11px] text-zinc-500 leading-relaxed">
+                            <p className="text-[11px] text-zinc-400 leading-relaxed">
                                 • If an account with this email already exists, their account role will immediately elevate to <strong className="text-emerald-400 font-bold">vendor</strong>.<br />
                                 • If no account exists yet, a pre-authorized document will be stored in <code className="text-[#D4AF37] bg-black px-1.5 py-0.5 rounded text-[10px]">user_roles</code>. When they register with this email, they will automatically gain vendor access.
                             </p>
@@ -1530,7 +1530,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             <h3 className="text-lg font-bold font-[Cinzel] text-white flex items-center gap-2">
                                 <ShieldCheck className="w-5 h-5 text-emerald-400" /> Currently Whitelisted & Registered Vendors
                             </h3>
-                            <p className="text-xs text-zinc-500 mt-0.5">Live list of all records in the <code className="text-zinc-300">user_roles</code> Firestore collection with vendor permissions.</p>
+                            <p className="text-xs text-zinc-400 mt-0.5">Live list of all records in the <code className="text-zinc-300">user_roles</code> Firestore collection with vendor permissions.</p>
                         </div>
                         <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                             {vendorUserRoles.length} Authorized
@@ -1538,7 +1538,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
 
                     {vendorUserRoles.length === 0 ? (
-                        <div className="text-center py-12 text-zinc-500 text-sm bg-black/30 rounded-xl border border-dashed border-white/5">
+                        <div className="text-center py-12 text-zinc-400 text-sm bg-black/30 rounded-xl border border-dashed border-white/5">
                             No vendor roles currently stored in user_roles. Use the form above to invite your first vendor.
                         </div>
                     ) : (
@@ -1611,7 +1611,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             <h3 className="text-lg font-bold font-[Cinzel] text-white flex items-center gap-2">
                                 <ShoppingBag className="w-5 h-5 text-[#D4AF37]" /> Marketplace Vendor Profiles ({vendors.length})
                             </h3>
-                            <p className="text-xs text-zinc-500 mt-0.5">Profiles currently published or saved in the <code className="text-zinc-300">vendors</code> Firestore collection.</p>
+                            <p className="text-xs text-zinc-400 mt-0.5">Profiles currently published or saved in the <code className="text-zinc-300">vendors</code> Firestore collection.</p>
                         </div>
                         <button 
                             onClick={() => setActiveTab('manage')}
@@ -1622,7 +1622,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
 
                     {vendors.length === 0 ? (
-                        <div className="text-center py-12 text-zinc-500 text-sm bg-black/30 rounded-xl border border-dashed border-white/5">
+                        <div className="text-center py-12 text-zinc-400 text-sm bg-black/30 rounded-xl border border-dashed border-white/5">
                             No vendor profiles in the 'vendors' collection yet.
                         </div>
                     ) : (
@@ -1673,7 +1673,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeTab === 'manage' && (
             <div className="space-y-4 animate-in fade-in duration-300">
                 <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
-                    <Search className="w-5 h-5 text-zinc-500" />
+                    <Search className="w-5 h-5 text-zinc-400" />
                     <input 
                         type="text" 
                         placeholder="Filter professionals by name, category, or location..." 
@@ -1712,7 +1712,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                         {v.name}
                                                         {v.isVerified && <ShieldCheck className="w-3.5 h-3.5 text-[#D4AF37] fill-[#D4AF37]/10" />}
                                                     </div>
-                                                    <span className="text-[9px] text-zinc-500 uppercase tracking-widest">{v.category}</span>
+                                                    <span className="text-[9px] text-zinc-400 uppercase tracking-widest">{v.category}</span>
                                                 </div>
                                             </div>
                                         </td>
@@ -1747,10 +1747,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         </td>
                                         <td className="p-4 text-right">
                                             <div className="flex items-center justify-end gap-1">
-                                                <button onClick={() => onLoginAsVendor(v.id)} title="Login to Portal" className="p-2 text-zinc-500 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><LogIn className="w-4 h-4" /></button>
-                                                <button onClick={() => handleEditVendor(v)} title="Edit Professional" className="p-2 text-zinc-500 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
-                                                <button onClick={() => onToggleVerify(v.id)} title="Toggle Verification" className={`p-2 rounded-lg transition-all ${v.isVerified ? 'text-[#D4AF37] hover:bg-[#D4AF37]/10' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}><ShieldCheck className="w-4 h-4" /></button>
-                                                <button onClick={() => handleDeleteVendor(v.id, v.name)} title="Remove Professional" className="p-2 text-zinc-500 hover:text-zinc-400 hover:bg-zinc-500/10 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                                                <button onClick={() => onLoginAsVendor(v.id)} title="Login to Portal" className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><LogIn className="w-4 h-4" /></button>
+                                                <button onClick={() => handleEditVendor(v)} title="Edit Professional" className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
+                                                <button onClick={() => onToggleVerify(v.id)} title="Toggle Verification" className={`p-2 rounded-lg transition-all ${v.isVerified ? 'text-[#D4AF37] hover:bg-[#D4AF37]/10' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}><ShieldCheck className="w-4 h-4" /></button>
+                                                <button onClick={() => handleDeleteVendor(v.id, v.name)} title="Remove Professional" className="p-2 text-zinc-400 hover:text-zinc-400 hover:bg-zinc-500/10 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -1761,7 +1761,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 v.location.toLowerCase().includes(filterText.toLowerCase())
                             ).length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="p-8 text-center text-zinc-500 uppercase tracking-widest text-[10px]">No professionals found</td>
+                                    <td colSpan={7} className="p-8 text-center text-zinc-400 uppercase tracking-widest text-[10px]">No professionals found</td>
                                 </tr>
                             )}
                         </tbody>
@@ -1774,7 +1774,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="space-y-12 max-w-5xl mx-auto animate-in fade-in duration-300">
                 <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl overflow-hidden">
                     <div className="bg-black p-6 border-b border-[#D4AF37]/20 flex items-center justify-between">
-                        <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Moment Publisher</h2><p className="text-zinc-500 text-xs">Establish new visual highlights.</p></div>
+                        <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Moment Publisher</h2><p className="text-zinc-400 text-xs">Establish new visual highlights.</p></div>
                         <Camera className="w-8 h-8 text-[#D4AF37]/20" />
                     </div>
                     <form onSubmit={handlePostSubmit} className="p-8 space-y-8">
@@ -1800,7 +1800,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     ) : (
                                         <div className="text-center p-8">
                                             <Upload className="w-12 h-12 text-[#D4AF37]/30 mx-auto mb-4" />
-                                            <p className="text-zinc-500 font-bold uppercase tracking-widest text-[10px]">Upload Visual Asset</p>
+                                            <p className="text-zinc-400 font-bold uppercase tracking-widest text-[10px]">Upload Visual Asset</p>
                                         </div>
                                     )}
                                 </div>
@@ -1818,14 +1818,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* Hero Visual System */}
               <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl overflow-hidden">
                   <div className="bg-black p-6 border-b border-[#D4AF37]/20 flex items-center justify-between">
-                      <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Global Aesthetic</h2><p className="text-zinc-500 text-xs">Manage the landing page visual identity.</p></div>
+                      <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Global Aesthetic</h2><p className="text-zinc-400 text-xs">Manage the landing page visual identity.</p></div>
                       <Camera className="w-8 h-8 text-[#D4AF37]/20" />
                   </div>
                   <div className="p-8">
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
                         <div className="md:col-span-1 space-y-4">
                            <h3 className={labelClass}>Hero Background</h3>
-                           <p className="text-[10px] text-zinc-500 leading-relaxed">This image appears behind the "Celebrate Your Simcha" title. High-resolution horizontal assets work best.</p>
+                           <p className="text-[10px] text-zinc-400 leading-relaxed">This image appears behind the "Celebrate Your Simcha" title. High-resolution horizontal assets work best.</p>
                            <button 
                              onClick={() => heroImageInputRef.current?.click()} 
                              disabled={isUploading}
@@ -1859,7 +1859,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* Add New Category */}
               <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl overflow-hidden">
                   <div className="bg-black p-6 border-b border-[#D4AF37]/20 flex items-center justify-between">
-                      <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Taxonomy Expansion</h2><p className="text-zinc-500 text-xs">Establish a new service category for the platform.</p></div>
+                      <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Taxonomy Expansion</h2><p className="text-zinc-400 text-xs">Establish a new service category for the platform.</p></div>
                       <FolderPlus className="w-8 h-8 text-[#D4AF37]/20" />
                   </div>
                   <form onSubmit={handleAddCategorySubmit} className="p-8 space-y-6">
@@ -2038,17 +2038,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                     <div>
                         <h2 className="text-2xl font-bold font-[Cinzel] text-white">Platform Bookings</h2>
-                        <p className="text-xs text-zinc-500 mt-1">Unified transactional records across the entire marketplace.</p>
+                        <p className="text-xs text-zinc-400 mt-1">Unified transactional records across the entire marketplace.</p>
                     </div>
                     <div className="flex items-center gap-3">
-                        <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                        <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
                             Total Bookings: {bookings.length}
                         </div>
                     </div>
                 </div>
 
                 <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
-                    <Search className="w-5 h-5 text-zinc-500" />
+                    <Search className="w-5 h-5 text-zinc-400" />
                     <input 
                         type="text" 
                         placeholder="Filter bookings by client name, event name, or professional..." 
@@ -2094,7 +2094,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     </div>
                                                     <div>
                                                         <h4 className="font-bold text-white text-sm">{b.clientName}</h4>
-                                                        <span className="text-[10px] text-zinc-500 uppercase tracking-widest">{b.eventName}</span>
+                                                        <span className="text-[10px] text-zinc-400 uppercase tracking-widest">{b.eventName}</span>
                                                     </div>
                                                 </div>
                                             </td>
@@ -2131,7 +2131,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     className={`p-2 rounded-lg transition-all ${
                                                         b.status === 'confirmed' 
                                                             ? 'bg-[#D4AF37]/10 text-[#D4AF37]' 
-                                                            : 'bg-white/5 text-zinc-500 hover:text-[#D4AF37]'
+                                                            : 'bg-white/5 text-zinc-400 hover:text-[#D4AF37]'
                                                     }`}
                                                     title="Toggle Confirmation"
                                                 >
@@ -2151,7 +2151,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 );
                             }).length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="p-8 text-center text-zinc-500 uppercase tracking-widest text-[10px]">No bookings logged</td>
+                                    <td colSpan={7} className="p-8 text-center text-zinc-400 uppercase tracking-widest text-[10px]">No bookings logged</td>
                                 </tr>
                             )}
                         </tbody>
@@ -2187,7 +2187,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <img src={v.image} className="w-10 h-10 rounded-lg object-cover" />
                                     <div>
                                         <p className="text-sm font-bold text-white">{v.name}</p>
-                                        <p className="text-[9px] text-zinc-500 uppercase tracking-widest">{v.contactEmail}</p>
+                                        <p className="text-[9px] text-zinc-400 uppercase tracking-widest">{v.contactEmail}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-4">
@@ -2273,15 +2273,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                     <div>
                         <h2 className="text-2xl font-bold font-[Cinzel] text-white">User Directory</h2>
-                        <p className="text-xs text-zinc-500 mt-1">Manage active platform registrants and client profiles.</p>
+                        <p className="text-xs text-zinc-400 mt-1">Manage active platform registrants and client profiles.</p>
                     </div>
-                    <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                    <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
                         Total Users: {users.length}
                     </div>
                 </div>
 
                 <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
-                    <Search className="w-5 h-5 text-zinc-500" />
+                    <Search className="w-5 h-5 text-zinc-400" />
                     <input 
                         type="text" 
                         placeholder="Filter users by name or email..." 
@@ -2321,13 +2321,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 )}
                                                 <div>
                                                     <h4 className="font-bold text-white text-sm">{u.name || 'Anonymous User'}</h4>
-                                                    <span className="text-[9px] text-zinc-500 uppercase tracking-widest">
+                                                    <span className="text-[9px] text-zinc-400 uppercase tracking-widest">
                                                         {(u as any).role || 'Client'}
                                                     </span>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="p-4 font-mono text-zinc-500 text-[10px]">
+                                        <td className="p-4 font-mono text-zinc-400 text-[10px]">
                                             {u.id}
                                         </td>
                                         <td className="p-4 text-zinc-300 font-mono text-xs">
@@ -2359,7 +2359,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                             }
                                                         }}
                                                         title="Approve User Account" 
-                                                        className="p-2 text-zinc-500 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-lg transition-all"
+                                                        className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-lg transition-all"
                                                     >
                                                         <ShieldCheck className="w-4 h-4" />
                                                     </button>
@@ -2376,7 +2376,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                         }
                                                     }}
                                                     title="Permanently Delete User" 
-                                                    className="p-2 text-zinc-500 hover:text-zinc-400 hover:bg-zinc-500/10 rounded-lg transition-all"
+                                                    className="p-2 text-zinc-400 hover:text-zinc-400 hover:bg-zinc-500/10 rounded-lg transition-all"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
@@ -2389,7 +2389,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 (u.username || '').toLowerCase().includes(filterText.toLowerCase())
                             ).length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="p-8 text-center text-zinc-500 uppercase tracking-widest text-[10px]">No users registered</td>
+                                    <td colSpan={5} className="p-8 text-center text-zinc-400 uppercase tracking-widest text-[10px]">No users registered</td>
                                 </tr>
                             )}
                         </tbody>
@@ -2473,9 +2473,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                         <div>
                             <h2 className="text-2xl font-bold font-[Cinzel] text-white">Moderation Queue</h2>
-                            <p className="text-xs text-zinc-500 mt-1">Audit and authorize incoming vendor and client registrants.</p>
+                            <p className="text-xs text-zinc-400 mt-1">Audit and authorize incoming vendor and client registrants.</p>
                         </div>
-                        <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                        <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
                             Pending Audit: {moderationQueueItems.length}
                         </div>
                     </div>
@@ -2520,7 +2520,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                         )}
                                                         <div>
                                                             <h4 className="font-bold text-white text-sm">{item.name}</h4>
-                                                            <span className="text-[9px] text-zinc-500 uppercase tracking-widest">{item.category}</span>
+                                                            <span className="text-[9px] text-zinc-400 uppercase tracking-widest">{item.category}</span>
                                                         </div>
                                                     </div>
                                                 </td>
@@ -2547,7 +2547,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                             className={`p-2 rounded-lg transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
                                                                 action === 'approve'
                                                                     ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
-                                                                    : 'text-zinc-500 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 cursor-pointer'
+                                                                    : 'text-zinc-400 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 cursor-pointer'
                                                             }`}
                                                             title="Approve Registration"
                                                         >
@@ -2569,7 +2569,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                             className={`p-2 rounded-lg transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
                                                                 action === 'reject'
                                                                     ? 'bg-zinc-800 text-zinc-400'
-                                                                    : 'text-zinc-500 hover:text-zinc-400 hover:bg-zinc-500/10 cursor-pointer'
+                                                                    : 'text-zinc-400 hover:text-zinc-400 hover:bg-zinc-500/10 cursor-pointer'
                                                             }`}
                                                             title="Decline registration"
                                                         >
@@ -2593,7 +2593,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </AnimatePresence>
                                 {moderationQueueItems.length === 0 && (
                                     <tr>
-                                        <td colSpan={5} className="p-8 text-center text-zinc-500 uppercase tracking-widest text-[10px]">Audit complete! Moderation queue is empty</td>
+                                        <td colSpan={5} className="p-8 text-center text-zinc-400 uppercase tracking-widest text-[10px]">Audit complete! Moderation queue is empty</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -2687,7 +2687,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             <div className="p-4 border-b border-white/5 bg-zinc-950/40 space-y-3">
                                 {/* Search bar */}
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
+                                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-400" />
                                     <input
                                         type="text"
                                         value={convoSearchQuery}
@@ -2698,7 +2698,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     {convoSearchQuery && (
                                         <button 
                                             onClick={() => setConvoSearchQuery('')}
-                                            className="absolute right-3 top-2.5 text-zinc-500 hover:text-white transition-colors"
+                                            className="absolute right-3 top-2.5 text-zinc-400 hover:text-white transition-colors"
                                         >
                                             <X className="w-4 h-4" />
                                         </button>
@@ -2709,7 +2709,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <div className="grid grid-cols-2 gap-2 text-[10px]">
                                     {/* Chat Type */}
                                     <div className="space-y-1">
-                                        <label className="text-[9px] font-black uppercase tracking-wider text-zinc-500 block">Chat Type</label>
+                                        <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block">Chat Type</label>
                                         <div className="relative">
                                             <select
                                                 value={convoTypeFilter}
@@ -2720,13 +2720,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 <option value="admin">Support / Admin</option>
                                                 <option value="vendor_client">Vendor-Client</option>
                                             </select>
-                                            <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 text-zinc-500 pointer-events-none" />
+                                            <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 text-zinc-400 pointer-events-none" />
                                         </div>
                                     </div>
 
                                     {/* Status */}
                                     <div className="space-y-1">
-                                        <label className="text-[9px] font-black uppercase tracking-wider text-zinc-500 block">Status</label>
+                                        <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block">Status</label>
                                         <div className="relative">
                                             <select
                                                 value={convoReadFilter}
@@ -2737,7 +2737,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 <option value="unread">Unread</option>
                                                 <option value="read">Read</option>
                                             </select>
-                                            <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 text-zinc-500 pointer-events-none" />
+                                            <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 text-zinc-400 pointer-events-none" />
                                         </div>
                                     </div>
                                 </div>
@@ -2756,7 +2756,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <option value="alphabetical">Name A-Z</option>
                                         </select>
                                     </div>
-                                    <span className="text-zinc-500 font-bold uppercase tracking-wider text-[8px]">
+                                    <span className="text-zinc-400 font-bold uppercase tracking-wider text-[8px]">
                                         Results: <span className="text-[#D4AF37]">{filteredList.length}</span>
                                     </span>
                                 </div>
@@ -2824,7 +2824,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                        <span className="text-[9px] text-zinc-500">
+                                                        <span className="text-[9px] text-zinc-400">
                                                             {msg.timestamp ? new Date(msg.timestamp).toLocaleDateString() : ''}
                                                         </span>
                                                         {isAdminSupport && (
@@ -2836,7 +2836,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                                 {hasUnread ? (
                                                                     <Mail className="w-3.5 h-3.5 text-[#D4AF37]" />
                                                                 ) : (
-                                                                    <MailOpen className="w-3.5 h-3.5 text-zinc-500 hover:text-white" />
+                                                                    <MailOpen className="w-3.5 h-3.5 text-zinc-400 hover:text-white" />
                                                                 )}
                                                             </button>
                                                         )}
@@ -2850,7 +2850,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     </p>
                                                 )}
                                                 
-                                                <p className="text-[10px] text-zinc-500 truncate">
+                                                <p className="text-[10px] text-zinc-400 truncate">
                                                     {clientDetails.email}
                                                 </p>
                                                 <p className={`text-xs line-clamp-1 ${hasUnread ? 'text-white font-medium' : 'text-zinc-300 italic'}`}>
@@ -2946,7 +2946,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div className="absolute top-4 right-4 bg-zinc-500/10 p-2 rounded-lg border border-zinc-500/20">
                             <Search className="w-5 h-5 text-zinc-400" />
                         </div>
-                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">1. Discovery</p>
+                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">1. Discovery</p>
                         <h3 className="text-3xl font-bold text-white mt-4 font-mono">{analyticsStats.view_vendor}</h3>
                         <p className="text-xs text-zinc-400 mt-1">Vendor list & profile views</p>
                     </div>
@@ -2955,7 +2955,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div className="absolute top-4 right-4 bg-[#D4AF37]/10 p-2 rounded-lg border border-[#D4AF37]/25">
                             <ShoppingBag className="w-5 h-5 text-[#D4AF37]" />
                         </div>
-                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">2. Plan Intent</p>
+                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">2. Plan Intent</p>
                         <h3 className="text-3xl font-bold text-[#D4AF37] mt-4 font-mono">{analyticsStats.add_to_plan}</h3>
                         <p className="text-xs text-zinc-400 mt-1">{analyticsStats.planRate.toFixed(1)}% loop add-to-plan rate</p>
                     </div>
@@ -2964,7 +2964,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div className="absolute top-4 right-4 bg-zinc-500/10 p-2 rounded-lg border border-[#D4AF37]/20">
                             <Calendar className="w-5 h-5 text-[#D4AF37]" />
                         </div>
-                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">3. Book Requests</p>
+                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">3. Book Requests</p>
                         <h3 className="text-3xl font-bold text-white mt-4 font-mono">{analyticsStats.submit_booking_request}</h3>
                         <p className="text-xs text-zinc-400 mt-1">{analyticsStats.requestRate.toFixed(1)}% plan conversion rate</p>
                     </div>
@@ -2973,7 +2973,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div className="absolute top-4 right-4 bg-[#D4AF37]/10 p-2 rounded-lg border border-[#D4AF37]/20">
                             <DollarSign className="w-5 h-5 text-[#D4AF37]" />
                         </div>
-                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">4. Acquisitions</p>
+                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">4. Acquisitions</p>
                         <h3 className="text-3xl font-bold text-[#D4AF37] mt-4 font-mono">{analyticsStats.payment_completed}</h3>
                         <p className="text-xs text-zinc-400 mt-1">{analyticsStats.purchaseRate.toFixed(1)}% booking close rate</p>
                     </div>
@@ -2984,7 +2984,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="lg:col-span-2 bg-[#111] p-8 rounded-2xl border border-white/5 shadow-2xl flex flex-col justify-between">
                         <div>
                             <h3 className="text-lg font-bold font-[Cinzel] text-white">Funnel Leakage & Progress Chart</h3>
-                            <p className="text-xs text-zinc-500 mt-1">Mathematical representation of client conversion phases.</p>
+                            <p className="text-xs text-zinc-400 mt-1">Mathematical representation of client conversion phases.</p>
                         </div>
 
                         {/* Interactive Bars representing Funnel Volume */}
@@ -3051,14 +3051,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="bg-[#111] p-8 rounded-2xl border border-white/5 shadow-2xl flex flex-col justify-between">
                         <div>
                             <h3 className="text-lg font-bold font-[Cinzel] text-white">Conversion Funnel Ratios</h3>
-                            <p className="text-xs text-zinc-500 mt-1">Leakage between steps & segments.</p>
+                            <p className="text-xs text-zinc-400 mt-1">Leakage between steps & segments.</p>
                         </div>
                         
                         <div className="space-y-6 mt-6">
                             <div className="p-4 bg-zinc-900/60 rounded-xl border border-white/5 flex items-center justify-between">
                                 <div>
                                     <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider">Interest Rate</h4>
-                                    <p className="text-[10px] text-zinc-500 mt-1">From viewing cards to adding items to plan</p>
+                                    <p className="text-[10px] text-zinc-400 mt-1">From viewing cards to adding items to plan</p>
                                 </div>
                                 <div className="text-right">
                                     <span className="text-xl font-bold font-mono text-[#D4AF37]">{analyticsStats.planRate.toFixed(1)}%</span>
@@ -3068,7 +3068,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             <div className="p-4 bg-zinc-900/60 rounded-xl border border-white/5 flex items-center justify-between">
                                 <div>
                                     <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider">Plan Commitment</h4>
-                                    <p className="text-[10px] text-zinc-500 mt-1">From adding to plan to submitting booking inquiries</p>
+                                    <p className="text-[10px] text-zinc-400 mt-1">From adding to plan to submitting booking inquiries</p>
                                 </div>
                                 <div className="text-right">
                                     <span className="text-xl font-bold font-mono text-[#D4AF37]">{analyticsStats.requestRate.toFixed(1)}%</span>
@@ -3078,7 +3078,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             <div className="p-4 bg-zinc-900/60 rounded-xl border border-white/5 flex items-center justify-between">
                                 <div>
                                     <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider">Acquisition Fulfillment</h4>
-                                    <p className="text-[10px] text-zinc-500 mt-1">From sent inquiries to fully completed payments</p>
+                                    <p className="text-[10px] text-zinc-400 mt-1">From sent inquiries to fully completed payments</p>
                                 </div>
                                 <div className="text-right">
                                     <span className="text-xl font-bold font-mono text-[#D4AF37]">{analyticsStats.purchaseRate.toFixed(1)}%</span>
@@ -3096,7 +3096,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="bg-[#111] p-8 rounded-2xl border border-white/5 shadow-2xl">
                     <div className="mb-6">
                         <h3 className="text-lg font-bold font-[Cinzel] text-white">Booking Request Trends (Last 30 Days)</h3>
-                        <p className="text-xs text-zinc-500 mt-1">Daily booking request volume identifying platform activity peaks.</p>
+                        <p className="text-xs text-zinc-400 mt-1">Daily booking request volume identifying platform activity peaks.</p>
                     </div>
                     <div className="h-[300px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
@@ -3140,7 +3140,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="p-6 border-b border-white/5 bg-black/40 flex justify-between items-center">
                         <div>
                             <h3 className="text-lg font-bold font-[Cinzel] text-white">Live Firebase Analytics Logs</h3>
-                            <p className="text-xs text-zinc-500 mt-1">Real-time log entries captured through analytics hooks.</p>
+                            <p className="text-xs text-zinc-400 mt-1">Real-time log entries captured through analytics hooks.</p>
                         </div>
                         <span className="text-[10px] bg-[#D4AF37]/10 text-[#D4AF37] px-3 py-1 font-bold uppercase tracking-widest border border-[#D4AF37]/20 rounded-full flex items-center gap-1.5 font-bold">
                             <span className="w-1.5 h-1.5 bg-[#D4AF37] rounded-full animate-pulse"></span> Live Broadcast
@@ -3151,7 +3151,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         {isLoadingAnalytics ? (
                             <div className="py-20 text-center flex flex-col items-center justify-center gap-4">
                                 <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
-                                <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Streaming Firebase records...</span>
+                                <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Streaming Firebase records...</span>
                             </div>
                         ) : analyticsLogs.length === 0 ? (
                             <div className="py-20 text-center opacity-40">
@@ -3161,7 +3161,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         ) : (
                             <table className="w-full text-left border-collapse text-xs">
                                 <thead>
-                                    <tr className="border-b border-white/5 bg-black/20 text-zinc-500 font-bold uppercase tracking-widest text-[9px]">
+                                    <tr className="border-b border-white/5 bg-black/20 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
                                         <th className="p-4 bg-[#111]">Timestamp</th>
                                         <th className="p-4 bg-[#111]">Event Name</th>
                                         <th className="p-4 bg-[#111]">User Email</th>
@@ -3172,7 +3172,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <tbody className="divide-y divide-white/5">
                                     {analyticsLogs.map(log => (
                                         <tr key={log.id} className="hover:bg-white/[0.02] transition-colors font-mono text-[11px] text-zinc-300">
-                                            <td className="p-4 text-zinc-500">
+                                            <td className="p-4 text-zinc-400">
                                                 {log.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A'}
                                             </td>
                                             <td className="p-4">
@@ -3191,7 +3191,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <td className="p-4 max-w-xs truncate text-[10px]" title={JSON.stringify(log.params)}>
                                                 {log.params ? Object.entries(log.params).map(([k, v]) => `${k}: ${v}`).join(' | ') : 'None'}
                                             </td>
-                                            <td className="p-4 text-zinc-500">
+                                            <td className="p-4 text-zinc-400">
                                                 {log.path || '/'}
                                             </td>
                                         </tr>

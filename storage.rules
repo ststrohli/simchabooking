@@ -13,8 +13,15 @@ service firebase.storage {
 
     function isAdmin() {
       return isAuthenticated() && (
-        firestore.get(/databases/ai-studio-b85c10e8-0729-4d1f-841b-60b5c119be28/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        firestore.get(/databases/ai-studio-b85c10e8-0729-4d1f-841b-60b5c119be28/documents/user_roles/$(request.auth.uid)).data.role == 'admin'
+        (firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+        (firestore.exists(/databases/(default)/documents/user_roles/$(request.auth.uid)) && firestore.get(/databases/(default)/documents/user_roles/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+    
+    function isVendor(vendorId) {
+      return isAuthenticated() && (
+        request.auth.uid == vendorId ||
+        (firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.vendorId == vendorId)
       );
     }
 
@@ -29,7 +36,7 @@ service firebase.storage {
 
     match /vendors/{vendorId}/{allPaths=**} {
       // Vendor can write their own folder
-      allow write: if isAuthenticated() && (request.auth.uid == vendorId || isAdmin());
+      allow write: if isVendor(vendorId) || isAdmin();
     }
 
     match /chats/{allPaths=**} {

@@ -194,7 +194,7 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
                             </div>
                           </div>
                           <p className="text-[10px] text-[#D4AF37]/60 font-bold uppercase tracking-widest mt-0.5 text-center">{vendor.category}</p>
-                          <div className="flex items-center text-[10px] text-zinc-500 mt-1 justify-center w-full">
+                          <div className="flex items-center text-[10px] text-zinc-400 mt-1 justify-center w-full">
                             <MapPin className="w-2.5 h-2.5 mr-1 flex-shrink-0" />
                             <span className="truncate max-w-[150px]">{vendor.location}</span>
                           </div>
@@ -229,7 +229,7 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
                 })}
               </div>
             ) : (
-              <div className="text-zinc-500 py-10 text-center text-xs tracking-wider uppercase font-[Cinzel]">
+              <div className="text-zinc-400 py-10 text-center text-xs tracking-wider uppercase font-[Cinzel]">
                 No top {activeTab} vendors found available on {formatDate(eventDate)}
               </div>
             )}

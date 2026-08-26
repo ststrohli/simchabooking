@@ -290,7 +290,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   const NavItem = ({ id, icon: Icon, label, badge }: { id: typeof activeTab, icon: any, label: string, badge?: number }) => (
     <button 
       onClick={() => { handleTabChange(id); setIsSidebarOpen(false); }} 
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === id ? 'bg-[#D4AF37] text-black font-bold shadow-lg' : 'text-zinc-500 hover:text-[#D4AF37] hover:bg-white/5'}`}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === id ? 'bg-[#D4AF37] text-black font-bold shadow-lg' : 'text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5'}`}
     >
       <Icon className="w-5 h-5" />
       <span className="text-xs font-black uppercase tracking-widest">{label}</span>
@@ -364,7 +364,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold truncate">{user.name}</p>
-            <p className="text-[9px] text-zinc-500 uppercase tracking-widest leading-none">Simcha Organizer</p>
+            <p className="text-[9px] text-zinc-400 uppercase tracking-widest leading-none">Simcha Organizer</p>
           </div>
         </div>
 
@@ -377,7 +377,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         </nav>
 
         <div className="p-6 border-t border-white/5 bg-black">
-          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-400 transition-colors text-xs font-black uppercase tracking-widest">
+          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-zinc-400 hover:text-zinc-400 transition-colors text-xs font-black uppercase tracking-widest">
             <LogOut className="w-5 h-5" /> Sign Out
           </button>
         </div>
@@ -425,19 +425,19 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                       <h4 className="font-bold text-xl text-zinc-100 font-[Cinzel]">{item.vendor.name}</h4>
                       <p className="text-[10px] text-[#D4AF37] font-black uppercase tracking-widest mt-1">{item.vendor.category}</p>
                       
-                      <div className="mt-3 flex flex-wrap justify-center sm:justify-start gap-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                      <div className="mt-3 flex flex-wrap justify-center sm:justify-start gap-4 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
                         <div className="flex items-center gap-2"><Calendar className="w-3.5 h-3.5" />{item.date}</div>
                         <div className="flex items-center gap-2 text-[#D4AF37]"><CreditCard className="w-3.5 h-3.5" />${item.amount.toLocaleString()}</div>
                       </div>
 
                       {/* Display full filled-out details for verification and editing */}
                       <div className="mt-4 bg-black/40 p-4 rounded-xl border border-white/5 text-[11px] text-zinc-300 space-y-1.5 text-left max-w-md">
-                        <div><span className="text-zinc-500 uppercase tracking-wider font-bold">Event Name:</span> {item.eventName}</div>
-                        {item.eventTime && <div><span className="text-zinc-500 uppercase tracking-wider font-bold">Event Time:</span> {item.eventTime}</div>}
-                        {item.eventLocation && <div><span className="text-zinc-500 uppercase tracking-wider font-bold">Location:</span> {item.eventLocation}</div>}
-                        <div><span className="text-zinc-500 uppercase tracking-wider font-bold">Client Name:</span> {item.clientName}</div>
-                        <div><span className="text-zinc-500 uppercase tracking-wider font-bold">Client Email:</span> {item.contactEmail}</div>
-                        {item.notes && <div><span className="text-zinc-500 uppercase tracking-wider font-bold">Notes:</span> <span className="italic text-zinc-400">"{item.notes}"</span></div>}
+                        <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Event Name:</span> {item.eventName}</div>
+                        {item.eventTime && <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Event Time:</span> {item.eventTime}</div>}
+                        {item.eventLocation && <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Location:</span> {item.eventLocation}</div>}
+                        <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Client Name:</span> {item.clientName}</div>
+                        <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Client Email:</span> {item.contactEmail}</div>
+                        {item.notes && <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Notes:</span> <span className="italic text-zinc-400">"{item.notes}"</span></div>}
                         {item.selectedServices && item.selectedServices.length > 0 && (
                           <div className="pt-2 border-t border-white/5 mt-2">
                             <span className="text-[#D4AF37] uppercase tracking-wider font-bold text-[9px]">Selected Services:</span>
@@ -514,7 +514,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                     </p>
                   </div>
                   <div className="text-center md:text-right min-w-[200px]">
-                    <p className="text-xs font-black text-zinc-500 uppercase tracking-widest mb-1">Service Fee</p>
+                    <p className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-1">Service Fee</p>
                     <p className="text-3xl font-bold text-[#D4AF37]">${booking.amount.toLocaleString()}</p>
                     <div className="flex flex-col gap-3 mt-6">
                       <button onClick={() => onMessageVendor(vendor)} className="w-full px-4 py-3 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] rounded-xl transition-all border border-[#D4AF37]/20 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest">
@@ -589,7 +589,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                             )}
                           </AnimatePresence>
                         </div>
-                        <span className="text-[8px] text-zinc-500">{new Date(data.lastMessage.timestamp).toLocaleDateString()}</span>
+                        <span className="text-[8px] text-zinc-400">{new Date(data.lastMessage.timestamp).toLocaleDateString()}</span>
                       </div>
                       <p className="text-[10px] text-[#D4AF37] uppercase tracking-widest truncate mb-2">{data.vendor.category}</p>
                       <p className="text-xs text-zinc-400 line-clamp-1 italic">"{data.lastMessage.text}"</p>
@@ -724,7 +724,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                       <div ref={messagesEndRef} />
                     </div>
                     
-                    <div className="p-6 bg-black/40 border-t border-white/5 italic text-[10px] text-zinc-500 text-center">
+                    <div className="p-6 bg-black/40 border-t border-white/5 italic text-[10px] text-zinc-400 text-center">
                        Replying to vendors is currently available via the Vendor cards in the Marketplace.
                     </div>
                   </>
@@ -784,13 +784,13 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
                 <div>
                   <h3 className="text-2xl font-bold text-white font-[Cinzel]">{user.name}</h3>
-                  <p className="text-zinc-500 text-xs uppercase tracking-widest">{user.username}</p>
+                  <p className="text-zinc-400 text-xs uppercase tracking-widest">{user.username}</p>
                 </div>
               </div>
 
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Full Name</label>
+                  <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Full Name</label>
                   <input 
                     type="text" 
                     value={editName} 

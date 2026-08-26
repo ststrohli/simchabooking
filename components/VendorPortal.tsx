@@ -168,7 +168,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         <motion.span
           animate={{ rotate: isOpen ? 180 : 0 }}
           transition={{ type: "spring", stiffness: 200, damping: 15 }}
-          className="text-zinc-500"
+          className="text-zinc-400"
         >
           <ChevronDown className="w-4.5 h-4.5" />
         </motion.span>
@@ -792,7 +792,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const NavItem = ({ id, icon: Icon, label, badge }: { id: typeof activeTab, icon: any, label: string, badge?: number }) => (
     <button 
       onClick={() => { setActiveTab(id); setIsSidebarOpen(false); }} 
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === id ? 'bg-[#D4AF37] text-black font-bold shadow-xl' : 'text-zinc-500 hover:text-[#D4AF37] hover:bg-white/5'}`}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === id ? 'bg-[#D4AF37] text-black font-bold shadow-xl' : 'text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5'}`}
     >
       <Icon className="w-5 h-5" />
       <span className="text-xs font-black uppercase tracking-widest">{label}</span>
@@ -1788,7 +1788,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         >
           {/* Weekday Column Header */}
           <div className="p-4 border-b border-white/5 text-center flex flex-col items-center justify-center sticky top-0 bg-[#0c0c0c] z-20">
-            <span className="text-[10px] font-black uppercase text-zinc-500 tracking-wider mb-1">{dayName}</span>
+            <span className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mb-1">{dayName}</span>
             <span className={`w-8 h-8 flex items-center justify-center text-sm font-black rounded-full transition-all ${
               isToday ? 'bg-[#D4AF37] text-black font-black' : 'text-white'
             }`}>
@@ -1826,7 +1826,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       <h5 className="text-xs font-bold text-white mb-0.5 group-hover/card:text-[#D4AF37] transition-colors truncate">{b.eventName}</h5>
                       <p className="text-[10px] text-zinc-400 truncate">{b.clientName}</p>
                       {b.eventLocation && (
-                        <p className="text-[8px] text-zinc-500 truncate mt-1.5 flex items-center gap-1">
+                        <p className="text-[8px] text-zinc-400 truncate mt-1.5 flex items-center gap-1">
                           <MapPin className="w-2.5 h-2.5 text-[#D4AF37]" /> {b.eventLocation}
                         </p>
                       )}
@@ -1853,7 +1853,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             {timeLabel && <span className="text-[8px] font-mono text-zinc-400">{timeLabel}</span>}
                           </div>
                           <h5 className="text-xs font-bold text-zinc-200 mb-0.5 group-hover/gcard:text-[#D4AF37] transition-colors truncate">{e.summary || 'Busy (Google Calendar)'}</h5>
-                          <p className="text-[10px] text-zinc-500">Imported Calendar Event</p>
+                          <p className="text-[10px] text-zinc-400">Imported Calendar Event</p>
                         </div>
                       </div>
                     );
@@ -1885,7 +1885,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider">
               {calendarViewMode === 'month' ? `${monthName} ${year}` : `${weekStartName} - ${weekEndName}`}
             </h3>
-            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1">Availability & Custom Bookings</p>
+            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Availability & Custom Bookings</p>
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-4">
@@ -1983,7 +1983,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                 {calendarSyncError && (
                   <button 
                     onClick={() => setCalendarSyncError(null)}
-                    className="text-zinc-500 hover:text-zinc-300 px-3 py-2 text-[9px] font-black uppercase tracking-widest transition-all"
+                    className="text-zinc-400 hover:text-zinc-300 px-3 py-2 text-[9px] font-black uppercase tracking-widest transition-all"
                   >
                     Dismiss Notice
                   </button>
@@ -2018,15 +2018,15 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         <div className="p-6 bg-black/60 flex flex-wrap gap-6 items-center border-t border-white/5">
            <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded bg-black border border-white/10"></div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Available</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Available</span>
            </div>
            <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded bg-red-950/40 border border-zinc-500/20"></div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Blocked / Unavailable</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Blocked / Unavailable</span>
            </div>
            <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded bg-[#1a1a1a] border border-[#D4AF37]/30"></div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Confirmed Booking</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Confirmed Booking</span>
            </div>
            <div className="ml-auto text-[10px] text-zinc-600 italic">
              * Click any date or empty slot to toggle availability.
@@ -2100,7 +2100,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     {selectedCalendarEvent.title}
                   </h2>
                   {selectedCalendarEvent.bookingId && (
-                    <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest">
+                    <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">
                       Booking ID: {selectedCalendarEvent.bookingId}
                     </p>
                   )}
@@ -2128,7 +2128,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 hover:border-white/10 transition-colors">
                       <Clock className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mb-1">Start Logistics</p>
+                        <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">Start Logistics</p>
                         <p className="text-white font-bold text-sm leading-tight">{selectedCalendarEvent.start}</p>
                       </div>
                     </div>
@@ -2137,7 +2137,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 hover:border-white/10 transition-colors">
                       <Clock className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mb-1">End Logistics</p>
+                        <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">End Logistics</p>
                         <p className="text-white font-bold text-sm leading-tight">{selectedCalendarEvent.end}</p>
                       </div>
                     </div>
@@ -2146,7 +2146,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 col-span-1 md:col-span-2 hover:border-white/10 transition-colors">
                       <MapPin className="w-4 h-4 text-zinc-400/50 shrink-0 mt-0.5" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mb-1">Event Location</p>
+                        <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">Event Location</p>
                         <p className="text-white font-bold text-sm leading-tight truncate">{selectedCalendarEvent.location || 'Not specified'}</p>
                       </div>
                       {selectedCalendarEvent.location && selectedCalendarEvent.location !== 'Venue address pending' && selectedCalendarEvent.location !== 'Not specified' && (
@@ -2189,11 +2189,11 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     >
                       <div className="bg-black/40 p-5 rounded-2xl border border-white/5 grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                         <div>
-                          <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mb-1">Client Name</p>
+                          <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">Client Name</p>
                           <p className="text-white font-bold text-sm">{selectedCalendarEvent.clientName || 'N/A'}</p>
                         </div>
                         <div>
-                          <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mb-1">Contact Email</p>
+                          <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">Contact Email</p>
                           <p className="text-white font-bold text-sm truncate">{selectedCalendarEvent.contactEmail || 'N/A'}</p>
                         </div>
                       </div>
@@ -2213,7 +2213,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               <div key={s.id} className="p-4 flex justify-between items-center hover:bg-white/5 transition-colors">
                                 <div className="flex flex-col">
                                   <span className="text-xs font-bold text-zinc-200">{s.name}</span>
-                                  <span className="text-[9px] text-zinc-500 font-black uppercase tracking-widest">Qty: {s.quantity} {s.unit ? `per ${s.unit}` : ''}</span>
+                                  <span className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">Qty: {s.quantity} {s.unit ? `per ${s.unit}` : ''}</span>
                                 </div>
                                 <span className="text-xs font-black text-[#D4AF37]">${(s.price * s.quantity).toLocaleString()}</span>
                               </div>
@@ -2221,7 +2221,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           </div>
                         ) : (
                           <div className="p-5 text-center">
-                            <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Base Starting Package Requested</p>
+                            <p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Base Starting Package Requested</p>
                           </div>
                         )}
                         <div className="p-4 bg-[#D4AF37]/10 border-t border-[#D4AF37]/20 flex justify-between items-center">
@@ -2377,7 +2377,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           <NavItem id="profile" icon={Settings} label="Business Profile" />
         </nav>
         <div className="p-6 border-t border-white/5 bg-black space-y-3">
-          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-zinc-500 hover:text-zinc-400 transition-colors text-xs font-black uppercase tracking-widest"><LogOut className="w-5 h-5" /> Terminate Session</button>
+          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-zinc-400 hover:text-zinc-400 transition-colors text-xs font-black uppercase tracking-widest"><LogOut className="w-5 h-5" /> Terminate Session</button>
         </div>
       </aside>
 
@@ -3343,7 +3343,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                   >
                     <div className="text-left">
                       <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Services & Pricing Packages</h3>
-                      <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1">Define specific offerings for clients to select</p>
+                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Define specific offerings for clients to select</p>
                     </div>
                     <div className="flex items-center gap-4">
                        <button 
@@ -3367,7 +3367,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                           <div className="space-y-2">
-                            <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Service/Package Title</label>
+                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Service/Package Title</label>
                             <input 
                               type="text" 
                               className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white" 
@@ -3377,7 +3377,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Unit Price ($)</label>
+                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Unit Price ($)</label>
                             <div className="relative">
                                <DollarSign className="absolute left-3 top-3.5 w-4 h-4 text-[#D4AF37]" />
                                <input 
@@ -3393,7 +3393,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                           <div className="space-y-2">
-                            <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Pricing Unit (per...)</label>
+                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Pricing Unit (per...)</label>
                             <div className="flex gap-2">
                                 <input 
                                   type="text" 
@@ -3411,7 +3411,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             <button 
                               type="button"
                               onClick={() => setNewServiceAllowQty(!newServiceAllowQty)}
-                              className={`flex items-center justify-between w-full px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${newServiceAllowQty ? 'bg-[#D4AF37] text-black border-[#D4AF37]' : 'bg-black text-zinc-500 border-white/10 hover:border-[#D4AF37]/50'}`}
+                              className={`flex items-center justify-between w-full px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${newServiceAllowQty ? 'bg-[#D4AF37] text-black border-[#D4AF37]' : 'bg-black text-zinc-400 border-white/10 hover:border-[#D4AF37]/50'}`}
                             >
                               <span className="flex items-center gap-2">
                                 {newServiceAllowQty ? <CheckCircle className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
@@ -3425,7 +3425,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
                         {/* Package Photo Upload */}
                         <div className="space-y-2 border-t border-white/5 pt-4">
-                          <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest block">Package Photo (Optional)</label>
+                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Package Photo (Optional)</label>
                           <div className="flex items-center gap-4">
                             {newServiceImageUrl ? (
                               <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-[#D4AF37]/30 bg-black group">
@@ -3564,7 +3564,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               <div className="mt-auto flex items-center gap-3 pt-2">
                                 <button 
                                   onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity })}
-                                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${service.allowQuantity ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/10 shadow-[0_0_10px_rgba(212,175,55,0.1)]' : 'text-zinc-500 border-white/5 hover:bg-white/5 hover:text-zinc-300'}`}
+                                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${service.allowQuantity ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/10 shadow-[0_0_10px_rgba(212,175,55,0.1)]' : 'text-zinc-400 border-white/5 hover:bg-white/5 hover:text-zinc-300'}`}
                                 >
                                   {service.allowQuantity ? <Hash className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
                                   {service.allowQuantity ? 'Quantities On' : 'Fixed Package'}
@@ -3609,7 +3609,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                   >
                     <div className="text-left">
                       <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Media Showcase</h3>
-                      <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1">Manage images and videos appearing on your card</p>
+                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Manage images and videos appearing on your card</p>
                     </div>
                     <ChevronRight className={`w-6 h-6 text-zinc-600 transition-transform ${collapsedSections['media'] ? '' : 'rotate-90'}`} />
                   </button>
@@ -3711,7 +3711,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                   >
                     <div className="text-left">
                       <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Email Debugger</h3>
-                      <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1">Test your SMTP configuration</p>
+                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Test your SMTP configuration</p>
                     </div>
                     <ChevronRight className={`w-6 h-6 text-zinc-600 transition-transform ${collapsedSections['email'] ? '' : 'rotate-90'}`} />
                   </button>

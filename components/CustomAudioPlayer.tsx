@@ -18,7 +18,7 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({ src, theme
     >
       <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.15em] mb-1">
         <span className={isSent ? 'text-black/60' : 'text-[#D4AF37]'}>Voice Note</span>
-        <span className={isSent ? 'text-black/40' : 'text-zinc-500 font-mono'}>Play online</span>
+        <span className={isSent ? 'text-black/40' : 'text-zinc-400 font-mono'}>Play online</span>
       </div>
       <audio
         src={src}

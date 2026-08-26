@@ -85,7 +85,7 @@ const PaymentSuccess: React.FC<PaymentSuccessProps> = ({ bookingId, vendorId, on
             <h2 className="text-3xl font-bold font-[Cinzel] text-[#D4AF37]">Payment Successful!</h2>
             <div className="space-y-2">
               <p className="text-zinc-300 text-lg">Your booking has been confirmed and marked as paid.</p>
-              <p className="text-zinc-500 text-sm font-mono">Booking ID: {bookingId}</p>
+              <p className="text-zinc-400 text-sm font-mono">Booking ID: {bookingId}</p>
             </div>
             
             <button

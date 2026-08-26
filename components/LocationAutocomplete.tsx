@@ -177,7 +177,7 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
             className={`absolute pointer-events-none transition-all duration-300 leading-none ${Icon ? 'left-10' : 'left-4'} 
               ${(focused || isFilled) 
                 ? 'top-2 text-[9px] text-[#D4AF37] font-black uppercase tracking-widest' 
-                : 'top-4 text-xs text-zinc-500 font-medium'
+                : 'top-4 text-xs text-zinc-400 font-medium'
               }`}
           >
             {label}

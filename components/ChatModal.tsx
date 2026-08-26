@@ -836,12 +836,12 @@ const ChatModal: React.FC<ChatModalProps> = ({
               <h3 className="font-bold text-[#D4AF37] font-[Cinzel] text-sm">
                 {isAdminReplying ? `Chat with ${clientName}` : (isAdminMode ? 'System Concierge' : vendor?.name)}
               </h3>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-widest">
+              <p className="text-[10px] text-zinc-400 uppercase tracking-widest">
                 {isAdminReplying ? `${clientEmail}` : (isAdminMode ? 'Direct Support' : 'In-App Messaging')}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="hidden md:block text-zinc-500 hover:text-white p-2 transition-colors"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="hidden md:block text-zinc-400 hover:text-white p-2 transition-colors"><X className="w-5 h-5" /></button>
         </div>
 
         {/* Identity Verification */}
@@ -850,7 +850,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
             <div className="text-center mb-4">
               <User className="w-10 h-10 text-[#D4AF37] mx-auto mb-2 opacity-50" />
               <h4 className="text-white font-bold">Who are you?</h4>
-              <p className="text-xs text-zinc-500">Provide your details to start a conversation.</p>
+              <p className="text-xs text-zinc-400">Provide your details to start a conversation.</p>
             </div>
             <div className="space-y-3">
               <input 
@@ -889,7 +889,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                   ) : (
                     <button 
                       onClick={loadMoreMessages} 
-                      className="text-[10px] text-zinc-500 hover:text-[#D4AF37] transition-colors font-mono uppercase tracking-widest"
+                      className="text-[10px] text-zinc-400 hover:text-[#D4AF37] transition-colors font-mono uppercase tracking-widest"
                     >
                       Scroll up or click to load history
                     </button>
@@ -992,7 +992,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                           {isSent && !msg.isOptimistic && msg.status !== 'sending' && (
                             <button
                               onClick={() => handleUnsend(msg)}
-                              className={`ml-2 text-[10px] ${isSent ? 'text-black/40 hover:text-black' : 'text-zinc-500 hover:text-zinc-300'} transition-colors`}
+                              className={`ml-2 text-[10px] ${isSent ? 'text-black/40 hover:text-black' : 'text-zinc-400 hover:text-zinc-300'} transition-colors`}
                               title="Unsend message"
                             >
                               <Trash2 className="w-3 h-3" />
@@ -1105,7 +1105,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                     <p className="text-[10px] font-black uppercase text-[#D4AF37] tracking-[0.2em] mb-1">Transferring Asset</p>
                     <div className="flex items-baseline gap-2">
                       <span className="text-xl font-bold text-white tracking-tight font-mono">{Math.round(uploadProgress)}%</span>
-                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Complete</span>
+                      <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Complete</span>
                     </div>
                   </div>
                 </div>
@@ -1123,7 +1123,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                   </div>
                   <button 
                     onClick={() => setMicPermissionError(null)}
-                    className="text-zinc-500 hover:text-white transition-colors text-sm px-1.5 focus:outline-none"
+                    className="text-zinc-400 hover:text-white transition-colors text-sm px-1.5 focus:outline-none"
                     aria-label="Dismiss"
                   >
                     ×
@@ -1182,7 +1182,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                       className={`flex items-center justify-center h-11 w-11 rounded-xl transition-all shadow-lg flex-shrink-0 ${
                         text.trim() 
                           ? 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] shadow-[#D4AF37]/10 cursor-pointer' 
-                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed shadow-none'
+                          : 'bg-zinc-800 text-zinc-400 cursor-not-allowed shadow-none'
                       }`}
                       title="Send message"
                     >
