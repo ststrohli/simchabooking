@@ -67,9 +67,50 @@ const fileToDataURL = async (file: File | Blob): Promise<string> => {
   return rawDataUrl;
 };
 
+const uploadToBackendAPI = (
+  file: File | Blob, 
+  storagePath: string, 
+  onProgress?: (progress: number) => void
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload', true);
+
+    if (onProgress && xhr.upload) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const progress = (e.loaded / e.total) * 100;
+          onProgress(progress);
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          resolve(response.url);
+        } catch (e) {
+          reject(new Error("Invalid response from server"));
+        }
+      } else {
+        reject(new Error(xhr.responseText || `Server error: ${xhr.status}`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("Network error during backend upload"));
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('path', storagePath);
+
+    xhr.send(formData);
+  });
+};
+
 /**
  * Uploads a file directly to Firebase Storage using the official client SDK.
- * Falls back to Base64 Data URL if Firebase Storage is unavailable or unpermitted.
+ * Falls back to Backend API if Firebase Storage is unavailable or unpermitted.
  * 
  * @param file The File or Blob to upload
  * @param storagePath Target destination path in the storage bucket
@@ -85,21 +126,28 @@ export const uploadFileRobustly = async (file: File | Blob, storagePath: string,
     console.log("[Upload] Firebase Storage upload succeeded:", downloadURL);
     return downloadURL;
   } catch (err: any) {
-    console.warn("[Upload] Direct Firebase Storage upload failed/unauthorized. Using Data URL fallback:", err);
+    console.warn("[Upload] Direct Firebase Storage upload failed/unauthorized. Using Backend API fallback:", err);
     try {
-      const dataUrl = await fileToDataURL(file);
-      console.log("[Upload] Data URL fallback successfully generated.");
-      return dataUrl;
-    } catch (fallbackErr) {
-      console.error("[Upload] Fallback Data URL generation failed:", fallbackErr);
-      throw err;
+      const backendUrl = await uploadToBackendAPI(file, storagePath);
+      console.log("[Upload] Backend API fallback succeeded:", backendUrl);
+      return backendUrl;
+    } catch (apiErr) {
+      console.warn("[Upload] Backend API fallback failed. Using Data URL fallback:", apiErr);
+      try {
+        const dataUrl = await fileToDataURL(file);
+        console.log("[Upload] Data URL fallback successfully generated.");
+        return dataUrl;
+      } catch (fallbackErr) {
+        console.error("[Upload] Fallback Data URL generation failed:", fallbackErr);
+        throw err;
+      }
     }
   }
 };
 
 /**
  * Uploads a file with real-time progress tracking.
- * Falls back to Base64 Data URL if Firebase Storage is unavailable or unpermitted.
+ * Falls back to Backend API if Firebase Storage is unavailable or unpermitted.
  * 
  * @param file The File or Blob to upload
  * @param storagePath Target destination path in the storage bucket
@@ -127,14 +175,21 @@ export const uploadFileWithProgress = (
           }
         },
         async (err: any) => {
-          console.warn("[Upload] Progress-tracked upload failed/unauthorized. Using Data URL fallback:", err);
+          console.warn("[Upload] Progress-tracked upload failed/unauthorized. Using Backend API fallback:", err);
           try {
-            if (onProgress) onProgress(100);
-            const dataUrl = await fileToDataURL(file);
-            console.log("[Upload] Data URL fallback successfully generated.");
-            resolve(dataUrl);
-          } catch (fallbackErr) {
-            reject(err);
+            const backendUrl = await uploadToBackendAPI(file, storagePath, onProgress);
+            console.log("[Upload] Backend API fallback succeeded:", backendUrl);
+            resolve(backendUrl);
+          } catch (apiErr) {
+            console.warn("[Upload] Backend API fallback failed. Using Data URL fallback:", apiErr);
+            try {
+              if (onProgress) onProgress(100);
+              const dataUrl = await fileToDataURL(file);
+              console.log("[Upload] Data URL fallback successfully generated.");
+              resolve(dataUrl);
+            } catch (fallbackErr) {
+              reject(err);
+            }
           }
         },
         async () => {
@@ -143,25 +198,37 @@ export const uploadFileWithProgress = (
             console.log("[Upload] Firebase Storage upload succeeded:", downloadURL);
             resolve(downloadURL);
           } catch (err) {
-            console.warn("[Upload] getDownloadURL failed. Using Data URL fallback:", err);
+            console.warn("[Upload] getDownloadURL failed. Using Backend API fallback:", err);
             try {
-              if (onProgress) onProgress(100);
-              const dataUrl = await fileToDataURL(file);
-              resolve(dataUrl);
-            } catch (fallbackErr) {
-              reject(err);
+              const backendUrl = await uploadToBackendAPI(file, storagePath, onProgress);
+              console.log("[Upload] Backend API fallback succeeded:", backendUrl);
+              resolve(backendUrl);
+            } catch (apiErr) {
+              console.warn("[Upload] Backend API fallback failed. Using Data URL fallback:", apiErr);
+              try {
+                if (onProgress) onProgress(100);
+                const dataUrl = await fileToDataURL(file);
+                resolve(dataUrl);
+              } catch (fallbackErr) {
+                reject(err);
+              }
             }
           }
         }
       );
     } catch (err) {
-      console.warn("[Upload] Initializing uploadTask failed. Using Data URL fallback:", err);
-      fileToDataURL(file)
-        .then((dataUrl) => {
-          if (onProgress) onProgress(100);
-          resolve(dataUrl);
-        })
-        .catch(() => reject(err));
+      console.warn("[Upload] Initializing uploadTask failed. Using Backend API fallback:", err);
+      uploadToBackendAPI(file, storagePath, onProgress)
+        .then(resolve)
+        .catch((apiErr) => {
+          console.warn("[Upload] Backend API fallback failed. Using Data URL fallback:", apiErr);
+          fileToDataURL(file)
+            .then((dataUrl) => {
+              if (onProgress) onProgress(100);
+              resolve(dataUrl);
+            })
+            .catch(() => reject(err));
+        });
     }
   });
 };

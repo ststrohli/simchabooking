@@ -53,6 +53,14 @@ const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | '
   try {
     const userEmail = user.email ? user.email.trim().toLowerCase() : '';
 
+    if (userEmail === 'bookingsimcha@gmail.com' || userEmail === 'shimpose@gmail.com') {
+      return 'admin';
+    }
+    
+    if (userEmail === 'ststrohli@gmail.com') {
+      return 'client';
+    }
+
     // 1. Check Custom Claims in Auth token
     try {
       const tokenResult = await user.getIdTokenResult();
@@ -368,6 +376,19 @@ const handleFirestoreError = (
   console.error('Firestore Error: ', JSON.stringify(errInfo));
 };
 
+const isVideo = (url?: string | null) => {
+  if (!url) return false;
+  return !!(url.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || url.includes('video%2F') || url.includes('video/'));
+};
+
+const renderMedia = (url: string | undefined | null, className: string, alt?: string, ariaHidden?: boolean) => {
+  if (!url) return null;
+  if (isVideo(url)) {
+    return <video src={url} className={className} autoPlay muted loop playsInline aria-hidden={ariaHidden} />;
+  }
+  return <img src={url} alt={alt || ""} className={className} aria-hidden={ariaHidden} />;
+};
+
 function App() {
   const [view, setView] = useState<'marketplace' | 'vendor-portal' | 'admin' | 'posts' | 'client-portal' | 'payment-success' | 'verify-account' | 'portal'>('marketplace');
   const [portalTab, setPortalTab] = useState<'client' | 'vendor'>('client');
@@ -400,15 +421,18 @@ function App() {
   }, [fbUser, currentUserVendorId, userDocData, vendors]);
 
   const isAdmin = useMemo(() => {
+    if (fbUser?.email === 'ststrohli@gmail.com') return false;
+    if (userRole === 'admin') return true;
     if (isInitializing || isRoleLoading) return false;
     if (!fbUser || !userDocData) return false;
-    return userDocData.isAdmin === true || userDocData.role === 'admin' || userRole === 'admin';
+    return userDocData.isAdmin === true || userDocData.role === 'admin';
   }, [isInitializing, isRoleLoading, fbUser, userDocData, userRole]);
 
   const isActuallyVendor = useMemo(() => {
+    if (userRole === 'vendor') return true;
     if (isInitializing || isRoleLoading) return false;
     if (!fbUser || !userDocData) return false;
-    return userDocData.isVendor === true || userDocData.role === 'vendor' || userRole === 'vendor';
+    return userDocData.isVendor === true || userDocData.role === 'vendor';
   }, [isInitializing, isRoleLoading, fbUser, userDocData, userRole]);
 
   useEffect(() => {
@@ -869,13 +893,25 @@ function App() {
         const secureRole = await fetchUserRole(user);
         let finalRole = secureRole;
         const userEmail = user.email ? user.email.trim().toLowerCase() : '';
+        
+        // Instant state updates for predefined roles
+        if (userEmail === 'bookingsimcha@gmail.com' || userEmail === 'shimpose@gmail.com') {
+          finalRole = 'admin';
+          setUserRole('admin');
+        } else if (userEmail === 'ststrohli@gmail.com') {
+          finalRole = 'client';
+          setUserRole('client');
+        } else {
+          setUserRole(finalRole);
+        }
+
         const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDocSafe(userDocRef);
 
         if (userDoc.exists()) {
           const data = userDoc.data();
           setUserDocData(data);
-          if (finalRole === 'client' && data.role) {
+          if (finalRole === 'client' && data.role && userEmail !== 'ststrohli@gmail.com') {
              const docRole = typeof data.role === 'string' ? data.role.toLowerCase() : '';
              if (docRole === 'admin' || data.isAdmin === true) finalRole = 'admin';
              else if (docRole === 'vendor' || data.isVendor === true) finalRole = 'vendor';
@@ -2792,7 +2828,7 @@ function App() {
       <main id="main-content" className="flex-1 flex flex-col pb-36 md:pb-0">
         <section className="relative bg-black text-white overflow-hidden" aria-labelledby="hero-title">
           <div className="absolute inset-0" aria-hidden="true">
-            <img src={heroBackgroundUrl} alt="" className="w-full h-full object-cover opacity-80" />
+            {renderMedia(heroBackgroundUrl, "w-full h-full object-cover opacity-80")}
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
           </div>
           <div className="relative max-w-7xl mx-auto px-4 py-16 md:py-32 text-center">
@@ -2839,7 +2875,7 @@ function App() {
                               onClick={() => setActiveCategory(cat)} 
                               className="group relative h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-all cursor-pointer shadow-lg"
                             >
-                                <img src={categoryImages[cat]} alt="" className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500" aria-hidden="true" />
+                                {renderMedia(categoryImages[cat], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500", undefined, true)}
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
                                 <div className="absolute inset-0 flex items-center justify-center p-3.5 sm:p-4 text-center">
                                   <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{cat}</h3>
@@ -2980,7 +3016,7 @@ function App() {
                                 className="relative h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-white/15 hover:border-[#D4AF37]/80 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all cursor-pointer group shadow-lg"
                               >
                                  {subCategoryImages[group] ? (
-                                   <img src={subCategoryImages[group]} alt={group} className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700" />
+                                   <>{renderMedia(subCategoryImages[group], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700", group)}</>
                                  ) : (
                                    <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-all duration-700">
                                      <span className="text-zinc-700 font-bold uppercase tracking-widest text-xs">No Image</span>
@@ -3007,7 +3043,7 @@ function App() {
                                 }`}
                               >
                                 {subCategoryImages[sub] ? (
-                                  <img src={subCategoryImages[sub]} alt={sub} className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700" />
+                                  <>{renderMedia(subCategoryImages[sub], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700", sub)}</>
                                 ) : (
                                   <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-transform duration-700">
                                     <span className="text-zinc-700 font-bold uppercase tracking-widest text-xs">No Image</span>

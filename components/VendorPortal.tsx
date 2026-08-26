@@ -30,6 +30,19 @@ interface VendorPortalProps {
   initialTab?: string;
 }
 
+const isVideo = (url?: string | null) => {
+  if (!url) return false;
+  return !!(url.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || url.includes('video%2F') || url.includes('video/'));
+};
+
+const renderMedia = (url: string | undefined | null, className: string, defaultContent?: React.ReactNode) => {
+  if (!url) return defaultContent || null;
+  if (isVideo(url)) {
+    return <video src={url} className={className} autoPlay muted loop playsInline />;
+  }
+  return <img src={url} className={className} />;
+};
+
 const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, onActiveChatChange, onTabChange, initialTab }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'history' | 'calendar' | 'profile' | 'messages'>(initialTab as any || 'overview');
   
@@ -3067,7 +3080,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       </div>
 
                       <form onSubmit={handleSendReply} className="p-4 bg-black/60 border-t border-white/5 space-y-3 sticky bottom-0">
-                        <input type="file" ref={chatFileInputRef} className="hidden" onChange={handleChatFileUpload} />
+                        <input type="file" accept="image/*,video/*,.pdf,.doc,.docx" ref={chatFileInputRef} className="hidden" onChange={handleChatFileUpload} />
                         {isChatRecording && (
                           <div className="flex items-center justify-between p-3 bg-zinc-500/10 border border-zinc-500/20 rounded-xl animate-pulse">
                              <div className="flex items-center gap-3 text-zinc-400">
@@ -3459,7 +3472,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               {isUploadingNewServiceImage ? 'Uploading...' : 'Upload Package Photo'}
                               <input 
                                 type="file" 
-                                accept="image/*" 
+                                accept="image/*,video/*" 
                                 className="hidden" 
                                 disabled={isUploadingNewServiceImage}
                                 onChange={handleNewServiceImageUpload} 
@@ -3494,7 +3507,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             {/* Top Image Section */}
                             <div className="relative h-48 bg-[#111] group-hover:bg-[#151515] transition-colors border-b border-white/5 flex items-center justify-center">
                               {(previewUrls[service.id] || service.image) ? (
-                                <img src={previewUrls[service.id] || service.image} alt={service.name} className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity" />
+                                <>{renderMedia(previewUrls[service.id] || service.image, "absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity")}</>
                               ) : (
                                 <div className="flex flex-col items-center justify-center text-zinc-600 gap-2">
                                   <ImageIcon className="w-8 h-8 opacity-50" />
@@ -3513,7 +3526,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                   <label className="cursor-pointer bg-black/60 hover:bg-[#D4AF37]/20 border border-white/10 hover:border-[#D4AF37]/50 text-white hover:text-[#D4AF37] px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-all shadow-xl backdrop-blur-md">
                                     <Camera className="w-4 h-4" />
                                     {service.image ? 'Change Photo' : 'Upload Photo'}
-                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleServiceImageUpload(service.id, e)} />
+                                    <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => handleServiceImageUpload(service.id, e)} />
                                   </label>
                                 </div>
                               )}
@@ -3655,7 +3668,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                       {editForm.gallery?.map((url, idx) => {
-                        const isVideo = url.startsWith('data:video/') || url.match(/\.(mp4|webm|ogg)$/i);
+                        const isVideo = !!(url.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || url.includes('video%2F') || url.includes('video/'));
                         return (
                           <div key={idx} className="relative aspect-square bg-black rounded-2xl overflow-hidden border border-white/5 group ring-1 ring-white/5 shadow-2xl">
                             <div 

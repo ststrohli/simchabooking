@@ -576,12 +576,11 @@ const ChatModal: React.FC<ChatModalProps> = ({
     setIsUploading(true);
 
     try {
-      const storagePath = `chats/${Date.now()}_${file.name}`;
+      const conversationId = [myUid, targetUid].sort().join('_');
+      const storagePath = `chats/${conversationId}/${Date.now()}_${file.name}`;
       const url = await uploadFileWithProgress(file, storagePath, (progress) => {
         setUploadProgress(progress);
       });
-
-      const conversationId = [myUid, targetUid].sort().join('_');
 
       sendOptimisticMessage({
         text: isImage ? 'Sent an image' : isVideo ? 'Sent a video' : `Sent a file: ${file.name}`,
@@ -1072,7 +1071,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                 }
               }}
             >
-              <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+              <input type="file" accept="image/*,video/*,.pdf,.doc,.docx" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
               
               {isDragActive && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80 backdrop-blur-sm border-2 border-dashed border-[#D4AF37] rounded-xl m-2 pointer-events-none">

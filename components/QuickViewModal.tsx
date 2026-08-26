@@ -22,13 +22,13 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
   const mediaItems = useMemo(() => {
     const items: Array<{ type: 'image' | 'video', url: string, isNative?: boolean }> = [];
     if (vendor.video) {
-      const isNativeVideo = vendor.video.startsWith('data:video/') || vendor.video.match(/\.(mp4|webm|ogg)$/i);
+      const isNativeVideo = vendor.video.startsWith('data:video/') || vendor.video.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || vendor.video.includes('video%2F') || vendor.video.includes('video/');
       items.push({ type: 'video', url: vendor.video, isNative: !!isNativeVideo });
     }
     if (vendor.gallery && vendor.gallery.length > 0) {
       items.push(...vendor.gallery.map(url => {
         if (!url) return null;
-        const isNativeVideo = url.startsWith('data:video/') || url.match(/\.(mp4|webm|ogg)$/i);
+        const isNativeVideo = url.startsWith('data:video/') || url.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || url.includes('video%2F') || url.includes('video/');
         return isNativeVideo ? { type: 'video' as const, url, isNative: true } : { type: 'image' as const, url };
       }).filter(Boolean) as any);
     }

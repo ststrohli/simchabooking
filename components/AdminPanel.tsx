@@ -110,6 +110,19 @@ const TableContainer: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
 const COMMISSION_RATE = 0.10;
 
+const isVideo = (url?: string | null) => {
+  if (!url) return false;
+  return !!(url.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || url.includes('video%2F') || url.includes('video/'));
+};
+
+const renderMedia = (url: string | undefined | null, className: string, defaultContent?: React.ReactNode) => {
+  if (!url) return defaultContent || null;
+  if (isVideo(url)) {
+    return <video src={url} className={className} autoPlay muted loop playsInline />;
+  }
+  return <img src={url} className={className} />;
+};
+
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
     vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder, onDeleteCategory
 }) => {
@@ -1360,9 +1373,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             <div className="space-y-4">
                                 <label className={labelClass}>Business Profile Image</label>
                                 <div onClick={() => vendorFileInputRef.current?.click()} className="h-44 bg-black border-2 border-dashed border-[#D4AF37]/20 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-[#D4AF37]/50 transition-all overflow-hidden relative">
-                                    {formData.image ? <img src={formData.image} className="w-full h-full object-cover" /> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-zinc-600 font-bold uppercase tracking-widest text-[9px]">Select Image</p></div>}
+                                    {formData.image ? <>{renderMedia(formData.image, "w-full h-full object-cover")}</> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-zinc-600 font-bold uppercase tracking-widest text-[9px]">Select Image</p></div>}
                                 </div>
-                                <input type="file" accept="image/*" className="hidden" ref={vendorFileInputRef} onChange={handleVendorFileUpload} />
+                                <input type="file" accept="image/*,video/*" className="hidden" ref={vendorFileInputRef} onChange={handleVendorFileUpload} />
                             </div>
                         </div>
                         <div><label className={labelClass}>Elevator Pitch / Description</label><textarea required rows={4} className={inputClass + " resize-none"} value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} /></div>
@@ -1834,11 +1847,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                              {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                              Change Hero Image
                            </button>
-                           <input type="file" accept="image/*" className="hidden" ref={heroImageInputRef} onChange={handleHeroBackgroundUpload} />
+                           <input type="file" accept="image/*,video/*" className="hidden" ref={heroImageInputRef} onChange={handleHeroBackgroundUpload} />
                         </div>
                         <div className="md:col-span-2">
                            <div className="aspect-[21/9] bg-black rounded-xl border border-[#D4AF37]/20 overflow-hidden relative group">
-                              <img src={previewUrls['hero'] || heroBackgroundUrl} className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-1000" />
+                              {renderMedia(previewUrls['hero'] || heroBackgroundUrl, "w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-1000")}
                               <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
                               <div className="absolute bottom-4 left-6">
                                  <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Live Preview</p>
@@ -1875,9 +1888,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                           <div className="space-y-4">
                               <label className={labelClass}>Vertical Hero Asset</label>
                               <div onClick={() => newCatImageInputRef.current?.click()} className="h-44 bg-black border-2 border-dashed border-[#D4AF37]/20 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-[#D4AF37]/50 transition-all overflow-hidden relative">
-                                {newCategoryForm.image ? <img src={newCategoryForm.image} className="w-full h-full object-cover" /> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-zinc-600 font-bold uppercase tracking-widest text-[9px]">Select Banner</p></div>}
+                                {newCategoryForm.image ? <>{renderMedia(newCategoryForm.image, "w-full h-full object-cover")}</> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-zinc-600 font-bold uppercase tracking-widest text-[9px]">Select Banner</p></div>}
                               </div>
-                              <input type="file" accept="image/*" className="hidden" ref={el => { newCatImageInputRef.current = el; }} onChange={handleNewCategoryImgUpload} />
+                              <input type="file" accept="image/*,video/*" className="hidden" ref={el => { newCatImageInputRef.current = el; }} onChange={handleNewCategoryImgUpload} />
                           </div>
                       </div>
                       <button type="submit" className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-xl hover:bg-[#E5C76B] transition-all text-xs uppercase tracking-[0.2em]">Commit New Vertical</button>
@@ -1914,7 +1927,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     {localCategories.map((cat, index) => (
                         <div key={cat} className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 overflow-hidden flex flex-col shadow-2xl group relative">
                             <div className="relative h-44 bg-black">
-                                <img src={previewUrls[cat] || categoryImages[cat]} className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" />
+                                {renderMedia(previewUrls[cat] || categoryImages[cat], "w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700")}
                                 <div className="absolute inset-0 bg-gradient-to-t from-[#111] via-transparent to-black/30"></div>
                                 
                                 <div className="absolute top-4 left-4 flex items-center gap-1 bg-black/80 px-2.5 py-1.5 rounded-lg border border-[#D4AF37]/20 backdrop-blur-sm z-10">
@@ -1953,7 +1966,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
-                                <input type="file" accept="image/*" className="hidden" ref={el => { categoryImageInputRefs.current[cat] = el; }} onChange={(e) => handleCategoryImageUpload(cat, e)} />
+                                <input type="file" accept="image/*,video/*" className="hidden" ref={el => { categoryImageInputRefs.current[cat] = el; }} onChange={(e) => handleCategoryImageUpload(cat, e)} />
                                 <h3 className="absolute bottom-4 left-6 text-2xl font-bold font-[Cinzel] text-[#D4AF37]">{cat}</h3>
                                 
                                 {typeof uploadProgresses[cat] === 'number' && (
@@ -1992,14 +2005,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                           <div key={item} className="relative group overflow-hidden bg-black/40 rounded-xl border border-white/5 aspect-square flex flex-col">
                                                               <div className="flex-1 relative">
                                                                   {(previewUrls[item] || subCategoryImages[item]) ? (
-                                                                      <img src={previewUrls[item] || subCategoryImages[item]} alt={item} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity" />
+                                                                      <>{renderMedia(previewUrls[item] || subCategoryImages[item], "w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity")}</>
                                                                   ) : (
                                                                       <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
                                                                           <ImageIcon className="w-6 h-6 text-zinc-700" />
                                                                       </div>
                                                                   )}
                                                                   <button onClick={() => subCategoryImageInputRefs.current[item]?.click()} className="absolute inset-0 m-auto w-8 h-8 bg-black/60 hover:bg-[#D4AF37] hover:text-black rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all border border-white/10" title="Modify Image"><Camera className="w-4 h-4" /></button>
-                                                                  <input type="file" accept="image/*" className="hidden" ref={el => { subCategoryImageInputRefs.current[item] = el; }} onChange={(e) => handleSubCategoryImageUpload(item, e)} />
+                                                                  <input type="file" accept="image/*,video/*" className="hidden" ref={el => { subCategoryImageInputRefs.current[item] = el; }} onChange={(e) => handleSubCategoryImageUpload(item, e)} />
                                                                   
                                                                   {typeof uploadProgresses[item] === 'number' && (
                                                                     <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
