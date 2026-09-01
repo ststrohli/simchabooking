@@ -14,10 +14,6 @@
   "engines": {
     "node": "20"
   },
-  "overrides": {
-    "node-domexception": "file:./node-domexception-shim"
-  },
-  "//": "Sync comment",
   "dependencies": {
     "@axe-core/react": "^4.13.0",
     "@google/genai": "^2.5.0",
@@ -38,8 +34,8 @@
     "lucide-react": "^1.16.0",
     "motion": "^12.40.0",
     "multer": "^2.0.0",
-    "node-domexception": "file:./node-domexception-shim",
-    "nodemailer": "^8.0.8",
+    "node-domexception": "^1.0.0",
+    "nodemailer": "^9.0.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "recharts": "^3.10.0",

@@ -11,8 +11,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/index.css">
     <script type="module">
-      const mapsKey = "%VITE_GOOGLE_MAPS_PLATFORM_KEY%";
-      if (mapsKey && !mapsKey.startsWith("%") && !window.google?.maps?.places) {
+      const mapsKey = import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY;
+      if (mapsKey && typeof mapsKey === 'string' && !mapsKey.startsWith("%") && !window.google?.maps?.places) {
         const script = document.createElement('script');
         script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(mapsKey)}&libraries=places`;
         script.async = false;
