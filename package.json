@@ -39,7 +39,7 @@
     "motion": "^12.40.0",
     "multer": "^2.0.0",
     "node-domexception": "file:./node-domexception-shim",
-    "nodemailer": "^8.0.7",
+    "nodemailer": "^9.0.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "recharts": "^3.10.0",
@@ -47,7 +47,7 @@
     "tailwindcss": "^4.3.0",
     "tsx": "^4.22.3",
     "typescript": "~6.0.3",
-    "vite": "^8.0.13"
+    "vite": "^8.0.16"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
