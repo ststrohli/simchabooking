@@ -39,7 +39,7 @@
     "motion": "^12.40.0",
     "multer": "^2.0.0",
     "node-domexception": "file:./node-domexception-shim",
-    "nodemailer": "^9.0.1",
+    "nodemailer": "^8.0.8",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "recharts": "^3.10.0",
