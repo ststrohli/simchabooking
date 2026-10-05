@@ -1064,10 +1064,8 @@ async function startServer() {
       }
       
       const stripe = await getStripe();
-      // Create a Stripe Connect Express account
-      const account = await stripe.accounts.create({
+      const accountParams: any = {
         type: "express",
-        email: email,
         metadata: {
           vendorId: vendorId
         },
@@ -1076,7 +1074,14 @@ async function startServer() {
           transfers: { requested: true },
           us_bank_account_ach_payments: { requested: true },
         },
-      });
+      };
+
+      if (email && typeof email === 'string' && email.trim() !== '') {
+        accountParams.email = email.trim();
+      }
+
+      // Create a Stripe Connect Express account
+      const account = await stripe.accounts.create(accountParams);
 
       // SAVE ID IMMEDIATELY: Save the new stripeAccountId to vendor's document before redirecting
       const updateData = {

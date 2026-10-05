@@ -99,7 +99,7 @@ const PaymentSuccess: React.FC<PaymentSuccessProps> = ({ bookingId, vendorId, on
 
         {status === 'error' && (
           <div className="flex flex-col items-center gap-6">
-            <div className="bg-zinc-500/10 w-24 h-24 rounded-full flex items-center justify-center border border-zinc-500/20">
+            <div className="bg-zinc-400/10 w-24 h-24 rounded-full flex items-center justify-center border border-zinc-400/20">
               <CheckCircle className="w-16 h-16 text-zinc-400 rotate-180" />
             </div>
             <h2 className="text-2xl font-bold font-[Cinzel] text-zinc-400">Verification Failed</h2>

@@ -1716,7 +1716,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           onClick={() => handleToggleDate(dateStr)}
           className={`min-h-[120px] md:min-h-[140px] border p-2 md:p-3 transition-all cursor-pointer relative group flex flex-col justify-between ${
             isBlocked 
-              ? 'bg-red-950/5 border-zinc-500/10 hover:border-zinc-500/30' 
+              ? 'bg-red-950/5 border-zinc-400/10 hover:border-zinc-400/30' 
               : 'bg-black border-white/5 hover:border-[#D4AF37]/30'
           } ${isToday ? 'ring-1 ring-[#D4AF37] ring-inset bg-[#D4AF37]/5' : ''}`}
         >
@@ -2039,14 +2039,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Available</span>
            </div>
            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-red-950/40 border border-zinc-500/20"></div>
+              <div className="w-3 h-3 rounded bg-red-950/40 border border-zinc-400/20"></div>
               <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Blocked / Unavailable</span>
            </div>
            <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded bg-[#1a1a1a] border border-[#D4AF37]/30"></div>
               <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Confirmed Booking</span>
            </div>
-           <div className="ml-auto text-[10px] text-zinc-600 italic">
+           <div className="ml-auto text-[10px] text-zinc-400 italic">
              * Click any date or empty slot to toggle availability.
            </div>
         </div>
@@ -2055,7 +2055,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 flex flex-col md:flex-row overflow-hidden relative">
+    <div className="h-[calc(100dvh-5rem)] bg-black text-zinc-100 flex flex-col md:flex-row overflow-hidden relative">
       {/* New Booking Alert Toast */}
       {newBookingAlert && (
         <div className="fixed top-20 right-4 z-[100] w-full max-w-sm animate-in slide-in-from-right duration-500">
@@ -2109,7 +2109,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Simcha Booking/event
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#D4AF37]/15 text-zinc-400 border border-zinc-500/30">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#D4AF37]/15 text-zinc-400 border border-zinc-400/30">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Google Calendar Event
                       </span>
                     )}
@@ -2297,7 +2297,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           });
                         }
                       }}
-                      className="flex-1 py-3.5 bg-zinc-800 hover:bg-zinc-700 text-[#D4AF37] rounded-xl font-black text-[10px] uppercase tracking-[0.2em] border border-zinc-500/20 transition-all cursor-pointer"
+                      className="flex-1 py-3.5 bg-zinc-800 hover:bg-zinc-700 text-[#D4AF37] rounded-xl font-black text-[10px] uppercase tracking-[0.2em] border border-zinc-400/20 transition-all cursor-pointer"
                     >
                       Make Offer
                     </motion.button>
@@ -2344,7 +2344,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       </AnimatePresence>
 
       {/* Mobile Toggle */}
-      {!['overview', 'bookings', 'calendar', 'messages', 'profile'].includes(activeTab) && (
+      {!isSidebarOpen && (
       <div className="md:hidden bg-[#0a0a0a] border-b border-[#D4AF37]/10 p-4 flex justify-between items-center z-30 sticky top-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-[#D4AF37] rounded-lg flex items-center justify-center text-black font-bold font-[Cinzel] shrink-0">V</div>
@@ -2377,7 +2377,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         <div className="p-6 md:p-8 flex items-center justify-between border-b border-white/5">
           <div>
             <h2 className="text-xl md:text-2xl font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-tighter">Simcha Portal</h2>
-            <p className="text-[9px] md:text-[10px] text-zinc-600 font-bold uppercase tracking-[0.3em] mt-1">Vendor Station</p>
+            <p className="text-[9px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-[0.3em] mt-1">Vendor Station</p>
           </div>
           <button 
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsSidebarOpen(false); }} 
@@ -2400,7 +2400,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       </aside>
 
       {/* Main Container */}
-      <main className="flex-1 h-screen overflow-y-auto bg-[#050505] relative pb-36 md:pb-0">
+      <main className="flex-1 h-full overflow-y-auto bg-[#050505] relative pb-36 md:pb-0">
         <div className="sticky top-0 z-30 bg-[#050505]/95 backdrop-blur-md px-4 md:px-10 py-5 md:py-6 border-b border-white/5">
           <div className="flex flex-col gap-4">
             <div className="flex justify-between items-start">
@@ -2410,7 +2410,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               </div>
               <div className="flex items-center gap-4 pt-1">
                  {pendingRequests > 0 && (
-                   <div className="hidden sm:flex items-center gap-2 bg-zinc-800 border border-zinc-500/30 px-3 py-1.5 rounded-full animate-pulse">
+                   <div className="hidden sm:flex items-center gap-2 bg-zinc-800 border border-zinc-400/30 px-3 py-1.5 rounded-full animate-pulse">
                      <Bell className="w-3.5 h-3.5 text-zinc-400" />
                      <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">{pendingRequests} Pending</span>
                    </div>
@@ -2449,7 +2449,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     </div>
                     <div 
                       onClick={() => setActiveTab('bookings')}
-                      className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-zinc-500/20 transition-all cursor-pointer"
+                      className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-zinc-400/20 transition-all cursor-pointer"
                     >
                       <div className={`p-3 w-fit rounded-2xl transition-colors ${pendingRequests > 0 ? 'bg-zinc-800 group-hover:bg-zinc-700' : 'bg-[#D4AF37]/10'}`}>
                         <Users className={`w-6 h-6 ${pendingRequests > 0 ? 'text-zinc-400' : 'text-[#D4AF37]'}`} />
@@ -2463,7 +2463,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       onClick={() => setActiveTab('messages')}
                       className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-[#D4AF37]/25 transition-all cursor-pointer"
                     >
-                      <div className={`p-3 w-fit rounded-2xl transition-colors ${messages.filter(m => m.receiverId === vendor.id && !m.isRead).length > 0 ? 'bg-zinc-500/10 group-hover:bg-zinc-800' : 'bg-[#D4AF37]/10'}`}>
+                      <div className={`p-3 w-fit rounded-2xl transition-colors ${messages.filter(m => m.receiverId === vendor.id && !m.isRead).length > 0 ? 'bg-zinc-400/10 group-hover:bg-zinc-800' : 'bg-[#D4AF37]/10'}`}>
                         <MessageSquare className={`w-6 h-6 ${messages.filter(m => m.receiverId === vendor.id && !m.isRead).length > 0 ? 'text-zinc-400' : 'text-[#D4AF37]'}`} />
                       </div>
                       <div>
@@ -2552,7 +2552,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       )}
 
                       {onboardingError && (
-                        <div className="bg-zinc-500/10 border border-zinc-500/20 rounded-xl p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="bg-zinc-400/10 border border-zinc-400/20 rounded-xl p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
                           <div className="flex items-start gap-3">
                             <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0 mt-0.5" />
                             <div className="flex-1">
@@ -2561,14 +2561,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             </div>
                           </div>
                           
-                          <div className="pt-3 border-t border-zinc-500/10 space-y-3">
+                          <div className="pt-3 border-t border-zinc-400/10 space-y-3">
                             <div className="flex items-center gap-2">
                               <div className="h-px flex-1 bg-zinc-800"></div>
                               <p className="text-[9px] text-zinc-400/60 uppercase tracking-widest font-black">Secure Express Onboarding</p>
                               <div className="h-px flex-1 bg-zinc-800"></div>
                             </div>
                             
-                            <div className="bg-black/20 rounded-xl p-3 space-y-2 border border-zinc-500/10">
+                            <div className="bg-black/20 rounded-xl p-3 space-y-2 border border-zinc-400/10">
                               <p className="text-[10px] text-zinc-300 leading-relaxed">
                                 Click <strong className="text-white">Connect Stripe</strong> above to securely enter bank account and tax details directly on Stripe's Express onboarding page.
                               </p>
@@ -2581,7 +2581,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           <button 
                             type="button"
                             onClick={() => setOnboardingError(null)}
-                            className="w-full py-2 text-[8px] font-black uppercase tracking-widest text-zinc-400/60 hover:text-zinc-400 transition-colors border border-zinc-500/10 rounded-lg hover:bg-zinc-800/50"
+                            className="w-full py-2 text-[8px] font-black uppercase tracking-widest text-zinc-400/60 hover:text-zinc-400 transition-colors border border-zinc-400/10 rounded-lg hover:bg-zinc-800/50"
                           >
                             Dismiss
                           </button>
@@ -2679,7 +2679,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               key={idx}
                               x={p.x}
                               y={chartSize.height - 10}
-                              className={`fill-zinc-500 text-[10px] font-black uppercase tracking-wider ${isOdd ? "hidden md:block" : ""}`}
+                              className={`fill-zinc-400 text-[10px] font-black uppercase tracking-wider ${isOdd ? "hidden md:block" : ""}`}
                               textAnchor="middle"
                             >
                               {p.data.name}
@@ -3087,7 +3087,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       <form onSubmit={handleSendReply} className="p-4 bg-black/60 border-t border-white/5 space-y-3 sticky bottom-0">
                         <input type="file" accept="image/*,video/*,.pdf,.doc,.docx" ref={chatFileInputRef} className="hidden" onChange={handleChatFileUpload} />
                         {isChatRecording && (
-                          <div className="flex items-center justify-between p-3 bg-zinc-500/10 border border-zinc-500/20 rounded-xl animate-pulse">
+                          <div className="flex items-center justify-between p-3 bg-zinc-400/10 border border-zinc-400/20 rounded-xl animate-pulse">
                              <div className="flex items-center gap-3 text-zinc-400">
                                <Mic className="w-5 h-5 animate-bounce" />
                                <span className="font-bold">Recording Voice Note...</span>
@@ -3175,7 +3175,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       <p className="text-[10px] text-zinc-300 font-bold uppercase tracking-widest mt-1">Control how clients can negotiate pricing</p>
                     </div>
                     <div className="flex items-center gap-4">
-                       <DollarSign className={`w-8 h-8 transition-all ${editForm.allowOffers ? 'text-[#D4AF37]' : 'text-zinc-800'}`} />
+                       <DollarSign className={`w-8 h-8 transition-all ${editForm.allowOffers ? 'text-[#D4AF37]' : 'text-zinc-600'}`} />
                        <ChevronRight className={`w-6 h-6 text-zinc-300 transition-transform ${collapsedSections['offers'] ? 'rotate-90' : ''}`} />
                     </div>
                   </button>
@@ -3366,11 +3366,11 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     <div className="flex items-center gap-4">
                        <button 
                          onClick={(e) => { e.stopPropagation(); setShowAddForm(!showAddForm); if (collapsedSections['services']) toggleSection('services'); }}
-                         className={`p-3 rounded-xl transition-all border ${showAddForm ? 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20' : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20 hover:bg-[#D4AF37]'}`}
+                         className={`p-3 rounded-xl transition-all border ${showAddForm ? 'bg-zinc-400/10 text-zinc-400 border-zinc-400/20' : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20 hover:bg-[#D4AF37]'}`}
                        >
                          {showAddForm ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                        </button>
-                       <ChevronRight className={`w-6 h-6 text-zinc-600 transition-transform ${collapsedSections['services'] ? '' : 'rotate-90'}`} />
+                       <ChevronRight className={`w-6 h-6 text-zinc-400 transition-transform ${collapsedSections['services'] ? '' : 'rotate-90'}`} />
                     </div>
                   </div>
                   
@@ -3420,7 +3420,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                   value={newServiceUnit}
                                   onChange={e => setNewServiceUnit(e.target.value)}
                                 />
-                                <div className="flex items-center gap-2 bg-black/40 px-3 rounded-xl border border-white/5 text-[8px] text-zinc-600 font-bold uppercase">
+                                <div className="flex items-center gap-2 bg-black/40 px-3 rounded-xl border border-white/5 text-[8px] text-zinc-400 font-bold uppercase">
                                    <Info className="w-3 h-3" /> Custom Unit
                                 </div>
                             </div>
@@ -3437,7 +3437,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               </span>
                               <HelpCircle className="w-3.5 h-3.5 opacity-40" />
                             </button>
-                            <p className="text-[8px] text-zinc-600 mt-2 ml-1 italic">Allow clients to pick multiple units of this service.</p>
+                            <p className="text-[8px] text-zinc-400 mt-2 ml-1 italic">Allow clients to pick multiple units of this service.</p>
                           </div>
                         </div>
 
@@ -3467,7 +3467,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                 )}
                               </div>
                             ) : (
-                              <div className="w-20 h-20 rounded-xl border border-dashed border-white/10 flex flex-col items-center justify-center bg-black text-zinc-600">
+                              <div className="w-20 h-20 rounded-xl border border-dashed border-white/10 flex flex-col items-center justify-center bg-black text-zinc-400">
                                 <ImageIcon className="w-5 h-5 opacity-40" />
                                 <span className="text-[8px] font-bold uppercase mt-1">No Image</span>
                               </div>
@@ -3514,7 +3514,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               {(previewUrls[service.id] || service.image) ? (
                                 <>{renderMedia(previewUrls[service.id] || service.image, "absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity")}</>
                               ) : (
-                                <div className="flex flex-col items-center justify-center text-zinc-600 gap-2">
+                                <div className="flex flex-col items-center justify-center text-zinc-400 gap-2">
                                   <ImageIcon className="w-8 h-8 opacity-50" />
                                   <span className="text-[9px] font-bold uppercase tracking-widest">No Image</span>
                                 </div>
@@ -3541,7 +3541,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             <div className="p-6 flex-1 flex flex-col gap-5">
                               
                               <div className="space-y-1.5">
-                                <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">Package Identity</label>
+                                <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Package Identity</label>
                                 <div className="relative">
                                   <Package className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/40" />
                                   <input 
@@ -3556,7 +3556,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               
                               <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
-                                  <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">Base Rate ($)</label>
+                                  <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Base Rate ($)</label>
                                   <div className="relative">
                                     <DollarSign className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/40" />
                                     <input 
@@ -3568,7 +3568,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                   </div>
                                 </div>
                                 <div className="space-y-1.5">
-                                  <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">Model (per...)</label>
+                                  <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Model (per...)</label>
                                   <input 
                                     type="text"
                                     className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-zinc-100 transition-all text-center"
@@ -3589,7 +3589,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                 </button>
                                 <button 
                                   onClick={() => handleRemoveService(service.id)}
-                                  className="p-2.5 text-zinc-600 bg-white/5 hover:text-zinc-400 hover:bg-zinc-500/10 rounded-xl transition-all border border-transparent hover:border-zinc-500/20"
+                                  className="p-2.5 text-zinc-400 bg-white/5 hover:text-zinc-400 hover:bg-zinc-400/10 rounded-xl transition-all border border-transparent hover:border-zinc-400/20"
                                   title="Delete Package"
                                 >
                                   <Trash2 className="w-4 h-4" />
@@ -3602,10 +3602,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       ) : (
                         <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-[2.5rem] bg-black/20">
                            <div className="bg-white/5 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                              <Tag className="w-8 h-8 text-zinc-700" />
+                              <Tag className="w-8 h-8 text-zinc-400" />
                            </div>
                            <h4 className="text-zinc-400 font-bold uppercase tracking-widest text-sm">Catalog is Empty</h4>
-                           <p className="text-[10px] text-zinc-600 mt-2 max-w-xs mx-auto leading-relaxed">Defining specific services allows clients to build custom quotes and helps you automate your booking flow.</p>
+                           <p className="text-[10px] text-zinc-400 mt-2 max-w-xs mx-auto leading-relaxed">Defining specific services allows clients to build custom quotes and helps you automate your booking flow.</p>
                            <button 
                              onClick={() => setShowAddForm(true)}
                              className="mt-6 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all"
@@ -3629,7 +3629,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Media Showcase</h3>
                       <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Manage images and videos appearing on your card</p>
                     </div>
-                    <ChevronRight className={`w-6 h-6 text-zinc-600 transition-transform ${collapsedSections['media'] ? '' : 'rotate-90'}`} />
+                    <ChevronRight className={`w-6 h-6 text-zinc-400 transition-transform ${collapsedSections['media'] ? '' : 'rotate-90'}`} />
                   </button>
                   
                   {!collapsedSections['media'] && (
@@ -3724,7 +3724,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Email Debugger</h3>
                       <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Test your SMTP configuration</p>
                     </div>
-                    <ChevronRight className={`w-6 h-6 text-zinc-600 transition-transform ${collapsedSections['email'] ? '' : 'rotate-90'}`} />
+                    <ChevronRight className={`w-6 h-6 text-zinc-400 transition-transform ${collapsedSections['email'] ? '' : 'rotate-90'}`} />
                   </button>
                   
                   {!collapsedSections['email'] && (
@@ -3736,7 +3736,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     
                     <div className="flex flex-col sm:flex-row gap-3">
                       <div className="flex-1 relative">
-                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
+                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
                         <input 
                           type="email"
                           placeholder="recipient@example.com"
@@ -3763,7 +3763,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     )}
                     
                     {testEmailStatus?.error && (
-                      <div className="bg-zinc-500/10 border border-zinc-500/20 p-4 rounded-2xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-300">
+                      <div className="bg-zinc-400/10 border border-zinc-400/20 p-4 rounded-2xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-300">
                         <AlertTriangle className="w-4 h-4 text-zinc-400 mt-0.5" />
                         <div>
                           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Email Failed</p>
@@ -3777,7 +3777,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
                {/* Footer Action */}
                <div className="bg-black/60 p-8 rounded-3xl border border-[#D4AF37]/20 flex flex-col sm:flex-row justify-between items-center gap-6">
-                 <div className="flex items-center gap-3 text-zinc-600 text-center sm:text-left">
+                 <div className="flex items-center gap-3 text-zinc-400 text-center sm:text-left">
                     <AlertCircle className="w-5 h-5 text-[#D4AF37]/40 flex-shrink-0" />
                     <p className="text-[9px] font-bold uppercase tracking-widest italic leading-relaxed">Profile edits are subject to verification <br className="hidden sm:block" /> and will reflect instantly upon committing.</p>
                  </div>
@@ -3805,7 +3805,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           {(activeTab === 'history') && (
             <div className="bg-[#111] p-10 rounded-3xl border border-dashed border-white/10 text-center space-y-4 animate-in fade-in duration-300">
               <div className="bg-[#D4AF37]/5 w-20 h-20 rounded-full flex items-center justify-center mx-auto"><Settings className="w-8 h-8 text-[#D4AF37]/20" /></div>
-              <p className="text-xs font-bold text-zinc-600 uppercase tracking-widest">The "{activeTab}" module is currently under maintenance.</p>
+              <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">The "{activeTab}" module is currently under maintenance.</p>
             </div>
           )}
         </div>

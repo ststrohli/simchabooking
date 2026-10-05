@@ -202,7 +202,7 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           autoComplete="off"
-          className={`w-full bg-black border border-[#D4AF37]/30 rounded-xl text-zinc-100 placeholder:text-zinc-600 focus:ring-2 focus:ring-[#D4AF37] focus:border-[#D4AF37] outline-none transition-all ${Icon ? 'pl-10' : 'pl-4'} pr-4 py-2.5 text-sm ${className}`}
+          className={`w-full bg-black border border-[#D4AF37]/30 rounded-xl text-zinc-100 placeholder:text-zinc-400 focus:ring-2 focus:ring-[#D4AF37] focus:border-[#D4AF37] outline-none transition-all ${Icon ? 'pl-10' : 'pl-4'} pr-4 py-2.5 text-sm ${className}`}
         />
       </div>
     </div>

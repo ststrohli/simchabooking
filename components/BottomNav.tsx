@@ -27,40 +27,6 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isVendor
 
   return (
     <div className="fixed bottom-5 left-4 right-4 max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl mx-auto z-50 transition-all duration-300">
-      {/* Miniature Client / Vendor Pill Toggle */}
-      {showVendorToggle && onToggleVendor && (
-        <div className="absolute -top-11 left-1 z-50">
-          <div className="flex items-center bg-zinc-950/95 border border-[#D4AF37]/40 backdrop-blur-xl rounded-full p-1 shadow-[0_8px_20px_rgba(0,0,0,0.9),0_0_12px_rgba(212,175,55,0.2)] text-[10px] tracking-wider uppercase font-bold">
-            <button
-              onClick={() => { if (isVendorView) onToggleVendor(); }}
-              type="button"
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all duration-300 ${
-                !isVendorView
-                  ? 'bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] text-black font-black border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.5)] scale-100'
-                  : 'text-zinc-400 hover:text-white cursor-pointer'
-              }`}
-              aria-label="Switch to Client View"
-            >
-              <UserRound className="w-3 h-3" />
-              <span>Client</span>
-            </button>
-
-            <button
-              onClick={() => { if (!isVendorView) onToggleVendor(); }}
-              type="button"
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all duration-300 ${
-                isVendorView
-                  ? 'bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] text-black font-black border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.5)] scale-100'
-                  : 'text-zinc-400 hover:text-white cursor-pointer'
-              }`}
-              aria-label="Switch to Vendor View"
-            >
-              <Store className="w-3 h-3" />
-              <span>Vendor</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Main Nav */}
       <nav aria-label="Bottom Navigation" className="rounded-[28px] bg-gradient-to-b from-zinc-900/95 via-black/95 to-black/98 backdrop-blur-2xl border border-white/20 shadow-[0_10px_30px_rgba(0,0,0,0.9),0_0_20px_rgba(212,175,55,0.12)] pb-safe overflow-hidden">

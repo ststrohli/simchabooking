@@ -458,31 +458,30 @@ function App() {
     const nextVendorView = !isVendorView;
     setIsVendorView(nextVendorView);
     
-    // Only update portalTab if user is currently inside the portal view - DO NOT redirect!
-    if (view === 'portal') {
-      setPortalTab(nextVendorView ? 'vendor' : 'client');
-      if (nextVendorView) {
-        if (activeBottomTab === 'plan' || activeBottomTab === 'events') {
-          setPortalInitialTab('overview');
-          setActiveBottomTab('home');
-        } else if (activeBottomTab === 'chat') {
-          setPortalInitialTab('messages');
-        } else if (activeBottomTab === 'profile') {
-          setPortalInitialTab('profile');
-        } else if (activeBottomTab === 'home') {
-          setPortalInitialTab('overview');
-        }
-      } else {
-        if (activeBottomTab === 'bookings' || activeBottomTab === 'calendar') {
-          setPortalInitialTab('overview');
-          setActiveBottomTab('home');
-        } else if (activeBottomTab === 'chat') {
-          setPortalInitialTab('chats');
-        } else if (activeBottomTab === 'profile') {
-          setPortalInitialTab('profile');
-        } else if (activeBottomTab === 'home') {
-          setPortalInitialTab('overview');
-        }
+    setView('portal');
+    setPortalTab(nextVendorView ? 'vendor' : 'client');
+    
+    if (nextVendorView) {
+      if (activeBottomTab === 'plan' || activeBottomTab === 'events') {
+        setPortalInitialTab('overview');
+        setActiveBottomTab('home');
+      } else if (activeBottomTab === 'chat') {
+        setPortalInitialTab('messages');
+      } else if (activeBottomTab === 'profile') {
+        setPortalInitialTab('profile');
+      } else if (activeBottomTab === 'home') {
+        setPortalInitialTab('overview');
+      }
+    } else {
+      if (activeBottomTab === 'bookings' || activeBottomTab === 'calendar') {
+        setPortalInitialTab('overview');
+        setActiveBottomTab('home');
+      } else if (activeBottomTab === 'chat') {
+        setPortalInitialTab('chats');
+      } else if (activeBottomTab === 'profile') {
+        setPortalInitialTab('profile');
+      } else if (activeBottomTab === 'home') {
+        setPortalInitialTab('overview');
       }
     }
   };
@@ -2282,7 +2281,7 @@ function App() {
               </div>
               
               {error && (
-                <div className="bg-zinc-500/10 border border-zinc-500/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
+                <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
                   <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
                   <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
                 </div>
@@ -2348,7 +2347,7 @@ function App() {
                 <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
               </div>
               {error && (
-                <div className="bg-zinc-500/10 border border-zinc-500/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
+                <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
                   <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
                   <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
                 </div>
@@ -2402,7 +2401,7 @@ function App() {
               </div>
 
               {error && (
-                <div className="bg-zinc-500/10 border border-zinc-500/20 p-3 rounded-lg flex items-center gap-3 animate-in fade-in">
+                <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-in fade-in">
                   <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
                   <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
                 </div>
@@ -2619,37 +2618,7 @@ function App() {
     if (view === 'portal' && fbUser) {
       const isVendor = isActuallyVendor;
 
-      const renderVendorToggle = () => {
-        if (!isVendor) return null;
-        return (
-          <div className="bg-[#111] border-b border-[#D4AF37]/20 py-4 px-4 flex justify-center gap-4 sticky top-0 z-50">
-            <div className="flex bg-black border border-[#D4AF37]/30 p-1.5 rounded-full items-center">
-              <button 
-                onClick={() => setPortalTab('client')}
-                className={`px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all ${
-                  portalTab === 'client'
-                    ? 'bg-[#D4AF37] text-black shadow-lg font-black'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                Client Portal
-              </button>
-              <button 
-                onClick={() => setPortalTab('vendor')}
-                className={`px-6 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all ${
-                  portalTab === 'vendor'
-                    ? 'bg-[#D4AF37] text-black shadow-lg font-black'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                Vendor Portal
-              </button>
-            </div>
-          </div>
-        );
-      };
-
-      if (portalTab === 'vendor' && isVendor) {
+            if (portalTab === 'vendor' && isVendor) {
         const v = vendors.find(v => v.id === currentUserVendorId);
         if (v) {
           return (
@@ -2659,8 +2628,7 @@ function App() {
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               className="min-h-screen bg-black flex flex-col"
             >
-              {renderVendorToggle()}
-              <div className="flex-grow flex flex-col">
+                            <div className="flex-grow flex flex-col">
                 <VendorPortal 
                   vendor={v} 
                   initialTab={portalInitialTab}
@@ -2691,8 +2659,7 @@ function App() {
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
           className="min-h-screen bg-black flex flex-col"
         >
-          {renderVendorToggle()}
-          <div className="flex-grow flex flex-col">
+                    <div className="flex-grow flex flex-col">
             <ClientPortal 
               user={currentAuthenticatedUser} 
               initialTab={portalInitialTab}
@@ -2769,127 +2736,7 @@ function App() {
 
     return (
       <>
-      {permissionErrorBanner && (
-        <div className="bg-red-950/80 border-b border-red-500/40 px-4 py-3 text-red-200 text-xs font-medium flex items-center justify-between gap-3 backdrop-blur-md sticky top-0 z-[120]">
-          <div className="flex items-center gap-2 max-w-7xl mx-auto w-full">
-            <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
-            <span className="flex-1 font-semibold">{permissionErrorBanner}</span>
-            <button 
-              onClick={() => setPermissionErrorBanner(null)} 
-              className="text-red-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
-              aria-label="Dismiss message"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-lg focus:font-bold">Skip to main content</a>
-      {/* Floating Header Controls (? Ask on Right & Role Switcher on Left below header) */}
-      {!isInitializing && !isRoleLoading && !!fbUser && !!userDocData && isActuallyVendor && (
-        <div className="fixed top-22 sm:top-24 left-3 sm:left-5 md:left-6 lg:left-8 xl:left-10 z-50 flex items-center pointer-events-auto">
-          <div className="flex items-center bg-zinc-950/95 border border-[#D4AF37]/40 backdrop-blur-xl rounded-full p-0.5 sm:p-1 shadow-[0_8px_20px_rgba(0,0,0,0.9),0_0_12px_rgba(212,175,55,0.2)] text-[9px] sm:text-[10px] tracking-wider uppercase font-bold">
-            <button
-              type="button"
-              onClick={() => { if (isVendorView) handleToggleVendor(); }}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1 rounded-full transition-all duration-300 ${
-                !isVendorView
-                  ? 'bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] text-black font-black border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.5)] scale-100'
-                  : 'text-zinc-400 hover:text-white cursor-pointer'
-              }`}
-              aria-label="Switch to Client View"
-            >
-              <UserRound className="w-3 h-3" />
-              <span>Client</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { if (!isVendorView) handleToggleVendor(); }}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1 rounded-full transition-all duration-300 ${
-                isVendorView
-                  ? 'bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] text-black font-black border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.5)] scale-100'
-                  : 'text-zinc-400 hover:text-white cursor-pointer'
-              }`}
-              aria-label="Switch to Vendor View"
-            >
-              <Store className="w-3 h-3" />
-              <span>Vendor</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="fixed top-22 sm:top-24 right-3 sm:right-5 md:right-6 lg:right-8 xl:right-10 z-50 flex items-center pointer-events-auto">
-        <motion.button 
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          type="button" 
-          onClick={() => {
-            if (fbUser) {
-              ensureAdminSupportConversation(fbUser.uid, 'admin').catch(console.error);
-            }
-            setIsAdminChatOpen(true);
-          }}
-          className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-zinc-950/90 border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-extrabold text-[11px] sm:text-xs tracking-wider uppercase shadow-[0_4px_15px_rgba(0,0,0,0.8),0_0_10px_rgba(212,175,55,0.2)] backdrop-blur-md transition-all duration-300 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
-          aria-label="Ask Support"
-        >
-          <HelpCircle className="w-3.5 h-3.5 stroke-[2.5]" />
-          <span>Ask</span>
-        </motion.button>
-      </div>
-
-      {view !== 'portal' && (
-      <header className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-20 items-center">
-            <div className="flex items-center gap-4 md:gap-8 ml-0">
-              <motion.button 
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-lg p-1" 
-                onClick={() => { setView('marketplace'); setActiveCategory('All'); }} 
-                aria-label="Simcha Booking Home"
-              >
-                  <SimchaLogo className="h-8 w-8 sm:h-9 sm:w-9 group-hover:scale-110 transition-transform" />
-                  <div className="text-left">
-                      <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
-                        <span className="block md:inline">Simcha</span><span className="block md:inline md:ml-1.5">Booking</span>
-                      </h1>
-                  </div>
-              </motion.button>
-              
-            </div>
             
-            <div className="flex items-center gap-3 md:gap-6 mr-0">
-                
-
-                {!!fbUser && isAdmin && (
-                  <motion.button 
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => setView('admin')} 
-                    className="text-zinc-300 hover:text-[#D4AF37] transition-colors focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded-lg p-1 cursor-pointer" 
-                    aria-label="Admin Panel"
-                    title="Admin Panel"
-                  >
-                    <Shield className="w-5 h-5" />
-                  </motion.button>
-                )}
-
-                <motion.button 
-                  whileTap={{ scale: 0.9 }}
-                  onClick={handleSignOut} 
-                  className="text-zinc-300 hover:text-zinc-200 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-lg p-1 cursor-pointer" 
-                  aria-label="Sign Out"
-                >
-                  <LogOut className="w-5 h-5" />
-                </motion.button>
-            </div>
-          </div>
-        </div>
-      </header>
-      )}
-
       <main id="main-content" className="flex-1 flex flex-col pb-36 md:pb-0">
         <section className="relative bg-black text-white overflow-hidden" aria-labelledby="hero-title">
           <div className="absolute inset-0" aria-hidden="true">
@@ -2961,7 +2808,7 @@ function App() {
                         >
                           All Categories
                         </motion.button>
-                        {activeCategory !== 'All' && <><span className="text-zinc-600" aria-hidden="true">/</span><span id="results-heading" className="font-extrabold text-base text-[#D4AF37]">{activeCategory}</span></>}
+                        {activeCategory !== 'All' && <><span className="text-zinc-400" aria-hidden="true">/</span><span id="results-heading" className="font-extrabold text-base text-[#D4AF37]">{activeCategory}</span></>}
                      </nav>
                 </div>
 
@@ -3065,7 +2912,7 @@ function App() {
                               <ChevronLeft className="w-4 h-4 mr-1" />
                               Back to {activeCategory}
                             </button>
-                            <span className="text-zinc-600">/</span>
+                            <span className="text-zinc-400">/</span>
                             <span className="text-zinc-400 uppercase tracking-widest text-xs">{activeSubCategoryGroup}</span>
                           </div>
                         )}
@@ -3084,7 +2931,7 @@ function App() {
                                    <>{renderMedia(subCategoryImages[group], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700", group)}</>
                                  ) : (
                                    <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-all duration-700">
-                                     <span className="text-zinc-700 font-bold uppercase tracking-widest text-xs">No Image</span>
+                                     <span className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No Image</span>
                                     </div>
                                  )}
                                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
@@ -3111,7 +2958,7 @@ function App() {
                                   <>{renderMedia(subCategoryImages[sub], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-700", sub)}</>
                                 ) : (
                                   <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-transform duration-700">
-                                    <span className="text-zinc-700 font-bold uppercase tracking-widest text-xs">No Image</span>
+                                    <span className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No Image</span>
                                   </div>
                                 )}
                                 <div className={`absolute inset-0 bg-gradient-to-t ${activeSubSubCategory === sub ? 'from-[#D4AF37]/40 via-black/60 to-black/20' : 'from-black via-black/40 to-transparent'}`}></div>
@@ -3235,6 +3082,124 @@ function App() {
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className="min-h-screen bg-black text-zinc-100 flex flex-col relative pb-28"
     >
+      {permissionErrorBanner && (
+        <div className="bg-red-950/80 border-b border-red-500/40 px-4 py-3 text-red-200 text-xs font-medium flex items-center justify-between gap-3 backdrop-blur-md sticky top-0 z-[120]">
+          <div className="flex items-center gap-2 max-w-7xl mx-auto w-full">
+            <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
+            <span className="flex-1 font-semibold">{permissionErrorBanner}</span>
+            <button 
+              onClick={() => setPermissionErrorBanner(null)} 
+              className="text-red-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+              aria-label="Dismiss message"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-lg focus:font-bold">Skip to main content</a>
+      {/* Floating Header Controls (? Ask on Right & Role Switcher on Left below header) */}
+      {!isInitializing && !isRoleLoading && !!fbUser && !!userDocData && isActuallyVendor && (
+        <div className="fixed top-22 sm:top-24 left-3 sm:left-5 md:left-6 lg:left-8 xl:left-10 z-50 flex items-center pointer-events-auto">
+          <div className="flex items-center bg-zinc-950/95 border border-[#D4AF37]/40 backdrop-blur-xl rounded-full p-0.5 sm:p-1 shadow-[0_8px_20px_rgba(0,0,0,0.9),0_0_12px_rgba(212,175,55,0.2)] text-[9px] sm:text-[10px] tracking-wider uppercase font-bold">
+            <button
+              type="button"
+              onClick={() => { if (isVendorView) handleToggleVendor(); }}
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1 rounded-full transition-all duration-300 ${
+                !isVendorView
+                  ? 'bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] text-black font-black border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.5)] scale-100'
+                  : 'text-zinc-400 hover:text-white cursor-pointer'
+              }`}
+              aria-label="Switch to Client View"
+            >
+              <UserRound className="w-3 h-3" />
+              <span>Client</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { if (!isVendorView) handleToggleVendor(); }}
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1 rounded-full transition-all duration-300 ${
+                isVendorView
+                  ? 'bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] text-black font-black border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.5)] scale-100'
+                  : 'text-zinc-400 hover:text-white cursor-pointer'
+              }`}
+              aria-label="Switch to Vendor View"
+            >
+              <Store className="w-3 h-3" />
+              <span>Vendor</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="fixed top-22 sm:top-24 right-3 sm:right-5 md:right-6 lg:right-8 xl:right-10 z-50 flex items-center pointer-events-auto">
+        <motion.button 
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          type="button" 
+          onClick={() => {
+            if (fbUser) {
+              ensureAdminSupportConversation(fbUser.uid, 'admin').catch(console.error);
+            }
+            setIsAdminChatOpen(true);
+          }}
+          className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-zinc-950/90 border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-extrabold text-[11px] sm:text-xs tracking-wider uppercase shadow-[0_4px_15px_rgba(0,0,0,0.8),0_0_10px_rgba(212,175,55,0.2)] backdrop-blur-md transition-all duration-300 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+          aria-label="Ask Support"
+        >
+          <HelpCircle className="w-3.5 h-3.5 stroke-[2.5]" />
+          <span>Ask</span>
+        </motion.button>
+      </div>
+
+      <header className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-20 items-center">
+            <div className="flex items-center gap-4 md:gap-8 ml-0">
+              <motion.button 
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-lg p-1" 
+                onClick={() => { setView('marketplace'); setActiveCategory('All'); setIsVendorView(false); }} 
+                aria-label="Simcha Booking Home"
+              >
+                  <SimchaLogo className="h-8 w-8 sm:h-9 sm:w-9 group-hover:scale-110 transition-transform" />
+                  <div className="text-left">
+                      <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
+                        <span className="block md:inline">Simcha</span><span className="block md:inline md:ml-1.5">Booking</span>
+                      </h1>
+                  </div>
+              </motion.button>
+              
+            </div>
+            
+            <div className="flex items-center gap-3 md:gap-6 mr-0">
+                
+
+                {!!fbUser && isAdmin && (
+                  <motion.button 
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setView('admin')} 
+                    className="text-zinc-300 hover:text-[#D4AF37] transition-colors focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded-lg p-1 cursor-pointer" 
+                    aria-label="Admin Panel"
+                    title="Admin Panel"
+                  >
+                    <Shield className="w-5 h-5" />
+                  </motion.button>
+                )}
+
+                <motion.button 
+                  whileTap={{ scale: 0.9 }}
+                  onClick={handleSignOut} 
+                  className="text-zinc-300 hover:text-zinc-200 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-lg p-1 cursor-pointer" 
+                  aria-label="Sign Out"
+                >
+                  <LogOut className="w-5 h-5" />
+                </motion.button>
+            </div>
+          </div>
+        </div>
+      </header>
       {renderActiveView()}
 
       <SuggestionModal 

@@ -312,9 +312,9 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   );
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 flex flex-col md:flex-row overflow-hidden relative">
+    <div className="h-[calc(100dvh-5rem)] bg-black text-zinc-100 flex flex-col md:flex-row overflow-hidden relative">
       {/* Mobile Header Toggle */}
-      {!['overview', 'plan', 'events', 'chats', 'profile'].includes(activeTab) && (
+      {!isSidebarOpen && (
       <div className="md:hidden bg-[#0a0a0a] border-b border-[#D4AF37]/10 p-4 flex justify-between items-center z-30 sticky top-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-[#D4AF37] rounded-lg flex items-center justify-center text-black font-bold font-[Cinzel]">P</div>
@@ -347,7 +347,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         <div className="p-6 md:p-8 flex items-center justify-between border-b border-white/5">
           <div>
             <h2 className="text-xl md:text-2xl font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-tighter">Planner</h2>
-            <p className="text-[9px] md:text-[10px] text-zinc-600 font-bold uppercase tracking-[0.3em] mt-1">Client Station</p>
+            <p className="text-[9px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-[0.3em] mt-1">Client Station</p>
           </div>
           <button 
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsSidebarOpen(false); }} 
@@ -399,11 +399,11 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4">
                 <div className="bg-[#D4AF37]/10 p-3 w-fit rounded-2xl"><ShoppingBag className="w-6 h-6 text-[#D4AF37]" /></div>
-                <div><p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest">Items in Plan</p><h3 className="text-3xl font-bold text-white">{cart.length}</h3></div>
+                <div><p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Items in Plan</p><h3 className="text-3xl font-bold text-white">{cart.length}</h3></div>
               </div>
               <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4">
                 <div className="bg-[#D4AF37]/10 p-3 w-fit rounded-2xl"><CheckCircle className="w-6 h-6 text-[#D4AF37]" /></div>
-                <div><p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest">Confirmed Events</p><h3 className="text-3xl font-bold text-white">{clientBookings.filter(b => b.status === 'confirmed').length}</h3></div>
+                <div><p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Confirmed Events</p><h3 className="text-3xl font-bold text-white">{clientBookings.filter(b => b.status === 'confirmed').length}</h3></div>
               </div>
             </div>
           </div>
@@ -454,7 +454,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                       <button onClick={() => onEditCartItem(index)} className="p-3 bg-zinc-800 text-zinc-300 hover:bg-[#D4AF37] hover:text-black rounded-xl transition-all border border-zinc-700 hover:border-[#D4AF37]/50" title="Edit Request">
                         <Edit3 className="w-5 h-5" />
                       </button>
-                      <button onClick={() => onRemoveFromCart(index)} className="p-3 bg-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white rounded-xl transition-all border border-zinc-500/20" title="Remove">
+                      <button onClick={() => onRemoveFromCart(index)} className="p-3 bg-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white rounded-xl transition-all border border-zinc-400/20" title="Remove">
                         <Trash2 className="w-5 h-5" />
                       </button>
                     </div>
@@ -811,7 +811,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                   <div className="pt-8 border-t border-white/5">
                     <button 
                       onClick={onDeleteAccount}
-                      className="w-full bg-zinc-800 text-zinc-400 border border-zinc-500/20 font-black py-4 rounded-xl hover:bg-zinc-800 hover:text-white transition-all uppercase tracking-[0.2em] text-xs"
+                      className="w-full bg-zinc-800 text-zinc-400 border border-zinc-400/20 font-black py-4 rounded-xl hover:bg-zinc-800 hover:text-white transition-all uppercase tracking-[0.2em] text-xs"
                     >
                       Delete Account
                     </button>

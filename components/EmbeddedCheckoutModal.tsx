@@ -95,7 +95,7 @@ export const EmbeddedCheckoutModal: React.FC<EmbeddedCheckoutModalProps> = ({
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-2 sm:p-4 bg-white rounded-b-3xl text-black min-h-[450px]">
           {isLoadingKey || !stripePromise ? (
-            <div className="flex flex-col items-center justify-center h-80 gap-3 text-zinc-600">
+            <div className="flex flex-col items-center justify-center h-80 gap-3 text-zinc-400">
               <Loader2 className="w-8 h-8 animate-spin text-[#D4AF37]" />
               <p className="text-xs font-semibold uppercase tracking-wider">Loading Secure Checkout...</p>
             </div>

@@ -43,7 +43,7 @@ const ContactModal: React.FC<ContactModalProps> = ({ isOpen, vendorName, onClose
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-bold text-zinc-700 mb-1">Your Name</label>
+            <label className="block text-sm font-bold text-zinc-400 mb-1">Your Name</label>
             <div className="relative">
               <User className="absolute left-3 top-2.5 w-5 h-5 text-zinc-400" />
               <input 
@@ -58,7 +58,7 @@ const ContactModal: React.FC<ContactModalProps> = ({ isOpen, vendorName, onClose
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-zinc-700 mb-1">Your Email</label>
+            <label className="block text-sm font-bold text-zinc-400 mb-1">Your Email</label>
             <div className="relative">
               <Mail className="absolute left-3 top-2.5 w-5 h-5 text-zinc-400" />
               <input 
@@ -73,7 +73,7 @@ const ContactModal: React.FC<ContactModalProps> = ({ isOpen, vendorName, onClose
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-zinc-700 mb-1">Message</label>
+            <label className="block text-sm font-bold text-zinc-400 mb-1">Message</label>
             <div className="relative">
               <MessageSquare className="absolute left-3 top-3 w-5 h-5 text-zinc-400" />
               <textarea 

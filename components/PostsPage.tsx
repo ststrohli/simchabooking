@@ -39,7 +39,7 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
         </div>
 
         {posts.length === 0 ? (
-          <div className="py-32 text-center text-zinc-700 bg-[#111] rounded-3xl border border-dashed border-[#D4AF37]/10">
+          <div className="py-32 text-center text-zinc-400 bg-[#111] rounded-3xl border border-dashed border-[#D4AF37]/10">
             <Film className="w-16 h-16 mx-auto mb-6 text-[#D4AF37]/10" />
             <p className="text-2xl font-[Cinzel] text-[#D4AF37]/40">Capturing the first moments...</p>
             <p className="text-sm mt-2 tracking-widest uppercase font-bold opacity-30">Check back soon for event highlights</p>
@@ -167,7 +167,7 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
       </div>
       
       <div className="py-12 text-center border-t border-[#D4AF37]/10">
-          <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.5em]">Mazel Tov Moments • Community Feed</p>
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.5em]">Mazel Tov Moments • Community Feed</p>
       </div>
     </div>
   );

@@ -1216,7 +1216,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     setLocalCategorySubCategories(categorySubCategories);
   }, [categorySubCategories]);
 
-  const inputClass = "w-full bg-black border border-[#D4AF37]/20 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-zinc-600";
+  const inputClass = "w-full bg-black border border-[#D4AF37]/20 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-zinc-400";
   const labelClass = "block text-[10px] font-bold text-[#D4AF37]/70 uppercase tracking-widest mb-1.5";
 
   if (!isAuthenticated) {
@@ -1378,7 +1378,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             <div className="space-y-4">
                                 <label className={labelClass}>Business Profile Image</label>
                                 <div onClick={() => vendorFileInputRef.current?.click()} className="h-44 bg-black border-2 border-dashed border-[#D4AF37]/20 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-[#D4AF37]/50 transition-all overflow-hidden relative">
-                                    {formData.image ? <>{renderMedia(formData.image, "w-full h-full object-cover")}</> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-zinc-600 font-bold uppercase tracking-widest text-[9px]">Select Image</p></div>}
+                                    {formData.image ? <>{renderMedia(formData.image, "w-full h-full object-cover")}</> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-zinc-400 font-bold uppercase tracking-widest text-[9px]">Select Image</p></div>}
                                 </div>
                                 <input type="file" accept="image/*,video/*" className="hidden" ref={vendorFileInputRef} onChange={handleVendorFileUpload} />
                             </div>
@@ -1409,13 +1409,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 {option}
                                             </button>
                                         ))}
-                                        {(options as string[]).length === 0 && <p className="text-[9px] text-zinc-700 italic">No specific options defined yet.</p>}
+                                        {(options as string[]).length === 0 && <p className="text-[9px] text-zinc-400 italic">No specific options defined yet.</p>}
                                     </div>
                                 </div>
                             ))}
                             {Object.keys(categorySubCategories[formData.category] || {}).length === 0 && (
                                 <div className="py-6 bg-black/40 rounded-xl border border-dashed border-[#D4AF37]/10 text-center">
-                                    <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">No detailed classifications defined for {formData.category}</p>
+                                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">No detailed classifications defined for {formData.category}</p>
                                     <button type="button" onClick={() => setActiveTab('categories')} className="text-[9px] text-[#D4AF37] hover:underline mt-2 uppercase tracking-widest">Configure Taxonomy</button>
                                 </div>
                             )}
@@ -1431,7 +1431,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <Tag className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" />
                                     <input required type="number" min="0" max="100" className={inputClass + " pl-10"} value={formData.commissionRate} onChange={(e) => setFormData({...formData, commissionRate: e.target.value})} />
                                 </div>
-                                <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest mt-2">The percentage of each sale that goes to the platform.</p>
+                                <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-2">The percentage of each sale that goes to the platform.</p>
                             </div>
                             <div>
                                 <label className={labelClass}>Starting Fee ($)</label>
@@ -1521,7 +1521,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     value={inviteEmail}
                                     onChange={(e) => setInviteEmail(e.target.value)}
                                     placeholder="vendor@example.com"
-                                    className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#D4AF37] transition-colors"
+                                    className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white placeholder-zinc-400 focus:outline-none focus:border-[#D4AF37] transition-colors"
                                 />
                             </div>
                             <p className="text-[11px] text-zinc-400 leading-relaxed">
@@ -1587,7 +1587,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div className="text-[10px] text-zinc-600 font-mono">ID: {roleItem.id}</div>
+                                                    <div className="text-[10px] text-zinc-400 font-mono">ID: {roleItem.id}</div>
                                                 </td>
                                                 <td className="p-4">
                                                     {isInviteOnly ? (
@@ -1660,7 +1660,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         <tr key={v.id} className="hover:bg-white/5 transition-colors">
                                             <td className="p-4 font-bold text-white">
                                                 {v.name}
-                                                <div className="text-[10px] text-zinc-600 font-mono">ID: {v.id}</div>
+                                                <div className="text-[10px] text-zinc-400 font-mono">ID: {v.id}</div>
                                             </td>
                                             <td className="p-4">
                                                 <span className="px-2 py-0.5 rounded text-[10px] bg-white/5 border border-white/10 text-zinc-300">
@@ -1739,8 +1739,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 {v.subCategories?.slice(0, 3).map(s => (
                                                     <span key={s} className="bg-white/5 px-2 py-0.5 rounded text-[8px] font-black uppercase text-zinc-400 tracking-widest">{s}</span>
                                                 ))}
-                                                {(v.subCategories?.length || 0) > 3 && <span className="text-[8px] text-zinc-600 font-bold">+{v.subCategories!.length - 3}</span>}
-                                                {(!v.subCategories || v.subCategories.length === 0) && <span className="text-zinc-600 italic">None</span>}
+                                                {(v.subCategories?.length || 0) > 3 && <span className="text-[8px] text-zinc-400 font-bold">+{v.subCategories!.length - 3}</span>}
+                                                {(!v.subCategories || v.subCategories.length === 0) && <span className="text-zinc-400 italic">None</span>}
                                             </div>
                                         </td>
                                         <td className="p-4 text-zinc-400 font-medium">
@@ -1758,7 +1758,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     <CheckSquare className="w-3 h-3" /> Stripe Active
                                                 </span>
                                             ) : (
-                                                <button onClick={() => handleStripeOnboard(v.id, v.contactEmail || '')} className="inline-flex items-center gap-1.5 bg-zinc-500/10 border border-zinc-500/20 hover:bg-zinc-700/25 px-2 py-1 rounded text-[8px] font-black text-zinc-400 uppercase tracking-widest transition-all cursor-pointer" title="Initiate Connection">
+                                                <button onClick={() => handleStripeOnboard(v.id, v.contactEmail || '')} className="inline-flex items-center gap-1.5 bg-zinc-400/10 border border-zinc-400/20 hover:bg-zinc-700/25 px-2 py-1 rounded text-[8px] font-black text-zinc-400 uppercase tracking-widest transition-all cursor-pointer" title="Initiate Connection">
                                                     <CreditCard className="w-3 h-3" /> Connect Stripe
                                                 </button>
                                             )}
@@ -1768,7 +1768,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 <button onClick={() => onLoginAsVendor(v.id)} title="Login to Portal" className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><LogIn className="w-4 h-4" /></button>
                                                 <button onClick={() => handleEditVendor(v)} title="Edit Professional" className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
                                                 <button onClick={() => onToggleVerify(v.id)} title="Toggle Verification" className={`p-2 rounded-lg transition-all ${v.isVerified ? 'text-[#D4AF37] hover:bg-[#D4AF37]/10' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}><ShieldCheck className="w-4 h-4" /></button>
-                                                <button onClick={() => handleDeleteVendor(v.id, v.name)} title="Remove Professional" className="p-2 text-zinc-400 hover:text-zinc-400 hover:bg-zinc-500/10 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                                                <button onClick={() => handleDeleteVendor(v.id, v.name)} title="Remove Professional" className="p-2 text-zinc-400 hover:text-zinc-400 hover:bg-zinc-400/10 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -1887,13 +1887,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                               <div>
                                 <label className={labelClass}>Initial Classification Groups</label>
                                 <input type="text" className={inputClass} placeholder="Style, Tier, Gear (comma separated)" value={newCategoryForm.subCatsString} onChange={e => setNewCategoryForm({...newCategoryForm, subCatsString: e.target.value})} />
-                                <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest mt-2">These serve as headers for granular sub-categories.</p>
+                                <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-2">These serve as headers for granular sub-categories.</p>
                               </div>
                           </div>
                           <div className="space-y-4">
                               <label className={labelClass}>Vertical Hero Asset</label>
                               <div onClick={() => newCatImageInputRef.current?.click()} className="h-44 bg-black border-2 border-dashed border-[#D4AF37]/20 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-[#D4AF37]/50 transition-all overflow-hidden relative">
-                                {newCategoryForm.image ? <>{renderMedia(newCategoryForm.image, "w-full h-full object-cover")}</> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-zinc-600 font-bold uppercase tracking-widest text-[9px]">Select Banner</p></div>}
+                                {newCategoryForm.image ? <>{renderMedia(newCategoryForm.image, "w-full h-full object-cover")}</> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-zinc-400 font-bold uppercase tracking-widest text-[9px]">Select Banner</p></div>}
                               </div>
                               <input type="file" accept="image/*,video/*" className="hidden" ref={el => { newCatImageInputRef.current = el; }} onChange={handleNewCategoryImgUpload} />
                           </div>
@@ -2013,7 +2013,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                                       <>{renderMedia(previewUrls[item] || subCategoryImages[item], "w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity")}</>
                                                                   ) : (
                                                                       <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
-                                                                          <ImageIcon className="w-6 h-6 text-zinc-700" />
+                                                                          <ImageIcon className="w-6 h-6 text-zinc-400" />
                                                                       </div>
                                                                   )}
                                                                   <button onClick={() => subCategoryImageInputRefs.current[item]?.click()} className="absolute inset-0 m-auto w-8 h-8 bg-black/60 hover:bg-[#D4AF37] hover:text-black rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all border border-white/10" title="Modify Image"><Camera className="w-4 h-4" /></button>
@@ -2032,7 +2032,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                               </div>
                                                           </div>
                                                       ))}
-                                                      {items.length === 0 && <span className="text-[9px] text-zinc-700 italic col-span-full">No specific sub-category options added.</span>}
+                                                      {items.length === 0 && <span className="text-[9px] text-zinc-400 italic col-span-full">No specific sub-category options added.</span>}
                                                   </div>
                                                   <div className="flex gap-2 pt-1">
                                                       <input type="text" className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-[10px] text-zinc-400 outline-none focus:border-[#D4AF37]/40" placeholder={`Add ${sub} option...`} value={newNestedSubCategoryInputs[nestedKey] || ''} onChange={(e) => setNewNestedSubCategoryInputs({...newNestedSubCategoryInputs, [nestedKey]: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && handleAddNestedSubCategory(cat, sub)} />
@@ -2129,7 +2129,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
                                                     b.paymentStatus === 'paid' 
                                                         ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' 
-                                                        : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                                                        : 'bg-zinc-400/10 text-zinc-400 border-zinc-400/20'
                                                 }`}>
                                                     {b.paymentStatus}
                                                 </span>
@@ -2184,15 +2184,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37] mb-6">Stripe Connection Hub</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                         <div className="bg-black/40 p-6 rounded-2xl border border-white/5">
-                            <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest mb-1">Connected Vendors</p>
+                            <p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest mb-1">Connected Vendors</p>
                             <h4 className="text-3xl font-bold text-white">{vendors.filter(v => !!v.stripeAccountId).length}</h4>
                         </div>
                         <div className="bg-black/40 p-6 rounded-2xl border border-white/5">
-                            <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest mb-1">Pending Connections</p>
+                            <p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest mb-1">Pending Connections</p>
                             <h4 className="text-3xl font-bold text-white">{vendors.filter(v => !v.stripeAccountId).length}</h4>
                         </div>
                         <div className="bg-black/40 p-6 rounded-2xl border border-white/5">
-                            <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest mb-1">Platform Revenue</p>
+                            <p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest mb-1">Platform Revenue</p>
                             <h4 className="text-3xl font-bold text-[#D4AF37]">${totalCommission.toLocaleString()}</h4>
                         </div>
                     </div>
@@ -2214,7 +2214,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <span className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest flex items-center gap-1">
                                                 <ShieldCheck className="w-3 h-3" /> Connected
                                             </span>
-                                            <span className="text-[8px] text-zinc-600 font-mono">{v.stripeAccountId}</span>
+                                            <span className="text-[8px] text-zinc-400 font-mono">{v.stripeAccountId}</span>
                                             <button 
                                                 onClick={() => handleManualStripeId(v.id)}
                                                 className="text-[8px] text-[#D4AF37] hover:underline mt-1 uppercase tracking-widest font-bold"
@@ -2394,7 +2394,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                         }
                                                     }}
                                                     title="Permanently Delete User" 
-                                                    className="p-2 text-zinc-400 hover:text-zinc-400 hover:bg-zinc-500/10 rounded-lg transition-all"
+                                                    className="p-2 text-zinc-400 hover:text-zinc-400 hover:bg-zinc-400/10 rounded-lg transition-all"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
@@ -2546,7 +2546,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
                                                         item.type === 'professional'
                                                             ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' 
-                                                            : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                                                            : 'bg-zinc-400/10 text-zinc-400 border-zinc-400/20'
                                                     }`}>
                                                         {item.type}
                                                     </span>
@@ -2587,7 +2587,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                             className={`p-2 rounded-lg transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
                                                                 action === 'reject'
                                                                     ? 'bg-zinc-800 text-zinc-400'
-                                                                    : 'text-zinc-400 hover:text-zinc-400 hover:bg-zinc-500/10 cursor-pointer'
+                                                                    : 'text-zinc-400 hover:text-zinc-400 hover:bg-zinc-400/10 cursor-pointer'
                                                             }`}
                                                             title="Decline registration"
                                                         >
@@ -2711,7 +2711,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         value={convoSearchQuery}
                                         onChange={(e) => setConvoSearchQuery(e.target.value)}
                                         placeholder="Search clients, vendors, texts..."
-                                        className="w-full bg-black border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#D4AF37] transition-all"
+                                        className="w-full bg-black border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-[#D4AF37] transition-all"
                                     />
                                     {convoSearchQuery && (
                                         <button 
@@ -2961,7 +2961,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 {/* KPI Metrics List */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
-                        <div className="absolute top-4 right-4 bg-zinc-500/10 p-2 rounded-lg border border-zinc-500/20">
+                        <div className="absolute top-4 right-4 bg-zinc-400/10 p-2 rounded-lg border border-zinc-400/20">
                             <Search className="w-5 h-5 text-zinc-400" />
                         </div>
                         <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">1. Discovery</p>
@@ -2979,7 +2979,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
 
                     <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
-                        <div className="absolute top-4 right-4 bg-zinc-500/10 p-2 rounded-lg border border-[#D4AF37]/20">
+                        <div className="absolute top-4 right-4 bg-zinc-400/10 p-2 rounded-lg border border-[#D4AF37]/20">
                             <Calendar className="w-5 h-5 text-[#D4AF37]" />
                         </div>
                         <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">3. Book Requests</p>
@@ -3104,7 +3104,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             </div>
                         </div>
 
-                        <div className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest text-center mt-6">
+                        <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest text-center mt-6">
                             Secure Zero-Trust ABAC Logging
                         </div>
                     </div>
@@ -3122,14 +3122,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
                                 <XAxis 
                                     dataKey="date" 
-                                    stroke="#52525b" 
+                                    stroke="#a1a1aa" 
                                     fontSize={10}
                                     tickMargin={10}
                                     axisLine={false}
                                     tickLine={false}
                                 />
                                 <YAxis 
-                                    stroke="#52525b" 
+                                    stroke="#a1a1aa" 
                                     fontSize={10}
                                     tickMargin={10}
                                     axisLine={false}
@@ -3196,9 +3196,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <td className="p-4">
                                                 <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${
                                                     log.eventName === 'payment_completed' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' :
-                                                    log.eventName === 'submit_booking_request' ? 'bg-zinc-500/10 text-[#D4AF37] border-[#D4AF37]/20' :
+                                                    log.eventName === 'submit_booking_request' ? 'bg-zinc-400/10 text-[#D4AF37] border-[#D4AF37]/20' :
                                                     log.eventName === 'add_to_plan' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' :
-                                                    'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                                                    'bg-zinc-400/10 text-zinc-400 border-zinc-400/20'
                                                 }`}>
                                                     {log.eventName}
                                                 </span>

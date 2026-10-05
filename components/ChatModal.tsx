@@ -1001,11 +1001,11 @@ const ChatModal: React.FC<ChatModalProps> = ({
 
                         {/* Failed sending state with Retry */}
                         {isSent && msg.status === 'error' && (
-                          <div className="mt-2 pt-2 border-t border-zinc-500/10 flex items-center justify-end gap-1.5">
+                          <div className="mt-2 pt-2 border-t border-zinc-400/10 flex items-center justify-end gap-1.5">
                             <span className="text-red-600 text-[9px] font-bold uppercase tracking-wider font-mono">Failed</span>
                             <button 
                               onClick={() => handleRetryMessage(msg)}
-                              className="bg-black/80 hover:bg-black text-zinc-400 font-bold px-2 py-0.5 rounded text-[9px] border border-zinc-500/20 uppercase tracking-widest transition-all"
+                              className="bg-black/80 hover:bg-black text-zinc-400 font-bold px-2 py-0.5 rounded text-[9px] border border-zinc-400/20 uppercase tracking-widest transition-all"
                             >
                               Retry
                             </button>
@@ -1111,7 +1111,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
               )}
 
               {micPermissionError && (
-                <div id="mic-perm-error-alert" className="p-3 bg-zinc-500/10 border border-zinc-500/30 rounded-xl text-zinc-100 text-xs flex items-start gap-2.5 shadow-md">
+                <div id="mic-perm-error-alert" className="p-3 bg-zinc-400/10 border border-zinc-400/30 rounded-xl text-zinc-100 text-xs flex items-start gap-2.5 shadow-md">
                   <AlertTriangle className="w-4 h-4 text-zinc-400 mt-0.5 flex-shrink-0" />
                   <div className="flex-1 space-y-1">
                     <p className="font-semibold text-zinc-400">Microphone Access Needed</p>
@@ -1169,7 +1169,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                           }
                         }}
                         placeholder="Type a message..."
-                        className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-xl pl-4 pr-10 h-11 text-base text-white focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-zinc-600"
+                        className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-xl pl-4 pr-10 h-11 text-base text-white focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-zinc-400"
                       />
                     </div>
                     <button 
@@ -1189,7 +1189,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                     </button>
                   </>
                 ) : (
-                  <div className="flex-1 flex items-center justify-between bg-zinc-500/10 border border-zinc-500/20 rounded-xl px-4 h-11 animate-pulse">
+                  <div className="flex-1 flex items-center justify-between bg-zinc-400/10 border border-zinc-400/20 rounded-xl px-4 h-11 animate-pulse">
                     <div className="flex items-center gap-3">
                        <div className="w-2 h-2 bg-zinc-700 rounded-full"></div>
                        <span className="text-zinc-400 text-xs font-bold font-mono">{formatDuration(recordingDuration)}</span>

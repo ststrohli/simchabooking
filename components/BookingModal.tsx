@@ -586,7 +586,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
           buttonStyle = "bg-[#D4AF37] text-black font-black shadow-[0_0_15px_rgba(212,175,55,0.45)] scale-105 border border-[#D4AF37]";
         }
       } else if (isPast) {
-        buttonStyle = "text-zinc-600 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent";
+        buttonStyle = "text-zinc-400 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent";
       } else if (isBlockedStyle) {
         if (isVendorExplicitlyBlocked) {
           buttonStyle = "text-red-400 bg-red-950/20 opacity-50 cursor-not-allowed scale-95 border border-red-900/30 line-through";
@@ -596,7 +596,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
       } else if (isAvailable) {
         buttonStyle = "text-green-500 bg-green-500/10 border-2 border-green-500/30 hover:bg-green-500/20";
       } else if (privacyBlocked && showBlockedColors) {
-        buttonStyle = "text-zinc-600 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent";
+        buttonStyle = "text-zinc-400 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent";
       } else {
         // Standard selectable future date has crisp white text, with elegant soft-gold hover/active states.
         buttonStyle = "text-zinc-100 bg-black/40 border border-white/5 hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 hover:scale-105 hover:shadow-[0_0_12px_rgba(212,175,55,0.25)] active:scale-95";
@@ -667,7 +667,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
     );
   };
 
-  const inputClass = "w-full pl-10 pr-4 py-2.5 bg-black border border-[#D4AF37]/30 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:ring-2 focus:ring-[#D4AF37] focus:border-[#D4AF37] outline-none transition-all";
+  const inputClass = "w-full pl-10 pr-4 py-2.5 bg-black border border-[#D4AF37]/30 rounded-lg text-zinc-100 placeholder:text-zinc-400 focus:ring-2 focus:ring-[#D4AF37] focus:border-[#D4AF37] outline-none transition-all";
   const labelClass = "block text-xs font-bold text-[#D4AF37]/70 uppercase tracking-widest mb-1.5";
 
   const isPriority = isPriorityDate || !!isPriorityFromSuggestions;
@@ -810,7 +810,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                           </div>
                         ) : (
                           <div className="h-32 w-full bg-[#111] border-b border-white/5 flex items-center justify-center">
-                            <ImageIcon className="w-6 h-6 text-zinc-700" />
+                            <ImageIcon className="w-6 h-6 text-zinc-400" />
                           </div>
                         )}
                         <div className={`absolute top-3 left-3 w-5 h-5 rounded-full border-2 flex items-center justify-center backdrop-blur-md ${selectedServiceIds.includes(service.id) ? 'bg-[#D4AF37] border-[#D4AF37]' : 'bg-black/50 border-white/40 group-hover:border-[#D4AF37]'}`}>
