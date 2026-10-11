@@ -812,7 +812,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" aria-label="Chat Dialog" className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div className="fixed inset-0 z-50 w-full h-[100svh] bg-black rounded-none md:relative md:max-w-xl md:h-[80vh] md:rounded-xl md:border md:border-zinc-800 md:shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="bg-black p-4 border-b border-[#D4AF37]/20 flex justify-between items-center">
@@ -868,7 +868,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
               />
               <button 
                 onClick={() => clientName && clientEmail && setIsIdentityVerified(true)}
-                className="w-full bg-[#D4AF37] text-black font-bold h-11 rounded-lg hover:bg-[#E5C76B] transition-all text-sm uppercase tracking-widest"
+                className="w-full bg-[#D4AF37] text-black font-bold h-11 rounded-full hover:bg-[#E5C76B] transition-all text-sm uppercase tracking-widest"
               >
                 Start Chatting
               </button>
@@ -1135,15 +1135,17 @@ const ChatModal: React.FC<ChatModalProps> = ({
                   <>
                     <button 
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center justify-center h-11 w-11 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
+                      className="flex items-center justify-center h-11 w-11 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-full hover:bg-zinc-900"
                       title="Attach file"
+                      aria-label="Attach file"
                     >
                       <Paperclip className="w-5 h-5" />
                     </button>
                     <button 
                        onClick={startRecording}
-                       className="flex items-center justify-center h-11 w-11 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
+                       className="flex items-center justify-center h-11 w-11 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-full hover:bg-zinc-900"
                        title="Record voice note"
+                       aria-label="Record voice note"
                     >
                        <Mic className="w-5 h-5" />
                     </button>
@@ -1178,12 +1180,13 @@ const ChatModal: React.FC<ChatModalProps> = ({
                         handleTypingStatus(false);
                       }}
                       disabled={!text.trim()}
-                      className={`flex items-center justify-center h-11 w-11 rounded-xl transition-all shadow-lg flex-shrink-0 ${
+                      className={`flex items-center justify-center h-11 w-11 rounded-full transition-all shadow-lg flex-shrink-0 ${
                         text.trim() 
                           ? 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] shadow-[#D4AF37]/10 cursor-pointer' 
                           : 'bg-zinc-800 text-zinc-400 cursor-not-allowed shadow-none'
                       }`}
                       title="Send message"
+                      aria-label="Send message"
                     >
                       <Send className="w-5 h-5" />
                     </button>
@@ -1197,15 +1200,17 @@ const ChatModal: React.FC<ChatModalProps> = ({
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={cancelRecording}
-                        className="bg-zinc-800 text-zinc-300 h-9 w-9 flex items-center justify-center rounded-lg hover:bg-zinc-700 transition-all flex-shrink-0"
+                        className="bg-zinc-800 text-zinc-300 h-9 w-9 flex items-center justify-center rounded-full hover:bg-zinc-700 transition-all flex-shrink-0"
                         title="Cancel recording"
+                        aria-label="Cancel recording"
                       >
                         <X className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={stopRecording}
-                        className="bg-zinc-700 text-white h-9 w-9 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-all flex-shrink-0"
+                        className="bg-zinc-700 text-white h-9 w-9 flex items-center justify-center rounded-full hover:bg-zinc-800 transition-all flex-shrink-0"
                         title="Send recording"
+                        aria-label="Send recording"
                       >
                         <Send className="w-4 h-4" />
                       </button>

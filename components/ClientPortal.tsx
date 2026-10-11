@@ -290,7 +290,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   const NavItem = ({ id, icon: Icon, label, badge }: { id: typeof activeTab, icon: any, label: string, badge?: number }) => (
     <button 
       onClick={() => { handleTabChange(id); setIsSidebarOpen(false); }} 
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === id ? 'bg-[#D4AF37] text-black font-bold shadow-lg' : 'text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5'}`}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-full transition-all ${activeTab === id ? 'bg-[#D4AF37] text-black font-bold shadow-lg' : 'text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5'}`}
     >
       <Icon className="w-5 h-5" />
       <span className="text-xs font-black uppercase tracking-widest">{label}</span>
@@ -315,23 +315,23 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     <div className="h-[calc(100dvh-5rem)] bg-black text-zinc-100 flex flex-col md:flex-row overflow-hidden relative">
       {/* Mobile Header Toggle */}
       {!isSidebarOpen && (
-      <div className="md:hidden bg-[#0a0a0a] border-b border-[#D4AF37]/10 p-4 flex justify-between items-center z-30 sticky top-0">
+      <header className="md:hidden bg-[#0a0a0a] border-b border-[#D4AF37]/10 p-4 flex justify-between items-center z-30 sticky top-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-[#D4AF37] rounded-lg flex items-center justify-center text-black font-bold font-[Cinzel]">P</div>
+          <div className="w-8 h-8 bg-[#D4AF37] rounded-full flex items-center justify-center text-black font-bold font-[Cinzel]">P</div>
           <h2 className="text-[#D4AF37] font-bold font-[Cinzel] tracking-widest uppercase text-sm">Planner</h2>
         </div>
         <div className="flex items-center gap-2">
           {!isSidebarOpen && (
             <button 
               onClick={() => setIsSidebarOpen(true)} 
-              className="text-[#D4AF37] p-2 bg-white/5 rounded-lg transition-all hover:bg-white/10"
+              className="text-[#D4AF37] p-2 bg-white/5 rounded-full transition-all hover:bg-white/10"
               aria-label="Toggle navigation menu"
             >
               <Menu className="w-5 h-5" />
             </button>
           )}
         </div>
-      </div>
+      </header>
       )}
 
       {/* Sidebar Overlay */}
@@ -351,7 +351,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           </div>
           <button 
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsSidebarOpen(false); }} 
-            className="md:hidden z-[9999] p-3 cursor-pointer relative pointer-events-auto"
+            className="md:hidden z-[9999] p-3 rounded-full hover:bg-white/10 cursor-pointer relative pointer-events-auto"
             aria-label="Close sidebar"
           >
             <X className="text-zinc-400 hover:text-white w-5 h-5" />
@@ -377,7 +377,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         </nav>
 
         <div className="p-6 border-t border-white/5 bg-black">
-          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-zinc-400 hover:text-zinc-400 transition-colors text-xs font-black uppercase tracking-widest">
+          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-zinc-400 hover:text-white rounded-full hover:bg-white/5 transition-colors text-xs font-black uppercase tracking-widest">
             <LogOut className="w-5 h-5" /> Sign Out
           </button>
         </div>
@@ -451,10 +451,10 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                      <button onClick={() => onEditCartItem(index)} className="p-3 bg-zinc-800 text-zinc-300 hover:bg-[#D4AF37] hover:text-black rounded-xl transition-all border border-zinc-700 hover:border-[#D4AF37]/50" title="Edit Request">
+                      <button onClick={() => onEditCartItem(index)} className="p-3 bg-zinc-800 text-zinc-300 hover:bg-[#D4AF37] hover:text-black rounded-full transition-all border border-zinc-700 hover:border-[#D4AF37]/50" title="Edit Request" aria-label="Edit Request">
                         <Edit3 className="w-5 h-5" />
                       </button>
-                      <button onClick={() => onRemoveFromCart(index)} className="p-3 bg-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white rounded-xl transition-all border border-zinc-400/20" title="Remove">
+                      <button onClick={() => onRemoveFromCart(index)} className="p-3 bg-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white rounded-full transition-all border border-zinc-400/20" title="Remove" aria-label="Remove item">
                         <Trash2 className="w-5 h-5" />
                       </button>
                     </div>
@@ -465,7 +465,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                     <span className="text-zinc-400 font-black uppercase tracking-[0.2em] text-xs">Plan Subtotal</span>
                     <span className="text-4xl font-bold text-[#D4AF37] font-[Cinzel]">${subtotal.toLocaleString()}</span>
                   </div>
-                  <button onClick={onProcessCart} className="w-full bg-[#D4AF37] text-black py-5 rounded-2xl font-black text-sm uppercase tracking-[0.3em] hover:bg-[#E5C76B] transition-all shadow-xl shadow-[#D4AF37]/10">
+                  <button onClick={onProcessCart} className="w-full bg-[#D4AF37] text-black py-5 rounded-full font-black text-sm uppercase tracking-[0.3em] hover:bg-[#E5C76B] transition-all shadow-xl shadow-[#D4AF37]/10">
                     Send All Booking Requests
                   </button>
                 </div>
@@ -517,7 +517,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                     <p className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-1">Service Fee</p>
                     <p className="text-3xl font-bold text-[#D4AF37]">${booking.amount.toLocaleString()}</p>
                     <div className="flex flex-col gap-3 mt-6">
-                      <button onClick={() => onMessageVendor(vendor)} className="w-full px-4 py-3 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] rounded-xl transition-all border border-[#D4AF37]/20 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest">
+                      <button onClick={() => onMessageVendor(vendor)} className="w-full px-4 py-3 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] rounded-full transition-all border border-[#D4AF37]/20 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest">
                         <MessageSquare className="w-4 h-4" /> Message Professional
                       </button>
                       {booking.status === 'confirmed' && booking.paymentStatus === 'pending' && (
@@ -529,7 +529,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                               booking.amount
                             )}
                             disabled={isProcessingPayment}
-                            className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-extrabold px-4 py-3.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all text-xs uppercase tracking-wider w-full cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                            className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-extrabold px-4 py-3.5 rounded-full shadow-lg flex items-center justify-center gap-2 transition-all text-xs uppercase tracking-wider w-full cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
                           >
                             {isProcessingPayment ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
@@ -803,7 +803,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                 <div className="pt-4 flex flex-col gap-4">
                   <button 
                     onClick={() => onUpdateProfile({ name: editName, photoURL: editPhotoURL, photoStoragePath: editPhotoStoragePath })}
-                    className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl"
+                    className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl"
                   >
                     Save Profile Info
                   </button>
@@ -811,7 +811,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                   <div className="pt-8 border-t border-white/5">
                     <button 
                       onClick={onDeleteAccount}
-                      className="w-full bg-zinc-800 text-zinc-400 border border-zinc-400/20 font-black py-4 rounded-xl hover:bg-zinc-800 hover:text-white transition-all uppercase tracking-[0.2em] text-xs"
+                      className="w-full bg-zinc-800 text-zinc-400 border border-zinc-400/20 font-black py-4 rounded-full hover:bg-zinc-800 hover:text-white transition-all uppercase tracking-[0.2em] text-xs"
                     >
                       Delete Account
                     </button>
@@ -840,6 +840,9 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
       <AnimatePresence>
         {fullscreenMedia && (
           <motion.div 
+            role="dialog"
+            aria-modal="true"
+            aria-label="Media Preview"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

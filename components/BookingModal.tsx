@@ -608,7 +608,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
           type="button"
           disabled={isDisabled}
           onClick={() => handleDateChange(dateStr)}
-          className={`aspect-square rounded-xl flex flex-col items-center justify-center text-xs font-bold transition-all outline-none relative group ${buttonStyle}`}
+          className={`aspect-square rounded-full flex flex-col items-center justify-center text-xs font-bold transition-all outline-none relative group ${buttonStyle}`}
         >
           <span>{day}</span>
           {!isSelected && !isDisabled && (
@@ -629,7 +629,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
           <button
             type="button"
             onClick={prevMonth}
-            className="p-1.5 rounded-lg border border-[#D4AF37]/10 hover:border-[#D4AF37]/40 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] cursor-pointer"
+            className="p-1.5 rounded-full border border-[#D4AF37]/10 hover:border-[#D4AF37]/40 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] cursor-pointer"
             aria-label="Previous Month"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -642,7 +642,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
           <button
             type="button"
             onClick={nextMonth}
-            className="p-1.5 rounded-lg border border-[#D4AF37]/10 hover:border-[#D4AF37]/40 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] cursor-pointer"
+            className="p-1.5 rounded-full border border-[#D4AF37]/10 hover:border-[#D4AF37]/40 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] cursor-pointer"
             aria-label="Next Month"
           >
             <ChevronRight className="w-4 h-4" />
@@ -1012,7 +1012,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                   setSubmitType('add');
                   handleSubmit(e, 'add');
                 }}
-                className="flex-1 py-3 border border-[#D4AF37] text-[#D4AF37] font-semibold rounded-xl hover:bg-[#D4AF37] hover:text-black transition-all text-xs uppercase tracking-widest outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all duration-200 cursor-pointer hover:scale-105 active:scale-95"
+                className="flex-1 py-3.5 border border-[#D4AF37] text-[#D4AF37] font-semibold rounded-full hover:bg-[#D4AF37] hover:text-black transition-all text-xs uppercase tracking-widest outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] duration-200 cursor-pointer hover:scale-105 active:scale-95"
             >
                 Add to Plan
             </button>
@@ -1022,7 +1022,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                   setSubmitType('book');
                   handleSubmit(e, 'book');
                 }}
-                className="flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg border bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20 hover:scale-105 active:scale-95 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all duration-200"
+                className="flex-1 py-3.5 rounded-full text-xs font-black uppercase tracking-widest transition-all shadow-lg border bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20 hover:scale-105 active:scale-95 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] duration-200"
             >
                 {isOfferMode ? 'Send Offer' : 'Book Now'}
             </button>

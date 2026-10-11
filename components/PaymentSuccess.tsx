@@ -65,7 +65,7 @@ const PaymentSuccess: React.FC<PaymentSuccessProps> = ({ bookingId, vendorId, on
   }, [bookingId]);
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden">
+    <main className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-[#D4AF37]/5 via-black to-black" aria-hidden="true"></div>
       
       <div className="bg-[#111] rounded-3xl p-8 md:p-12 max-w-lg w-full border border-[#D4AF37]/20 shadow-2xl animate-in zoom-in-95 duration-500 relative z-10 text-center">
@@ -90,7 +90,7 @@ const PaymentSuccess: React.FC<PaymentSuccessProps> = ({ bookingId, vendorId, on
             
             <button
               onClick={onReturn}
-              className="mt-4 w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2"
+              className="mt-4 w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" /> Return to Dashboard
             </button>
@@ -107,14 +107,14 @@ const PaymentSuccess: React.FC<PaymentSuccessProps> = ({ bookingId, vendorId, on
             
             <button
               onClick={onReturn}
-              className="mt-4 w-full bg-zinc-800 text-white font-bold py-4 rounded-xl hover:bg-zinc-700 transition-all uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-2"
+              className="mt-4 w-full bg-zinc-800 text-white font-bold py-4 rounded-full hover:bg-zinc-700 transition-all uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" /> Return to Dashboard
             </button>
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 };
 

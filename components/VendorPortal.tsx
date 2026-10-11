@@ -810,7 +810,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const NavItem = ({ id, icon: Icon, label, badge }: { id: typeof activeTab, icon: any, label: string, badge?: number }) => (
     <button 
       onClick={() => { setActiveTab(id); setIsSidebarOpen(false); }} 
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === id ? 'bg-[#D4AF37] text-black font-bold shadow-xl' : 'text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5'}`}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-full transition-all ${activeTab === id ? 'bg-[#D4AF37] text-black font-bold shadow-xl' : 'text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5'}`}
     >
       <Icon className="w-5 h-5" />
       <span className="text-xs font-black uppercase tracking-widest">{label}</span>
@@ -1908,10 +1908,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
           <div className="flex flex-wrap items-center justify-center gap-4">
             {/* Monthly / Weekly Selector */}
-            <div className="flex bg-black/60 rounded-xl p-1 border border-white/10">
+            <div className="flex bg-black/60 rounded-full p-1 border border-white/10">
               <button 
                 onClick={() => setCalendarViewMode('month')}
-                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
                   calendarViewMode === 'month' 
                     ? 'bg-[#D4AF37] text-black font-black' 
                     : 'text-zinc-400 hover:text-white'
@@ -1921,7 +1921,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               </button>
               <button 
                 onClick={() => setCalendarViewMode('week')}
-                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
                   calendarViewMode === 'week' 
                     ? 'bg-[#D4AF37] text-black font-black' 
                     : 'text-zinc-400 hover:text-white'
@@ -1933,13 +1933,13 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
             {/* Navigation buttons */}
             <div className="flex gap-2 items-center">
-              <button onClick={() => changeMonth(-1)} className="p-3 bg-white/5 hover:bg-[#D4AF37] hover:text-black rounded-xl border border-white/10 transition-all">
+              <button onClick={() => changeMonth(-1)} className="p-3 bg-white/5 hover:bg-[#D4AF37] hover:text-black rounded-full border border-white/10 transition-all">
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <button onClick={() => setViewDate(new Date())} className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest rounded-xl border border-white/10">
+              <button onClick={() => setViewDate(new Date())} className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest rounded-full border border-white/10">
                 Today
               </button>
-              <button onClick={() => changeMonth(1)} className="p-3 bg-white/5 hover:bg-[#D4AF37] hover:text-black rounded-xl border border-white/10 transition-all">
+              <button onClick={() => changeMonth(1)} className="p-3 bg-white/5 hover:bg-[#D4AF37] hover:text-black rounded-full border border-white/10 transition-all">
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
@@ -1948,7 +1948,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             <button 
               onClick={handleCalendarSync}
               disabled={isSyncing}
-              className={`text-black font-black flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] uppercase tracking-wider transition-all duration-300 transform hover:-translate-y-0.5 group ${
+              className={`text-black font-black flex items-center gap-2 px-5 py-2.5 rounded-full text-[10px] uppercase tracking-wider transition-all duration-300 transform hover:-translate-y-0.5 group ${
                 syncStep === 'success'
                   ? 'bg-[#D4AF37] hover:bg-[#D4AF37] shadow-lg shadow-[#D4AF37]/20 text-white'
                   : 'bg-[#D4AF37] hover:bg-[#b8952d] shadow-lg shadow-[#D4AF37]/10 hover:shadow-[#D4AF37]/20'
@@ -1993,7 +1993,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               <div className="pt-2.5 flex flex-wrap items-center gap-3">
                 <button 
                   onClick={() => window.open(window.location.href, '_blank')}
-                  className="bg-[#D4AF37] hover:bg-[#b8952d] text-black px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 group shadow-lg shadow-[#D4AF37]/5"
+                  className="bg-[#D4AF37] hover:bg-[#b8952d] text-black px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 group shadow-lg shadow-[#D4AF37]/5"
                 >
                   <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                   Open App in New Tab
@@ -2001,7 +2001,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                 {calendarSyncError && (
                   <button 
                     onClick={() => setCalendarSyncError(null)}
-                    className="text-zinc-400 hover:text-zinc-300 px-3 py-2 text-[9px] font-black uppercase tracking-widest transition-all"
+                    className="text-zinc-400 hover:text-zinc-300 px-3 py-1.5 rounded-full hover:bg-white/5 text-[9px] font-black uppercase tracking-widest transition-all"
                   >
                     Dismiss Notice
                   </button>
@@ -2058,7 +2058,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     <div className="h-[calc(100dvh-5rem)] bg-black text-zinc-100 flex flex-col md:flex-row overflow-hidden relative">
       {/* New Booking Alert Toast */}
       {newBookingAlert && (
-        <div className="fixed top-20 right-4 z-[100] w-full max-w-sm animate-in slide-in-from-right duration-500">
+        <aside aria-label="New Booking Alert" role="status" className="fixed top-20 right-4 z-[100] w-full max-w-sm animate-in slide-in-from-right duration-500">
           <div className="bg-[#111] border-2 border-[#D4AF37] rounded-2xl shadow-2xl p-4 flex gap-4 items-center ring-4 ring-black/50 backdrop-blur-xl">
             <div className="bg-[#D4AF37] p-3 rounded-xl">
               <BellRing className="w-6 h-6 text-black animate-bounce" />
@@ -2070,18 +2070,23 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             </div>
             <button 
               onClick={() => { setActiveTab('bookings'); setNewBookingAlert(null); }}
-              className="bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 p-2 rounded-lg text-[#D4AF37] transition-all"
+              className="bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 p-2 rounded-full text-[#D4AF37] transition-all"
             >
               <ArrowRight className="w-5 h-5" />
             </button>
           </div>
-        </div>
+        </aside>
       )}
 
       {/* Unified Sleek Calendar Event Modal with Close Animations */}
       <AnimatePresence>
         {selectedCalendarEvent && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div 
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="calendar-event-modal-title"
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4"
+          >
             {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -2114,7 +2119,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       </span>
                     )}
                   </div>
-                  <h2 className="text-xl md:text-2xl font-bold font-[Cinzel] text-[#D4AF37] leading-tight">
+                  <h2 id="calendar-event-modal-title" className="text-xl md:text-2xl font-bold font-[Cinzel] text-[#D4AF37] leading-tight">
                     {selectedCalendarEvent.title}
                   </h2>
                   {selectedCalendarEvent.bookingId && (
@@ -2277,7 +2282,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         onUpdateBookingStatus(selectedCalendarEvent.id, 'cancelled'); 
                         setSelectedCalendarEvent(null); 
                       }}
-                      className="flex-1 py-3.5 bg-red-950/20 hover:bg-red-900/30 text-red-500 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] border border-red-500/30 transition-all cursor-pointer"
+                      className="flex-1 py-3.5 bg-red-950/20 hover:bg-red-900/30 text-red-500 rounded-full font-black text-[10px] uppercase tracking-[0.2em] border border-red-500/30 transition-all cursor-pointer"
                     >
                       Decline
                     </motion.button>
@@ -2297,7 +2302,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           });
                         }
                       }}
-                      className="flex-1 py-3.5 bg-zinc-800 hover:bg-zinc-700 text-[#D4AF37] rounded-xl font-black text-[10px] uppercase tracking-[0.2em] border border-zinc-400/20 transition-all cursor-pointer"
+                      className="flex-1 py-3.5 bg-zinc-800 hover:bg-zinc-700 text-[#D4AF37] rounded-full font-black text-[10px] uppercase tracking-[0.2em] border border-zinc-400/20 transition-all cursor-pointer"
                     >
                       Make Offer
                     </motion.button>
@@ -2309,7 +2314,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         onUpdateBookingStatus(selectedCalendarEvent.id, 'confirmed'); 
                         setSelectedCalendarEvent(null); 
                       }}
-                      className="relative overflow-hidden flex-[2] py-3.5 bg-green-600 text-white rounded-xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-green-500/10 transition-all border border-green-500 cursor-pointer"
+                      className="relative overflow-hidden flex-[2] py-3.5 bg-green-600 text-white rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-green-500/10 transition-all border border-green-500 cursor-pointer"
                     >
                       {/* Signature Shine Sweep Element */}
                       <motion.div 
@@ -2332,7 +2337,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
                     onClick={() => setSelectedCalendarEvent(null)}
-                    className="w-full py-3.5 bg-white/5 hover:bg-white/10 text-zinc-400 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] transition-all cursor-pointer"
+                    className="w-full py-3.5 bg-white/5 hover:bg-white/10 text-zinc-400 rounded-full font-black text-[10px] uppercase tracking-[0.2em] transition-all cursor-pointer"
                   >
                     Close Record
                   </motion.button>
@@ -2345,7 +2350,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
       {/* Mobile Toggle */}
       {!isSidebarOpen && (
-      <div className="md:hidden bg-[#0a0a0a] border-b border-[#D4AF37]/10 p-4 flex justify-between items-center z-30 sticky top-0">
+      <header className="md:hidden bg-[#0a0a0a] border-b border-[#D4AF37]/10 p-4 flex justify-between items-center z-30 sticky top-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-[#D4AF37] rounded-lg flex items-center justify-center text-black font-bold font-[Cinzel] shrink-0">V</div>
           <h2 className="text-[#D4AF37] font-bold font-[Cinzel] tracking-widest uppercase text-sm whitespace-nowrap">V Portal</h2>
@@ -2354,14 +2359,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           {!isSidebarOpen && (
             <button 
               onClick={() => setIsSidebarOpen(true)} 
-              className="text-[#D4AF37] p-2 bg-white/5 rounded-lg transition-all hover:bg-white/10"
+              className="text-[#D4AF37] p-2 bg-white/5 rounded-full transition-all hover:bg-white/10"
               aria-label="Toggle navigation menu"
             >
               <Menu className="w-5 h-5" />
             </button>
           )}
         </div>
-      </div>
+      </header>
       )}
 
       {/* Sidebar Overlay */}
@@ -2381,7 +2386,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           </div>
           <button 
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsSidebarOpen(false); }} 
-            className="md:hidden z-[9999] p-3 cursor-pointer relative pointer-events-auto"
+            className="md:hidden z-[9999] p-3 cursor-pointer relative pointer-events-auto rounded-full hover:bg-white/10"
             aria-label="Close sidebar"
           >
             <X className="text-zinc-400 hover:text-white w-5 h-5" />
@@ -2395,7 +2400,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           <NavItem id="profile" icon={Settings} label="Business Profile" />
         </nav>
         <div className="p-6 border-t border-white/5 bg-black space-y-3">
-          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-zinc-400 hover:text-zinc-400 transition-colors text-xs font-black uppercase tracking-widest"><LogOut className="w-5 h-5" /> Terminate Session</button>
+          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-zinc-400 hover:text-zinc-400 hover:bg-white/5 rounded-full transition-colors text-xs font-black uppercase tracking-widest"><LogOut className="w-5 h-5" /> Terminate Session</button>
         </div>
       </aside>
 
@@ -2503,7 +2508,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               <button 
                                 onClick={handleStripeConnect}
                                 disabled={isOnboarding}
-                                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#E5C76B] transition-all cursor-pointer"
+                                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#E5C76B] transition-all cursor-pointer px-4 py-2 rounded-full border border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
                               >
                                 {isOnboarding ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                                 Connect Stripe
@@ -2513,7 +2518,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                 <button 
                                   onClick={handleVerifyStripeConnection}
                                   disabled={isOnboarding}
-                                  className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#D4AF37] transition-colors cursor-pointer"
+                                  className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#E5C76B] transition-colors cursor-pointer px-4 py-2 rounded-full border border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
                                 >
                                   {isOnboarding ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                                   Refresh Connection Status
@@ -2521,7 +2526,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                 <button 
                                   onClick={handleStripeDashboard}
                                   disabled={isOnboarding}
-                                  className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                                  className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-white transition-colors cursor-pointer px-3 py-1.5 rounded-full border border-zinc-700 hover:border-zinc-500"
                                 >
                                   {isOnboarding ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
                                   Dashboard
@@ -2544,7 +2549,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               <p className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-1">Stripe Update</p>
                               <p className="text-[10px] text-green-400 leading-relaxed font-bold">{stripeMessage}</p>
                             </div>
-                            <button onClick={() => setStripeMessage(null)}>
+                            <button onClick={() => setStripeMessage(null)} aria-label="Dismiss message" className="p-1 rounded-full hover:bg-green-500/20">
                               <X className="w-3 h-3 text-green-500/50 hover:text-green-500" />
                             </button>
                           </div>
@@ -2581,7 +2586,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           <button 
                             type="button"
                             onClick={() => setOnboardingError(null)}
-                            className="w-full py-2 text-[8px] font-black uppercase tracking-widest text-zinc-400/60 hover:text-zinc-400 transition-colors border border-zinc-400/10 rounded-lg hover:bg-zinc-800/50"
+                            className="w-full py-2 text-[8px] font-black uppercase tracking-widest text-zinc-400/60 hover:text-zinc-400 transition-colors border border-zinc-400/10 rounded-full hover:bg-zinc-800/50"
                           >
                             Dismiss
                           </button>
@@ -2697,7 +2702,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       <button
                         type="button"
                         onClick={() => setActiveTab('bookings')}
-                        className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#E5C76B] transition-colors cursor-pointer"
+                        className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#E5C76B] transition-colors cursor-pointer px-3 py-1.5 rounded-full border border-[#D4AF37]/20 hover:bg-[#D4AF37]/10"
                       >
                         View All Booking/events
                       </button>
@@ -2735,7 +2740,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               <button
                                 type="button"
                                 onClick={() => handleSimchaBookingClick(b)}
-                                className="bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-4 py-2 rounded-xl transition-all border border-[#D4AF37]/20 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 cursor-pointer"
+                                className="bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-4 py-2 rounded-full transition-all border border-[#D4AF37]/20 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 cursor-pointer"
                               >
                                 <Eye className="w-3 h-3" /> Spec Sheet
                               </button>
@@ -2809,7 +2814,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         {dateFilter && (
                           <button 
                             onClick={() => setDateFilter('')}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-300 hover:text-white text-xs px-1"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-300 hover:text-white text-xs p-1 rounded-full hover:bg-white/10"
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -2892,7 +2897,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                   <button 
                                     type="button"
                                     onClick={() => handleSimchaBookingClick(b)}
-                                    className="inline-flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all shadow-lg shadow-[#D4AF37]/0 hover:shadow-[#D4AF37]/20 cursor-pointer"
+                                    className="inline-flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all shadow-lg shadow-[#D4AF37]/0 hover:shadow-[#D4AF37]/20 cursor-pointer"
                                   >
                                     <Eye className="w-3.5 h-3.5" /> Full Scope
                                   </button>
@@ -3039,8 +3044,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                      <button 
                                        type="button"
                                        onClick={() => handleUnsend(m)}
-                                       className="ml-1 text-black/40 hover:text-black/85 transition-colors cursor-pointer"
+                                       className="ml-1 text-black/40 hover:text-black/85 transition-colors cursor-pointer p-0.5 rounded-full"
                                        title="Unsend Message"
+                                       aria-label="Unsend Message"
                                      >
                                        <Trash2 className="w-3 h-3" />
                                      </button>
@@ -3094,10 +3100,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                <span className="font-mono">{Math.floor(chatRecordingDuration / 60)}:{(chatRecordingDuration % 60).toString().padStart(2, '0')}</span>
                              </div>
                              <div className="flex items-center gap-2">
-                               <button type="button" onClick={cancelChatRecording} className="p-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors" title="Cancel recording">
+                               <button type="button" onClick={cancelChatRecording} className="p-2 bg-zinc-800 text-zinc-300 rounded-full hover:bg-zinc-700 transition-colors" title="Cancel recording" aria-label="Cancel recording">
                                  <X className="w-5 h-5" />
                                </button>
-                               <button type="button" onClick={stopChatRecording} className="p-2 bg-zinc-700 text-white rounded-lg hover:bg-zinc-800 transition-colors">
+                               <button type="button" onClick={stopChatRecording} className="p-2 bg-zinc-700 text-white rounded-full hover:bg-zinc-800 transition-colors" title="Stop recording" aria-label="Stop recording">
                                  <StopCircle className="w-5 h-5" />
                                </button>
                              </div>
@@ -3107,16 +3113,18 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           <button 
                             type="button"
                             onClick={() => chatFileInputRef.current?.click()}
-                            className="flex items-center justify-center h-12 w-12 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
+                            className="flex items-center justify-center h-12 w-12 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-full hover:bg-zinc-900"
                             title="Attach file"
+                            aria-label="Attach file"
                           >
                             <Paperclip className="w-5 h-5" />
                           </button>
                           <button 
                              type="button"
                              onClick={startChatRecording}
-                             className="flex items-center justify-center h-12 w-12 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-xl hover:bg-zinc-900"
+                             className="flex items-center justify-center h-12 w-12 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-full hover:bg-zinc-900"
                              title="Record voice note"
+                             aria-label="Record voice note"
                           >
                              <Mic className="w-5 h-5" />
                           </button>
@@ -3138,7 +3146,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           <button 
                             type="submit"
                             disabled={!replyText.trim() || isChatUploading || isChatRecording}
-                            className="absolute right-2 p-2.5 bg-[#D4AF37] text-black rounded-xl hover:bg-[#E5C76B] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="absolute right-2 p-2.5 bg-[#D4AF37] text-black rounded-full hover:bg-[#E5C76B] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                            aria-label="Send reply"
                           >
                             {isChatUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                           </button>
@@ -3191,7 +3200,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         </div>
                         <button 
                           onClick={(e) => { e.stopPropagation(); setEditForm({ ...editForm, allowOffers: !editForm.allowOffers }); }}
-                          className={`w-full md:w-auto px-10 py-4 rounded-xl text-xs font-black uppercase tracking-[0.2em] transition-all border ${editForm.allowOffers ? 'bg-[#D4AF37] text-white border-[#D4AF37] shadow-xl shadow-[#D4AF37]/10' : 'bg-black text-zinc-300 border-white/10 hover:border-[#D4AF37]/40'}`}
+                          className={`w-full md:w-auto px-10 py-4 rounded-full text-xs font-black uppercase tracking-[0.2em] transition-all border ${editForm.allowOffers ? 'bg-[#D4AF37] text-white border-[#D4AF37] shadow-xl shadow-[#D4AF37]/10' : 'bg-black text-zinc-300 border-white/10 hover:border-[#D4AF37]/40'}`}
                         >
                           {editForm.allowOffers ? (
                             <span className="flex items-center justify-center gap-2"><CheckCircle className="w-4 h-4" /> Offers Active</span>
@@ -3290,7 +3299,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                 <button 
                                   onClick={() => logoFileInputRef.current?.click()}
                                   disabled={isUploadingLogo}
-                                  className="bg-white text-black p-3 rounded-xl hover:bg-[#D4AF37] transition-all transform scale-90 group-hover:scale-100 duration-300"
+                                  aria-label="Change Portrait"
+                                  className="bg-white text-black p-3 rounded-full hover:bg-[#D4AF37] transition-all transform scale-90 group-hover:scale-100 duration-300"
                                 >
                                   {isUploadingLogo ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
                                 </button>
@@ -3366,7 +3376,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     <div className="flex items-center gap-4">
                        <button 
                          onClick={(e) => { e.stopPropagation(); setShowAddForm(!showAddForm); if (collapsedSections['services']) toggleSection('services'); }}
-                         className={`p-3 rounded-xl transition-all border ${showAddForm ? 'bg-zinc-400/10 text-zinc-400 border-zinc-400/20' : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20 hover:bg-[#D4AF37]'}`}
+                         aria-label="Toggle add service form"
+                         className={`p-3 rounded-full transition-all border ${showAddForm ? 'bg-zinc-400/10 text-zinc-400 border-zinc-400/20' : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20 hover:bg-[#D4AF37]'}`}
                        >
                          {showAddForm ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                        </button>
@@ -3429,7 +3440,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             <button 
                               type="button"
                               onClick={() => setNewServiceAllowQty(!newServiceAllowQty)}
-                              className={`flex items-center justify-between w-full px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${newServiceAllowQty ? 'bg-[#D4AF37] text-black border-[#D4AF37]' : 'bg-black text-zinc-400 border-white/10 hover:border-[#D4AF37]/50'}`}
+                              className={`flex items-center justify-between w-full px-4 py-3 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${newServiceAllowQty ? 'bg-[#D4AF37] text-black border-[#D4AF37]' : 'bg-black text-zinc-400 border-white/10 hover:border-[#D4AF37]/50'}`}
                             >
                               <span className="flex items-center gap-2">
                                 {newServiceAllowQty ? <CheckCircle className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
@@ -3489,13 +3500,13 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         <div className="flex gap-3">
                            <button 
                               onClick={() => setShowAddForm(false)}
-                              className="flex-1 bg-white/5 hover:bg-white/10 text-zinc-400 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all"
+                              className="flex-1 bg-white/5 hover:bg-white/10 text-zinc-400 py-3.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all"
                             >
                               Discard
                            </button>
                            <button 
                             onClick={handleAddService}
-                            className="flex-[2] bg-[#D4AF37] hover:bg-[#E5C76B] text-black py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-[#D4AF37]/10 transition-all flex items-center justify-center gap-2"
+                            className="flex-[2] bg-[#D4AF37] hover:bg-[#E5C76B] text-black py-3.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-[#D4AF37]/10 transition-all flex items-center justify-center gap-2"
                            >
                             <Plus className="w-4 h-4" /> Finalize & Add Package
                            </button>
@@ -3582,15 +3593,16 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               <div className="mt-auto flex items-center gap-3 pt-2">
                                 <button 
                                   onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity })}
-                                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${service.allowQuantity ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/10 shadow-[0_0_10px_rgba(212,175,55,0.1)]' : 'text-zinc-400 border-white/5 hover:bg-white/5 hover:text-zinc-300'}`}
+                                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all border ${service.allowQuantity ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/10 shadow-[0_0_10px_rgba(212,175,55,0.1)]' : 'text-zinc-400 border-white/5 hover:bg-white/5 hover:text-zinc-300'}`}
                                 >
                                   {service.allowQuantity ? <Hash className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
                                   {service.allowQuantity ? 'Quantities On' : 'Fixed Package'}
                                 </button>
                                 <button 
                                   onClick={() => handleRemoveService(service.id)}
-                                  className="p-2.5 text-zinc-400 bg-white/5 hover:text-zinc-400 hover:bg-zinc-400/10 rounded-xl transition-all border border-transparent hover:border-zinc-400/20"
+                                  className="p-2.5 text-zinc-400 bg-white/5 hover:text-zinc-400 hover:bg-zinc-400/10 rounded-full transition-all border border-transparent hover:border-zinc-400/20"
                                   title="Delete Package"
+                                  aria-label="Delete Package"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -3608,7 +3620,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                            <p className="text-[10px] text-zinc-400 mt-2 max-w-xs mx-auto leading-relaxed">Defining specific services allows clients to build custom quotes and helps you automate your booking flow.</p>
                            <button 
                              onClick={() => setShowAddForm(true)}
-                             className="mt-6 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all"
+                             className="mt-6 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all"
                            >
                              Add My First Service
                            </button>
@@ -3648,7 +3660,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             fileInputRef.current.click();
                           }
                         }}
-                        className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-zinc-300 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all"
+                        className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-zinc-300 px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all"
                       >
                         <ImageIcon className="w-4 h-4" /> Add Photo
                       </button>
@@ -3659,7 +3671,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             fileInputRef.current.click();
                           }
                         }}
-                        className="flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-[#D4AF37]/20 transition-all"
+                        className="flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-[#D4AF37]/20 transition-all"
                       >
                         <Film className="w-4 h-4" /> Upload Video
                       </button>
@@ -3689,7 +3701,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col items-center justify-center p-2 text-center pointer-events-none group-hover:pointer-events-auto">
                               <button 
                                 onClick={(e) => { e.stopPropagation(); handleRemoveMedia(idx); }}
-                                className="p-3 bg-zinc-800 text-white rounded-xl hover:bg-zinc-700 transition-colors shadow-xl"
+                                className="p-3 bg-zinc-800 text-white rounded-full hover:bg-zinc-700 transition-colors shadow-xl"
+                                title="Remove media"
+                                aria-label="Remove media"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -3748,7 +3762,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       <button 
                         onClick={handleSendTestEmail}
                         disabled={isSendingTest}
-                        className="bg-white/5 hover:bg-white/10 text-white px-8 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest border border-white/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="bg-white/5 hover:bg-white/10 text-white px-8 py-4 rounded-full font-black text-[10px] uppercase tracking-widest border border-white/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                       >
                         {isSendingTest ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                         {isSendingTest ? 'Sending...' : 'Send Test'}
@@ -3784,7 +3798,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                  <button 
                   onClick={handleSaveProfile}
                   disabled={isSaving}
-                  className="w-full sm:w-auto min-w-[240px] bg-[#D4AF37] hover:bg-[#E5C76B] text-black px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-2xl shadow-[#D4AF37]/20 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                  className="w-full sm:w-auto min-w-[240px] bg-[#D4AF37] hover:bg-[#E5C76B] text-black px-10 py-5 rounded-full font-black text-xs uppercase tracking-[0.3em] shadow-2xl shadow-[#D4AF37]/20 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                  >
                   {isSaving ? (
                     <>
@@ -3814,6 +3828,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       <AnimatePresence>
         {fullscreenMedia && (
           <motion.div 
+            role="dialog"
+            aria-modal="true"
+            aria-label="Media Preview"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

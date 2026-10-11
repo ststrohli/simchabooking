@@ -80,15 +80,17 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
     .slice(0, 4);
 
   return (
-    <div className="fixed inset-0 z-[100] w-full h-screen bg-black overflow-y-auto flex flex-col items-center justify-start p-0 md:p-6 animate-in fade-in duration-200 min-h-screen">
+    <div 
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="suggestion-modal-title"
+      className="fixed inset-0 z-[100] w-full h-screen bg-black overflow-y-auto flex flex-col items-center justify-start p-0 md:p-6 animate-in fade-in duration-200 min-h-screen"
+    >
       {/* Background overlay click handler */}
       <div className="fixed inset-0 bg-black/90 backdrop-blur-md" onClick={onClose} aria-hidden="true" />
       
       {/* Main modal container */}
       <div 
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="suggestion-modal-title"
         className="bg-[#0a0a0a] w-full max-w-4xl min-h-screen md:min-h-0 md:max-h-[92vh] md:rounded-3xl shadow-2xl overflow-hidden border border-[#D4AF37]/30 flex flex-col relative z-10 my-auto"
       >
         
@@ -208,7 +210,7 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
                       <button
                         onClick={() => !isAdded && onBook(vendor)}
                         disabled={isAdded}
-                        className={`w-full py-2.5 rounded-lg text-[10px] font-black transition-all flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer ${
+                        className={`w-full py-2.5 rounded-full text-[10px] font-black transition-all flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer ${
                           isAdded
                             ? 'bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20'
                             : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] shadow-lg shadow-[#D4AF37]/5'

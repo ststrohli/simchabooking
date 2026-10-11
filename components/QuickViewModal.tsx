@@ -66,6 +66,9 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3 }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="quick-view-title"
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
     >
       <motion.div 
@@ -73,9 +76,6 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 40, scale: 0.92 }}
         transition={{ type: 'spring', damping: 28, stiffness: 220 }}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="quick-view-title"
         className="bg-[#111] w-full max-w-4xl rounded-3xl border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col max-h-[90vh]"
       >
         <button 
@@ -258,7 +258,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
                         />
                         <button 
                           type="submit" 
-                          className="bg-[#D4AF37] text-black text-[9px] font-black py-2.5 px-4 rounded-lg hover:bg-[#E5C76B] outline-none uppercase tracking-[0.25em] transition-colors"
+                          className="bg-[#D4AF37] text-black text-[9px] font-black py-2.5 px-6 rounded-full hover:bg-[#E5C76B] outline-none uppercase tracking-[0.25em] transition-colors self-start"
                         >
                           Submit Review
                         </button>

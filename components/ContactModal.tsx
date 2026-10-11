@@ -25,16 +25,22 @@ const ContactModal: React.FC<ContactModalProps> = ({ isOpen, vendorName, onClose
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div 
+      role="dialog" 
+      aria-modal="true" 
+      aria-labelledby="contact-vendor-title" 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+    >
       <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-[#D4AF37]/20">
         
         <div className="bg-black p-6 text-white flex justify-between items-start border-b border-[#D4AF37]/20">
           <div>
-            <h2 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Contact Vendor</h2>
+            <h2 id="contact-vendor-title" className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Contact Vendor</h2>
             <p className="text-zinc-400 text-sm mt-1">Send a message to <span className="text-white font-semibold">{vendorName}</span></p>
           </div>
           <button 
             onClick={onClose}
+            aria-label="Close"
             className="text-zinc-400 hover:text-white hover:bg-white/10 p-1 rounded-full transition-colors"
           >
             <X className="w-6 h-6" />
@@ -90,7 +96,7 @@ const ContactModal: React.FC<ContactModalProps> = ({ isOpen, vendorName, onClose
           <div className="pt-2">
             <button 
               type="submit"
-              className="w-full bg-black text-[#D4AF37] font-bold py-3 rounded-xl hover:bg-zinc-900 transition-colors shadow-lg flex items-center justify-center gap-2 border border-[#D4AF37]/20"
+              className="w-full bg-black text-[#D4AF37] font-bold py-3 rounded-full hover:bg-zinc-900 transition-colors shadow-lg flex items-center justify-center gap-2 border border-[#D4AF37]/20"
             >
               <Send className="w-4 h-4" /> Send Message
             </button>

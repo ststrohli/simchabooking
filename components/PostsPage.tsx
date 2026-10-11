@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { ChevronLeft, Play, Calendar, Share2, Bookmark, ExternalLink } from 'lucide-react';
+import { ChevronLeft, Play, Calendar, Share2, Bookmark, ExternalLink, Film } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Post, Vendor } from '../types';
 
@@ -14,35 +14,35 @@ interface PostsPageProps {
 const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVendor }) => {
   return (
     <div className="min-h-screen bg-black text-zinc-100 flex flex-col animate-in fade-in duration-500">
-      <div className="sticky top-0 z-50 bg-black/90 backdrop-blur-xl border-b border-[#D4AF37]/20 p-4">
+      <header className="sticky top-0 z-50 bg-black/90 backdrop-blur-xl border-b border-[#D4AF37]/20 p-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button 
             onClick={onBack}
-            className="flex items-center gap-2 text-[#D4AF37] font-black uppercase text-[10px] tracking-widest hover:text-[#E5C76B] transition-colors"
+            className="flex items-center gap-2 text-[#D4AF37] font-black uppercase text-[10px] tracking-widest hover:text-[#E5C76B] transition-colors px-3 py-1.5 rounded-full hover:bg-[#D4AF37]/10"
           >
             <ChevronLeft className="w-5 h-5" />
             <span>Marketplace</span>
           </button>
           <div className="flex flex-col items-center">
              <h2 className="text-xl font-bold font-[Cinzel] text-[#D4AF37] tracking-tight">Simcha Moments</h2>
-             <p className="text-[8px] font-black text-[#D4AF37]/60 uppercase tracking-[0.3em]">Community Highlights</p>
+             <p className="text-[8px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Community Highlights</p>
           </div>
           <div className="w-24 hidden md:block"></div> 
         </div>
-      </div>
+      </header>
 
-      <div className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-12 space-y-16">
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-12 space-y-16">
         <div className="text-center space-y-4 max-w-3xl mx-auto">
           <h1 className="text-5xl md:text-7xl font-bold font-[Cinzel] text-[#D4AF37]">The Gallery</h1>
           <div className="h-px w-24 bg-[#D4AF37]/40 mx-auto"></div>
-          <p className="text-zinc-400 text-lg font-light leading-relaxed">Visual inspiration for your upcoming celebration. From sacred ceremonies to high-energy celebrations, see what's possible with our elite community of professionals.</p>
+          <p className="text-zinc-300 text-lg font-light leading-relaxed">Visual inspiration for your upcoming celebration. From sacred ceremonies to high-energy celebrations, see what's possible with our elite community of professionals.</p>
         </div>
 
         {posts.length === 0 ? (
-          <div className="py-32 text-center text-zinc-400 bg-[#111] rounded-3xl border border-dashed border-[#D4AF37]/10">
-            <Film className="w-16 h-16 mx-auto mb-6 text-[#D4AF37]/10" />
-            <p className="text-2xl font-[Cinzel] text-[#D4AF37]/40">Capturing the first moments...</p>
-            <p className="text-sm mt-2 tracking-widest uppercase font-bold opacity-30">Check back soon for event highlights</p>
+          <div className="py-32 text-center text-zinc-300 bg-[#111] rounded-3xl border border-dashed border-[#D4AF37]/20">
+            <Film className="w-16 h-16 mx-auto mb-6 text-[#D4AF37]" />
+            <p className="text-2xl font-[Cinzel] text-[#D4AF37]">Capturing the first moments...</p>
+            <p className="text-sm mt-2 tracking-widest uppercase font-bold text-zinc-300">Check back soon for event highlights</p>
           </div>
         ) : (
           <motion.div 
@@ -164,11 +164,11 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
             })}
           </motion.div>
         )}
-      </div>
+      </main>
       
-      <div className="py-12 text-center border-t border-[#D4AF37]/10">
+      <footer className="py-12 text-center border-t border-[#D4AF37]/10">
           <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.5em]">Mazel Tov Moments • Community Feed</p>
-      </div>
+      </footer>
     </div>
   );
 };

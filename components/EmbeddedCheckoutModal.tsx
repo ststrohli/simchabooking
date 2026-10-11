@@ -57,7 +57,12 @@ export const EmbeddedCheckoutModal: React.FC<EmbeddedCheckoutModalProps> = ({
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div 
+      role="dialog" 
+      aria-modal="true" 
+      aria-labelledby="embedded-checkout-title" 
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+    >
       <div className="bg-[#0f0f0f] w-full max-w-3xl max-h-[92vh] rounded-3xl border border-[#D4AF37]/30 shadow-[0_0_50px_rgba(212,175,55,0.15)] flex flex-col overflow-hidden relative">
         
         {/* Modal Header */}
@@ -68,7 +73,7 @@ export const EmbeddedCheckoutModal: React.FC<EmbeddedCheckoutModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-wider">
+                <h3 id="embedded-checkout-title" className="text-sm sm:text-base font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-wider">
                   Secure Embedded Paywall
                 </h3>
                 <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">

@@ -38,17 +38,25 @@ export default function AIPlanner() {
   return (
     <>
       {/* Floating Action Button */}
-      <button 
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-24 z-[45] bg-[#D4AF37] text-black p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center gap-2 font-bold border-2 border-black"
-      >
-        <Sparkles className="w-5 h-5" />
-        <span className="hidden md:inline">Planning AI</span>
-      </button>
+      <aside aria-label="AI Planner Assistant">
+        <button 
+          onClick={() => setIsOpen(true)}
+          className="fixed bottom-6 right-24 z-[45] bg-[#D4AF37] text-black p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center gap-2 font-bold border-2 border-black"
+          aria-label="Open Simcha AI Advisor"
+        >
+          <Sparkles className="w-5 h-5" />
+          <span className="hidden md:inline">Planning AI</span>
+        </button>
+      </aside>
 
       {/* AI Drawer */}
       {isOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-end p-4 md:p-8 pointer-events-none">
+        <div 
+          role="dialog" 
+          aria-modal="false" 
+          aria-labelledby="ai-advisor-title" 
+          className="fixed inset-0 z-[60] flex items-end justify-end p-4 md:p-8 pointer-events-none"
+        >
           <div className="w-full max-w-md bg-[#0a0a0a] border border-[#D4AF37]/30 rounded-2xl shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-bottom-5 duration-300 max-h-[85vh]">
             {/* Header */}
             <div className="p-4 border-b border-[#D4AF37]/20 flex justify-between items-center bg-black rounded-t-2xl">
@@ -57,13 +65,14 @@ export default function AIPlanner() {
                   <Bot className="w-5 h-5 text-[#D4AF37]" />
                 </div>
                 <div>
-                  <h3 className="font-bold font-[Cinzel] text-[#D4AF37] text-sm">Simcha AI Advisor</h3>
+                  <h3 id="ai-advisor-title" className="font-bold font-[Cinzel] text-[#D4AF37] text-sm">Simcha AI Advisor</h3>
                   <p className="text-[9px] text-zinc-300 uppercase tracking-widest">Powered by Gemini 3</p>
                 </div>
               </div>
               <button 
                 onClick={() => setIsOpen(false)}
-                className="text-zinc-300 hover:text-white p-2 transition-colors"
+                aria-label="Close"
+                className="text-zinc-300 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -72,16 +81,16 @@ export default function AIPlanner() {
             {/* Content Area */}
             <div ref={contentRef} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
               {!response && !isLoading && (
-                <div className="text-center py-10 opacity-50">
-                  <MessageSquare className="w-12 h-12 mx-auto mb-4 text-[#D4AF37]/20" />
-                  <p className="text-sm text-zinc-400">Ask me anything about your upcoming event, from Kosher catering tips to traditional ceremony timelines.</p>
+                <div className="text-center py-10">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-4 text-[#D4AF37]/50" />
+                  <p className="text-sm text-zinc-300">Ask me anything about your upcoming event, from Kosher catering tips to traditional ceremony timelines.</p>
                 </div>
               )}
 
               {isLoading && (
                 <div className="flex flex-col items-center justify-center py-12 gap-4">
                   <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
-                  <p className="text-xs text-[#D4AF37]/60 font-bold uppercase tracking-tighter">Consulting traditions...</p>
+                  <p className="text-xs text-[#D4AF37] font-bold uppercase tracking-tighter">Consulting traditions...</p>
                 </div>
               )}
 
@@ -105,7 +114,8 @@ export default function AIPlanner() {
                 <button 
                   type="submit" 
                   disabled={isLoading || !query.trim()}
-                  className="absolute right-2 p-2 bg-[#D4AF37] text-black rounded-lg disabled:opacity-30 hover:bg-[#E5C76B] transition-all"
+                  aria-label="Send advice request"
+                  className="absolute right-2 p-2 bg-[#D4AF37] text-black rounded-full disabled:opacity-30 hover:bg-[#E5C76B] transition-all"
                 >
                   <Send className="w-4 h-4" />
                 </button>

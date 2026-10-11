@@ -2175,7 +2175,7 @@ function App() {
 
     if (step === 'verification') {
       return (
-        <div className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden">
+        <main className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden" aria-label="Email Verification">
           <div className="absolute inset-0 bg-gradient-to-br from-[#D4AF37]/5 via-black to-black" aria-hidden="true"></div>
           <div className="bg-[#111] rounded-3xl p-8 md:p-12 max-w-lg w-full border border-[#D4AF37]/20 shadow-2xl animate-in zoom-in-95 duration-500 relative z-10 text-center">
             <div className="bg-[#D4AF37]/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -2190,25 +2190,25 @@ function App() {
               <button 
                 onClick={handleResendVerification}
                 disabled={isLoading}
-                className="w-full bg-[#111] border border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black py-4 rounded-xl transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                className="w-full bg-[#111] border border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black py-4 rounded-full transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /> Resend Verification Email
               </button>
               <button 
                 onClick={() => setStep('login')}
-                className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer"
               >
                 <LogIn className="w-4 h-4" /> Return to Login
               </button>
             </div>
           </div>
-        </div>
+        </main>
       );
     }
 
     if (step === 'reset-success') {
       return (
-        <div className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden">
+        <main className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden" aria-label="Password Reset Confirmation">
           <div className="absolute inset-0 bg-gradient-to-br from-[#D4AF37]/5 via-black to-black" aria-hidden="true"></div>
           <div className="bg-[#111] rounded-3xl p-8 md:p-12 max-w-lg w-full border border-[#D4AF37]/20 shadow-2xl animate-in zoom-in-95 duration-500 relative z-10 text-center">
             <div className="bg-[#D4AF37]/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#D4AF37]/20">
@@ -2221,24 +2221,24 @@ function App() {
             </p>
             <button 
               onClick={() => setStep('login')}
-              className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2"
+              className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2"
             >
               <LogIn className="w-4 h-4" /> Sign In
             </button>
           </div>
-        </div>
+        </main>
       );
     }
 
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden">
+      <main className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden" aria-label="Sign In">
         <div className="absolute inset-0 bg-gradient-to-br from-[#D4AF37]/5 via-black to-black" aria-hidden="true"></div>
         <div className="bg-[#111] rounded-3xl p-8 md:p-12 max-w-lg w-full border border-[#D4AF37]/20 shadow-2xl animate-in zoom-in-95 duration-500 relative z-10">
-          <div className="text-center mb-10">
+          <header className="text-center mb-10">
             <div className="flex items-center justify-center mx-auto mb-6"><SimchaLogo className="w-20 h-20" /></div>
             <h1 className="text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">WELCOME TO SIMCHA BOOKING</h1>
             <p className="text-[10px] text-zinc-300 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
-          </div>
+          </header>
 
           {step === 'welcome' ? (
             <div className="space-y-6 animate-in fade-in duration-300">
@@ -2258,7 +2258,7 @@ function App() {
               </div>
             </div>
           ) : step === 'login' ? (
-            <form onSubmit={handleLogin} className="space-y-6">
+            <form aria-label="Sign In Form" onSubmit={handleLogin} className="space-y-6">
               <div className="flex justify-start mb-2">
                 <button
                   type="button"
@@ -2275,7 +2275,7 @@ function App() {
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
-                  <button type="button" onClick={() => setStep('forgot-password')} className="text-[10px] text-[#D4AF37] hover:underline font-bold uppercase tracking-widest">Forgot password?</button>
+                  <button type="button" onClick={() => setStep('forgot-password')} className="text-[10px] text-[#D4AF37] hover:underline font-bold uppercase tracking-widest px-2 py-0.5 rounded-full hover:bg-[#D4AF37]/10 transition-colors">Forgot password?</button>
                 </div>
                 <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
               </div>
@@ -2287,7 +2287,7 @@ function App() {
                 </div>
               )}
 
-              <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2">
+              <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign In'}
               </button>
 
@@ -2304,7 +2304,7 @@ function App() {
                 type="button" 
                 onClick={handleGoogleSignIn}
                 disabled={isLoading}
-                className="w-full bg-white text-black font-black py-4 rounded-xl hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3"
+                className="w-full bg-white text-black font-black py-4 rounded-full hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
@@ -2334,7 +2334,7 @@ function App() {
               </div>
             </form>
           ) : step === 'forgot-password' ? (
-            <form onSubmit={handleResetPassword} className="space-y-6 animate-in fade-in duration-300">
+            <form aria-label="Password Reset Form" onSubmit={handleResetPassword} className="space-y-6 animate-in fade-in duration-300">
                <div className="bg-[#D4AF37]/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
                   <RefreshCw className="w-8 h-8 text-[#D4AF37]" />
                </div>
@@ -2352,13 +2352,13 @@ function App() {
                   <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
                 </div>
               )}
-              <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2">
+              <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Get Reset Link'}
               </button>
               <button type="button" onClick={() => setStep('login')} className="w-full text-zinc-300 hover:text-white text-[10px] font-black uppercase tracking-widest">Return to Login</button>
             </form>
           ) : (
-            <form onSubmit={handleRegister} className="space-y-4">
+            <form aria-label="Registration Form" onSubmit={handleRegister} className="space-y-4">
               <div className="flex justify-start mb-2">
                 <button
                   type="button"
@@ -2407,7 +2407,7 @@ function App() {
                 </div>
               )}
 
-              <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-xl hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 mt-4">
+              <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 mt-4">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Complete Registration'}
               </button>
 
@@ -2424,7 +2424,7 @@ function App() {
                 type="button" 
                 onClick={handleGoogleSignIn}
                 disabled={isLoading}
-                className="w-full bg-white text-black font-black py-4 rounded-xl hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3"
+                className="w-full bg-white text-black font-black py-4 rounded-full hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
@@ -2455,7 +2455,7 @@ function App() {
           
           {/* Dual portal routing is now implicit. Vendors and clients use the main sign in form above. */}
         </div>
-      </div>
+      </main>
     );
   };
 
@@ -2550,10 +2550,11 @@ function App() {
 
   if (isInitializing) {
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center">
+      <main className="min-h-screen bg-black flex flex-col items-center justify-center" aria-label="Loading Simcha Booking">
         <SimchaLogo className="w-24 h-24 animate-pulse mb-8" />
         <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
-      </div>
+        <span className="sr-only">Loading application...</span>
+      </main>
     );
   }
 
@@ -2716,7 +2717,7 @@ function App() {
 
     if (view === 'verify-account') {
       return (
-        <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4">
+        <main className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4" aria-label="Account Verification">
           <div className="max-w-md w-full bg-[#111] border border-[#D4AF37] p-8 rounded-2xl text-center shadow-2xl">
             <div className="flex justify-center mb-6">
               <CheckCircle className="w-16 h-16 text-[#D4AF37]" />
@@ -2725,12 +2726,12 @@ function App() {
             <p className="text-zinc-300 mb-8">Your email has been successfully verified. You can now access all features of Simcha Booking.</p>
             <button 
               onClick={() => setView('marketplace')}
-              className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-4 rounded-xl uppercase tracking-widest transition-all"
+              className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-4 rounded-full uppercase tracking-widest transition-all"
             >
               Go to Marketplace
             </button>
           </div>
-        </div>
+        </main>
       );
     }
 
@@ -3083,24 +3084,23 @@ function App() {
       className="min-h-screen bg-black text-zinc-100 flex flex-col relative pb-28"
     >
       {permissionErrorBanner && (
-        <div className="bg-red-950/80 border-b border-red-500/40 px-4 py-3 text-red-200 text-xs font-medium flex items-center justify-between gap-3 backdrop-blur-md sticky top-0 z-[120]">
+        <aside aria-label="System Notice" className="bg-red-950/80 border-b border-red-500/40 px-4 py-3 text-red-200 text-xs font-medium flex items-center justify-between gap-3 backdrop-blur-md sticky top-0 z-[120]">
           <div className="flex items-center gap-2 max-w-7xl mx-auto w-full">
             <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
             <span className="flex-1 font-semibold">{permissionErrorBanner}</span>
             <button 
               onClick={() => setPermissionErrorBanner(null)} 
-              className="text-red-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+              className="text-red-400 hover:text-white p-1 rounded-full hover:bg-red-900/30 transition-colors cursor-pointer"
               aria-label="Dismiss message"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
-        </div>
+        </aside>
       )}
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-lg focus:font-bold">Skip to main content</a>
       {/* Floating Header Controls (? Ask on Right & Role Switcher on Left below header) */}
       {!isInitializing && !isRoleLoading && !!fbUser && !!userDocData && isActuallyVendor && (
-        <div className="fixed top-22 sm:top-24 left-3 sm:left-5 md:left-6 lg:left-8 xl:left-10 z-50 flex items-center pointer-events-auto">
+        <nav aria-label="Account Role Switcher" className="fixed top-22 sm:top-24 left-3 sm:left-5 md:left-6 lg:left-8 xl:left-10 z-50 flex items-center pointer-events-auto">
           <div className="flex items-center bg-zinc-950/95 border border-[#D4AF37]/40 backdrop-blur-xl rounded-full p-0.5 sm:p-1 shadow-[0_8px_20px_rgba(0,0,0,0.9),0_0_12px_rgba(212,175,55,0.2)] text-[9px] sm:text-[10px] tracking-wider uppercase font-bold">
             <button
               type="button"
@@ -3130,10 +3130,10 @@ function App() {
               <span>Vendor</span>
             </button>
           </div>
-        </div>
+        </nav>
       )}
 
-      <div className="fixed top-22 sm:top-24 right-3 sm:right-5 md:right-6 lg:right-8 xl:right-10 z-50 flex items-center pointer-events-auto">
+      <aside aria-label="Support Assistance" className="fixed top-22 sm:top-24 right-3 sm:right-5 md:right-6 lg:right-8 xl:right-10 z-50 flex items-center pointer-events-auto">
         <motion.button 
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
@@ -3150,16 +3150,17 @@ function App() {
           <HelpCircle className="w-3.5 h-3.5 stroke-[2.5]" />
           <span>Ask</span>
         </motion.button>
-      </div>
+      </aside>
 
       <header className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-full focus:font-bold">Skip to main content</a>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
             <div className="flex items-center gap-4 md:gap-8 ml-0">
               <motion.button 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-lg p-1" 
+                className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full p-1.5" 
                 onClick={() => { setView('marketplace'); setActiveCategory('All'); setIsVendorView(false); }} 
                 aria-label="Simcha Booking Home"
               >
@@ -3180,7 +3181,7 @@ function App() {
                   <motion.button 
                     whileTap={{ scale: 0.9 }}
                     onClick={() => setView('admin')} 
-                    className="text-zinc-300 hover:text-[#D4AF37] transition-colors focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded-lg p-1 cursor-pointer" 
+                    className="text-zinc-300 hover:text-[#D4AF37] transition-colors focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded-full p-2 hover:bg-white/10 cursor-pointer" 
                     aria-label="Admin Panel"
                     title="Admin Panel"
                   >
@@ -3191,7 +3192,7 @@ function App() {
                 <motion.button 
                   whileTap={{ scale: 0.9 }}
                   onClick={handleSignOut} 
-                  className="text-zinc-300 hover:text-zinc-200 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-lg p-1 cursor-pointer" 
+                  className="text-zinc-300 hover:text-zinc-200 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-full p-2 hover:bg-white/10 cursor-pointer" 
                   aria-label="Sign Out"
                 >
                   <LogOut className="w-5 h-5" />
@@ -3256,6 +3257,7 @@ function App() {
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
             role="dialog"
             aria-modal="true"
+            aria-labelledby="priority-hold-title"
           >
             <motion.div 
               initial={{ opacity: 0, y: 30, scale: 0.95 }}
@@ -3273,7 +3275,7 @@ function App() {
                   <Check className="w-8 h-8 text-green-500 animate-bounce mx-auto" />
                 </div>
                 
-                <h2 className="text-2xl md:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider text-center mx-auto w-full mb-6">
+                <h2 id="priority-hold-title" className="text-2xl md:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider text-center mx-auto w-full mb-6">
                   BOOKING REQUEST RECEIVED
                 </h2>
                 
@@ -3283,7 +3285,7 @@ function App() {
                 
                 <button 
                   onClick={() => setShowPriorityHoldPopup(false)}
-                  className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/10 hover:shadow-[#D4AF37]/20 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                  className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-full text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/10 hover:shadow-[#D4AF37]/20 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
                 >
                   Done
                 </button>
@@ -3355,7 +3357,7 @@ function App() {
       </AnimatePresence>
 
       {notification && (
-        <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300 w-full max-w-sm px-4 pointer-events-none">
+        <aside aria-label="Notifications" role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300 w-full max-w-sm px-4 pointer-events-none">
           <div className={`bg-[#111] text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border backdrop-blur-md ${notification.type === 'error' ? 'border-red-500/40 bg-red-950/20' : 'border-green-500/40 bg-green-950/20'}`}>
             {notification.type === 'error' ? (
               <X className="w-5 h-5 text-red-500 animate-pulse" aria-hidden="true" />
@@ -3364,7 +3366,7 @@ function App() {
             )}
             <span className={`font-bold text-sm flex-1 ${notification.type === 'error' ? 'text-red-200' : 'text-green-200'}`}>{notification.message}</span>
           </div>
-        </div>
+        </aside>
       )}
       
       {currentAuthenticatedUser && 

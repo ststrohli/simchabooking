@@ -1221,7 +1221,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+      <main className="min-h-screen bg-black flex items-center justify-center p-4">
         <div className="bg-[#111] rounded-2xl p-8 max-w-md w-full shadow-2xl border border-[#D4AF37]/20">
           <div className="text-center mb-8">
             <div className="bg-black w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-[#D4AF37]/30">
@@ -1239,30 +1239,30 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
               {error && <p className="text-zinc-400 text-xs mt-2 font-bold">{error}</p>}
             </div>
-            <button type="submit" className="w-full bg-[#D4AF37] text-black font-bold py-3 rounded-lg hover:bg-[#E5C76B] transition-all shadow-lg mt-2">Unlock Panel</button>
+            <button type="submit" className="w-full bg-[#D4AF37] text-black font-bold py-3 rounded-full hover:bg-[#E5C76B] transition-all shadow-lg mt-2">Unlock Panel</button>
             <button type="button" onClick={onBack} className="w-full text-zinc-400 text-xs font-bold py-2 hover:text-[#D4AF37] transition-colors uppercase tracking-widest">Back to Marketplace</button>
           </form>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
     <div className="min-h-screen bg-black text-zinc-100">
-      <div className="bg-black border-b border-[#D4AF37]/20 sticky top-0 z-30">
+      <header className="bg-black border-b border-[#D4AF37]/20 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-3">
-             <div className="bg-[#111] p-2 rounded-lg border border-[#D4AF37]/20"><ShieldCheck className="w-6 h-6 text-[#D4AF37]" /></div>
+             <div className="bg-[#111] p-2 rounded-full border border-[#D4AF37]/20"><ShieldCheck className="w-6 h-6 text-[#D4AF37]" /></div>
              <div><h1 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Simcha Admin</h1><p className="text-[10px] text-zinc-400 uppercase tracking-widest">Platform Management</p></div>
           </div>
-          <div className="flex gap-6">
-            <button onClick={onBack} className="text-zinc-400 hover:text-[#D4AF37] font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors"><ArrowLeft className="w-4 h-4" /> Marketplace</button>
-            <button onClick={onBack} className="text-zinc-400 hover:text-zinc-200 font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors"><LogOut className="w-4 h-4" /> Exit Admin</button>
+          <div className="flex gap-4 sm:gap-6">
+            <button onClick={onBack} className="text-zinc-400 hover:text-[#D4AF37] font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors px-3 py-1.5 rounded-full hover:bg-white/5"><ArrowLeft className="w-4 h-4" /> Marketplace</button>
+            <button onClick={onBack} className="text-zinc-400 hover:text-zinc-200 font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors px-3 py-1.5 rounded-full hover:bg-white/5"><LogOut className="w-4 h-4" /> Exit Admin</button>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-12">
+      <main className="max-w-7xl mx-auto px-4 py-12">
         {/* Stats Section */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
             <div className="bg-[#111] p-6 rounded-2xl border border-[#D4AF37]/10 shadow-xl">
@@ -1302,7 +1302,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex justify-start md:justify-center mb-10 overflow-x-auto pb-3 scrollbar-none">
+        <nav aria-label="Admin Navigation" className="flex justify-start md:justify-center mb-10 overflow-x-auto pb-3 scrollbar-none">
             <div className="bg-[#111] p-1.5 rounded-xl border border-white/5 flex shrink-0 gap-1">
                 {['manage', 'invite', 'users', 'moderation', 'bookings', 'messages', 'stripe', 'posts', 'categories', 'analytics', 'add'].map(tab => {
                     const pendingVendorsCount = vendors.filter(v => !v.isVerified && !removedModerationIds.includes(v.id)).length;
@@ -1333,7 +1333,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 setFilterText(''); // reset search on change
                                 if (tab !== 'add') setEditingVendor(null);
                             }} 
-                            className={`px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-200 flex items-center gap-2 shrink-0 ${
+                            className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-200 flex items-center gap-2 shrink-0 ${
                                 isActive 
                                     ? 'bg-[#D4AF37] text-black shadow-lg font-black' 
                                     : 'text-zinc-400 hover:text-white hover:bg-white/[0.02]'
@@ -1358,7 +1358,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     );
                 })}
             </div>
-        </div>
+        </nav>
 
         {activeTab === 'add' && (
             <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl max-w-4xl mx-auto animate-in fade-in duration-300">
@@ -1400,7 +1400,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 key={option}
                                                 type="button"
                                                 onClick={() => toggleSubCategorySelection(option)}
-                                                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border ${
+                                                className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${
                                                     formData.subCategories.includes(option)
                                                         ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
                                                         : 'bg-black text-zinc-400 border-white/10 hover:border-[#D4AF37]/50'
@@ -1481,11 +1481,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
 
                     <div className="pt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <button type="submit" disabled={isUploading || isOnboarding} className="w-full bg-black text-[#D4AF37] border border-[#D4AF37] font-bold py-4 rounded-xl hover:bg-[#D4AF37]/10 transition-all shadow-xl font-[Cinzel] text-lg uppercase tracking-widest disabled:opacity-50">
+                        <button type="submit" disabled={isUploading || isOnboarding} className="w-full bg-black text-[#D4AF37] border border-[#D4AF37] font-bold py-4 rounded-full hover:bg-[#D4AF37]/10 transition-all shadow-xl font-[Cinzel] text-lg uppercase tracking-widest disabled:opacity-50">
                             {editingVendor ? 'Update Professional' : 'Save Professional'}
                         </button>
                         {!editingVendor && (
-                            <button type="button" onClick={(e) => handleVendorSubmit(e as any, true)} disabled={isUploading || isOnboarding} className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-xl hover:bg-[#E5C76B] transition-all shadow-xl font-[Cinzel] text-lg uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50">
+                            <button type="button" onClick={(e) => handleVendorSubmit(e as any, true)} disabled={isUploading || isOnboarding} className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-full hover:bg-[#E5C76B] transition-all shadow-xl font-[Cinzel] text-lg uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50">
                                 {isOnboarding ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
                                 Save & Start Stripe Onboarding
                             </button>
@@ -1533,7 +1533,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <button 
                             type="submit" 
                             disabled={isInvitingVendor}
-                            className="w-full md:w-auto bg-[#D4AF37] text-black font-bold px-8 py-3.5 rounded-xl hover:bg-[#E5C76B] transition-all shadow-lg font-[Cinzel] text-sm uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
+                            className="w-full md:w-auto bg-[#D4AF37] text-black font-bold px-8 py-3.5 rounded-full hover:bg-[#E5C76B] transition-all shadow-lg font-[Cinzel] text-sm uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                             {isInvitingVendor ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
                             Assign Vendor Role
@@ -1608,7 +1608,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 <td className="p-4 text-right">
                                                     <button 
                                                         onClick={() => handleRevokeVendorRole(roleItem.id, displayEmail)}
-                                                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors"
+                                                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors"
                                                     >
                                                         Revoke Role
                                                     </button>
@@ -1633,7 +1633,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                         <button 
                             onClick={() => setActiveTab('manage')}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37] hover:text-black transition-all"
+                            className="px-4 py-2 rounded-full text-xs font-bold bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37] hover:text-black transition-all"
                         >
                             Manage All Profiles →
                         </button>
@@ -1758,17 +1758,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     <CheckSquare className="w-3 h-3" /> Stripe Active
                                                 </span>
                                             ) : (
-                                                <button onClick={() => handleStripeOnboard(v.id, v.contactEmail || '')} className="inline-flex items-center gap-1.5 bg-zinc-400/10 border border-zinc-400/20 hover:bg-zinc-700/25 px-2 py-1 rounded text-[8px] font-black text-zinc-400 uppercase tracking-widest transition-all cursor-pointer" title="Initiate Connection">
+                                                <button onClick={() => handleStripeOnboard(v.id, v.contactEmail || '')} className="inline-flex items-center gap-1.5 bg-zinc-400/10 border border-zinc-400/20 hover:bg-zinc-700/25 px-2.5 py-1 rounded-full text-[8px] font-black text-zinc-400 uppercase tracking-widest transition-all cursor-pointer" title="Initiate Connection">
                                                     <CreditCard className="w-3 h-3" /> Connect Stripe
                                                 </button>
                                             )}
                                         </td>
                                         <td className="p-4 text-right">
                                             <div className="flex items-center justify-end gap-1">
-                                                <button onClick={() => onLoginAsVendor(v.id)} title="Login to Portal" className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><LogIn className="w-4 h-4" /></button>
-                                                <button onClick={() => handleEditVendor(v)} title="Edit Professional" className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
-                                                <button onClick={() => onToggleVerify(v.id)} title="Toggle Verification" className={`p-2 rounded-lg transition-all ${v.isVerified ? 'text-[#D4AF37] hover:bg-[#D4AF37]/10' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}><ShieldCheck className="w-4 h-4" /></button>
-                                                <button onClick={() => handleDeleteVendor(v.id, v.name)} title="Remove Professional" className="p-2 text-zinc-400 hover:text-zinc-400 hover:bg-zinc-400/10 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                                                <button onClick={() => onLoginAsVendor(v.id)} title="Login to Portal" className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 rounded-full transition-all"><LogIn className="w-4 h-4" /></button>
+                                                <button onClick={() => handleEditVendor(v)} title="Edit Professional" className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 rounded-full transition-all"><Edit2 className="w-4 h-4" /></button>
+                                                <button onClick={() => onToggleVerify(v.id)} title="Toggle Verification" className={`p-2 rounded-full transition-all ${v.isVerified ? 'text-[#D4AF37] hover:bg-[#D4AF37]/10' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}><ShieldCheck className="w-4 h-4" /></button>
+                                                <button onClick={() => handleDeleteVendor(v.id, v.name)} title="Remove Professional" className="p-2 text-zinc-400 hover:text-zinc-400 hover:bg-zinc-400/10 rounded-full transition-all"><Trash2 className="w-4 h-4" /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -1825,7 +1825,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <input type="file" ref={postFileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileUpload} />
                             </div>
                         </div>
-                        <button type="submit" disabled={isUploading || !postForm.url} className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-xl hover:bg-[#E5C76B] transition-all shadow-xl text-lg disabled:opacity-30">Publish Highlight</button>
+                        <button type="submit" disabled={isUploading || !postForm.url} className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-full hover:bg-[#E5C76B] transition-all shadow-xl text-lg disabled:opacity-30">Publish Highlight</button>
                     </form>
                 </div>
             </div>
@@ -1847,7 +1847,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                            <button 
                              onClick={() => heroImageInputRef.current?.click()} 
                              disabled={isUploading}
-                             className="w-full bg-[#D4AF37] text-black font-black py-3 rounded-lg hover:bg-[#E5C76B] transition-all uppercase tracking-widest text-[10px] flex items-center justify-center gap-2"
+                             className="w-full bg-[#D4AF37] text-black font-black py-3 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-widest text-[10px] flex items-center justify-center gap-2"
                            >
                              {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                              Change Hero Image
@@ -1898,7 +1898,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                               <input type="file" accept="image/*,video/*" className="hidden" ref={el => { newCatImageInputRef.current = el; }} onChange={handleNewCategoryImgUpload} />
                           </div>
                       </div>
-                      <button type="submit" className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-xl hover:bg-[#E5C76B] transition-all text-xs uppercase tracking-[0.2em]">Commit New Vertical</button>
+                      <button type="submit" className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-full hover:bg-[#E5C76B] transition-all text-xs uppercase tracking-[0.2em]">Commit New Vertical</button>
                   </form>
               </div>
 
@@ -1914,7 +1914,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             type="button" 
                             disabled={isSeedingTaxonomy}
                             onClick={handleSeed} 
-                            className="px-4 py-2 bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37] hover:bg-[#D4AF37] hover:text-black transition-all rounded text-[10px] font-bold uppercase tracking-widest cursor-pointer shadow-[0_0_15px_rgba(212,175,55,0.2)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            className="px-4 py-2 bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37] hover:bg-[#D4AF37] hover:text-black transition-all rounded-full text-[10px] font-bold uppercase tracking-widest cursor-pointer shadow-[0_0_15px_rgba(212,175,55,0.2)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                         >
                             {isSeedingTaxonomy ? (
                               <>
@@ -1935,12 +1935,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 {renderMedia(previewUrls[cat] || categoryImages[cat], "w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700")}
                                 <div className="absolute inset-0 bg-gradient-to-t from-[#111] via-transparent to-black/30"></div>
                                 
-                                <div className="absolute top-4 left-4 flex items-center gap-1 bg-black/80 px-2.5 py-1.5 rounded-lg border border-[#D4AF37]/20 backdrop-blur-sm z-10">
+                                <div className="absolute top-4 left-4 flex items-center gap-1 bg-black/80 px-2.5 py-1.5 rounded-full border border-[#D4AF37]/20 backdrop-blur-sm z-10">
                                     <span className="text-[#D4AF37] font-mono text-[10px] font-bold px-1 select-none">Rank #{index + 1}</span>
                                     <button 
                                         disabled={index === 0}
                                         onClick={() => handleMoveCategory(cat, 'up')}
-                                        className="p-1 text-[#D4AF37] hover:text-white disabled:opacity-30 disabled:hover:text-[#D4AF37] transition-colors cursor-pointer"
+                                        className="p-1 rounded-full text-[#D4AF37] hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:text-[#D4AF37] transition-colors cursor-pointer"
                                         title="Move Up"
                                     >
                                         <ArrowUp className="w-3.5 h-3.5" />
@@ -1948,7 +1948,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <button 
                                         disabled={index === localCategories.length - 1}
                                         onClick={() => handleMoveCategory(cat, 'down')}
-                                        className="p-1 text-[#D4AF37] hover:text-white disabled:opacity-30 disabled:hover:text-[#D4AF37] transition-colors cursor-pointer"
+                                        className="p-1 rounded-full text-[#D4AF37] hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:text-[#D4AF37] transition-colors cursor-pointer"
                                         title="Move Down"
                                     >
                                         <ArrowDown className="w-3.5 h-3.5" />
@@ -1958,14 +1958,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <div className="absolute top-4 right-4 flex gap-2">
                                     <button 
                                         onClick={() => categoryImageInputRefs.current[cat]?.click()} 
-                                        className="bg-black/60 hover:bg-[#D4AF37] hover:text-black p-2 rounded-lg text-zinc-300 transition-all border border-white/10" 
+                                        className="bg-black/60 hover:bg-[#D4AF37] hover:text-black p-2 rounded-full text-zinc-300 transition-all border border-white/10" 
                                         title="Modify Banner"
                                     >
                                         <Camera className="w-4 h-4" />
                                     </button>
                                     <button 
                                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteCategory(cat); }}
-                                        className="bg-black/60 hover:bg-zinc-800 hover:text-white p-2 rounded-lg text-zinc-400 transition-all border border-white/10" 
+                                        className="bg-black/60 hover:bg-zinc-800 hover:text-white p-2 rounded-full text-zinc-400 transition-all border border-white/10" 
                                         title="Delete Category"
                                     >
                                         <Trash2 className="w-4 h-4" />
@@ -1987,7 +1987,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <label className={labelClass}>Establish New Classification Group</label>
                                     <div className="flex gap-2">
                                         <input type="text" className={inputClass + " py-2 text-xs"} placeholder="e.g. Menu Grade, Room Type..." value={newSubCategoryInputs[cat] || ''} onChange={(e) => setNewSubCategoryInputs({...newSubCategoryInputs, [cat]: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && handleAddSubCategory(cat)} />
-                                        <button onClick={() => handleAddSubCategory(cat)} className="bg-[#D4AF37] text-black p-2 rounded-lg hover:bg-[#E5C76B] transition-colors"><Plus className="w-5 h-5" /></button>
+                                        <button onClick={() => handleAddSubCategory(cat)} className="bg-[#D4AF37] text-black p-2 rounded-full hover:bg-[#E5C76B] transition-colors"><Plus className="w-5 h-5" /></button>
                                     </div>
                                 </div>
 
@@ -2002,7 +2002,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                       <Layers className="w-3.5 h-3.5 text-[#D4AF37]/50" />
                                                       <span className="text-[10px] font-black uppercase text-zinc-300 tracking-widest">{sub}</span>
                                                   </div>
-                                                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteSubcategory(cat, sub); }} className="text-zinc-400/30 hover:text-zinc-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                                                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteSubcategory(cat, sub); }} aria-label="Delete subcategory" className="text-zinc-400/30 hover:text-zinc-400 p-1 rounded-full hover:bg-white/10 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                                               </div>
                                               <div className="p-4 space-y-4">
                                                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -2028,7 +2028,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                               </div>
                                                               <div className="p-2 bg-black border-t border-white/5 flex items-center justify-between">
                                                                   <span className="text-[10px] font-bold text-zinc-300 truncate">{item}</span>
-                                                                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRemoveNestedSubCategory(cat, sub, item); }} className="text-zinc-400/50 hover:text-zinc-400 transition-colors shrink-0 ml-2" title="Remove subcategory"><Trash2 className="w-3 h-3" /></button>
+                                                                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRemoveNestedSubCategory(cat, sub, item); }} className="text-zinc-400/50 hover:text-zinc-400 p-1 rounded-full hover:bg-white/10 transition-colors shrink-0 ml-2" title="Remove subcategory"><Trash2 className="w-3 h-3" /></button>
                                                               </div>
                                                           </div>
                                                       ))}
@@ -2036,7 +2036,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                   </div>
                                                   <div className="flex gap-2 pt-1">
                                                       <input type="text" className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-[10px] text-zinc-400 outline-none focus:border-[#D4AF37]/40" placeholder={`Add ${sub} option...`} value={newNestedSubCategoryInputs[nestedKey] || ''} onChange={(e) => setNewNestedSubCategoryInputs({...newNestedSubCategoryInputs, [nestedKey]: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && handleAddNestedSubCategory(cat, sub)} />
-                                                      <button onClick={() => handleAddNestedSubCategory(cat, sub)} className="bg-[#D4AF37]/10 text-[#D4AF37] px-2 rounded-lg hover:bg-[#D4AF37] hover:text-black transition-all"><Plus className="w-4 h-4" /></button>
+                                                      <button onClick={() => handleAddNestedSubCategory(cat, sub)} className="bg-[#D4AF37]/10 text-[#D4AF37] px-2.5 py-1 rounded-full hover:bg-[#D4AF37] hover:text-black transition-all"><Plus className="w-4 h-4" /></button>
                                                   </div>
                                               </div>
                                           </div>
@@ -2146,7 +2146,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <td className="p-4 text-right">
                                                 <button 
                                                     onClick={() => onUpdateBookingStatus(b.id, b.status === 'confirmed' ? 'pending' : 'confirmed')}
-                                                    className={`p-2 rounded-lg transition-all ${
+                                                    className={`p-2 rounded-full transition-all ${
                                                         b.status === 'confirmed' 
                                                             ? 'bg-[#D4AF37]/10 text-[#D4AF37]' 
                                                             : 'bg-white/5 text-zinc-400 hover:text-[#D4AF37]'
@@ -2226,13 +2226,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         <div className="flex items-center gap-2">
                                             <button 
                                                 onClick={() => handleStripeOnboard(v.id, v.contactEmail || '')}
-                                                className="px-4 py-2 bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-[#D4AF37] hover:text-black transition-all"
+                                                className="px-4 py-2 bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-[#D4AF37] hover:text-black transition-all"
                                             >
                                                 Initiate Onboarding
                                             </button>
                                             <button 
                                                 onClick={() => handleManualStripeId(v.id)}
-                                                className="p-2 bg-white/5 text-zinc-400 border border-white/10 rounded-lg hover:text-white transition-all"
+                                                className="p-2 bg-white/5 text-zinc-400 border border-white/10 rounded-full hover:text-white transition-all"
                                                 title="Manually Set ID"
                                             >
                                                 <Settings className="w-3 h-3" />
@@ -2272,7 +2272,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <button
                         onClick={handleRunOrphanedCleanup}
                         disabled={isRunningCleanup}
-                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-900/80 to-red-600/80 hover:from-red-800 hover:to-red-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-lg hover:shadow-red-900/40 disabled:opacity-50 shrink-0 cursor-pointer"
+                        className="px-5 py-2.5 rounded-full bg-gradient-to-r from-red-900/80 to-red-600/80 hover:from-red-800 hover:to-red-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-lg hover:shadow-red-900/40 disabled:opacity-50 shrink-0 cursor-pointer"
                     >
                         {isRunningCleanup ? (
                             <>
@@ -2377,7 +2377,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                             }
                                                         }}
                                                         title="Approve User Account" 
-                                                        className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-lg transition-all"
+                                                        className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-full transition-all"
                                                     >
                                                         <ShieldCheck className="w-4 h-4" />
                                                     </button>
@@ -2394,7 +2394,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                         }
                                                     }}
                                                     title="Permanently Delete User" 
-                                                    className="p-2 text-zinc-400 hover:text-zinc-400 hover:bg-zinc-400/10 rounded-lg transition-all"
+                                                    className="p-2 text-zinc-400 hover:text-zinc-400 hover:bg-zinc-400/10 rounded-full transition-all"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
@@ -2562,7 +2562,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                         <button 
                                                             onClick={() => handleApproveAction(item.id, item.type)}
                                                             disabled={!!action}
-                                                            className={`p-2 rounded-lg transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
+                                                            className={`p-2 rounded-full transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
                                                                 action === 'approve'
                                                                     ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
                                                                     : 'text-zinc-400 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 cursor-pointer'
@@ -2584,7 +2584,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                         <button 
                                                             onClick={() => handleRejectAction(item.id, item.type, item.name)}
                                                             disabled={!!action}
-                                                            className={`p-2 rounded-lg transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
+                                                            className={`p-2 rounded-full transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
                                                                 action === 'reject'
                                                                     ? 'bg-zinc-800 text-zinc-400'
                                                                     : 'text-zinc-400 hover:text-zinc-400 hover:bg-zinc-400/10 cursor-pointer'
@@ -2716,7 +2716,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     {convoSearchQuery && (
                                         <button 
                                             onClick={() => setConvoSearchQuery('')}
-                                            className="absolute right-3 top-2.5 text-zinc-400 hover:text-white transition-colors"
+                                            className="absolute right-3 top-2.5 text-zinc-400 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10"
                                         >
                                             <X className="w-4 h-4" />
                                         </button>
@@ -2849,7 +2849,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                             <button
                                                                 onClick={(e) => toggleConversationReadStatus(cid, otherUser.email, hasUnread, e)}
                                                                 title={hasUnread ? "Mark as Read" : "Mark as Unread"}
-                                                                className="p-1 hover:bg-white/10 rounded transition-all"
+                                                                className="p-1 hover:bg-white/10 rounded-full transition-all"
                                                             >
                                                                 {hasUnread ? (
                                                                     <Mail className="w-3.5 h-3.5 text-[#D4AF37]" />
@@ -3221,14 +3221,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
             </div>
         )}
-      </div>
-
-
+      </main>
 
       {/* Fullscreen Media Viewer */}
       <AnimatePresence>
         {fullscreenMedia && (
           <motion.div 
+            role="dialog"
+            aria-modal="true"
+            aria-label="Media Preview"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

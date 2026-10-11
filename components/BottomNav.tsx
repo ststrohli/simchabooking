@@ -26,10 +26,8 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isVendor
   ];
 
   return (
-    <div className="fixed bottom-5 left-4 right-4 max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl mx-auto z-50 transition-all duration-300">
-
-      {/* Main Nav */}
-      <nav aria-label="Bottom Navigation" className="rounded-[28px] bg-gradient-to-b from-zinc-900/95 via-black/95 to-black/98 backdrop-blur-2xl border border-white/20 shadow-[0_10px_30px_rgba(0,0,0,0.9),0_0_20px_rgba(212,175,55,0.12)] pb-safe overflow-hidden">
+    <nav aria-label="Bottom Navigation" className="fixed bottom-5 left-4 right-4 max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl mx-auto z-50 transition-all duration-300">
+      <div className="rounded-[28px] bg-gradient-to-b from-zinc-900/95 via-black/95 to-black/98 backdrop-blur-2xl border border-white/20 shadow-[0_10px_30px_rgba(0,0,0,0.9),0_0_20px_rgba(212,175,55,0.12)] pb-safe overflow-hidden">
         {/* Liquid glass top rim specular reflection */}
         <div className="absolute top-0 inset-x-6 h-[1.5px] bg-gradient-to-r from-transparent via-white/50 to-transparent pointer-events-none" />
         {/* Glass sheen overlay */}
@@ -81,8 +79,8 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isVendor
             );
           })}
         </div>
-      </nav>
-    </div>
+      </div>
+    </nav>
   );
 };
 
