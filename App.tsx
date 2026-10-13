@@ -2822,19 +2822,39 @@ function App() {
             </div>
         ) : (
             <div className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 w-full animate-in fade-in">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                     <nav className="flex flex-wrap items-center gap-2" aria-label="Breadcrumb">
-                        <motion.button 
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => { setActiveCategory('All'); setShowAllCategoriesGrid(false); setActiveSubCategoryGroup(null); setActiveSubSubCategory(null); }} 
-                          className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em] transition-all border-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] cursor-pointer shadow-md ${activeCategory === 'All' && !showAllCategoriesGrid ? 'bg-[#D4AF37] text-black border-[#D4AF37]' : 'bg-black text-[#D4AF37] hover:bg-[#D4AF37]/10 border-[#D4AF37]/40'}`}
-                        >
-                          All Categories
-                        </motion.button>
-                        {activeCategory !== 'All' && <><span className="text-zinc-400" aria-hidden="true">/</span><span id="results-heading" className="font-extrabold text-base text-[#D4AF37]">{activeCategory}</span></>}
-                        {activeSubCategoryGroup && activeSubCategoryGroup !== '__ALL__' && <><span className="text-zinc-400" aria-hidden="true">/</span><span className="font-extrabold text-base text-zinc-200">{activeSubCategoryGroup}</span></>}
-                        {activeSubSubCategory && activeSubSubCategory !== '__ALL__' && <><span className="text-zinc-400" aria-hidden="true">/</span><span className="font-extrabold text-base text-white">{activeSubSubCategory}</span></>}
-                     </nav>
+                <div className="flex flex-wrap items-center gap-2 mb-6" aria-label="Breadcrumb">
+                   {/* Selected Category Pill with integrated back arrow */}
+                   {activeCategory !== 'All' && (
+                     <button 
+                       onClick={() => { setActiveCategory('All'); setShowAllCategoriesGrid(false); setActiveSubCategoryGroup(null); setActiveSubSubCategory(null); }}
+                       className="h-7 px-3 rounded-full flex items-center gap-1.5 bg-[#111] border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+                     >
+                       <ChevronLeft className="w-3.5 h-3.5" />
+                       <span>{activeCategory}</span>
+                     </button>
+                   )}
+
+                   {/* Subcategory Pill with integrated back arrow */}
+                   {activeSubCategoryGroup && activeSubCategoryGroup !== '__ALL__' && (
+                     <button 
+                       onClick={() => { setActiveSubCategoryGroup(null); setActiveSubSubCategory(null); }}
+                       className="h-7 px-3 rounded-full flex items-center gap-1.5 bg-[#111] border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+                     >
+                       <ChevronLeft className="w-3.5 h-3.5" />
+                       <span>{activeSubCategoryGroup}</span>
+                     </button>
+                   )}
+
+                   {/* Sub-Subcategory Pill with integrated back arrow */}
+                   {activeSubSubCategory && activeSubSubCategory !== '__ALL__' && (
+                     <button 
+                       onClick={() => setActiveSubSubCategory(null)}
+                       className="h-7 px-3 rounded-full flex items-center gap-1.5 bg-[#111] border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+                     >
+                       <ChevronLeft className="w-3.5 h-3.5" />
+                       <span>{activeSubSubCategory}</span>
+                     </button>
+                   )}
                 </div>
 
                 {activeCategory !== 'All' && !showAllCategoriesGrid && categorySubCategories?.[activeCategory] && Object.keys(categorySubCategories[activeCategory]).length > 0 && !activeSubCategoryGroup && (
@@ -2884,15 +2904,6 @@ function App() {
 
                 {activeCategory !== 'All' && !showAllCategoriesGrid && activeSubCategoryGroup && activeSubCategoryGroup !== '__ALL__' && !activeSubSubCategory && (
                   <div className="mb-12 animate-in slide-in-from-top-4 duration-500">
-                    <div className="flex items-center gap-2 mb-6 text-sm">
-                      <button 
-                        onClick={() => setActiveSubCategoryGroup(null)} 
-                        className="text-[#D4AF37] hover:text-[#FFDF73] flex items-center transition-colors font-bold uppercase tracking-[0.2em] text-[10px] py-1.5 px-3.5 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/30 rounded-full shadow-sm cursor-pointer"
-                      >
-                        <ChevronLeft className="w-4 h-4 mr-1" />
-                        Back to Subcategories
-                      </button>
-                    </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                       {(categorySubCategories[activeCategory]?.[activeSubCategoryGroup] || []).map(sub => (
                         <motion.button
@@ -2936,18 +2947,7 @@ function App() {
                   </div>
                 )}
 
-                {/* Back button if in sub-subcategory detail view */}
-                {activeSubSubCategory && activeSubSubCategory !== '__ALL__' && (
-                  <div className="flex items-center gap-2 mb-6 text-sm">
-                    <button 
-                      onClick={() => setActiveSubSubCategory(null)} 
-                      className="text-[#D4AF37] hover:text-[#FFDF73] flex items-center transition-colors font-bold uppercase tracking-[0.2em] text-[10px] py-1.5 px-3.5 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/30 rounded-full shadow-sm cursor-pointer"
-                    >
-                      <ChevronLeft className="w-4 h-4 mr-1.5" />
-                      Back to {activeSubCategoryGroup}
-                    </button>
-                  </div>
-                )}
+
 
                 {/* Vendors List */}
                 {(showAllCategoriesGrid || activeSubCategoryGroup === '__ALL__' || activeSubSubCategory === '__ALL__' || activeSubSubCategory || !categorySubCategories?.[activeCategory] || Object.keys(categorySubCategories[activeCategory] || {}).length === 0) && (
