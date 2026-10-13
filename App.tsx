@@ -2785,9 +2785,9 @@ function App() {
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
           </div>
           <div className="relative max-w-7xl mx-auto px-4 py-[72px] md:py-32 text-center">
-            <h2 id="hero-title" className="font-bold font-[Cinzel] mb-6 tracking-[0.015em] leading-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)]">
-              <span className="block text-3xl sm:text-4xl md:text-6xl">Celebrate Your <span className="text-[#D4AF37]">Simcha.</span></span>
-              <span className="block text-3xl sm:text-4xl md:text-6xl opacity-90 mt-3">Book Perfection.</span>
+            <h2 id="hero-title" className="font-bold font-[Cinzel] mb-6 tracking-[0.015em] leading-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)] flex flex-col items-center gap-y-2 sm:gap-y-3 md:gap-y-4">
+              <span className="block text-3xl sm:text-4xl md:text-6xl">Celebrate Your</span><span className="block text-3xl sm:text-4xl md:text-6xl text-[#D4AF37]">Simcha.</span>
+              <span className="block text-3xl sm:text-4xl md:text-6xl opacity-90">Book Perfection.</span>
             </h2>
             <p className="mb-10 text-zinc-300 text-base md:text-lg font-light max-w-2xl mx-auto leading-relaxed">From world-class kosher caterers to soulful bands, create your complete simcha in one place.</p>
             <div className="max-w-3xl mx-auto bg-zinc-950/90 rounded-full p-1.5 pl-4 sm:pl-6 flex items-center shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_15px_rgba(212,175,55,0.15)] border border-[#D4AF37]/30 backdrop-blur-md">
