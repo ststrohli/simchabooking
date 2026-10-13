@@ -22,25 +22,10 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
 }) => {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   
   const [showReviews, setShowReviews] = useState(false);
   const [newReview, setNewReview] = useState({ author: '', rating: 5, text: '' });
-
-  useEffect(() => {
-    const scrollY = window.scrollY;
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = '100%';
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.width = '';
-      document.body.style.overflow = '';
-      window.scrollTo(0, scrollY);
-    };
-  }, []);
 
   const mediaItems = useMemo(() => {
     const items: Array<{ type: 'image' | 'video', url: string, isNative?: boolean }> = [];
@@ -59,6 +44,54 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
     return items;
   }, [vendor]);
 
+  const currentMedia = mediaItems[currentMediaIndex];
+
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+
+    // Preload first image concurrently
+    if (mediaItems[0]?.type === 'image' && mediaItems[0]?.url) {
+      const img = new Image();
+      img.src = mediaItems[0].url;
+      if (img.complete) {
+        setImageLoaded(true);
+      } else {
+        img.onload = () => setImageLoaded(true);
+        img.onerror = () => setImageLoaded(true);
+      }
+    } else {
+      setImageLoaded(true);
+    }
+
+    return () => {
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      document.body.style.overflow = '';
+      window.scrollTo(0, scrollY);
+    };
+  }, [mediaItems]);
+
+  useEffect(() => {
+    setImageLoaded(false);
+    if (currentMedia.type === 'image' && currentMedia.url) {
+      const img = new Image();
+      img.src = currentMedia.url;
+      if (img.complete) {
+        setImageLoaded(true);
+      } else {
+        img.onload = () => setImageLoaded(true);
+        img.onerror = () => setImageLoaded(true);
+      }
+    } else {
+      setImageLoaded(true);
+    }
+  }, [currentMediaIndex, currentMedia]);
+
   const estimatedResponseTime = useMemo(() => {
     const vendorBookings = MOCK_BOOKINGS.filter(b => b.vendorId === vendor.id);
     const bookingsCount = vendorBookings.length;
@@ -71,7 +104,6 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
     return 'Usually responds within 24 hrs';
   }, [vendor]);
 
-  const currentMedia = mediaItems[currentMediaIndex];
   const nextMedia = () => { setIsPlaying(false); setCurrentMediaIndex((prev) => (prev + 1) % mediaItems.length); };
   const prevMedia = () => { setIsPlaying(false); setCurrentMediaIndex((prev) => (prev - 1 + mediaItems.length) % mediaItems.length); };
 
@@ -83,29 +115,31 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
     }
   };
 
+  const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const animDuration = prefersReducedMotion ? 0.1 : 0.55;
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.4, ease: 'easeOut' }}
+      transition={{ duration: animDuration, ease: 'easeOut' }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="quick-view-title"
-      className="fixed inset-0 z-[100] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden"
+      className="fixed inset-0 z-[150] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden"
     >
       <motion.div 
         initial={{ y: "100%", opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: "100%", opacity: 0 }}
-        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="bg-[#111] w-full sm:max-w-4xl h-[calc(100vh-1.5rem)] sm:h-auto sm:max-h-[90vh] rounded-t-3xl sm:rounded-3xl border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0"
+        transition={{ duration: animDuration, ease: [0.16, 1, 0.3, 1] }}
+        className="bg-[#111] w-full sm:max-w-4xl h-[96dvh] sm:h-auto sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-3xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0"
       >
-
-
-        <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden relative">
-          {/* Media Section */}
-          <div className="w-full md:w-3/5 aspect-video md:aspect-auto relative bg-black flex items-center justify-center flex-shrink-0 md:flex-shrink">
+        {/* Single vertical scroll container where media scrolls with the content */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col bg-[#111]">
+          {/* Media Section - 1:1 Square aspect ratio */}
+          <div className="w-full aspect-square relative bg-zinc-950 flex items-center justify-center flex-shrink-0 overflow-hidden">
             {currentMedia.type === 'video' ? (
               <div className="w-full h-full relative group/video">
                 {currentMedia.isNative ? (
@@ -137,11 +171,21 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 )}
               </div>
             ) : (
-              <img 
-                src={currentMedia.url} 
-                alt={vendor.name} 
-                className="w-full h-full object-cover" 
-              />
+              <div className="w-full h-full relative bg-zinc-950 flex items-center justify-center">
+                {!imageLoaded && (
+                  <div className="absolute inset-0 bg-zinc-950 animate-pulse flex items-center justify-center">
+                    <div className="w-6 h-6 rounded-full border-2 border-[#D4AF37]/30 border-t-[#D4AF37] animate-spin"></div>
+                  </div>
+                )}
+                <motion.img 
+                  src={currentMedia.url} 
+                  alt={vendor.name} 
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: imageLoaded ? 1 : 0, scale: imageLoaded ? 1 : 0.98 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  className="w-full h-full object-cover" 
+                />
+              </div>
             )}
             {mediaItems.length > 1 && !isPlaying && (
               <div className="absolute inset-0 flex items-center justify-between p-4 pointer-events-none">
@@ -161,7 +205,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
           </div>
 
           {/* Info Section */}
-          <div className="w-full md:w-2/5 p-6 md:p-8 flex flex-col bg-[#111] overflow-y-auto custom-scrollbar">
+          <div className="w-full p-6 md:p-10 flex flex-col bg-[#111]">
             <div className="flex flex-wrap items-center gap-2 mb-4">
               <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.25em] bg-[#D4AF37]/10 px-3 py-1 rounded-full">
                 {vendor.category}
@@ -286,24 +330,26 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
               </div>
             </div>
 
-            <div className="mt-auto pt-4 grid grid-cols-2 gap-3 border-t border-[#D4AF37]/10 sticky bottom-0 bg-[#111]">
-              <motion.button 
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => onMessage(vendor)}
-                className="flex items-center justify-center gap-2 border border-[#D4AF37]/30 text-[#D4AF37] font-black py-3.5 rounded-full hover:bg-[#D4AF37]/10 transition-all uppercase tracking-widest text-[10px] cursor-pointer"
-              >
-                <MessageCircle className="w-4 h-4" /> Message
-              </motion.button>
-              <motion.button 
-                initial={{ boxShadow: "0 10px 15px -3px rgba(212, 175, 55, 0.2)" }}
-                whileHover={{ scale: 1.03, boxShadow: "0 10px 20px rgba(212,175,55,0.25)" }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => onBook(vendor)}
-                className="bg-[#D4AF37] text-black font-black py-3.5 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-widest text-[10px] shadow-lg shadow-[#D4AF37]/20 cursor-pointer flex items-center justify-center"
-              >
-                Book Now
-              </motion.button>
+            <div className="mt-auto pt-2 border-t border-[#D4AF37]/10 sticky bottom-0 bg-[#111] px-6 pb-[5px]">
+              <div className="grid grid-cols-2 gap-3">
+                <motion.button 
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => onMessage(vendor)}
+                  className="flex items-center justify-center gap-2 border border-[#D4AF37]/30 text-[#D4AF37] font-black py-3.5 rounded-full hover:bg-[#D4AF37]/10 transition-all uppercase tracking-widest text-[10px] cursor-pointer"
+                >
+                  <MessageCircle className="w-4 h-4" /> Message
+                </motion.button>
+                <motion.button 
+                  initial={{ boxShadow: "0 10px 15px -3px rgba(212, 175, 55, 0.2)" }}
+                  whileHover={{ scale: 1.03, boxShadow: "0 10px 20px rgba(212,175,55,0.25)" }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => onBook(vendor)}
+                  className="bg-[#D4AF37] text-black font-black py-3.5 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-widest text-[10px] shadow-lg shadow-[#D4AF37]/20 cursor-pointer flex items-center justify-center"
+                >
+                  Book Now
+                </motion.button>
+              </div>
             </div>
           </div>
         </div>

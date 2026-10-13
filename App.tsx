@@ -49,6 +49,42 @@ const clean = (obj: any) => {
   }
 };
 
+const FixedGoldScrollbar: React.FC = () => {
+  const [scrollTop, setScrollTop] = useState(0);
+  const [scrollHeight, setScrollHeight] = useState(1);
+  const [clientHeight, setClientHeight] = useState(1);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = document.body.style.position === 'fixed' 
+        ? Math.abs(parseInt(document.body.style.top || '0')) 
+        : window.scrollY;
+      setScrollTop(currentScrollY);
+      setScrollHeight(document.documentElement.scrollHeight);
+      setClientHeight(window.innerHeight);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const thumbHeight = Math.max(30, (clientHeight / scrollHeight) * clientHeight);
+  const maxScroll = scrollHeight - clientHeight;
+  const thumbTop = maxScroll > 0 ? (scrollTop / maxScroll) * (clientHeight - thumbHeight) : 0;
+
+  return (
+    <div className="fixed top-0 right-0 w-[4px] h-full z-[200] pointer-events-none bg-black/20">
+      <div 
+        className="absolute w-full bg-[#D4AF37] rounded-full shadow-[0_0_8px_rgba(212,175,55,0.8)]"
+        style={{
+          top: `${thumbTop}px`,
+          height: `${thumbHeight}px`
+        }}
+      />
+    </div>
+  );
+};
+
 const ADMIN_EMAILS = ['bookingsimcha@gmail.com', 'shimpose@gmail.com'];
 const CLIENT_OVERRIDE_EMAILS = ['ststrohli@gmail.com'];
 
@@ -2743,17 +2779,17 @@ function App() {
       <>
             
       <main id="main-content" className="flex-1 flex flex-col pb-36 md:pb-0">
-        <section className="relative bg-black text-white overflow-hidden" aria-labelledby="hero-title">
+        <section className="relative bg-black text-white overflow-hidden rounded-t-[5px] md:rounded-t-none" aria-labelledby="hero-title">
           <div className="absolute inset-0" aria-hidden="true">
             {renderMedia(heroBackgroundUrl, "w-full h-full object-cover opacity-80")}
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
           </div>
-          <div className="relative max-w-7xl mx-auto px-4 py-16 md:py-32 text-center">
-            <h2 id="hero-title" className="font-bold font-[Cinzel] mb-6 tracking-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)]">
+          <div className="relative max-w-7xl mx-auto px-4 py-[72px] md:py-32 text-center">
+            <h2 id="hero-title" className="font-bold font-[Cinzel] mb-6 tracking-[0.015em] leading-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)]">
               <span className="block text-3xl sm:text-4xl md:text-6xl">Celebrate Your <span className="text-[#D4AF37]">Simcha.</span></span>
-              <span className="block text-3xl sm:text-4xl md:text-6xl opacity-90 mt-2">Book Perfection.</span>
+              <span className="block text-3xl sm:text-4xl md:text-6xl opacity-90 mt-3">Book Perfection.</span>
             </h2>
-            <p className="mb-10 text-zinc-300 text-base md:text-lg font-light max-w-2xl mx-auto leading-relaxed">From world-class kosher caterers to soulful bands, curate your complete simcha in one place.</p>
+            <p className="mb-10 text-zinc-300 text-base md:text-lg font-light max-w-2xl mx-auto leading-relaxed">From world-class kosher caterers to soulful bands, create your complete simcha in one place.</p>
             <div className="max-w-3xl mx-auto bg-zinc-950/90 rounded-full p-1.5 pl-4 sm:pl-6 flex items-center shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_15px_rgba(212,175,55,0.15)] border border-[#D4AF37]/30 backdrop-blur-md">
               <div className="flex-1 flex items-center min-w-0 pr-2">
                 <label htmlFor="search-input" className="sr-only">Search vendors</label>
@@ -3058,6 +3094,7 @@ function App() {
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className="min-h-screen bg-black text-zinc-100 flex flex-col relative pb-28"
     >
+      <FixedGoldScrollbar />
       {permissionErrorBanner && (
         <aside aria-label="System Notice" className="bg-red-950/80 border-b border-red-500/40 px-4 py-3 text-red-200 text-xs font-medium flex items-center justify-between gap-3 backdrop-blur-md sticky top-0 z-[120]">
           <div className="flex items-center gap-2 max-w-7xl mx-auto w-full">
@@ -3075,7 +3112,7 @@ function App() {
       )}
       {/* Floating Header Controls (? Ask on Right & Role Switcher on Left below header) */}
       {!isInitializing && !isRoleLoading && !!fbUser && !!userDocData && isActuallyVendor && (
-        <nav aria-label="Account Role Switcher" className="fixed top-22 sm:top-24 left-3 sm:left-5 md:left-6 lg:left-8 xl:left-10 z-50 flex items-center pointer-events-auto">
+        <nav aria-label="Account Role Switcher" className="fixed top-[82px] sm:top-24 left-3 sm:left-5 md:left-6 lg:left-8 xl:left-10 z-50 flex items-center pointer-events-auto">
           <div className="flex items-center bg-zinc-950/95 border border-[#D4AF37]/40 backdrop-blur-xl rounded-full p-0.5 sm:p-1 shadow-[0_8px_20px_rgba(0,0,0,0.9),0_0_12px_rgba(212,175,55,0.2)] text-[9px] sm:text-[10px] tracking-wider uppercase font-bold">
             <button
               type="button"
@@ -3108,7 +3145,7 @@ function App() {
         </nav>
       )}
 
-      <aside aria-label="Support Assistance" className="fixed top-22 sm:top-24 right-3 sm:right-5 md:right-6 lg:right-8 xl:right-10 z-50 flex items-center pointer-events-auto">
+      <aside aria-label="Support Assistance" className="fixed top-[82px] sm:top-24 right-3 sm:right-5 md:right-6 lg:right-8 xl:right-10 z-50 flex items-center pointer-events-auto">
         <motion.button 
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
@@ -3127,10 +3164,10 @@ function App() {
         </motion.button>
       </aside>
 
-      <header className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl" aria-label="Main Navigation">
+      <header className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl rounded-b-lg sm:rounded-b-none" aria-label="Main Navigation">
         <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-full focus:font-bold">Skip to main content</a>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-20 items-center">
+          <div className="flex justify-between h-[72px] sm:h-20 items-center">
             <div className="flex items-center gap-4 md:gap-8 ml-0">
               <motion.button 
                 whileHover={{ scale: 1.02 }}
@@ -3331,7 +3368,6 @@ function App() {
             bookingVendor={bookingVendor}
             onBook={(v) => setBookingVendor(v)}
             onCloseBooking={() => {
-              setQuickViewVendor(null);
               setBookingVendor(null);
             }}
             onMessage={(v) => { setQuickViewVendor(null); setChatVendor(v); }}

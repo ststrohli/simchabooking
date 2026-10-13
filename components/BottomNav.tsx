@@ -26,14 +26,14 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isVendor
   ];
 
   return (
-    <nav aria-label="Bottom Navigation" className="fixed bottom-5 left-4 right-4 max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl mx-auto z-50 transition-all duration-300">
-      <div className="rounded-[28px] bg-gradient-to-b from-zinc-900/95 via-black/95 to-black/98 backdrop-blur-2xl border border-white/20 shadow-[0_10px_30px_rgba(0,0,0,0.9),0_0_20px_rgba(212,175,55,0.12)] pb-safe overflow-hidden">
+    <nav aria-label="Bottom Navigation" className="fixed bottom-[9px] sm:bottom-5 left-2 right-2 sm:left-4 sm:right-4 max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl mx-auto z-50 transition-all duration-300">
+      <div className="rounded-[32px] bg-gradient-to-b from-zinc-900/95 via-black/95 to-black/98 backdrop-blur-2xl border border-white/20 shadow-[0_10px_30px_rgba(0,0,0,0.9),0_0_20px_rgba(212,175,55,0.12)] pb-[env(safe-area-inset-bottom)] sm:pb-0 overflow-hidden">
         {/* Liquid glass top rim specular reflection */}
         <div className="absolute top-0 inset-x-6 h-[1.5px] bg-gradient-to-r from-transparent via-white/50 to-transparent pointer-events-none" />
         {/* Glass sheen overlay */}
-        <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/40 rounded-[28px] pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/40 rounded-[32px] pointer-events-none" />
 
-        <div className="flex justify-around items-center h-[60px] px-2 relative z-10">
+        <div className="flex justify-around items-center h-[60px] sm:h-[60px] px-2 relative z-10">
           {tabs.map((tab) => {
             const isActive = currentView === tab.id;
             const Icon = tab.icon;
@@ -50,7 +50,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isVendor
               >
                 {isActive ? (
                   /* 3D Molten Gold Active Capsule - Hugging gold outline */
-                  <div className="relative flex flex-col items-center justify-center w-[62px] sm:w-[68px] h-[48px] rounded-[18px] bg-gradient-to-br from-[#FFE885] via-[#D4AF37] to-[#7B5800] border border-[#FFF8D1] shadow-[0_4px_16px_rgba(212,175,55,0.5),inset_0_1.5px_3px_rgba(255,255,255,0.95)] transition-all duration-300">
+                  <div className="relative flex flex-col items-center justify-center w-[70px] sm:w-[68px] h-[48px] sm:h-[48px] rounded-[22px] bg-gradient-to-br from-[#FFE885] via-[#D4AF37] to-[#7B5800] border border-[#FFF8D1] shadow-[0_4px_16px_rgba(212,175,55,0.5),inset_0_1.5px_3px_rgba(255,255,255,0.95)] transition-all duration-300">
                     {/* Top curved specular gloss arc */}
                     <div className="absolute top-0.5 inset-x-2 h-2.5 rounded-t-[14px] bg-gradient-to-b from-white/90 via-white/40 to-transparent pointer-events-none" />
                     
