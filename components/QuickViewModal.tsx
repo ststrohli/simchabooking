@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Star, MapPin, ShieldCheck, PlayCircle, ChevronLeft, ChevronRight, MessageCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { Vendor, Review } from '../types';
 import { MOCK_BOOKINGS } from '../services/mockData';
+import BookingModal from './BookingModal';
 
 interface QuickViewModalProps {
   vendor: Vendor;
@@ -10,14 +11,36 @@ interface QuickViewModalProps {
   onBook: (vendor: Vendor) => void;
   onMessage: (vendor: Vendor) => void;
   onAddReview: (vendorId: string, review: Omit<Review, 'id' | 'date'>) => void;
+  bookingVendor?: Vendor | null;
+  onCloseBooking?: () => void;
+  onConfirmBooking?: (details: any) => void;
+  onBookingDone?: (isPriority: boolean) => void;
 }
 
-const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook, onMessage, onAddReview }) => {
+const QuickViewModal: React.FC<QuickViewModalProps> = ({ 
+  vendor, onClose, onBook, onMessage, onAddReview, bookingVendor, onCloseBooking, onConfirmBooking, onBookingDone 
+}) => {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   
   const [showReviews, setShowReviews] = useState(false);
   const [newReview, setNewReview] = useState({ author: '', rating: 5, text: '' });
+
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      document.body.style.overflow = '';
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
 
   const mediaItems = useMemo(() => {
     const items: Array<{ type: 'image' | 'video', url: string, isNative?: boolean }> = [];
@@ -65,28 +88,22 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="quick-view-title"
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+      className="fixed inset-0 z-[100] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden"
     >
       <motion.div 
-        initial={{ opacity: 0, y: 40, scale: 0.92 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 40, scale: 0.92 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 220 }}
-        className="bg-[#111] w-full max-w-4xl rounded-3xl border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col max-h-[90vh]"
+        initial={{ y: "100%", opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: "100%", opacity: 0 }}
+        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        className="bg-[#111] w-full sm:max-w-4xl h-[calc(100vh-1.5rem)] sm:h-auto sm:max-h-[90vh] rounded-t-3xl sm:rounded-3xl border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0"
       >
-        <button 
-          onClick={onClose}
-          className="absolute top-4 right-4 z-[110] p-2 bg-black/60 hover:bg-black rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
-          aria-label="Close modal"
-        >
-          <X className="w-6 h-6" />
-        </button>
 
-        <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden">
+
+        <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden relative">
           {/* Media Section */}
           <div className="w-full md:w-3/5 aspect-video md:aspect-auto relative bg-black flex items-center justify-center flex-shrink-0 md:flex-shrink">
             {currentMedia.type === 'video' ? (
@@ -112,7 +129,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
                 {!isPlaying && (
                   <button 
                     onClick={() => setIsPlaying(true)} 
-                    className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/50 hover:bg-black/30 transition-all group/play"
+                    className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/50 hover:bg-black/30 transition-all group/play cursor-pointer"
                   >
                     <PlayCircle className="w-20 h-20 text-[#D4AF37] opacity-90 group-hover/play:scale-110 transition-transform" />
                     <span className="mt-4 text-xs font-black text-[#D4AF37] tracking-[0.3em] uppercase">Play Showcase</span>
@@ -127,9 +144,9 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
               />
             )}
             {mediaItems.length > 1 && !isPlaying && (
-              <div className="absolute inset-0 flex items-center justify-between p-4">
-                <button onClick={prevMedia} aria-label="Previous image" className="p-3 bg-black/60 rounded-full text-[#D4AF37] hover:bg-black transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"><ChevronLeft className="w-6 h-6" /></button>
-                <button onClick={nextMedia} aria-label="Next image" className="p-3 bg-black/60 rounded-full text-[#D4AF37] hover:bg-black transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"><ChevronRight className="w-6 h-6" /></button>
+              <div className="absolute inset-0 flex items-center justify-between p-4 pointer-events-none">
+                <button onClick={prevMedia} aria-label="Previous image" className="p-3 bg-black/60 rounded-full text-[#D4AF37] hover:bg-black transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] pointer-events-auto cursor-pointer"><ChevronLeft className="w-6 h-6" /></button>
+                <button onClick={nextMedia} aria-label="Next image" className="p-3 bg-black/60 rounded-full text-[#D4AF37] hover:bg-black transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] pointer-events-auto cursor-pointer"><ChevronRight className="w-6 h-6" /></button>
               </div>
             )}
             
@@ -258,7 +275,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
                         />
                         <button 
                           type="submit" 
-                          className="bg-[#D4AF37] text-black text-[9px] font-black py-2.5 px-6 rounded-full hover:bg-[#E5C76B] outline-none uppercase tracking-[0.25em] transition-colors self-start"
+                          className="bg-[#D4AF37] text-black text-[9px] font-black py-2.5 px-6 rounded-full hover:bg-[#E5C76B] outline-none uppercase tracking-[0.25em] transition-colors self-start cursor-pointer"
                         >
                           Submit Review
                         </button>
@@ -290,6 +307,39 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ vendor, onClose, onBook
             </div>
           </div>
         </div>
+
+        {/* Nested Booking Modal layered inside QuickViewModal */}
+        <AnimatePresence>
+          {bookingVendor && (
+            <BookingModal
+              isOpen={true}
+              isNested={true}
+              vendor={bookingVendor}
+              selectedDate={new Date().toLocaleDateString('en-CA')}
+              onClose={() => {
+                if (onCloseBooking) onCloseBooking();
+                else onClose();
+              }}
+              onDone={(isPriority) => {
+                if (onBookingDone) onBookingDone(isPriority);
+                else onClose();
+              }}
+              onConfirm={(details) => {
+                if (onConfirmBooking) onConfirmBooking(details);
+              }}
+              initialDetails={{ clientName: '', contactEmail: '', eventName: '' }}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Floating close button rendered above the nested booking sheet */}
+        <button 
+          onClick={onClose}
+          className="absolute top-4 right-4 z-[120] w-8 h-8 flex items-center justify-center bg-[#1a1a1a] hover:bg-[#262626] border border-[#D4AF37]/40 rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] shadow-xl cursor-pointer"
+          aria-label="Close modal"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </motion.div>
     </motion.div>
   );

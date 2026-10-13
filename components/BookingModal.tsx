@@ -100,6 +100,7 @@ interface BookingModalProps {
   onClose: () => void;
   vendor: Vendor | null;
   selectedDate: string;
+  isNested?: boolean;
   onConfirm: (details: { 
     eventName: string; 
     clientName: string; 
@@ -127,7 +128,7 @@ interface BookingModalProps {
 }
 
 const BookingModal: React.FC<BookingModalProps> = ({ 
-  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone, onSuccessStateChange 
+  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone, onSuccessStateChange, isNested = false 
 }) => {
   const [formData, setFormData] = useState({ eventName: '', clientName: '', contactEmail: '', eventLocation: '', eventTime: '', notes: '' });
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
@@ -138,29 +139,48 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const [highlightedField, setHighlightedField] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [localDate, setLocalDate] = useState(selectedDate || new Date().toLocaleDateString('en-CA'));
+  const [localDate, setLocalDate] = useState('');
   const [isPriorityDate, setIsPriorityDate] = useState(false);
   const [privacyBlocked, setPrivacyBlocked] = useState(false);
-  const [currentCalendarMonth, setCurrentCalendarMonth] = useState<Date>(() => {
-    const d = selectedDate ? new Date(selectedDate) : new Date();
-    return isNaN(d.getTime()) ? new Date() : d;
-  });
+  const [currentCalendarMonth, setCurrentCalendarMonth] = useState<Date>(() => new Date());
 
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [userInteracted, setUserInteracted] = useState(!!selectedDate);
+  const [userInteracted, setUserInteracted] = useState(false);
+  const [clickedUnavailableDate, setClickedUnavailableDate] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const formScrollRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isOpen && formScrollRef.current) {
+      formScrollRef.current.scrollTop = 0;
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (onSuccessStateChange) {
       onSuccessStateChange(isSuccess);
     }
   }, [isSuccess, onSuccessStateChange]);
-  const [checkedDates, setCheckedDates] = useState<Record<string, 'Available' | 'Unavailable'>>(() => {
+  const [checkedDates, setCheckedDates] = useState<Record<string, { status: 'Available' | 'Unavailable'; checkedAt: number }>>(() => {
     if (!vendor?.id) return {};
     const sessionKey = `checked_dates_${vendor.id}`;
     try {
-      const stored = sessionStorage.getItem(sessionKey);
-      return stored ? JSON.parse(stored) : {};
+      const stored = localStorage.getItem(sessionKey) || sessionStorage.getItem(sessionKey);
+      if (!stored) return {};
+      const parsed = JSON.parse(stored);
+      const now = Date.now();
+      const resetPeriodMs = (vendor.dateCheckResetHours ?? 24) * 60 * 60 * 1000;
+      const result: Record<string, { status: 'Available' | 'Unavailable'; checkedAt: number }> = {};
+      for (const [dateStr, val] of Object.entries(parsed)) {
+        if (typeof val === 'string' && (val === 'Available' || val === 'Unavailable')) {
+          result[dateStr] = { status: val, checkedAt: now };
+        } else if (val && typeof val === 'object' && val !== null && 'status' in val && 'checkedAt' in val) {
+          if (now - (val as any).checkedAt < resetPeriodMs) {
+            result[dateStr] = val as any;
+          }
+        }
+      }
+      return result;
     } catch {
       return {};
     }
@@ -171,110 +191,110 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const isDateBlocked = vendor?.unavailableDates?.includes(effectiveDate);
   const hasSelectedPackage = selectedServiceIds.length > 0;
 
+  const getResetPeriodMs = () => (vendor?.dateCheckResetHours ?? 24) * 60 * 60 * 1000;
+  const getMaxChecks = () => vendor?.maxDateChecks ?? 5;
+
+  const getActiveCheckedDates = (dates: Record<string, { status: 'Available' | 'Unavailable'; checkedAt: number }>) => {
+    const now = Date.now();
+    const resetPeriodMs = getResetPeriodMs();
+    const active: Record<string, { status: 'Available' | 'Unavailable'; checkedAt: number }> = {};
+    for (const [k, v] of Object.entries(dates)) {
+      if (v && typeof v === 'object' && typeof v.checkedAt === 'number' && (now - v.checkedAt < resetPeriodMs)) {
+        active[k] = v;
+      }
+    }
+    return active;
+  };
+
   // Check if blocked by privacy limit
   const checkPrivacyStatus = (): boolean => {
     if (!vendor) return false;
     const now = Date.now();
-    const maxChecks = vendor.maxDateChecks ?? 5;
-    const resetPeriodMs = (vendor.dateCheckResetHours ?? 24) * 60 * 60 * 1000;
+    const resetPeriodMs = getResetPeriodMs();
+    const maxChecks = getMaxChecks();
     
-    const attemptsStr = sessionStorage.getItem(`date_checks_${vendor.id}`);
-    if (!attemptsStr) return false;
-    
-    try {
-      const attempts: number[] = JSON.parse(attemptsStr);
-      const validAttempts = attempts.filter(t => now - t < resetPeriodMs);
-      return validAttempts.length >= maxChecks;
-    } catch {
-      return false;
+    let activeCount = 0;
+    for (const val of Object.values(checkedDates)) {
+      if (val && typeof val === 'object' && typeof val.checkedAt === 'number' && (now - val.checkedAt < resetPeriodMs)) {
+        activeCount++;
+      }
     }
+    return activeCount >= maxChecks;
   };
 
   const getRemainingAttempts = (): number => {
     if (!vendor) return 0;
     const now = Date.now();
-    const maxChecks = vendor.maxDateChecks ?? 5;
-    const resetPeriodMs = (vendor.dateCheckResetHours ?? 24) * 60 * 60 * 1000;
+    const resetPeriodMs = getResetPeriodMs();
+    const maxChecks = getMaxChecks();
     
-    const attemptsStr = sessionStorage.getItem(`date_checks_${vendor.id}`);
-    if (!attemptsStr) return maxChecks;
-    
-    try {
-      const attempts: number[] = JSON.parse(attemptsStr);
-      const validAttempts = attempts.filter(t => now - t < resetPeriodMs);
-      return Math.max(0, maxChecks - validAttempts.length);
-    } catch {
-      return maxChecks;
+    let activeCount = 0;
+    for (const val of Object.values(checkedDates)) {
+      if (val && typeof val === 'object' && typeof val.checkedAt === 'number' && (now - val.checkedAt < resetPeriodMs)) {
+        activeCount++;
+      }
     }
+    return Math.max(0, maxChecks - activeCount);
   };
 
-  const registerCheckAttempt = (dateValue: string) => {
-    if (!vendor) return;
-    const now = Date.now();
-    const resetPeriodMs = (vendor.dateCheckResetHours ?? 24) * 60 * 60 * 1000;
-    
-    const attemptsStr = sessionStorage.getItem(`date_checks_${vendor.id}`);
-    let attempts: number[] = [];
-    if (attemptsStr) {
-      try {
-        attempts = JSON.parse(attemptsStr);
-      } catch {}
-    }
-    
-    attempts = attempts.filter(t => now - t < resetPeriodMs);
-    attempts.push(now);
-    
-    sessionStorage.setItem(`date_checks_${vendor.id}`, JSON.stringify(attempts));
-    
-    const maxChecks = vendor.maxDateChecks ?? 5;
-    if (attempts.length >= maxChecks) {
-      setPrivacyBlocked(true);
-    }
-  };
-
-  const handleDateChange = (newDate: string) => {
-    if (!vendor) return;
+  const handleDateClick = (dateStr: string, isPastDay: boolean) => {
+    if (isPastDay) return;
     setUserInteracted(true);
 
-    // Toggle: if clicked date is already selected, deselect it
-    if (newDate === localDate) {
+    if (dateStr === localDate) {
       setLocalDate('');
-      setIsCalendarOpen(false); // Close calendar when deselected
+      setClickedUnavailableDate(null);
       return;
     }
 
-    // 1. If it's already in checkedDates, we can just switch back directly!
-    if (checkedDates[newDate]) {
-      setLocalDate(newDate);
-      setIsCalendarOpen(false); // Close calendar on selection
+    const now = Date.now();
+    const resetPeriodMs = getResetPeriodMs();
+    const cached = checkedDates[dateStr];
+    const isValidCached = cached && (now - cached.checkedAt < resetPeriodMs);
+
+    if (isValidCached) {
+      if (cached.status === 'Unavailable') {
+        setClickedUnavailableDate(dateStr);
+      } else {
+        setClickedUnavailableDate(null);
+        setLocalDate(dateStr);
+        setIsCalendarOpen(false);
+      }
       return;
     }
 
-    // 2. If limit reached, block checking new dates
     if (checkPrivacyStatus()) {
       setPrivacyBlocked(true);
       return;
     }
 
-    // 3. Register attempt and perform the verification
-    registerCheckAttempt(newDate);
-    const isBlocked = vendor.unavailableDates?.includes(newDate);
+    const isBlocked = vendor?.unavailableDates?.includes(dateStr);
+    const newStatus: 'Available' | 'Unavailable' = isBlocked ? 'Unavailable' : 'Available';
+
     const updated = {
       ...checkedDates,
-      [newDate]: (isBlocked ? 'Unavailable' : 'Available') as 'Available' | 'Unavailable'
+      [dateStr]: { status: newStatus, checkedAt: now }
     };
-    setCheckedDates(updated);
-    
-    const sessionKey = `checked_dates_${vendor.id}`;
-    sessionStorage.setItem(sessionKey, JSON.stringify(updated));
+    const activeUpdated = getActiveCheckedDates(updated);
+    setCheckedDates(activeUpdated);
 
-    setLocalDate(newDate);
-    setIsCalendarOpen(false); // Close calendar on selection
+    if (vendor?.id) {
+      const storageKey = `checked_dates_${vendor.id}`;
+      localStorage.setItem(storageKey, JSON.stringify(activeUpdated));
+      sessionStorage.setItem(storageKey, JSON.stringify(activeUpdated));
+    }
+
+    if (isBlocked) {
+      setClickedUnavailableDate(dateStr);
+    } else {
+      setClickedUnavailableDate(null);
+      setLocalDate(dateStr);
+      setIsCalendarOpen(false);
+    }
+    setPrivacyBlocked(checkPrivacyStatus());
   };
 
-  const handleSelectCheckedDate = (date: string) => {
-    setLocalDate(date);
-  };
+
 
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
@@ -307,11 +327,13 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
   const prevMonth = () => {
     setUserInteracted(true);
+    setClickedUnavailableDate(null);
     setCurrentCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
   };
 
   const nextMonth = () => {
     setUserInteracted(true);
+    setClickedUnavailableDate(null);
     setCurrentCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
@@ -339,58 +361,41 @@ const BookingModal: React.FC<BookingModalProps> = ({
     if (isOpen && vendor) {
       if (!wasOpenRef.current) {
         setIsSuccess(false);
-        setUserInteracted(!!selectedDate);
-        const initialDate = selectedDate || new Date().toLocaleDateString('en-CA');
-        setLocalDate(initialDate);
-        
-        const parsedDate = new Date(initialDate);
-        if (!isNaN(parsedDate.getTime())) {
-          setCurrentCalendarMonth(parsedDate);
-        }
+        setUserInteracted(false);
+        setLocalDate('');
+        setCurrentCalendarMonth(new Date());
+        setClickedUnavailableDate(null);
       }
       
-      const initialDateToUse = !wasOpenRef.current ? (selectedDate || new Date().toLocaleDateString('en-CA')) : localDate;
-      
-      // Load checked dates from sessionStorage
-      const sessionKey = `checked_dates_${vendor.id}`;
-      const storedStr = sessionStorage.getItem(sessionKey);
-      let loadedDates: Record<string, 'Available' | 'Unavailable'> = {};
+      const storageKey = `checked_dates_${vendor.id}`;
+      const storedStr = localStorage.getItem(storageKey) || sessionStorage.getItem(storageKey);
+      let loadedDates: Record<string, { status: 'Available' | 'Unavailable'; checkedAt: number }> = {};
       if (storedStr) {
         try {
-          loadedDates = JSON.parse(storedStr);
+          const parsed = JSON.parse(storedStr);
+          const now = Date.now();
+          const resetPeriodMs = getResetPeriodMs();
+          for (const [dateStr, val] of Object.entries(parsed)) {
+            if (typeof val === 'string' && (val === 'Available' || val === 'Unavailable')) {
+              loadedDates[dateStr] = { status: val, checkedAt: now };
+            } else if (val && typeof val === 'object' && val !== null && 'status' in val && 'checkedAt' in val) {
+              if (now - (val as any).checkedAt < resetPeriodMs) {
+                loadedDates[dateStr] = val as any;
+              }
+            }
+          }
         } catch {}
       }
+      setCheckedDates(loadedDates);
 
-      // Check if limit is reached
       const isBlocked = checkPrivacyStatus();
       setPrivacyBlocked(isBlocked);
 
-      const initialBlockedStatus = vendor.unavailableDates?.includes(initialDateToUse);
-
-      if (loadedDates[initialDateToUse]) {
-        // Already checked, use the existing state loaded from sessionStorage
-        setCheckedDates(loadedDates);
-      } else {
-        // Not checked yet, check if we are already blocked
-        if (isBlocked) {
-          loadedDates[initialDateToUse] = initialBlockedStatus ? 'Unavailable' : 'Available';
-          setCheckedDates(loadedDates);
-          sessionStorage.setItem(sessionKey, JSON.stringify(loadedDates));
-        } else {
-          registerCheckAttempt(initialDateToUse);
-          loadedDates[initialDateToUse] = initialBlockedStatus ? 'Unavailable' : 'Available';
-          setCheckedDates(loadedDates);
-          sessionStorage.setItem(sessionKey, JSON.stringify(loadedDates));
-          // Re-evaluate privacy block status
-          setPrivacyBlocked(checkPrivacyStatus());
-        }
-      }
-      
       wasOpenRef.current = true;
     } else {
       wasOpenRef.current = false;
     }
-  }, [isOpen, vendor, selectedDate, localDate]);
+  }, [isOpen, vendor]);
 
   useEffect(() => {
     if (isOpen) {
@@ -568,17 +573,23 @@ const BookingModal: React.FC<BookingModalProps> = ({
       
       const isVendorExplicitlyBlocked = vendor?.unavailableDates?.includes(dateStr);
 
-      const hasBeenChecked = !!checkedDates[dateStr];
-      const isAvailable = checkedDates[dateStr] === 'Available';
-      const isUnavailable = checkedDates[dateStr] === 'Unavailable';
+      const cachedItem = checkedDates[dateStr];
+      const now = Date.now();
+      const resetPeriodMs = getResetPeriodMs();
+      const isValidCached = cachedItem && (now - cachedItem.checkedAt < resetPeriodMs);
+
+      const hasBeenChecked = !!isValidCached;
+      const isAvailable = isValidCached && cachedItem.status === 'Available';
+      const isUnavailable = isValidCached && cachedItem.status === 'Unavailable';
       
-      const showBlockedColors = userInteracted;
-      const isBlockedStyle = showBlockedColors && (isVendorExplicitlyBlocked || isUnavailable);
-      const isDisabled = (isPast || (!hasBeenChecked && privacyBlocked && showBlockedColors) || (showBlockedColors && (isUnavailable || isVendorExplicitlyBlocked))) && !isSelected;
+      const isBlockedOrUnavailable = Boolean(isVendorExplicitlyBlocked || isUnavailable);
+      const isThisDateTappedUnavailable = dateStr === clickedUnavailableDate && isBlockedOrUnavailable;
+      const limitReached = checkPrivacyStatus();
+      const isDisabled = isPast || (limitReached && !isValidCached);
 
       let buttonStyle = "";
       if (isSelected) {
-        if (showBlockedColors && (isUnavailable || isVendorExplicitlyBlocked)) {
+        if (isThisDateTappedUnavailable) {
           buttonStyle = "bg-red-600 text-white font-black shadow-[0_0_15px_rgba(239,68,68,0.45)] scale-105 border-2 border-red-500";
         } else if (isAvailable) {
           buttonStyle = "bg-green-600 text-white font-black shadow-[0_0_15px_rgba(34,197,94,0.45)] scale-105 border-2 border-green-500";
@@ -587,18 +598,16 @@ const BookingModal: React.FC<BookingModalProps> = ({
         }
       } else if (isPast) {
         buttonStyle = "text-zinc-400 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent";
-      } else if (isBlockedStyle) {
-        if (isVendorExplicitlyBlocked) {
-          buttonStyle = "text-red-400 bg-red-950/20 opacity-50 cursor-not-allowed scale-95 border border-red-900/30 line-through";
-        } else {
-          buttonStyle = "text-red-500 bg-red-500/10 opacity-75 border-2 border-red-500/30";
-        }
+      } else if (limitReached && !isValidCached) {
+        buttonStyle = "text-zinc-500 bg-black/40 border border-white/5 opacity-50 cursor-not-allowed";
+      } else if (isThisDateTappedUnavailable) {
+        buttonStyle = "text-red-400 bg-red-950/20 opacity-75 cursor-pointer scale-95 border border-red-900/30 line-through hover:border-red-500/60";
       } else if (isAvailable) {
         buttonStyle = "text-green-500 bg-green-500/10 border-2 border-green-500/30 hover:bg-green-500/20";
-      } else if (privacyBlocked && showBlockedColors) {
-        buttonStyle = "text-zinc-400 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent";
+      } else if (isUnavailable) {
+        buttonStyle = "text-red-400/80 bg-red-950/20 opacity-90 cursor-pointer border border-red-900/20 hover:border-red-500/40";
       } else {
-        // Standard selectable future date has crisp white text, with elegant soft-gold hover/active states.
+        // All other dates (including un-tapped vendor-blocked dates) remain ordinary unselected dates.
         buttonStyle = "text-zinc-100 bg-black/40 border border-white/5 hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 hover:scale-105 hover:shadow-[0_0_12px_rgba(212,175,55,0.25)] active:scale-95";
       }
 
@@ -607,11 +616,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
           key={`day-${day}`}
           type="button"
           disabled={isDisabled}
-          onClick={() => handleDateChange(dateStr)}
+          onClick={() => handleDateClick(dateStr, isPast)}
           className={`aspect-square rounded-full flex flex-col items-center justify-center text-xs font-bold transition-all outline-none relative group ${buttonStyle}`}
         >
           <span>{day}</span>
-          {!isSelected && !isDisabled && (
+          {!isSelected && !isDisabled && !isBlockedOrUnavailable && (
             <span className="w-1 h-1 rounded-full bg-[#D4AF37] opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 animate-pulse" />
           )}
         </button>
@@ -659,9 +668,16 @@ const BookingModal: React.FC<BookingModalProps> = ({
         </div>
 
         {/* Days */}
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="grid grid-cols-7 gap-1.5 mb-2">
           {days}
         </div>
+
+        {/* Concise inline message for tapped unavailable date */}
+        {clickedUnavailableDate && (
+          <div className="mt-2 p-2.5 bg-red-950/40 border border-red-500/30 rounded-xl text-center text-xs text-red-300 animate-in fade-in duration-200">
+            <span className="font-bold">This date is unavailable.</span> Please choose another date.
+          </div>
+        )}
 
       </div>
     );
@@ -677,8 +693,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md" 
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+      className={isNested ? "absolute inset-0 z-30 bg-[#111] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 overflow-hidden" : "fixed inset-0 z-[105] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden"} 
       role="dialog" 
       aria-modal="true" 
       aria-labelledby="modal-title"
@@ -696,10 +712,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
       {isSuccess ? (
         <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-[#0a0a0a] min-h-[380px] flex flex-col items-center justify-center w-full max-w-[92vw] sm:max-w-md mx-auto p-8 md:p-10 text-center rounded-2xl border border-[#D4AF37]/40 relative overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.9),0_0_30px_rgba(212,175,55,0.2)]"
+          initial={{ y: "100%", opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: "100%", opacity: 0 }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          className="bg-[#0a0a0a] w-full sm:max-w-md h-[calc(100vh-2.5rem)] sm:h-auto sm:max-h-[88vh] rounded-t-3xl sm:rounded-2xl border-t sm:border border-[#D4AF37]/40 relative overflow-hidden shadow-2xl flex flex-col mt-auto sm:mt-0 p-6 md:p-10 text-center"
         >
           <div className="absolute -top-40 -left-40 w-80 h-80 bg-[#D4AF37]/10 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-[#D4AF37]/10 rounded-full blur-3xl pointer-events-none" />
@@ -740,33 +757,45 @@ const BookingModal: React.FC<BookingModalProps> = ({
         </motion.div>
       ) : (
       <motion.div 
-        initial={{ opacity: 0, y: 30, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 30, scale: 0.95 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+        initial={{ y: "100%", opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: "100%", opacity: 0 }}
+        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className="bg-[#0a0a0a] w-full h-full sm:h-auto max-h-none sm:max-h-[90vh] sm:max-w-xl sm:rounded-2xl rounded-none shadow-2xl overflow-hidden overflow-y-auto border-0 sm:border border-[#D4AF37]/30 relative flex flex-col"
+        className="bg-[#0a0a0a] w-full sm:max-w-xl h-[calc(100vh-2.5rem)] sm:h-auto sm:max-h-[88vh] rounded-t-3xl sm:rounded-2xl border-t sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0"
       >
         <div className="bg-black p-6 text-white flex justify-between items-start sticky top-0 z-10 border-b border-[#D4AF37]/20">
           <div>
             <h2 id="modal-title" className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">{initialDetails ? 'Update Your Selection' : 'Book Service'}</h2>
             <p className="text-zinc-300 text-xs mt-1">Vendor: <span className="text-zinc-100 font-bold">{vendor.name}</span></p>
           </div>
-          <button 
-            onClick={onClose} 
-            disabled={isSubmitting}
-            className={`text-zinc-400 hover:text-[#D4AF37] p-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full transition-colors cursor-pointer ${isSubmitting ? 'pointer-events-none opacity-30' : ''}`} 
-            aria-label="Close booking modal"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          {!isNested && (
+            <button 
+              onClick={onClose} 
+              disabled={isSubmitting}
+              className={`text-zinc-400 hover:text-[#D4AF37] p-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full transition-colors cursor-pointer ${isSubmitting ? 'pointer-events-none opacity-30' : ''}`} 
+              aria-label="Close booking modal"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          )}
         </div>
 
-        <div className={`p-6 space-y-6 ${isSubmitting ? 'pointer-events-none' : ''}`}>
-          <div className="text-white text-center text-sm md:text-base font-bold tracking-wide mb-4 animate-pulse">
-            {vendor.name} only allows to select {vendor.maxDateChecks ?? 3} dates per {vendor.dateCheckResetHours ?? 72} hours
+        <div 
+          ref={formScrollRef}
+          className={`flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y p-6 space-y-6 ${isSubmitting ? 'pointer-events-none' : ''}`}
+        >
+          <div className="bg-black/60 border border-[#D4AF37]/20 rounded-xl p-3.5 text-center mb-4 space-y-1">
+            <p className="text-zinc-200 text-xs font-semibold">
+              Date Check Limit: <span className="text-[#D4AF37] font-bold">{getRemainingAttempts()} of {vendor.maxDateChecks ?? 5} attempts remaining</span> (resets every {vendor.dateCheckResetHours ?? 24} hours)
+            </p>
+            {privacyBlocked && (
+              <p className="text-red-400 text-xs leading-relaxed">
+                Date check limit reached for this vendor. Previously checked dates can still be selected, but other dates are locked until reset.
+              </p>
+            )}
           </div>
 
           <div className="space-y-3">

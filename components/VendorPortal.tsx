@@ -321,9 +321,21 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     return { points, linePath, areaPath, padding, chartW, chartH, maxRevenue };
   }, [monthlyData, chartSize]);
 
+  // Sorted bookings newest first by createdAt/request timestamp with reliable fallback
+  const sortedBookings = useMemo(() => {
+    return [...bookings].sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (timeA !== timeB) {
+        return timeB - timeA; // newest first
+      }
+      return b.id.localeCompare(a.id);
+    });
+  }, [bookings]);
+
   // Dynamic Filtering logic
   const filteredBookings = useMemo(() => {
-    return bookings.filter(b => {
+    return sortedBookings.filter(b => {
       const matchesSearch = !searchQuery || 
                             b.clientName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             b.eventName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -332,7 +344,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       const matchesDate = !dateFilter || b.date === dateFilter;
       return matchesSearch && matchesStatus && matchesDate;
     });
-  }, [bookings, searchQuery, statusFilter, dateFilter]);
+  }, [sortedBookings, searchQuery, statusFilter, dateFilter]);
   
   // Profile & Media State
   const [editForm, setEditForm] = useState<Vendor>({
@@ -2708,13 +2720,13 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       </button>
                     </div>
                     <div className="p-6 divide-y divide-white/5">
-                      {bookings.slice(0, 3).length === 0 ? (
+                      {sortedBookings.slice(0, 3).length === 0 ? (
                         <div className="py-12 text-center opacity-30">
                           <Calendar className="w-8 h-8 mx-auto mb-2 text-[#D4AF37]" />
                           <p className="text-[10px] font-black uppercase tracking-widest text-zinc-300">No upcoming booking/events scheduled</p>
                         </div>
                       ) : (
-                        bookings.slice(0, 3).map((b) => (
+                        sortedBookings.slice(0, 3).map((b) => (
                           <div key={b.id} className="flex flex-col sm:flex-row justify-between sm:items-center py-4 gap-4 group hover:bg-white/[0.01] px-4 -mx-4 rounded-xl transition-all">
                             <div className="space-y-1">
                               <p className="font-bold text-white group-hover:text-[#D4AF37] transition-colors">{b.clientName}</p>
@@ -2852,9 +2864,16 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               </td>
                             </tr>
                           ) : filteredBookings.map((b, idx) => (
-                            <tr key={b.id} className={`transition-colors group ${idx % 2 === 0 ? 'bg-black/90 hover:bg-[#D4AF37]/5' : 'bg-[#151515] hover:bg-[#D4AF37]/5'}`}>
+                            <tr key={b.id} className={`transition-colors group ${idx === 0 ? 'bg-[#D4AF37]/10 border-l-4 border-l-[#D4AF37]' : idx % 2 === 0 ? 'bg-black/90 hover:bg-[#D4AF37]/5' : 'bg-[#151515] hover:bg-[#D4AF37]/5'}`}>
                               <td className="px-6 py-5">
-                                <p className="font-bold text-white group-hover:text-[#D4AF37] transition-colors">{b.clientName}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-bold text-white group-hover:text-[#D4AF37] transition-colors">{b.clientName}</p>
+                                  {idx === 0 && (
+                                    <span className="bg-[#D4AF37] text-black text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse">
+                                      Newest Request
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="flex items-center gap-2 mt-0.5">
                                   <p className="text-[10px] text-zinc-300 uppercase tracking-widest truncate max-w-[120px]">{b.contactEmail}</p>
                                   {b.notes?.includes('OFFERED PRICE:') && (

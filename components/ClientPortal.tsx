@@ -410,138 +410,158 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         )}
 
         {activeTab === 'plan' && (
-          <div className="max-w-4xl animate-in slide-in-from-bottom-5 duration-500">
-            {cart.length === 0 ? (
-              <div className="text-center py-20 bg-[#111] rounded-3xl border border-dashed border-white/10 opacity-30">
-                <ShoppingBag className="w-16 h-16 mx-auto mb-6 text-[#D4AF37]" />
-                <p className="text-xl font-[Cinzel]">Your plan is empty.</p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {cart.map((item, index) => (
-                  <div key={`${item.vendor.id}-${index}`} className="flex flex-col sm:flex-row gap-5 p-6 bg-[#111] rounded-3xl border border-[#D4AF37]/10 group transition-all items-center">
-                    <img src={item.vendor.image} alt="" className="w-24 h-24 rounded-2xl object-cover border border-white/5" />
-                    <div className="flex-1 min-w-0 text-center sm:text-left">
-                      <h4 className="font-bold text-xl text-zinc-100 font-[Cinzel]">{item.vendor.name}</h4>
-                      <p className="text-[10px] text-[#D4AF37] font-black uppercase tracking-widest mt-1">{item.vendor.category}</p>
-                      
-                      <div className="mt-3 flex flex-wrap justify-center sm:justify-start gap-4 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                        <div className="flex items-center gap-2"><Calendar className="w-3.5 h-3.5" />{item.date}</div>
-                        <div className="flex items-center gap-2 text-[#D4AF37]"><CreditCard className="w-3.5 h-3.5" />${item.amount.toLocaleString()}</div>
-                      </div>
+          <div className="max-w-5xl mx-auto w-full relative overflow-hidden rounded-3xl p-6 sm:p-10 border border-[#D4AF37]/20 shadow-2xl animate-in slide-in-from-bottom-5 duration-500">
+            {/* Tasteful background image / overlay treatment */}
+            <div className="absolute inset-0 z-0 opacity-15 pointer-events-none">
+              <img src="https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=1600" alt="" className="w-full h-full object-cover filter blur-xs" />
+              <div className="absolute inset-0 bg-gradient-to-br from-black via-black/95 to-zinc-950"></div>
+            </div>
 
-                      {/* Display full filled-out details for verification and editing */}
-                      <div className="mt-4 bg-black/40 p-4 rounded-xl border border-white/5 text-[11px] text-zinc-300 space-y-1.5 text-left max-w-md">
-                        <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Event Name:</span> {item.eventName}</div>
-                        {item.eventTime && <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Event Time:</span> {item.eventTime}</div>}
-                        {item.eventLocation && <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Location:</span> {item.eventLocation}</div>}
-                        <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Client Name:</span> {item.clientName}</div>
-                        <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Client Email:</span> {item.contactEmail}</div>
-                        {item.notes && <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Notes:</span> <span className="italic text-zinc-400">"{item.notes}"</span></div>}
-                        {item.selectedServices && item.selectedServices.length > 0 && (
-                          <div className="pt-2 border-t border-white/5 mt-2">
-                            <span className="text-[#D4AF37] uppercase tracking-wider font-bold text-[9px]">Selected Services:</span>
-                            <ul className="list-disc pl-4 mt-1 space-y-0.5 text-[10px] text-zinc-400">
-                              {item.selectedServices.map(s => (
-                                <li key={s.id}>{s.name} x {s.quantity} (${(s.price * s.quantity).toLocaleString()})</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
+            <div className="relative z-10">
+              <div className="mb-8">
+                <h3 className="text-2xl font-bold font-[Cinzel] text-white">Your Event Booking Requests & Plan</h3>
+                <p className="text-xs text-zinc-300 mt-1">Review your selected services, event details, and submit booking requests to top professionals.</p>
+              </div>
+
+              {cart.length === 0 ? (
+                <div className="text-center py-20 bg-black/40 rounded-2xl border border-dashed border-white/10">
+                  <ShoppingBag className="w-16 h-16 mx-auto mb-6 text-[#D4AF37]" />
+                  <p className="text-xl font-[Cinzel] text-zinc-300">Your plan is empty.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {cart.map((item, index) => (
+                    <div key={`${item.vendor.id}-${index}`} className="flex flex-col sm:flex-row gap-5 p-6 bg-black/60 backdrop-blur-md rounded-2xl border border-[#D4AF37]/20 group transition-all items-center">
+                      <img src={item.vendor.image} alt="" className="w-24 h-24 rounded-xl object-cover border border-white/10 shrink-0" />
+                      <div className="flex-1 min-w-0 text-center sm:text-left">
+                        <h4 className="font-bold text-xl text-zinc-100 font-[Cinzel]">{item.vendor.name}</h4>
+                        <p className="text-[10px] text-[#D4AF37] font-black uppercase tracking-widest mt-1">{item.vendor.category}</p>
+                        
+                        <div className="mt-3 flex flex-wrap justify-center sm:justify-start gap-4 text-[10px] font-bold text-zinc-300 uppercase tracking-widest">
+                          <div className="flex items-center gap-2"><Calendar className="w-3.5 h-3.5 text-[#D4AF37]" />{item.date}</div>
+                          <div className="flex items-center gap-2 text-[#D4AF37]"><CreditCard className="w-3.5 h-3.5" />${item.amount.toLocaleString()}</div>
+                        </div>
+
+                        {/* Display full filled-out details for verification and editing */}
+                        <div className="mt-4 bg-zinc-950/80 p-4 rounded-xl border border-white/10 text-[11px] text-zinc-200 space-y-1.5 text-left max-w-lg">
+                          <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Event Name:</span> <span className="text-white font-medium">{item.eventName}</span></div>
+                          {item.eventTime && <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Event Time:</span> <span className="text-white font-medium">{item.eventTime}</span></div>}
+                          {item.eventLocation && <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Location:</span> <span className="text-white font-medium">{item.eventLocation}</span></div>}
+                          <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Client Name:</span> <span className="text-white font-medium">{item.clientName}</span></div>
+                          <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Client Email:</span> <span className="text-white font-medium">{item.contactEmail}</span></div>
+                          {item.notes && <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Notes:</span> <span className="italic text-zinc-300">"{item.notes}"</span></div>}
+                          {item.selectedServices && item.selectedServices.length > 0 && (
+                            <div className="pt-2 border-t border-white/10 mt-2">
+                              <span className="text-[#D4AF37] uppercase tracking-wider font-bold text-[9px]">Selected Services:</span>
+                              <ul className="list-disc pl-4 mt-1 space-y-0.5 text-[10px] text-zinc-300">
+                                {item.selectedServices.map(s => (
+                                  <li key={s.id}>{s.name} x {s.quantity} (${(s.price * s.quantity).toLocaleString()})</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex sm:flex-col gap-2">
+                        <button onClick={() => onEditCartItem(index)} className="p-3 bg-zinc-800 text-zinc-200 hover:bg-[#D4AF37] hover:text-black rounded-xl transition-all border border-zinc-700 hover:border-[#D4AF37]/50 cursor-pointer" title="Edit Request" aria-label="Edit Request">
+                          <Edit3 className="w-5 h-5" />
+                        </button>
+                        <button onClick={() => onRemoveFromCart(index)} className="p-3 bg-zinc-800 text-zinc-300 hover:bg-red-500 hover:text-white rounded-xl transition-all border border-zinc-700 cursor-pointer" title="Remove" aria-label="Remove item">
+                          <Trash2 className="w-5 h-5" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <button onClick={() => onEditCartItem(index)} className="p-3 bg-zinc-800 text-zinc-300 hover:bg-[#D4AF37] hover:text-black rounded-full transition-all border border-zinc-700 hover:border-[#D4AF37]/50" title="Edit Request" aria-label="Edit Request">
-                        <Edit3 className="w-5 h-5" />
-                      </button>
-                      <button onClick={() => onRemoveFromCart(index)} className="p-3 bg-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white rounded-full transition-all border border-zinc-400/20" title="Remove" aria-label="Remove item">
-                        <Trash2 className="w-5 h-5" />
-                      </button>
+                  ))}
+                  <div className="pt-8 border-t border-[#D4AF37]/20 mt-10 bg-black/50 p-6 rounded-2xl border border-white/10">
+                    <div className="flex justify-between items-center mb-6">
+                      <span className="text-zinc-300 font-black uppercase tracking-[0.2em] text-xs">Plan Subtotal</span>
+                      <span className="text-3xl sm:text-4xl font-bold text-[#D4AF37] font-[Cinzel]">${subtotal.toLocaleString()}</span>
                     </div>
+                    <button onClick={onProcessCart} className="w-full bg-[#D4AF37] text-black py-4 rounded-xl font-black text-xs sm:text-sm uppercase tracking-[0.3em] hover:bg-[#E5C76B] transition-all shadow-xl shadow-[#D4AF37]/20 cursor-pointer">
+                      Send All Booking Requests
+                    </button>
                   </div>
-                ))}
-                <div className="pt-8 border-t border-[#D4AF37]/20 mt-10">
-                  <div className="flex justify-between items-center mb-8">
-                    <span className="text-zinc-400 font-black uppercase tracking-[0.2em] text-xs">Plan Subtotal</span>
-                    <span className="text-4xl font-bold text-[#D4AF37] font-[Cinzel]">${subtotal.toLocaleString()}</span>
-                  </div>
-                  <button onClick={onProcessCart} className="w-full bg-[#D4AF37] text-black py-5 rounded-full font-black text-sm uppercase tracking-[0.3em] hover:bg-[#E5C76B] transition-all shadow-xl shadow-[#D4AF37]/10">
-                    Send All Booking Requests
-                  </button>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 
         {activeTab === 'events' && (
-          <div className="space-y-6 animate-in slide-in-from-bottom-5 duration-500">
+          <div className="space-y-4 animate-in slide-in-from-bottom-5 duration-500 max-w-7xl mx-auto w-full">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-bold font-[Cinzel] text-white">Your Celebrations & Bookings</h3>
+                <p className="text-xs text-zinc-400 mt-1">Manage your active reservations, countdowns, and secure payments.</p>
+              </div>
+              <span className="text-xs text-[#D4AF37] font-black uppercase tracking-widest bg-[#D4AF37]/10 px-3 py-1 rounded-full border border-[#D4AF37]/20">
+                {clientBookings.length} Total
+              </span>
+            </div>
             {clientBookings.length === 0 ? (
-              <div className="py-20 text-center bg-[#111] rounded-3xl border border-dashed border-white/10 opacity-30">
+              <div className="py-20 text-center bg-[#0a0a0a] rounded-2xl border border-dashed border-white/10">
                 <Calendar className="w-16 h-16 mx-auto mb-6 text-[#D4AF37]" />
-                <p className="text-xl font-[Cinzel]">No active reservations.</p>
+                <p className="text-xl font-[Cinzel] text-zinc-300">No active reservations.</p>
               </div>
             ) : clientBookings.map((booking) => {
               const vendor = vendors.find(v => v.id === booking.vendorId);
               if (!vendor) return null;
               const countdown = getCountdown(booking.date);
               return (
-                <div key={booking.id} className="bg-[#111] border border-[#D4AF37]/10 rounded-3xl p-8 flex flex-col md:flex-row gap-8 items-center group">
-                  <img src={vendor.image} className="w-28 h-28 rounded-2xl object-cover border border-white/5" alt="" />
-                  <div className="flex-1 text-center md:text-left">
-                    <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
-                      <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                        booking.status === 'confirmed' 
-                          ? 'bg-green-500/10 text-green-500 border-green-500/30' 
-                          : booking.status === 'cancelled'
-                          ? 'bg-red-500/10 text-red-500 border-red-500/30'
-                          : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/25'
-                      }`}>{booking.status}</span>
-                      {booking.paymentStatus === 'paid' && (
-                        <span className="bg-green-500/10 text-green-500 border border-green-500/30 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">
-                          Paid
-                        </span>
-                      )}
-                      {countdown && (
-                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${countdown.isToday ? 'bg-[#D4AF37] text-white border-[#D4AF37]' : 'text-[#D4AF37] border-[#D4AF37]/20'}`}>
-                          {countdown.text}
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="font-bold text-2xl text-zinc-100 font-[Cinzel] group-hover:text-[#D4AF37] transition-colors">{vendor.name}</h3>
-                    <p className="text-zinc-400 text-sm font-medium mt-2 flex items-center justify-center md:justify-start gap-2">
-                      <Calendar className="w-4 h-4 text-[#D4AF37]/40" /> {booking.date} • {booking.eventName}
-                    </p>
+                <div key={booking.id} className="relative overflow-hidden bg-[#0c0c0c] border border-white/10 hover:border-[#D4AF37]/40 rounded-2xl p-6 transition-all group flex flex-col lg:flex-row gap-6 items-center shadow-lg">
+                  {/* Subtle celebratory photo background overlay */}
+                  <div className="absolute inset-0 z-0 opacity-15 group-hover:opacity-25 transition-opacity pointer-events-none">
+                    <img src={vendor.image} alt="" className="w-full h-full object-cover filter blur-xs" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-black via-black/90 to-black/70"></div>
                   </div>
-                  <div className="text-center md:text-right min-w-[200px]">
-                    <p className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-1">Service Fee</p>
-                    <p className="text-3xl font-bold text-[#D4AF37]">${booking.amount.toLocaleString()}</p>
-                    <div className="flex flex-col gap-3 mt-6">
-                      <button onClick={() => onMessageVendor(vendor)} className="w-full px-4 py-3 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] rounded-full transition-all border border-[#D4AF37]/20 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest">
-                        <MessageSquare className="w-4 h-4" /> Message Professional
+                  
+                  <div className="relative z-10 flex items-center gap-5 w-full lg:w-auto">
+                    <img src={vendor.image} className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover border border-[#D4AF37]/30 shrink-0 shadow-md" alt="" />
+                    <div className="min-w-0 flex-1 lg:max-w-md">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                          booking.status === 'confirmed' 
+                            ? 'bg-green-500/10 text-green-400 border-green-500/30' 
+                            : booking.status === 'cancelled'
+                            ? 'bg-red-500/10 text-red-400 border-red-500/30'
+                            : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/30'
+                        }`}>{booking.status}</span>
+                        {booking.paymentStatus === 'paid' && (
+                          <span className="bg-green-500/10 text-green-400 border border-green-500/30 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest">
+                            Paid
+                          </span>
+                        )}
+                        {countdown && (
+                          <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${countdown.isToday ? 'bg-[#D4AF37] text-black font-black border-[#D4AF37]' : 'text-[#D4AF37] border-[#D4AF37]/20 bg-[#D4AF37]/5'}`}>
+                            {countdown.text}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="font-bold text-lg sm:text-xl text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate">{vendor.name}</h3>
+                      <p className="text-zinc-300 text-xs mt-1 flex items-center gap-2 font-medium">
+                        <Calendar className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" /> {booking.date} <span className="text-zinc-500">·</span> <span className="text-zinc-200">{booking.eventName}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="relative z-10 lg:ml-auto flex flex-col sm:flex-row items-center gap-6 w-full lg:w-auto justify-between lg:justify-end border-t lg:border-t-0 border-white/5 pt-4 lg:pt-0">
+                    <div className="text-center sm:text-left lg:text-right">
+                      <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-0.5">Service Fee</p>
+                      <p className="text-2xl sm:text-3xl font-bold text-[#D4AF37] font-[Cinzel]">${booking.amount.toLocaleString()}</p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
+                      <button onClick={() => onMessageVendor(vendor)} className="px-4 py-2.5 bg-white/5 hover:bg-[#D4AF37]/20 text-[#D4AF37] rounded-xl transition-all border border-[#D4AF37]/30 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest cursor-pointer">
+                        <MessageSquare className="w-3.5 h-3.5" /> Message
                       </button>
                       {booking.status === 'confirmed' && booking.paymentStatus === 'pending' && (
-                        <div className="flex flex-col gap-2">
-                          <button 
-                            onClick={() => handlePay(
-                              booking.id, 
-                              booking.vendorId, 
-                              booking.amount
-                            )}
-                            disabled={isProcessingPayment}
-                            className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-extrabold px-4 py-3.5 rounded-full shadow-lg flex items-center justify-center gap-2 transition-all text-xs uppercase tracking-wider w-full cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-                          >
-                            {isProcessingPayment ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <ShieldCheck className="w-4 h-4 text-black" />
-                            )}
-                            Pay Securely (Card or ACH)
-                          </button>
-                          <p className="text-[9px] text-zinc-400 text-center font-medium leading-tight">
-                            Powered by Stripe Connect. Direct bank transfer (ACH) available for 0.8% fee savings.
-                          </p>
-                        </div>
+                        <button 
+                          onClick={() => handlePay(booking.id, booking.vendorId, booking.amount)}
+                          disabled={isProcessingPayment}
+                          className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-extrabold px-5 py-2.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all text-[10px] uppercase tracking-wider cursor-pointer hover:scale-[1.02]"
+                        >
+                          {isProcessingPayment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                          Pay Securely
+                        </button>
                       )}
                     </div>
                   </div>

@@ -2745,7 +2745,10 @@ function App() {
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
           </div>
           <div className="relative max-w-7xl mx-auto px-4 py-16 md:py-32 text-center">
-            <h2 id="hero-title" className="text-4xl md:text-7xl font-bold font-[Cinzel] mb-6 tracking-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)]">Celebrate Your <span className="text-[#D4AF37]">Simcha.</span> <br /> <span className="text-3xl md:text-5xl opacity-90">Book Perfection.</span></h2>
+            <h2 id="hero-title" className="font-bold font-[Cinzel] mb-6 tracking-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)]">
+              <span className="block text-3xl sm:text-4xl md:text-6xl">Celebrate Your <span className="text-[#D4AF37]">Simcha.</span></span>
+              <span className="block text-3xl sm:text-4xl md:text-6xl opacity-90 mt-2">Book Perfection.</span>
+            </h2>
             <p className="mb-10 text-zinc-300 text-base md:text-lg font-light max-w-2xl mx-auto leading-relaxed">From world-class kosher caterers to soulful bands, curate your complete simcha in one place.</p>
             <div className="max-w-3xl mx-auto bg-zinc-950/90 rounded-full p-1.5 pl-4 sm:pl-6 flex items-center shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_15px_rgba(212,175,55,0.15)] border border-[#D4AF37]/30 backdrop-blur-md">
               <div className="flex-1 flex items-center min-w-0 pr-2">
@@ -2895,9 +2898,9 @@ function App() {
                         </motion.div>
 
                         {!isLoadingVendors && filteredVendors.length === 0 && (
-                          <div className="py-20 text-center opacity-40" role="status">
+                          <div className="py-20 text-center" role="status">
                             <Search className="w-16 h-16 mx-auto mb-4 text-[#D4AF37]" aria-hidden="true" />
-                            <p className="text-xl font-[Cinzel] text-zinc-300">No vendors specializing in {activeSubSubCategory} yet.</p>
+                            <p className="text-xl font-[Cinzel] text-zinc-200">No vendors specializing in {activeSubSubCategory} yet.</p>
                             <p className="text-xs text-zinc-300 mt-2 max-w-sm mx-auto">Please check other subcategories or search for similar services.</p>
                           </div>
                         )}
@@ -3036,9 +3039,9 @@ function App() {
                   </AnimatePresence>
                 </motion.div>
                 {!isLoadingVendors && filteredVendors.length === 0 && (
-                    <div className="py-20 text-center opacity-40" role="status">
+                    <div className="py-20 text-center" role="status">
                       <Search className="w-16 h-16 mx-auto mb-4 text-[#D4AF37]" aria-hidden="true" />
-                      <p className="text-xl font-[Cinzel]">No vendors match your query.</p>
+                      <p className="text-xl font-[Cinzel] text-zinc-200">No vendors match your query.</p>
                     </div>
                 )}
                 </>
@@ -3054,7 +3057,7 @@ function App() {
                     <div className="flex items-center gap-3">
                       <SimchaLogo className="h-10 w-10" /><span className="text-2xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider leading-tight">Simcha Booking</span>
                     </div>
-                    <p className="text-zinc-400 text-sm max-w-xs text-center md:text-left leading-relaxed">Curating exceptional Jewish celebrations with world-class professional partners.</p>
+                    <p className="text-zinc-300 text-sm max-w-xs text-center md:text-left leading-relaxed">Curating exceptional Jewish celebrations with world-class professional partners.</p>
                 </div>
                 <nav className="flex flex-col md:flex-row items-center gap-8 md:gap-16" aria-label="Footer Navigation">
                     <div className="flex flex-col gap-3 items-center md:items-start">
@@ -3296,9 +3299,10 @@ function App() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {bookingVendor && (
+        {bookingVendor && !quickViewVendor && (
           <BookingModal 
             isOpen={!!bookingVendor} 
+            isNested={false}
             vendor={bookingVendor} 
             selectedDate={suggestionsEventDate || eventDate} 
             isPriorityFromSuggestions={isPriorityFromSuggestions}
@@ -3348,10 +3352,35 @@ function App() {
         {quickViewVendor && (
           <QuickViewModal 
             vendor={quickViewVendor} 
-            onClose={() => setQuickViewVendor(null)} 
-            onBook={(v) => { setQuickViewVendor(null); setBookingVendor(v); }}
+            onClose={() => {
+              setQuickViewVendor(null);
+              setBookingVendor(null);
+            }} 
+            bookingVendor={bookingVendor}
+            onBook={(v) => setBookingVendor(v)}
+            onCloseBooking={() => {
+              setQuickViewVendor(null);
+              setBookingVendor(null);
+            }}
             onMessage={(v) => { setQuickViewVendor(null); setChatVendor(v); }}
             onAddReview={handleAddReview}
+            onConfirmBooking={handleConfirmBooking}
+            onBookingDone={(isPriority) => {
+              setQuickViewVendor(null);
+              setBookingVendor(null);
+              if (isPriority) {
+                setShowSuggestions(true);
+                setPendingPrioritySuggestions(false);
+              } else {
+                setShowSuggestions(false);
+                setPendingPrioritySuggestions(false);
+                setIsPriorityFromSuggestions(false);
+                setView('marketplace');
+                setActiveCategory('All');
+                setSearchTerm('');
+                setActiveBottomTab('home');
+              }
+            }}
           />
         )}
       </AnimatePresence>

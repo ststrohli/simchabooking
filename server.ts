@@ -877,6 +877,13 @@ async function startServer() {
     });
   };
 
+  // Maps key endpoint (server-side secret retrieval for client browser)
+  app.get("/api/maps-key", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const key = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_PLATFORM_KEY || process.env.VITE_GOOGLE_MAPS_PLATFORM_KEY || "";
+    res.json({ key });
+  });
+
   // Debug endpoint for Firebase status
   app.get("/api/firebase/debug", (req, res) => {
     res.json({
