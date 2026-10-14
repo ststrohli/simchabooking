@@ -1009,6 +1009,17 @@ const BookingModal: React.FC<BookingModalProps> = ({
              {isOfferMode && <p className="text-[10px] text-zinc-300 leading-relaxed italic">Propose your desired price to the vendor. They will review and respond to your inquiry.</p>}
           </div>
 
+          {(!localDate || isPastDate(localDate)) && (
+            <div className="mx-6 mt-3 flex items-center justify-between rounded-2xl border border-[#D4AF37]/20 bg-[#0a0a0a] px-4 py-3 opacity-75" aria-disabled="true">
+              <div>
+                <span className="block text-sm font-bold text-[#D4AF37]">Set date to priority</span>
+                <span className="block text-xs text-zinc-500">Select a future event date to enable priority</span>
+              </div>
+              <span className="relative h-6 w-11 rounded-full bg-zinc-700">
+                <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-zinc-400" />
+              </span>
+            </div>
+          )}
           {/* Priority Event Toggle */}
           {localDate && !isPastDate(localDate) && (
             <div 

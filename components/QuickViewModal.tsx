@@ -330,7 +330,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
               </div>
             </div>
 
-            <div className="mt-auto pt-2 border-t border-[#D4AF37]/10 sticky bottom-0 bg-[#111] px-6 pb-[5px]">
+            <div className="mt-auto pt-2 border-t border-[#D4AF37]/10 sticky bottom-0 bg-[#111] px-2 pb-[5px]">
               <div className="grid grid-cols-2 gap-3">
                 <motion.button 
                   whileHover={{ scale: 1.03 }}
