@@ -178,8 +178,8 @@ const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | '
   return 'client';
 };
 
-const SimchaLogo = ({ className = "h-10 w-10" }: { className?: string }) => (
-  <svg className={`${className}`} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+const SimchaLogo = ({ className = "h-10 w-10", viewBox = "0 0 100 100" }: { className?: string; viewBox?: string }) => (
+  <svg className={`${className}`} viewBox={viewBox} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <text x="50" y="75" fontFamily="'Cinzel', serif" fontSize="85" fill="#D4AF37" textAnchor="middle" fontWeight="bold" letterSpacing="-5">SB</text>
   </svg>
 );
@@ -2273,228 +2273,255 @@ function App() {
     return (
       <main className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden" aria-label="Sign In">
         <div className="absolute inset-0 bg-gradient-to-br from-[#D4AF37]/5 via-black to-black" aria-hidden="true"></div>
-        <div className="bg-[#111] rounded-3xl p-8 md:p-12 max-w-lg w-full border border-[#D4AF37]/20 shadow-2xl animate-in zoom-in-95 duration-500 relative z-10">
+
+        {/* Centered Welcome Card */}
+        <div className="bg-[#111] rounded-3xl p-8 md:p-12 max-w-lg w-full border border-[#D4AF37]/20 shadow-2xl relative z-10 text-center">
           <header className="text-center mb-10">
             <div className="flex items-center justify-center mx-auto mb-6"><SimchaLogo className="w-20 h-20" /></div>
             <h1 className="text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">WELCOME TO SIMCHA BOOKING</h1>
             <p className="text-[10px] text-zinc-300 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
           </header>
 
-          {step === 'welcome' ? (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <div
-                onClick={() => setStep('login')}
-                className="bg-[#0d0d0d] border border-[#D4AF37]/30 rounded-2xl p-8 text-center cursor-pointer hover:border-[#D4AF37] hover:bg-black/60 hover:scale-[1.02] transition-all duration-300 shadow-xl group"
-              >
-                <div className="bg-[#D4AF37]/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#D4AF37]/20 group-hover:border-[#D4AF37]/40 group-hover:bg-[#D4AF37]/20 transition-all">
-                  <User className="w-8 h-8 text-[#D4AF37]" />
-                </div>
-                <h2 className="text-lg font-bold font-[Cinzel] text-white tracking-[0.2em] uppercase mb-2 group-hover:text-[#D4AF37] transition-colors">
-                  SIMCHA SIGN IN
-                </h2>
-                <p className="text-xs text-zinc-400 font-medium">
-                  The perfect platform to book and manage your simcha
-                </p>
+          <div className="space-y-6">
+            <div
+              onClick={() => setStep('login')}
+              className="bg-[#0d0d0d] border border-[#D4AF37]/30 rounded-2xl p-8 text-center cursor-pointer hover:border-[#D4AF37] hover:bg-black/60 hover:scale-[1.02] transition-all duration-300 shadow-xl group"
+            >
+              <div className="bg-[#D4AF37]/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#D4AF37]/20 group-hover:border-[#D4AF37]/40 group-hover:bg-[#D4AF37]/20 transition-all">
+                <User className="w-8 h-8 text-[#D4AF37]" />
               </div>
+              <h2 className="text-lg font-bold font-[Cinzel] text-white tracking-[0.2em] uppercase mb-2 group-hover:text-[#D4AF37] transition-colors">
+                SIMCHA SIGN IN
+              </h2>
+              <p className="text-xs text-zinc-400 font-medium">
+                The perfect platform to book and manage your simcha
+              </p>
             </div>
-          ) : step === 'login' ? (
-            <form aria-label="Sign In Form" onSubmit={handleLogin} className="space-y-6">
-              <div className="flex justify-start mb-2">
-                <button
-                  type="button"
-                  onClick={() => setStep('welcome')}
-                  className="text-xs text-zinc-300 hover:text-[#D4AF37] flex items-center gap-1 font-bold uppercase tracking-wider transition-colors"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" /> Back
-                </button>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
-                <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
-                  <button type="button" onClick={() => setStep('forgot-password')} className="text-[10px] text-[#D4AF37] hover:underline font-bold uppercase tracking-widest px-2 py-0.5 rounded-full hover:bg-[#D4AF37]/10 transition-colors">Forgot password?</button>
-                </div>
-                <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
-              </div>
-              
-              {error && (
-                <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
-                  <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
-                  <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
-                </div>
-              )}
-
-              <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2">
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign In'}
-              </button>
-
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                  <div className="w-full border-t border-white/10"></div>
-                </div>
-                <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-                  <span className="bg-[#111] px-4 text-zinc-300 font-black">Or continue with</span>
-                </div>
-              </div>
-
-              <button 
-                type="button" 
-                onClick={handleGoogleSignIn}
-                disabled={isLoading}
-                className="w-full bg-white text-black font-black py-4 rounded-full hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path
-                    fill="currentColor"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z"
-                  />
-                </svg>
-                Google
-              </button>
-              
-              <div className="flex flex-col gap-4 mt-6">
-                <button type="button" onClick={() => setStep('register')} className="text-[#D4AF37] hover:underline text-[10px] font-black uppercase tracking-widest">
-                  Need an account? Register here
-                </button>
-              </div>
-            </form>
-          ) : step === 'forgot-password' ? (
-            <form aria-label="Password Reset Form" onSubmit={handleResetPassword} className="space-y-6 animate-in fade-in duration-300">
-               <div className="bg-[#D4AF37]/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <RefreshCw className="w-8 h-8 text-[#D4AF37]" />
-               </div>
-               <div className="text-center mb-6">
-                  <h2 className="text-white font-bold uppercase tracking-widest text-sm mb-2">Password Reset</h2>
-                  <p className="text-[10px] text-zinc-300 uppercase leading-relaxed px-4">Enter your email and we'll send you a link to regain access to your simcha planning.</p>
-               </div>
-               <div className="space-y-2">
-                <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
-                <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
-              </div>
-              {error && (
-                <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
-                  <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
-                  <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
-                </div>
-              )}
-              <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2">
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Get Reset Link'}
-              </button>
-              <button type="button" onClick={() => setStep('login')} className="w-full text-zinc-300 hover:text-white text-[10px] font-black uppercase tracking-widest">Return to Login</button>
-            </form>
-          ) : (
-            <form aria-label="Registration Form" onSubmit={handleRegister} className="space-y-4">
-              <div className="flex justify-start mb-2">
-                <button
-                  type="button"
-                  onClick={() => setStep('welcome')}
-                  className="text-xs text-zinc-300 hover:text-[#D4AF37] flex items-center gap-1 font-bold uppercase tracking-wider transition-colors"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" /> Back
-                </button>
-              </div>
-              <div className="flex flex-col items-center mb-4">
-                <label className="relative group cursor-pointer">
-                   <div className="w-20 h-20 bg-black/60 border-2 border-dashed border-[#D4AF37]/30 rounded-full flex items-center justify-center overflow-hidden transition-all group-hover:border-[#D4AF37]">
-                     {photo ? <img src={URL.createObjectURL(photo)} className="w-full h-full object-cover" /> : <Camera className="w-6 h-6 text-[#D4AF37]/40" />}
-                   </div>
-                   <input type="file" className="hidden" accept="image/*" onChange={e => setPhoto(e.target.files?.[0] || null)} />
-                   <div className="absolute -bottom-1 -right-1 bg-[#D4AF37] p-1.5 rounded-full text-black shadow-lg">
-                     <Plus className="w-3 h-3" />
-                   </div>
-                </label>
-                <p className="text-[8px] text-zinc-300 font-black uppercase tracking-widest mt-2">Upload Profile Photo</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Full Name</label>
-                <input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="Sarah Cohen" />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
-                <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
-                  <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Repeat Password</label>
-                  <input required type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
-                </div>
-              </div>
-
-              {error && (
-                <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-in fade-in">
-                  <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
-                  <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
-                </div>
-              )}
-
-              <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 mt-4">
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Complete Registration'}
-              </button>
-
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                  <div className="w-full border-t border-white/10"></div>
-                </div>
-                <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-                  <span className="bg-[#111] px-4 text-zinc-300 font-black">Or join with</span>
-                </div>
-              </div>
-
-              <button 
-                type="button" 
-                onClick={handleGoogleSignIn}
-                disabled={isLoading}
-                className="w-full bg-white text-black font-black py-4 rounded-full hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path
-                    fill="currentColor"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z"
-                  />
-                </svg>
-                Google
-              </button>
-              
-              <button type="button" onClick={() => setStep('login')} className="w-full text-zinc-300 hover:text-white text-[10px] font-black uppercase tracking-widest mt-2">
-                Already registered? Sign in
-              </button>
-            </form>
-          )}
-          
-          {/* Dual portal routing is now implicit. Vendors and clients use the main sign in form above. */}
+          </div>
         </div>
+
+        {/* Slide-up Modal for Login, Register, Forgot-Password */}
+        <AnimatePresence>
+          {step !== 'welcome' && (
+            <motion.div
+              key="auth-modal-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-hidden"
+            >
+              <motion.div 
+                key="auth-modal-sheet"
+                initial={{ y: "100%", opacity: 0 }} 
+                animate={{ y: 0, opacity: 1 }} 
+                exit={{ y: "100%", opacity: 0 }} 
+                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }} 
+                className="bg-[#111] h-[92dvh] sm:h-auto sm:max-h-[88vh] max-w-xl w-full rounded-t-[2.5rem] rounded-b-none sm:rounded-3xl p-6 md:p-8 border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-y-auto relative z-10 mt-auto sm:mt-0 flex flex-col"
+              >
+                <header className="text-center mb-6">
+                  <div className="flex items-center justify-center mx-auto mb-4"><SimchaLogo className="w-20 h-20 overflow-visible" viewBox="-10 -8 120 110" /></div>
+                  <h2 className="text-2xl sm:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">
+                    {step === 'register' ? 'WELCOME TO SIMCHA SIGN UP' : 'WELCOME TO SIMCHA SIGN IN'}
+                  </h2>
+                  <p className="text-[10px] text-zinc-300 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
+                </header>
+
+                {step === 'login' ? (
+                  <form aria-label="Sign In Form" onSubmit={handleLogin} className="space-y-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex flex-1 rounded-full border border-[#D4AF37]/20 bg-black/60 p-1">
+                        <button type="button" onClick={() => setStep("login")} className="flex-1 rounded-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors bg-[#D4AF37] text-black shadow">Sign In</button>
+                        <button type="button" onClick={() => setStep("register")} className="flex-1 rounded-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors text-zinc-400 hover:text-white">Sign Up</button>
+                      </div>
+                      <button type="button" aria-label="Close sign-in" onClick={() => setStep("welcome")} className="w-9 h-9 shrink-0 rounded-full border border-white/10 bg-white/5 text-zinc-300 hover:text-white hover:bg-white/10 transition flex items-center justify-center text-lg cursor-pointer">×</button>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
+                      <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
+                        <button type="button" onClick={() => setStep('forgot-password')} className="text-[10px] text-[#D4AF37] hover:underline font-bold uppercase tracking-widest px-2 py-0.5 rounded-full hover:bg-[#D4AF37]/10 transition-colors">Forgot password?</button>
+                      </div>
+                      <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
+                    </div>
+                    
+                    {error && (
+                      <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
+                        <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                        <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
+                      </div>
+                    )}
+
+                    <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer">
+                      {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign In'}
+                    </button>
+
+                    <div className="relative my-6">
+                      <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                        <div className="w-full border-t border-white/10"></div>
+                      </div>
+                      <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
+                        <span className="bg-[#111] px-4 text-zinc-300 font-black">Or continue with</span>
+                      </div>
+                    </div>
+
+                    <button 
+                      type="button" 
+                      onClick={handleGoogleSignIn}
+                      disabled={isLoading}
+                      className="w-full bg-white text-black font-black py-4 rounded-full hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3 cursor-pointer"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24">
+                        <path
+                          fill="currentColor"
+                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                        />
+                        <path
+                          fill="currentColor"
+                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        />
+                        <path
+                          fill="currentColor"
+                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                        />
+                        <path
+                          fill="currentColor"
+                          d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z"
+                        />
+                      </svg>
+                      Google
+                    </button>
+                  </form>
+                ) : step === 'forgot-password' ? (
+                  <form aria-label="Password Reset Form" onSubmit={handleResetPassword} className="space-y-6 animate-in fade-in duration-300">
+                    <div className="flex items-center justify-between mb-4">
+                      <button
+                        type="button"
+                        onClick={() => setStep('login')}
+                        className="text-xs text-zinc-300 hover:text-[#D4AF37] flex items-center gap-1 font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" /> Back
+                      </button>
+                      <button type="button" aria-label="Close sign-in" onClick={() => setStep("welcome")} className="w-9 h-9 shrink-0 rounded-full border border-white/10 bg-white/5 text-zinc-300 hover:text-white hover:bg-white/10 transition flex items-center justify-center text-lg cursor-pointer">×</button>
+                    </div>
+                    <div className="bg-[#D4AF37]/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <RefreshCw className="w-8 h-8 text-[#D4AF37]" />
+                    </div>
+                    <div className="text-center mb-6">
+                      <h2 className="text-white font-bold uppercase tracking-widest text-sm mb-2">Password Reset</h2>
+                      <p className="text-[10px] text-zinc-300 uppercase leading-relaxed px-4">Enter your email and we'll send you a link to regain access to your simcha planning.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
+                      <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
+                    </div>
+                    {error && (
+                      <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
+                        <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                        <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
+                      </div>
+                    )}
+                    <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer">
+                      {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Get Reset Link'}
+                    </button>
+                    <button type="button" onClick={() => setStep('login')} className="w-full text-zinc-300 hover:text-white text-[10px] font-black uppercase tracking-widest cursor-pointer">Return to Login</button>
+                  </form>
+                ) : (
+                  <form aria-label="Registration Form" onSubmit={handleRegister} className="space-y-4">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex flex-1 rounded-full border border-[#D4AF37]/20 bg-black/60 p-1">
+                        <button type="button" onClick={() => setStep("login")} className="flex-1 rounded-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors text-zinc-400 hover:text-white">Sign In</button>
+                        <button type="button" onClick={() => setStep("register")} className="flex-1 rounded-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors bg-[#D4AF37] text-black shadow">Sign Up</button>
+                      </div>
+                      <button type="button" aria-label="Close sign-in" onClick={() => setStep("welcome")} className="w-9 h-9 shrink-0 rounded-full border border-white/10 bg-white/5 text-zinc-300 hover:text-white hover:bg-white/10 transition flex items-center justify-center text-lg cursor-pointer">×</button>
+                    </div>
+                    <div className="flex flex-col items-center mb-4">
+                      <label className="relative group cursor-pointer">
+                        <div className="w-20 h-20 bg-black/60 border-2 border-dashed border-[#D4AF37]/30 rounded-full flex items-center justify-center overflow-hidden transition-all group-hover:border-[#D4AF37]">
+                          {photo ? <img src={URL.createObjectURL(photo)} className="w-full h-full object-cover" /> : <Camera className="w-6 h-6 text-[#D4AF37]/40" />}
+                        </div>
+                        <input type="file" className="hidden" accept="image/*" onChange={e => setPhoto(e.target.files?.[0] || null)} />
+                        <div className="absolute -bottom-1 -right-1 bg-[#D4AF37] p-1.5 rounded-full text-black shadow-lg">
+                          <Plus className="w-3 h-3" />
+                        </div>
+                      </label>
+                      <p className="text-[8px] text-zinc-300 font-black uppercase tracking-widest mt-2">Upload Profile Photo</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Full Name</label>
+                      <input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="Sarah Cohen" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
+                      <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
+                        <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Repeat Password</label>
+                        <input required type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
+                      </div>
+                    </div>
+
+                    {error && (
+                      <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-in fade-in">
+                        <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                        <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
+                      </div>
+                    )}
+
+                    <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 mt-4 cursor-pointer">
+                      {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Complete Registration'}
+                    </button>
+
+                    <div className="relative my-4">
+                      <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                        <div className="w-full border-t border-white/10"></div>
+                      </div>
+                      <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
+                        <span className="bg-[#111] px-4 text-zinc-300 font-black">Or join with</span>
+                      </div>
+                    </div>
+
+                    <button 
+                      type="button" 
+                      onClick={handleGoogleSignIn}
+                      disabled={isLoading}
+                      className="w-full bg-white text-black font-black py-4 rounded-full hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3 cursor-pointer"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24">
+                        <path
+                          fill="currentColor"
+                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                        />
+                        <path
+                          fill="currentColor"
+                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        />
+                        <path
+                          fill="currentColor"
+                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                        />
+                        <path
+                          fill="currentColor"
+                          d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z"
+                        />
+                      </svg>
+                      Google
+                    </button>
+                  </form>
+                )}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
     );
   };
