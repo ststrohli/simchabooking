@@ -34,7 +34,7 @@ import SuggestionModal from './components/SuggestionModal';
 import ClientPortal from './components/ClientPortal';
 import PaymentSuccess from './components/PaymentSuccess';
 import { VENDORS as INITIAL_VENDORS, MOCK_BOOKINGS } from './services/mockData';
-import { Vendor, VendorCategory, CartItem, Booking, Review, Post, Message, UserAccount } from './types';
+import { Vendor, VendorCategory, CartItem, Booking, Review, Post, Message, UserAccount, SelectedService } from './types';
 
 // Helper to strip undefined values for Firestore
 const clean = (obj: any) => {
@@ -446,6 +446,7 @@ function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
   const [permissionErrorBanner, setPermissionErrorBanner] = useState<string | null>(null);
+  const [planConfirmation, setPlanConfirmation] = useState<{ show: boolean; vendorName: string } | null>(null);
   
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [isLoadingVendors, setIsLoadingVendors] = useState(true);
@@ -1510,10 +1511,76 @@ function App() {
           setPendingPrioritySuggestions(false);
         }
         setShowSuggestions(false);
+        setPlanConfirmation({
+          show: true,
+          vendorName: bookingVendor.name
+        });
       } catch (err) {
         console.error("Error adding to plan:", err);
-        showNotification("Error adding to plan. Please try again.");
+        showNotification("Error adding to plan. Please try again.", "error");
       }
+    }
+  };
+
+  const handleGoToPlan = () => {
+    setPlanConfirmation(null);
+    setQuickViewVendor(null);
+    setBookingVendor(null);
+    setPortalTab('client');
+    setPortalInitialTab('plan');
+    setActiveBottomTab('plan');
+    setView('portal');
+  };
+
+  const handleAddToPlan = (vendor: Vendor) => {
+    if (!vendor) return;
+    const isAlreadyInPlan = cart.some(item => item.vendor.id === vendor.id);
+    if (isAlreadyInPlan) {
+      showNotification(`${vendor.name} is already in your plan.`, 'info');
+      return;
+    }
+
+    try {
+      const defaultServices: SelectedService[] = vendor.services && vendor.services.length > 0
+        ? [{
+            id: vendor.services[0].id,
+            name: vendor.services[0].name,
+            price: vendor.services[0].price,
+            quantity: 1,
+            unit: vendor.services[0].unit
+          }]
+        : [];
+      const totalAmount = defaultServices.length > 0 
+        ? defaultServices[0].price 
+        : (vendor.priceStart || 0);
+
+      const bookingDate = eventDate || new Date().toLocaleDateString('en-CA');
+      const finalClientName = currentAuthenticatedUser.name || '';
+      const finalContactEmail = currentAuthenticatedUser.username || '';
+
+      const newPlanItem: CartItem = {
+        vendor,
+        date: bookingDate,
+        notes: '',
+        clientName: finalClientName,
+        eventName: 'Simcha Celebration',
+        eventLocation: vendor.location || '',
+        eventTime: '18:00',
+        contactEmail: finalContactEmail,
+        selectedServices: defaultServices,
+        amount: totalAmount
+      };
+
+      trackFunnelStep.addToPlan(vendor.id, vendor.name, vendor.category, totalAmount);
+      setCart(prev => [...prev, newPlanItem]);
+
+      setPlanConfirmation({
+        show: true,
+        vendorName: vendor.name
+      });
+    } catch (err: any) {
+      console.error("Error adding vendor to plan:", err);
+      showNotification("Failed to add to plan. Please try again.", 'error');
     }
   };
 
@@ -3369,6 +3436,7 @@ function App() {
               }
             }}
             onConfirm={handleConfirmBooking} 
+            onGoToPlan={handleGoToPlan}
             initialDetails={initialBookingDetails || { clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} 
           />
         )}
@@ -3382,6 +3450,7 @@ function App() {
         onSendMessage={handleSendMessage} 
         onClose={() => { setChatVendor(null); setIsAdminChatOpen(false); }} 
         showNotification={showNotification}
+        vendors={vendors}
       />
 
       <AnimatePresence>
@@ -3397,9 +3466,11 @@ function App() {
             onCloseBooking={() => {
               setBookingVendor(null);
             }}
-            onMessage={(v) => { setQuickViewVendor(null); setChatVendor(v); }}
             onAddReview={handleAddReview}
             onConfirmBooking={handleConfirmBooking}
+            isInPlan={quickViewVendor ? cart.some(c => c.vendor.id === quickViewVendor.id) : false}
+            onAddToPlan={handleAddToPlan}
+            onGoToPlan={handleGoToPlan}
             onBookingDone={(isPriority) => {
               setQuickViewVendor(null);
               setBookingVendor(null);
@@ -3417,6 +3488,63 @@ function App() {
               }
             }}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Add-to-Plan Interactive Confirmation Notification */}
+      <AnimatePresence>
+        {planConfirmation?.show && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 30, scale: 0.95 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[210] w-[92vw] max-w-md pointer-events-auto"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="bg-[#0b0b0b]/95 border-2 border-[#D4AF37] rounded-2xl p-4 sm:p-5 shadow-[0_12px_36px_rgba(0,0,0,0.95),0_0_24px_rgba(212,175,55,0.3)] backdrop-blur-xl flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/50 flex items-center justify-center shrink-0 mt-0.5">
+                    <Check className="w-5 h-5 text-[#D4AF37] stroke-[3]" />
+                  </div>
+                  <div>
+                    <p className="text-xs sm:text-sm font-semibold text-zinc-100 leading-snug">
+                      Your booking has been added to your plan. Go to plan to finalize.
+                    </p>
+                    {planConfirmation.vendorName && (
+                      <p className="text-[10px] text-[#D4AF37] uppercase tracking-wider font-bold mt-1">
+                        {planConfirmation.vendorName}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setPlanConfirmation(null)}
+                  className="text-zinc-400 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                  aria-label="Dismiss confirmation"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1 border-t border-white/10">
+                <button
+                  onClick={handleGoToPlan}
+                  className="flex-1 bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-2.5 px-4 rounded-full text-xs uppercase tracking-widest transition-all shadow-md shadow-[#D4AF37]/20 hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center"
+                >
+                  Go to Plan
+                </button>
+                <button
+                  onClick={() => setPlanConfirmation(null)}
+                  className="px-4 py-2.5 rounded-full border border-white/20 text-zinc-300 hover:text-white hover:border-white/40 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

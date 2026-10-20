@@ -2933,6 +2933,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 recipientName={otherUser.name || 'User'}
                                 recipientEmail={otherUser.email}
                                 isAdminReplying={true}
+                                vendors={vendors}
                             />
                         );
                     })()}

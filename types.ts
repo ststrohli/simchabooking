@@ -110,6 +110,7 @@ export interface Message {
   fileUrl?: string;
   imageUrl?: string;
   audioUrl?: string;
+  audioDuration?: number;
   fileName?: string;
   fileType?: string;
   isAdminInquiry?: boolean;
@@ -118,7 +119,7 @@ export interface Message {
   vendorEmail?: string;
   tempId?: string;
   isOptimistic?: boolean;
-  status?: 'sending' | 'sent' | 'error';
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'error';
 }
 
 export interface CartItem {

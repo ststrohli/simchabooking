@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { X, Star, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, CheckCircle, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import { Vendor, SelectedService, VendorCategory } from '../types';
 import LocationAutocomplete from './LocationAutocomplete';
+import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
 
 const FloatingInput: React.FC<{
   id: string;
@@ -125,10 +126,11 @@ interface BookingModalProps {
   isPriorityFromSuggestions?: boolean;
   onDone?: (isPriority: boolean) => void;
   onSuccessStateChange?: (isSuccess: boolean) => void;
+  onGoToPlan?: () => void;
 }
 
 const BookingModal: React.FC<BookingModalProps> = ({ 
-  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone, onSuccessStateChange, isNested = false 
+  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone, onSuccessStateChange, onGoToPlan, isNested = false 
 }) => {
   const [formData, setFormData] = useState({ eventName: '', clientName: '', contactEmail: '', eventLocation: '', eventTime: '', notes: '' });
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
@@ -708,6 +710,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const animDuration = prefersReducedMotion ? 0.1 : 0.55;
 
+  const { y, dragHandleProps } = useModalDragDismiss(onClose);
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -732,12 +736,21 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
       {isSuccess ? (
         <motion.div 
+          style={{ y }}
           initial={{ y: "100%", opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: "100%", opacity: 0 }}
           transition={{ duration: animDuration, ease: [0.16, 1, 0.3, 1] }}
           className="bg-[#0a0a0a] w-full sm:max-w-md h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 relative overflow-hidden shadow-2xl flex flex-col mt-auto sm:mt-0 p-6 md:p-10 text-center"
         >
+          {/* Centered Drag Indicator Handle on success view */}
+          <div 
+            {...dragHandleProps}
+            className="absolute top-3 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+          >
+            <ModalDragIndicator />
+          </div>
+
           <div className="absolute -top-40 -left-40 w-80 h-80 bg-[#D4AF37]/10 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-[#D4AF37]/10 rounded-full blur-3xl pointer-events-none" />
           
@@ -752,31 +765,67 @@ const BookingModal: React.FC<BookingModalProps> = ({
             
             <p className="text-center w-full max-w-sm mx-auto text-sm md:text-base whitespace-normal text-zinc-200 leading-relaxed mb-8 font-light">
               {submitType === 'add'
-                ? 'Item added to your plan! To review and finalize your bookings, visit your Plan tab.'
+                ? 'Your booking has been added to your plan. Go to plan to finalize.'
                 : 'Your booking request has been sent to the vendor! We will notify you once they confirm. You can check the status anytime in your Events.'
               }
             </p>
               
-            <div className="w-full max-w-[220px] mx-auto block">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSuccess(false);
-                  if (onDone) {
-                    onDone(isPriority);
-                  } else {
-                    onClose();
-                  }
-                }}
-                className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/30 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center mx-auto block"
-              >
-                I'm Done
-              </button>
-            </div>
+            {submitType === 'add' ? (
+              <div className="w-full max-w-xs mx-auto flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSuccess(false);
+                    if (onGoToPlan) {
+                      onGoToPlan();
+                    } else if (onDone) {
+                      onDone(isPriority);
+                    } else {
+                      onClose();
+                    }
+                  }}
+                  className="flex-1 bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/30 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center"
+                >
+                  Go to Plan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSuccess(false);
+                    if (onDone) {
+                      onDone(isPriority);
+                    } else {
+                      onClose();
+                    }
+                  }}
+                  className="px-5 py-3.5 rounded-xl border border-white/20 text-zinc-300 hover:text-white hover:border-white/40 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer text-center"
+                >
+                  Dismiss
+                </button>
+              </div>
+            ) : (
+              <div className="w-full max-w-[220px] mx-auto block">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSuccess(false);
+                    if (onDone) {
+                      onDone(isPriority);
+                    } else {
+                      onClose();
+                    }
+                  }}
+                  className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/30 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center mx-auto block"
+                >
+                  I'm Done
+                </button>
+              </div>
+            )}
           </div>
         </motion.div>
       ) : (
       <motion.div 
+        style={{ y }}
         initial={{ y: "100%", opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: "100%", opacity: 0 }}
@@ -786,6 +835,14 @@ const BookingModal: React.FC<BookingModalProps> = ({
         aria-labelledby="modal-title"
         className="bg-[#0a0a0a] w-full sm:w-full sm:max-w-xl h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0"
       >
+        {/* Subtle floating drag indicator pill at top center */}
+        <div 
+          {...dragHandleProps}
+          className="absolute top-2.5 left-1/2 -translate-x-1/2 z-30 px-4 py-1 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+        >
+          <ModalDragIndicator />
+        </div>
+
         <div className="bg-black p-6 text-white flex justify-between items-start sticky top-0 z-10 border-b border-[#D4AF37]/20">
           <div>
             <h2 id="modal-title" className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">{initialDetails ? 'Update Your Selection' : 'Book Service'}</h2>

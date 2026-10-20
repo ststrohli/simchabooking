@@ -135,6 +135,7 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
     fileUrl: payload.fileUrl || null,
     imageUrl: payload.imageUrl || null,
     audioUrl: payload.audioUrl || null,
+    audioDuration: payload.audioDuration || null,
     fileName: payload.fileName || null,
     fileType: payload.fileType || null,
     conversationId,
@@ -201,19 +202,37 @@ export function subscribeToUserInbox(userId: string, callback: (conversations: a
     orderBy('last_message_at', 'desc')
   );
 
-  return onSnapshot(q, async (snapshot) => {
+  return onSnapshot(q, (snapshot) => {
     const conversations = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
     callback(conversations);
   }, (err) => {
-    console.warn("Error subscribing to inbox conversations:", err);
-    if (errorCallback) {
-      errorCallback(err);
-    } else {
-      handleFirestoreError(err, OperationType.LIST, 'conversations');
-    }
+    console.warn("Ordered inbox query failed, trying fallback query without orderBy:", err);
+    const fallbackQ = query(
+      collection(db, 'conversations'),
+      where('participant_ids', 'array-contains', userId)
+    );
+    return onSnapshot(fallbackQ, (snapshot) => {
+      const conversations = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      conversations.sort((a: any, b: any) => {
+        const timeA = a.last_message_at?.toDate ? a.last_message_at.toDate().getTime() : new Date(a.last_message_at || 0).getTime();
+        const timeB = b.last_message_at?.toDate ? b.last_message_at.toDate().getTime() : new Date(b.last_message_at || 0).getTime();
+        return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA);
+      });
+      callback(conversations);
+    }, (err2) => {
+      console.warn("Fallback inbox query also failed:", err2);
+      if (errorCallback) {
+        errorCallback(err2);
+      } else {
+        handleFirestoreError(err2, OperationType.LIST, 'conversations');
+      }
+    });
   });
 }
 

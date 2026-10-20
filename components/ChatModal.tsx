@@ -1,13 +1,55 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, User, Mail, MessageSquare, Bot, AlertTriangle, CheckCircle, Image as ImageIcon, Paperclip, Mic, StopCircle, Play, Volume2, FileText, Download, Loader2, Shield, ArrowLeft, Trash2, Upload } from 'lucide-react';
+import { 
+  X, 
+  Send, 
+  User, 
+  ImageIcon, 
+  Paperclip, 
+  Mic, 
+  Play, 
+  FileText, 
+  Download, 
+  Loader2, 
+  Shield, 
+  ArrowLeft, 
+  Trash2, 
+  Upload, 
+  Check, 
+  CheckCheck, 
+  Clock, 
+  Smile, 
+  MoreVertical, 
+  Search, 
+  AlertCircle,
+  Volume2,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  ChevronLeft
+} from 'lucide-react';
 import { Vendor, Message, UserAccount } from '../types';
-import { storage, auth, db, handleFirestoreError, OperationType } from '../services/firebase';
-import { markChatAsRead } from '../services/messagingService';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, limit, startAfter, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
-import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
+import { auth, db, handleFirestoreError, OperationType } from '../services/firebase';
+import { markChatAsRead, subscribeToUserInbox, ensureAdminSupportConversation } from '../services/messagingService';
+import { collection, query, orderBy, onSnapshot, doc, limit, startAfter, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
+import { uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
+
+interface ChatModalProps {
+  isOpen: boolean;
+  vendor: Vendor | null;
+  isAdminMode?: boolean;
+  onClose: () => void;
+  onSendMessage: (payload: Partial<Message>) => void;
+  showNotification: (message: string, type?: 'success' | 'info' | 'error') => void;
+  messages: Message[];
+  user: UserAccount;
+  recipientUid?: string;
+  recipientName?: string;
+  recipientEmail?: string;
+  isAdminReplying?: boolean;
+  vendors?: Vendor[];
+}
 
 interface ImageWithPlaceholderProps {
   src: string;
@@ -16,15 +58,15 @@ interface ImageWithPlaceholderProps {
   isSent: boolean;
 }
 
-const ImageWithPlaceholder: React.FC<ImageWithPlaceholderProps> = ({ src, alt, onLoadCompletes, isSent }) => {
+const ImageWithPlaceholder: React.FC<ImageWithPlaceholderProps> = ({ src, alt, onLoadCompletes }) => {
   const [loaded, setLoaded] = useState(false);
   
   return (
-    <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-[#D4AF37]/20 bg-zinc-950">
+    <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-white/10 bg-zinc-950">
       {!loaded && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-zinc-900 to-zinc-950 animate-pulse">
           <ImageIcon className="w-8 h-8 text-[#D4AF37]/40 mb-2" />
-          <span className="text-[9px] uppercase tracking-widest text-[#D4AF37]/50 font-bold font-mono">Loading Image...</span>
+          <span className="text-[10px] uppercase tracking-widest text-[#D4AF37]/60 font-semibold font-mono">Loading Media...</span>
         </div>
       )}
       <img 
@@ -40,50 +82,70 @@ const ImageWithPlaceholder: React.FC<ImageWithPlaceholderProps> = ({ src, alt, o
   );
 };
 
-interface ChatModalProps {
-  isOpen: boolean;
-  vendor: Vendor | null; // For vendor chat
-  isAdminMode?: boolean; // For client-to-admin chat
-  onClose: () => void;
-  onSendMessage: (payload: Partial<Message>) => void;
-  showNotification: (message: string, type?: 'success' | 'info') => void;
-  messages: Message[];
-  user: UserAccount;
-  recipientUid?: string;
-  recipientName?: string;
-  recipientEmail?: string;
-  isAdminReplying?: boolean;
-}
+const POPULAR_EMOJIS = ['😊', '😂', '❤️', '👍', '👏', '🙏', '🥂', '🍷', '✡️', '🎉', '🎈', '🎂', '👑', '💍', '🎵', '📸', '✨'];
 
-const ChatModal: React.FC<ChatModalProps> = ({ 
+export const ChatModal: React.FC<ChatModalProps> = ({ 
   isOpen, 
-  vendor, 
-  isAdminMode, 
+  vendor: initialVendor, 
+  isAdminMode: initialIsAdminMode, 
   onClose, 
   onSendMessage, 
   showNotification, 
-  messages, 
   user,
   recipientUid,
   recipientName,
   recipientEmail,
-  isAdminReplying
+  isAdminReplying,
+  vendors = []
 }) => {
+  // Active contact / conversation states
+  const [currentContact, setCurrentContact] = useState<{
+    id: string;
+    name: string;
+    email?: string;
+    image?: string;
+    category?: string;
+    isAdmin?: boolean;
+  } | null>(null);
+
+  // Active view on mobile: 'chat' | 'list'
+  const [mobileView, setMobileView] = useState<'chat' | 'list'>('chat');
+
+  // Inbox threads state
+  const [inboxThreads, setInboxThreads] = useState<any[]>([]);
+  const [inboxSearchQuery, setInboxSearchQuery] = useState('');
+  const [inboxFilter, setInboxFilter] = useState<'all' | 'unread'>('all');
+
+  // Chat message & input states
   const [text, setText] = useState('');
   const [clientName, setClientName] = useState(isAdminReplying ? (recipientName || '') : (user?.name || ''));
   const [clientEmail, setClientEmail] = useState(isAdminReplying ? (recipientEmail || '') : (user?.username || ''));
   const [isIdentityVerified, setIsIdentityVerified] = useState(isAdminReplying ? true : !!(user?.name && user?.username));
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [uploadPreview, setUploadPreview] = useState<{url: string, type: string} | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);
   const [fullscreenMedia, setFullscreenMedia] = useState<{url: string, type: 'image' | 'video'} | null>(null);
+  
+  // In-chat search states
+  const [isChatSearching, setIsChatSearching] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [chatSearchMatches, setChatSearchMatches] = useState<string[]>([]);
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+
+  // Real voice recording states
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
-  const [activeMessages, setActiveMessages] = useState<Message[]>([]);
+  const [liveVolumeBars, setLiveVolumeBars] = useState<number[]>(new Array(16).fill(6));
   
-  // Historical, Optimistic, and Pagination-related States
+  // UI Panels
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
+
+  // Message Lists
+  const [activeMessages, setActiveMessages] = useState<Message[]>([]);
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
   const [historicalMessages, setHistoricalMessages] = useState<Message[]>([]);
   const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);
@@ -92,18 +154,64 @@ const ChatModal: React.FC<ChatModalProps> = ({
   const [otherIsTyping, setOtherIsTyping] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<any>(null);
-  const lastMessageCountRef = useRef(0);
   const typingTimeoutRef = useRef<any>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+  const lastMessageCountRef = useRef(0);
 
   const myUid = isAdminReplying ? 'admin' : (user?.id || auth.currentUser?.uid || '');
-  const targetUid = isAdminReplying ? (recipientUid || '') : (isAdminMode ? 'admin' : (vendor?.id || ''));
-  const isSupportChat = !!(isAdminMode || isAdminReplying);
+  const targetUid = currentContact?.id || '';
+  const isSupportChat = currentContact?.isAdmin || targetUid === 'admin' || !!isAdminReplying;
 
+  // Initialize active contact when modal opens or initial props change
+  useEffect(() => {
+    if (!isOpen) return;
+    if (isAdminReplying) {
+      setCurrentContact({
+        id: recipientUid || 'client',
+        name: recipientName || 'User',
+        email: recipientEmail,
+        isAdmin: false
+      });
+      setMobileView('chat');
+    } else if (initialVendor) {
+      setCurrentContact({
+        id: initialVendor.id,
+        name: initialVendor.name,
+        email: initialVendor.contactEmail,
+        image: initialVendor.image,
+        category: initialVendor.category,
+        isAdmin: false
+      });
+      setMobileView('chat');
+    } else if (initialIsAdminMode) {
+      setCurrentContact({
+        id: 'admin',
+        name: 'Simcha Concierge',
+        category: 'Support & Concierge',
+        isAdmin: true
+      });
+      setMobileView('chat');
+    } else {
+      // Default to Simcha Concierge if no contact specified
+      setCurrentContact({
+        id: 'admin',
+        name: 'Simcha Concierge',
+        category: 'Support & Concierge',
+        isAdmin: true
+      });
+      setMobileView('list');
+    }
+  }, [isOpen, initialVendor, initialIsAdminMode, isAdminReplying, recipientUid, recipientName, recipientEmail]);
+
+  // Lock body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
       document.body.classList.add('overflow-hidden');
@@ -127,6 +235,21 @@ const ChatModal: React.FC<ChatModalProps> = ({
     }
   }, [user, isAdminReplying, recipientEmail, recipientName]);
 
+  // Subscribe to user inbox threads for the WhatsApp conversation list
+  useEffect(() => {
+    if (!isOpen || !myUid) return;
+
+    const unsubscribe = subscribeToUserInbox(myUid, (conversations) => {
+      setInboxThreads(conversations);
+    }, (err) => {
+      console.warn("User inbox subscription error:", err);
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [isOpen, myUid]);
+
   // Real-time onSnapshot listener querying the nested messages subcollection
   useEffect(() => {
     if (!isOpen || !myUid || !targetUid) {
@@ -144,13 +267,13 @@ const ChatModal: React.FC<ChatModalProps> = ({
     const q = query(
       collection(db, 'conversations', activeConversationId, 'messages'),
       orderBy('sent_at', 'desc'),
-      limit(30)
+      limit(35)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const seenIds = new Set<string>();
-      const msgsRaw = snapshot.docs.map(doc => {
-        const data = doc.data();
+      const msgsRaw = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
         let timestampStr = new Date().toISOString();
         if (data.sent_at) {
           if (typeof data.sent_at.toDate === 'function') {
@@ -160,14 +283,13 @@ const ChatModal: React.FC<ChatModalProps> = ({
           }
         }
         return {
-          id: doc.id,
+          id: docSnap.id,
           ...data,
           senderId: data.sender_id || data.senderId,
           timestamp: timestampStr,
         } as Message;
       });
 
-      // Filter out any duplicates based on message ID
       const cleanMsgs: Message[] = [];
       msgsRaw.forEach(m => {
         if (m.id && !seenIds.has(m.id)) {
@@ -176,28 +298,22 @@ const ChatModal: React.FC<ChatModalProps> = ({
         }
       });
 
-      // Reverse messages to chronological order for UI array representation
       cleanMsgs.reverse();
       setActiveMessages(cleanMsgs);
 
-      // Save cursor for Pagination / Lazy Loading previous messages
       if (snapshot.docs.length > 0) {
         setLastVisibleDoc(snapshot.docs[snapshot.docs.length - 1]);
       }
-      if (snapshot.docs.length < 30) {
-        setHasMore(false);
-      } else {
-        setHasMore(true);
-      }
+      setHasMore(snapshot.docs.length >= 35);
     }, (err) => {
-      console.warn("Firestore ordered nested messages subcollection query failed (composite index might be building), falling back:", err);
+      console.warn("Firestore ordered messages subcollection query failed, falling back:", err);
       const fallbackQ = query(
         collection(db, 'conversations', activeConversationId, 'messages'),
-        limit(30)
+        limit(35)
       );
       return onSnapshot(fallbackQ, (snapshot) => {
-        const msgsRaw = snapshot.docs.map(doc => {
-          const data = doc.data();
+        const msgsRaw = snapshot.docs.map(docSnap => {
+          const data = docSnap.data();
           let timestampStr = new Date().toISOString();
           if (data.sent_at) {
             if (typeof data.sent_at.toDate === 'function') {
@@ -207,7 +323,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
             }
           }
           return {
-            id: doc.id,
+            id: docSnap.id,
             ...data,
             senderId: data.sender_id || data.senderId,
             timestamp: timestampStr,
@@ -230,15 +346,10 @@ const ChatModal: React.FC<ChatModalProps> = ({
         });
         
         setActiveMessages(cleanMsgs);
-
         if (snapshot.docs.length > 0) {
           setLastVisibleDoc(snapshot.docs[snapshot.docs.length - 1]);
         }
-        if (snapshot.docs.length < 30) {
-          setHasMore(false);
-        } else {
-          setHasMore(true);
-        }
+        setHasMore(snapshot.docs.length >= 35);
       }, (err2) => {
         handleFirestoreError(err2, OperationType.LIST, 'messages');
       });
@@ -247,7 +358,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
     return () => unsubscribe();
   }, [isOpen, myUid, targetUid]);
 
-  // Clean resolved local optimistic messages once they appear in the real-time database state
+  // Clean optimistic messages that are now confirmed in database
   useEffect(() => {
     if (activeMessages.length > 0 && optimisticMessages.length > 0) {
       const dbTempIds = new Set(activeMessages.map(m => m.tempId).filter(Boolean));
@@ -258,7 +369,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
     }
   }, [activeMessages, optimisticMessages]);
 
-  // Listening to the conversation typing status in real-time
+  // Typing status listener
   useEffect(() => {
     if (!isOpen || !myUid || !targetUid) {
       setOtherIsTyping(false);
@@ -280,30 +391,24 @@ const ChatModal: React.FC<ChatModalProps> = ({
     return () => unsub();
   }, [isOpen, myUid, targetUid]);
 
-  // Auto-read incoming messages within the open modal and reset DB unread count
+  // Auto-mark as read
   useEffect(() => {
-    if (isOpen && activeMessages.length > 0) {
+    if (isOpen && activeMessages.length > 0 && myUid && targetUid) {
       const activeConversationId = [myUid, targetUid].sort().join('_');
       const incomingUnread = activeMessages.filter(m => m.senderId !== myUid && !m.isRead);
       if (incomingUnread.length > 0) {
         markChatAsRead(activeConversationId, myUid).catch(err => {
           console.warn("markChatAsRead failed:", err);
         });
-      } else {
-        // Also ensure member's unread count is reset to 0
-        markChatAsRead(activeConversationId, myUid).catch(err => {
-          console.warn("markChatAsRead reset failed:", err);
-        });
       }
     }
   }, [isOpen, activeMessages, myUid, targetUid]);
 
-  // Merge, format and client-side deduplicate all messages
+  // Merged and deduplicated messages
   const chatMessages = useMemo(() => {
     const seenIds = new Set<string>();
     const uniqueMessages: Message[] = [];
 
-    // 1. Append older historical messages (loaded via startAfter pagination)
     historicalMessages.forEach(m => {
       if (m.id && !seenIds.has(m.id)) {
         seenIds.add(m.id);
@@ -311,7 +416,6 @@ const ChatModal: React.FC<ChatModalProps> = ({
       }
     });
 
-    // 2. Append active real-time messages
     activeMessages.forEach(m => {
       if (m.id && !seenIds.has(m.id)) {
         seenIds.add(m.id);
@@ -319,7 +423,6 @@ const ChatModal: React.FC<ChatModalProps> = ({
       }
     });
 
-    // 3. Mark database matched optimistic records as 'sent'
     const dbTempIds = new Set(uniqueMessages.map(m => m.tempId).filter(Boolean));
     const resolvedDbMessages = uniqueMessages.map(m => {
       if (m.tempId) {
@@ -328,7 +431,6 @@ const ChatModal: React.FC<ChatModalProps> = ({
       return m;
     });
 
-    // 4. Append outstanding pending optimistic updates
     const pendingOptimistic = optimisticMessages
       .filter(om => !dbTempIds.has(om.tempId))
       .map(om => ({ ...om, isOptimistic: true, status: om.status || ('sending' as const) }));
@@ -336,13 +438,57 @@ const ChatModal: React.FC<ChatModalProps> = ({
     return [...resolvedDbMessages, ...pendingOptimistic];
   }, [historicalMessages, activeMessages, optimisticMessages]);
 
+  // In-chat search filter & jump
+  useEffect(() => {
+    if (!chatSearchQuery.trim()) {
+      setChatSearchMatches([]);
+      setActiveMatchIndex(0);
+      return;
+    }
+    const qLower = chatSearchQuery.toLowerCase();
+    const matched = chatMessages.filter(m => (m.text || '').toLowerCase().includes(qLower)).map(m => m.id || m.tempId || '');
+    setChatSearchMatches(matched);
+    setActiveMatchIndex(0);
+  }, [chatSearchQuery, chatMessages]);
+
+  const jumpToMatch = (index: number) => {
+    if (chatSearchMatches.length === 0) return;
+    const matchId = chatSearchMatches[index];
+    const el = document.getElementById(`msg-${matchId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
+  const handleNextMatch = () => {
+    if (chatSearchMatches.length === 0) return;
+    const nextIdx = (activeMatchIndex + 1) % chatSearchMatches.length;
+    setActiveMatchIndex(nextIdx);
+    jumpToMatch(nextIdx);
+  };
+
+  const handlePrevMatch = () => {
+    if (chatSearchMatches.length === 0) return;
+    const prevIdx = (activeMatchIndex - 1 + chatSearchMatches.length) % chatSearchMatches.length;
+    setActiveMatchIndex(prevIdx);
+    jumpToMatch(prevIdx);
+  };
+
+  const scrollToBottomSmart = (force = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 180;
+    if (force || isNearBottom) {
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 50);
+    }
+  };
+
   const loadMoreMessages = async () => {
     if (isLoadingMore || !hasMore || !lastVisibleDoc || !myUid || !targetUid) return;
-    
     setIsLoadingMore(true);
     const container = scrollRef.current;
-    
-    // Save scroll dimensions prior to insertion to prevent jumping
     const previousScrollHeight = container ? container.scrollHeight : 0;
     const previousScrollTop = container ? container.scrollTop : 0;
 
@@ -356,10 +502,9 @@ const ChatModal: React.FC<ChatModalProps> = ({
       );
 
       const querySnapshot = await getDocs(q);
-      
       if (querySnapshot.docs.length > 0) {
-        const olderMsgs = querySnapshot.docs.map(doc => {
-          const data = doc.data();
+        const olderMsgs = querySnapshot.docs.map(docSnap => {
+          const data = docSnap.data();
           let timestampStr = new Date().toISOString();
           if (data.sent_at) {
             if (typeof data.sent_at.toDate === 'function') {
@@ -369,7 +514,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
             }
           }
           return {
-            id: doc.id,
+            id: docSnap.id,
             ...data,
             senderId: data.sender_id || data.senderId,
             timestamp: timestampStr,
@@ -377,15 +522,10 @@ const ChatModal: React.FC<ChatModalProps> = ({
         });
         
         olderMsgs.reverse();
-
         setHistoricalMessages(prev => [...olderMsgs, ...prev]);
         setLastVisibleDoc(querySnapshot.docs[querySnapshot.docs.length - 1]);
-        
-        if (querySnapshot.docs.length < 30) {
-          setHasMore(false);
-        }
-        
-        // Retain scroll height offset so the visual presentation remains persistent
+        setHasMore(querySnapshot.docs.length >= 30);
+
         setTimeout(() => {
           if (container) {
             const newHeight = container.scrollHeight;
@@ -402,30 +542,16 @@ const ChatModal: React.FC<ChatModalProps> = ({
     }
   };
 
-  const scrollToBottomSmart = (force = false) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    
-    // Checks if current viewport is within 150px of scrollable bottom
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 150;
-    
-    if (force || isNearBottom) {
-      setTimeout(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 50);
-    }
-  };
-
-  // Scroll handler for paging older history
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
     if (el.scrollTop <= 50 && hasMore && !isLoadingMore) {
       loadMoreMessages();
     }
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollBottomBtn(distFromBottom > 220);
   };
 
-  // Monitor total messages for auto-scrolling
   useEffect(() => {
     if (isOpen) {
       if (lastMessageCountRef.current === 0 && chatMessages.length > 0) {
@@ -438,18 +564,6 @@ const ChatModal: React.FC<ChatModalProps> = ({
       lastMessageCountRef.current = 0;
     }
   }, [chatMessages, isOpen]);
-
-  // Handle forcing to bottom on registration / opening modal
-  useEffect(() => {
-    if (isOpen && isIdentityVerified) {
-      const timer1 = setTimeout(() => scrollToBottomSmart(true), 50);
-      const timer2 = setTimeout(() => scrollToBottomSmart(true), 150);
-      return () => {
-        clearTimeout(timer1);
-        clearTimeout(timer2);
-      };
-    }
-  }, [isOpen, isIdentityVerified]);
 
   const sendOptimisticMessage = async (payload: Partial<Message>) => {
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -471,13 +585,13 @@ const ChatModal: React.FC<ChatModalProps> = ({
       fileUrl: payload.fileUrl,
       imageUrl: payload.imageUrl,
       audioUrl: payload.audioUrl,
+      audioDuration: payload.audioDuration,
       fileName: payload.fileName,
       fileType: payload.fileType,
     };
 
     setOptimisticMessages(prev => [...prev, optMsg]);
     
-    // Call the parent sendMessage function, passing payload with a tracking tempId
     try {
       await onSendMessage({
         ...payload,
@@ -508,6 +622,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
         fileUrl: msg.fileUrl,
         imageUrl: msg.imageUrl,
         audioUrl: msg.audioUrl,
+        audioDuration: msg.audioDuration,
         fileName: msg.fileName,
         fileType: msg.fileType,
         tempId: msg.tempId
@@ -558,20 +673,46 @@ const ChatModal: React.FC<ChatModalProps> = ({
       isAdminInquiry: isSupportChat,
       type: 'text'
     });
+
     setText('');
+    setShowEmojiPicker(false);
+    setShowAttachMenu(false);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+  };
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setText(e.target.value);
+    
+    // Auto-grow textarea up to 120px
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
+
+    handleTypingStatus(true);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      handleTypingStatus(false);
+    }, 2000);
+  };
+
+  const handleAddEmoji = (emoji: string) => {
+    setText(prev => prev + emoji);
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList | null } }) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Optimistic Preview
+    setShowAttachMenu(false);
     const isImage = file.type.startsWith('image/');
     const isVideo = file.type.startsWith('video/');
     
-    if (isImage || isVideo) {
-      setUploadPreview({ url: URL.createObjectURL(file), type: file.type });
-    }
     setUploadProgress(0);
     setIsUploading(true);
 
@@ -590,7 +731,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
         receiverId: targetUid,
         conversationId,
         isAdminInquiry: isSupportChat,
-        type: isImage ? 'image' : isVideo ? 'file' : 'file', // keeping type as 'file' but with video mime to avoid breaking schema
+        type: isImage ? 'image' : 'file',
         fileUrl: url,
         imageUrl: isImage ? url : undefined,
         fileName: file.name,
@@ -602,28 +743,58 @@ const ChatModal: React.FC<ChatModalProps> = ({
     } finally {
       setIsUploading(false);
       setUploadProgress(null);
-      setUploadPreview(null);
     }
   };
 
+  // Real WhatsApp Voice Recording
   const startRecording = async () => {
     setMicPermissionError(null);
+    setShowAttachMenu(false);
+    setShowEmojiPicker(false);
+
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
-      const msg = "Your browser does not support audio recording or you are in an insecure context.";
+      const msg = "Your browser does not support audio recording or permissions are restricted in this window.";
       setMicPermissionError(msg);
       showNotification(msg, "info");
       return;
     }
 
     try {
-      if (!window.isSecureContext) {
-        const msg = "Audio recording requires a secure (HTTPS) connection.";
-        setMicPermissionError(msg);
-        showNotification(msg, "info");
-        return;
-      }
-      
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Setup Web Audio Analyser for live visualizer
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          const audioCtx = new AudioCtx();
+          audioContextRef.current = audioCtx;
+          const source = audioCtx.createMediaStreamSource(stream);
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 64;
+          source.connect(analyser);
+          analyserRef.current = analyser;
+
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          const updateVisualizer = () => {
+            if (!analyserRef.current) return;
+            analyserRef.current.getByteFrequencyData(dataArray);
+            
+            // Sample 16 bins
+            const newBars: number[] = [];
+            for (let i = 0; i < 16; i++) {
+              const val = dataArray[i * 2] || 0;
+              const height = Math.max(4, Math.round((val / 255) * 24));
+              newBars.push(height);
+            }
+            setLiveVolumeBars(newBars);
+            animFrameRef.current = requestAnimationFrame(updateVisualizer);
+          };
+          updateVisualizer();
+        }
+      } catch (audioCtxErr) {
+        console.warn("AudioContext visualizer warning:", audioCtxErr);
+      }
+
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -635,15 +806,18 @@ const ChatModal: React.FC<ChatModalProps> = ({
       };
 
       mediaRecorder.onstop = async () => {
-        const mimeTypes = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'];
+        const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/wav'];
         const mimeType = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported
           ? (mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'audio/webm')
           : 'audio/webm';
+        
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        const finalDuration = recordingDuration;
+        
         setIsUploading(true);
         setUploadProgress(0);
         try {
-          const fileExt = mimeType.split('/')[1].split(';')[0];
+          const fileExt = mimeType.split('/')[1]?.split(';')[0] || 'webm';
           const storagePath = `chats/voice_${Date.now()}.${fileExt}`;
           const url = await uploadFileWithProgress(audioBlob, storagePath, (progress) => {
             setUploadProgress(progress);
@@ -660,7 +834,8 @@ const ChatModal: React.FC<ChatModalProps> = ({
             isAdminInquiry: isSupportChat,
             type: 'voice',
             fileUrl: url,
-            audioUrl: url
+            audioUrl: url,
+            audioDuration: finalDuration
           });
         } catch (err: any) {
           console.error("Voice upload failed:", err);
@@ -671,27 +846,26 @@ const ChatModal: React.FC<ChatModalProps> = ({
         }
         
         stream.getTracks().forEach(track => track.stop());
+        if (audioContextRef.current) {
+          audioContextRef.current.close().catch(() => {});
+          audioContextRef.current = null;
+        }
+        if (animFrameRef.current) {
+          cancelAnimationFrame(animFrameRef.current);
+          animFrameRef.current = null;
+        }
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(250);
       setIsRecording(true);
       setRecordingDuration(0);
       timerRef.current = setInterval(() => {
         setRecordingDuration(prev => prev + 1);
       }, 1000);
     } catch (err: any) {
-      console.error("Microphone access denied detail:", err);
-      
+      console.error("Microphone access error:", err);
       const originalDetail = err?.message || err?.name || String(err) || "Permission denied";
-      let errorMessage = `Microphone access was blocked by the browser (${originalDetail}). Since this application runs in a sandboxed preview iframe, browsers reject microphone access by default. Please click the "Open in new window" button in the top-right of the preview title bar to load the application in a new tab, where microphone permissions can be granted.`;
-      const errStr = originalDetail.toLowerCase();
-      
-      if (err?.name === 'NotFoundError' || err?.name === 'DevicesNotFoundError' || errStr.includes('notfound') || errStr.includes('device')) {
-        errorMessage = `No microphone found on your device (${originalDetail}). Please connect a microphone and try again.`;
-      } else if (err?.name === 'NotReadableError' || err?.name === 'TrackStartError' || errStr.includes('readable') || errStr.includes('in use')) {
-        errorMessage = `Your microphone is already in use by another application (${originalDetail}). Please close other apps and try again.`;
-      }
-      
+      let errorMessage = `Microphone access was blocked by browser (${originalDetail}). Please allow microphone access or type your message.`;
       setMicPermissionError(errorMessage);
       showNotification(errorMessage, "info");
     }
@@ -729,6 +903,14 @@ const ChatModal: React.FC<ChatModalProps> = ({
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
   };
 
   const handleUnsend = async (msg: Message) => {
@@ -736,17 +918,18 @@ const ChatModal: React.FC<ChatModalProps> = ({
     try {
       const activeConversationId = [myUid, targetUid].sort().join('_');
       await deleteDoc(doc(db, 'conversations', activeConversationId, 'messages', msg.id));
-      showNotification("Message unsent", "success");
+      showNotification("Message deleted", "success");
     } catch (err) {
-      console.error("Failed to unsend message:", err);
-      showNotification("Failed to unsend message", "info");
+      console.error("Failed to delete message:", err);
+      showNotification("Failed to delete message", "info");
     }
   };
 
-  const formatDuration = (seconds: number) => {
-    const min = Math.floor(seconds / 60);
-    const sec = seconds % 60;
-    return `${min}:${sec.toString().padStart(2, '0')}`;
+  const handleCopyText = (msgText: string) => {
+    if (!msgText) return;
+    navigator.clipboard.writeText(msgText).then(() => {
+      showNotification("Message copied to clipboard", "success");
+    }).catch(() => {});
   };
 
   const checkIfSent = (msg: Message) => {
@@ -755,15 +938,12 @@ const ChatModal: React.FC<ChatModalProps> = ({
       return msg.senderId === 'admin';
     }
     const loggedInUid = user?.id || auth.currentUser?.uid;
-    
     if (loggedInUid && msg.senderId === loggedInUid) {
       return true;
     }
-    
     if (msg.senderId === 'client') {
       return true;
     }
-    
     return false;
   };
 
@@ -774,395 +954,973 @@ const ChatModal: React.FC<ChatModalProps> = ({
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const lastSenderMessageId = useMemo(() => {
-    for (let i = chatMessages.length - 1; i >= 0; i--) {
-      if (checkIfSent(chatMessages[i])) {
-        return chatMessages[i].id;
-      }
+  const formatConversationTime = (timestampAny: any) => {
+    if (!timestampAny) return '';
+    let d: Date;
+    if (timestampAny?.toDate) {
+      d = timestampAny.toDate();
+    } else {
+      d = new Date(timestampAny);
     }
-    return null;
-  }, [chatMessages]);
-
-  const getDynamicTimestamp = (timestampString: string) => {
-    if (!timestampString) return '';
-    const date = new Date(timestampString);
-    if (isNaN(date.getTime())) return '';
+    if (isNaN(d.getTime())) return '';
     
     const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) {
-      if (now.getDate() === date.getDate()) {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      }
+    if (d.toDateString() === now.toDateString()) {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) {
       return 'Yesterday';
     }
-    
-    const options: Intl.DateTimeFormatOptions = { weekday: 'short', hour: '2-digit', minute: '2-digit' };
-    if (diffMs < 7 * 24 * 60 * 60 * 1000) {
-      return date.toLocaleDateString([], options);
+    const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 7) {
+      return d.toLocaleDateString([], { weekday: 'short' });
     }
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric', ...options });
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const formatDuration = (seconds: number) => {
+    const min = Math.floor(seconds / 60);
+    const sec = seconds % 60;
+    return `${min}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  // WhatsApp date separator grouping helper
+  const getMessageDateGroup = (timestampStr: string): string => {
+    if (!timestampStr) return 'TODAY';
+    const date = new Date(timestampStr);
+    if (isNaN(date.getTime())) return 'TODAY';
+    const now = new Date();
+    
+    if (date.toDateString() === now.toDateString()) return 'TODAY';
+    
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) return 'YESTERDAY';
+    
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 7) {
+      return date.toLocaleDateString([], { weekday: 'long' }).toUpperCase();
+    }
+    
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
+  };
+
+  // Build unified conversation list for the left WhatsApp pane
+  const conversationList = useMemo(() => {
+    const list: Array<{
+      id: string;
+      contactId: string;
+      name: string;
+      category?: string;
+      image?: string;
+      isAdmin?: boolean;
+      lastMessage: string;
+      lastMessageTime: any;
+      unreadCount: number;
+    }> = [];
+
+    const seenContactIds = new Set<string>();
+
+    // 1. Always include Simcha Concierge (Admin support)
+    const adminConvo = inboxThreads.find(c => c.type === 'admin_support' || (c.participant_ids || []).includes('admin'));
+    list.push({
+      id: adminConvo?.id || [myUid, 'admin'].sort().join('_'),
+      contactId: 'admin',
+      name: 'Simcha Concierge',
+      category: 'Support & Concierge',
+      isAdmin: true,
+      lastMessage: adminConvo?.last_message || 'Inquire with our expert event specialists',
+      lastMessageTime: adminConvo?.last_message_at,
+      unreadCount: adminConvo?.unread_count || 0
+    });
+    seenContactIds.add('admin');
+
+    // 2. Add currently active contact if not admin
+    if (currentContact && currentContact.id !== 'admin' && !seenContactIds.has(currentContact.id)) {
+      list.push({
+        id: [myUid, currentContact.id].sort().join('_'),
+        contactId: currentContact.id,
+        name: currentContact.name,
+        category: currentContact.category,
+        image: currentContact.image,
+        isAdmin: false,
+        lastMessage: activeMessages[activeMessages.length - 1]?.text || 'Start conversation',
+        lastMessageTime: activeMessages[activeMessages.length - 1]?.timestamp || new Date(),
+        unreadCount: 0
+      });
+      seenContactIds.add(currentContact.id);
+    }
+
+    // 3. Populate other threads from inboxThreads
+    inboxThreads.forEach(t => {
+      const otherId = (t.participant_ids || []).find((p: string) => p !== myUid) || '';
+      if (!otherId || seenContactIds.has(otherId)) return;
+
+      const vendorMatch = vendors.find(v => v.id === otherId);
+      list.push({
+        id: t.id,
+        contactId: otherId,
+        name: vendorMatch?.name || t.client_name || 'Vendor Contact',
+        category: vendorMatch?.category || 'Vendor',
+        image: vendorMatch?.image,
+        isAdmin: otherId === 'admin',
+        lastMessage: t.last_message || '',
+        lastMessageTime: t.last_message_at,
+        unreadCount: t.unread_count || 0
+      });
+      seenContactIds.add(otherId);
+    });
+
+    // Filter by search query if any
+    let filtered = list;
+    if (inboxSearchQuery.trim()) {
+      const q = inboxSearchQuery.toLowerCase();
+      filtered = filtered.filter(item => 
+        item.name.toLowerCase().includes(q) || 
+        (item.category || '').toLowerCase().includes(q) ||
+        item.lastMessage.toLowerCase().includes(q)
+      );
+    }
+
+    if (inboxFilter === 'unread') {
+      filtered = filtered.filter(item => item.unreadCount > 0);
+    }
+
+    return filtered;
+  }, [inboxThreads, myUid, currentContact, activeMessages, vendors, inboxSearchQuery, inboxFilter]);
+
+  const handleSelectConversation = (item: typeof conversationList[0]) => {
+    setCurrentContact({
+      id: item.contactId,
+      name: item.name,
+      image: item.image,
+      category: item.category,
+      isAdmin: item.isAdmin
+    });
+    setMobileView('chat');
+    setIsChatSearching(false);
+    setChatSearchQuery('');
   };
 
   if (!isOpen) return null;
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Chat Dialog" className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="fixed inset-0 z-50 w-full h-[100svh] bg-black rounded-none md:relative md:max-w-xl md:h-[80vh] md:rounded-xl md:border md:border-zinc-800 md:shadow-2xl flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="bg-black p-4 border-b border-[#D4AF37]/20 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={onClose} 
-              className="md:hidden flex items-center justify-center text-[#D4AF37] hover:text-[#E5C76B] transition-colors p-2 -ml-2 h-11 w-11"
-              title="Back"
-            >
-              <ArrowLeft className="w-6 h-6 stroke-[2.5]" />
-            </button>
-            {isAdminMode || isAdminReplying ? (
-              <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center border border-[#D4AF37]/30">
-                <Shield className="w-5 h-5 text-[#D4AF37]" />
+    <div 
+      role="dialog" 
+      aria-modal="true" 
+      aria-label="WhatsApp Style Messaging" 
+      className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+    >
+      {/* Main WhatsApp Window Container */}
+      <div className="fixed inset-0 z-50 w-full h-[100svh] bg-[#0b0b0b] rounded-none md:relative md:max-w-4xl lg:max-w-5xl md:h-[88vh] md:max-h-[820px] md:rounded-2xl md:border md:border-[#D4AF37]/30 md:shadow-[0_20px_60px_rgba(0,0,0,0.95)] flex overflow-hidden font-sans select-none">
+        
+        {/* ================= LEFT COLUMN: CONVERSATION LIST ================= */}
+        <div 
+          className={`w-full md:w-[320px] lg:w-[350px] shrink-0 border-r border-[#D4AF37]/15 bg-[#101012] flex flex-col h-full transition-all duration-300 ${
+            mobileView === 'chat' ? 'hidden md:flex' : 'flex'
+          }`}
+        >
+          {/* Conversation List Top Header */}
+          <div className="bg-[#161619] px-3.5 py-3 border-b border-[#D4AF37]/15 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-full bg-[#201c0c] border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] font-bold text-xs shadow-inner">
+                {user?.photoURL ? (
+                  <img src={user.photoURL} alt="" className="w-full h-full rounded-full object-cover" />
+                ) : (
+                  <span>{user?.name?.[0] || 'U'}</span>
+                )}
               </div>
-            ) : (
-              <img src={vendor?.image} className="w-10 h-10 rounded-full object-cover border border-[#D4AF37]/30" alt="" />
-            )}
-            <div>
-              <h3 className="font-bold text-[#D4AF37] font-[Cinzel] text-sm">
-                {isAdminReplying ? `Chat with ${clientName}` : (isAdminMode ? 'System Concierge' : vendor?.name)}
-              </h3>
-              <p className="text-[10px] text-zinc-400 uppercase tracking-widest">
-                {isAdminReplying ? `${clientEmail}` : (isAdminMode ? 'Direct Support' : 'In-App Messaging')}
-              </p>
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-zinc-100 font-[Cinzel] tracking-wide truncate">Simcha Chats</h2>
+                <p className="text-[10px] text-[#D4AF37] uppercase tracking-wider font-mono">WhatsApp Edition</p>
+              </div>
             </div>
-          </div>
-          <button onClick={onClose} className="hidden md:block text-zinc-400 hover:text-white p-2 transition-colors"><X className="w-5 h-5" /></button>
-        </div>
 
-        {/* Identity Verification */}
-        {!isIdentityVerified ? (
-          <div className="p-6 space-y-4">
-            <div className="text-center mb-4">
-              <User className="w-10 h-10 text-[#D4AF37] mx-auto mb-2 opacity-50" />
-              <h4 className="text-white font-bold">Who are you?</h4>
-              <p className="text-xs text-zinc-400">Provide your details to start a conversation.</p>
-            </div>
-            <div className="space-y-3">
-              <input 
-                type="text" 
-                placeholder="Your Name" 
-                className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-lg px-4 py-2.5 text-base text-white outline-none focus:border-[#D4AF37]" 
-                value={clientName} 
-                onChange={e => setClientName(e.target.value)} 
-              />
-              <input 
-                type="email" 
-                placeholder="Your Email" 
-                className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-lg px-4 py-2.5 text-base text-white outline-none focus:border-[#D4AF37]" 
-                value={clientEmail} 
-                onChange={e => setClientEmail(e.target.value)} 
-              />
+            <div className="flex items-center gap-1">
               <button 
-                onClick={() => clientName && clientEmail && setIsIdentityVerified(true)}
-                className="w-full bg-[#D4AF37] text-black font-bold h-11 rounded-full hover:bg-[#E5C76B] transition-all text-sm uppercase tracking-widest"
+                type="button"
+                onClick={() => {
+                  ensureAdminSupportConversation(myUid, 'admin').catch(console.error);
+                  setCurrentContact({
+                    id: 'admin',
+                    name: 'Simcha Concierge',
+                    category: 'Support & Concierge',
+                    isAdmin: true
+                  });
+                  setMobileView('chat');
+                }}
+                className="p-1.5 rounded-full text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 transition-colors"
+                title="Ask Concierge Support"
+                aria-label="Ask Concierge Support"
               >
-                Start Chatting
+                <Shield className="w-4 h-4 text-[#D4AF37]" />
+              </button>
+              <button 
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded-full text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+                title="Close"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
-        ) : (
-          <>
-            {/* Chat Body */}
-            <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 space-y-4 bg-black/40">
-              {/* Pagination Loader */}
-              {hasMore && (
-                <div className="flex justify-center py-2 border-b border-white/5 bg-zinc-950/20 rounded-lg mb-2">
-                  {isLoadingMore ? (
-                    <div className="flex items-center gap-2 text-xs text-[#D4AF37] tracking-wider uppercase font-mono animate-pulse">
-                      <Loader2 className="w-3 h-3 animate-spin" /> Loading History...
-                    </div>
-                  ) : (
-                    <button 
-                      onClick={loadMoreMessages} 
-                      className="text-[10px] text-zinc-400 hover:text-[#D4AF37] transition-colors font-mono uppercase tracking-widest"
-                    >
-                      Scroll up or click to load history
-                    </button>
-                  )}
-                </div>
+
+          {/* Search Bar in Conversation List */}
+          <div className="p-2.5 bg-[#101012] border-b border-white/5">
+            <div className="bg-[#18181c] rounded-xl px-3 py-1.5 flex items-center gap-2 border border-white/5 focus-within:border-[#D4AF37]/40 transition-colors">
+              <Search className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+              <input 
+                type="text"
+                value={inboxSearchQuery}
+                onChange={e => setInboxSearchQuery(e.target.value)}
+                placeholder="Search or start new chat"
+                className="bg-transparent text-xs text-zinc-100 placeholder:text-zinc-500 outline-none w-full"
+              />
+              {inboxSearchQuery && (
+                <button type="button" onClick={() => setInboxSearchQuery('')} className="text-zinc-500 hover:text-zinc-200">
+                  <X className="w-3 h-3" />
+                </button>
               )}
-
-              {chatMessages.length === 0 ? (
-                <div className="text-center py-10 opacity-30">
-                  <MessageSquare className="w-12 h-12 mx-auto mb-2 text-[#D4AF37]" />
-                  <p className="text-xs font-[Cinzel]">
-                    {isAdminReplying ? "Send a message to start this discussion." : (isAdminMode ? 'Have a question? We are here to help.' : 'Send a message to inquire about services.')}
-                  </p>
-                </div>
-              ) : (
-                chatMessages.map((msg) => {
-                  const isSent = checkIfSent(msg);
-                  return (
-                    <motion.div 
-                      key={msg.id || msg.tempId} 
-                      initial={{ opacity: 0, y: 15, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={{ duration: 0.25, ease: "easeOut" }}
-                      className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}
-                    >
-                      <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative shadow-md ${
-                        isSent 
-                          ? 'bg-[#D4AF37] text-black' 
-                          : 'bg-zinc-900 border border-zinc-800 text-white'
-                      }`}>
-                        {msg.type === 'image' || msg.imageUrl ? (
-                          <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: msg.imageUrl || msg.fileUrl || '', type: 'image'})}>
-                             <ImageWithPlaceholder 
-                               src={msg.imageUrl || msg.fileUrl || ''} 
-                               alt="Sent" 
-                               isSent={isSent}
-                               onLoadCompletes={() => scrollToBottomSmart(false)} 
-                             />
-                             {msg.text && msg.text !== 'Sent an image' && <p className="text-sm">{msg.text}</p>}
-                          </div>
-                        ) : msg.type === 'file' ? (
-                          msg.fileType?.startsWith('video/') ? (
-                             <div className="space-y-2 cursor-pointer relative group" onClick={() => setFullscreenMedia({url: msg.fileUrl || '', type: 'video'})}>
-                               <div className="relative rounded-lg overflow-hidden border border-white/10 bg-black">
-                                 <video src={msg.fileUrl} className="w-full aspect-video object-cover" />
-                                 <div className="absolute inset-0 bg-black/20 flex items-center justify-center group-hover:bg-black/40 transition-colors">
-                                   <div className="w-12 h-12 bg-[#D4AF37] text-black rounded-full flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
-                                     <Play className="w-6 h-6 fill-current ml-0.5" />
-                                   </div>
-                                 </div>
-                               </div>
-                               {msg.text && msg.text !== 'Sent a video' && <p className="text-sm">{msg.text}</p>}
-                             </div>
-                          ) : (
-                          <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl transition-all text-sm ${isSent ? 'bg-black/10 hover:bg-black/20 text-black' : 'bg-black/30 hover:bg-black/40 text-white'}`}>
-                            <FileText className="w-8 h-8 opacity-60 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                               <p className="truncate font-bold text-xs">{msg.fileName || 'Document'}</p>
-                               <p className="text-[10px] opacity-60">Click to download</p>
-                            </div>
-                            <Download className="w-4 h-4 opacity-60 flex-shrink-0" />
-                          </a>
-                          )
-                        ) : msg.type === 'voice' || msg.audioUrl ? (
-                          <div className="space-y-1">
-                             <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isSent ? 'text-black/60' : 'text-zinc-400'}`}>Voice Note</p>
-                             {msg.isOptimistic ? (
-                               <div className="flex items-center gap-3 bg-zinc-950 border border-[#D4AF37]/20 rounded-xl p-3 w-[240px] animate-pulse">
-                                 <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 flex items-center justify-center border border-[#D4AF37]/20">
-                                   <Play className="w-4 h-4 text-[#D4AF37]/40" />
-                                 </div>
-                                 <div className="flex-1 space-y-1.5">
-                                   <div className="h-1.5 w-24 bg-[#D4AF37]/20 rounded" />
-                                   <div className="h-1 w-16 bg-[#D4AF37]/10 rounded" />
-                                 </div>
-                                </div>
-                             ) : (
-                               <CustomAudioPlayer src={msg.audioUrl || msg.fileUrl || ''} theme={isSent ? 'sent' : 'received'} />
-                             )}
-                          </div>
-                        ) : (
-                          <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{msg.text}</p>
-                        )}
-                        
-                        <div className="flex justify-end items-center gap-1 mt-2 select-none leading-none">
-                          <span className={`text-[9px] font-medium opacity-65 ${isSent ? 'text-black/75' : 'text-zinc-400'}`}>
-                            {msg.status === 'sending' ? 'Sending...' : getDynamicTimestamp(msg.timestamp)}
-                          </span>
-                          {isSent && (
-                            msg.status === 'sending' ? (
-                              <Loader2 className="w-2.5 h-2.5 animate-spin text-black/50" />
-                            ) : msg.status === 'error' ? (
-                              <AlertTriangle className="w-3 h-3 text-red-600" />
-                            ) : (
-                              <span className={`text-[10px] ${msg.isRead ? 'text-[#D4AF37]' : 'text-black/40'}`}>
-                                <CheckCircle className="w-3 h-3" />
-                              </span>
-                            )
-                          )}
-                          {isSent && !msg.isOptimistic && msg.status !== 'sending' && (
-                            <button
-                              onClick={() => handleUnsend(msg)}
-                              className={`ml-2 text-[10px] ${isSent ? 'text-black/40 hover:text-black' : 'text-zinc-400 hover:text-zinc-300'} transition-colors`}
-                              title="Unsend message"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Failed sending state with Retry */}
-                        {isSent && msg.status === 'error' && (
-                          <div className="mt-2 pt-2 border-t border-zinc-400/10 flex items-center justify-end gap-1.5">
-                            <span className="text-red-600 text-[9px] font-bold uppercase tracking-wider font-mono">Failed</span>
-                            <button 
-                              onClick={() => handleRetryMessage(msg)}
-                              className="bg-black/80 hover:bg-black text-zinc-400 font-bold px-2 py-0.5 rounded text-[9px] border border-zinc-400/20 uppercase tracking-widest transition-all"
-                            >
-                              Retry
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Seen / Delivered receipts below last message bubble */}
-                      {isSent && msg.id === lastSenderMessageId && (
-                        <div className="text-[9px] mt-1 pr-2 opacity-60 text-zinc-400 tracking-wider font-mono">
-                          {msg.status === 'sending' ? 'Sending...' : (msg.status === 'error' ? 'Not Sent' : (msg.isRead ? 'Seen' : 'Delivered'))}
-                        </div>
-                      )}
-                    </motion.div>
-                  );
-                })
-              )}
-
-              {/* Typing Indicator */}
-              {otherIsTyping && (
-                <div className="flex justify-start px-2 py-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="bg-zinc-900 border border-[#D4AF37]/10 text-[#D4AF37] px-4 py-2.5 rounded-[20px] text-[11px] flex items-center gap-3 shadow-lg">
-                    <span className="font-semibold">
-                      {(isAdminReplying ? clientName : (isAdminMode ? 'System Concierge' : vendor?.name)) || 'Someone'} is typing
-                    </span>
-                    <div className="flex items-center gap-1 mt-0.5" aria-hidden="true">
-                      <motion.span
-                        animate={{ opacity: [0.3, 1, 0.3] }}
-                        transition={{ repeat: Infinity, duration: 1.2, delay: 0 }}
-                        className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
-                      />
-                      <motion.span
-                        animate={{ opacity: [0.3, 1, 0.3] }}
-                        transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }}
-                        className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
-                      />
-                      <motion.span
-                        animate={{ opacity: [0.3, 1, 0.3] }}
-                        transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }}
-                        className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* Scroll anchor */}
-              <div ref={bottomRef} className="h-2" />
             </div>
 
-            {/* Input Footer */}
-            <div 
-              className={`p-4 border-t transition-colors relative bg-black space-y-3 sticky bottom-0 pb-safe pb-[calc(env(safe-area-inset-bottom)+1rem)] ${isDragActive ? 'border-[#D4AF37] shadow-[0_0_30px_rgba(212,175,55,0.2)] bg-[#D4AF37]/5' : 'border-[#D4AF37]/20'}`}
-              onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragActive(true); }}
-              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragActive(true); }}
-              onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragActive(false); }}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDragActive(false);
-                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                  handleFileUpload({ target: { files: e.dataTransfer.files } });
-                }
-              }}
-            >
-              <input type="file" accept="image/*,video/*,.pdf,.doc,.docx" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
-              
-              {isDragActive && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80 backdrop-blur-sm border-2 border-dashed border-[#D4AF37] rounded-xl m-2 pointer-events-none">
-                  <div className="flex flex-col items-center text-[#D4AF37]">
-                    <Upload className="w-8 h-8 mb-2 animate-bounce" />
-                    <span className="font-bold tracking-widest text-sm uppercase">Drop file to attach</span>
-                  </div>
-                </div>
-              )}
+            {/* Quick Filter Tabs (All / Unread) */}
+            <div className="flex items-center gap-2 mt-2 px-1">
+              <button
+                type="button"
+                onClick={() => setInboxFilter('all')}
+                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full transition-colors ${
+                  inboxFilter === 'all' 
+                    ? 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40' 
+                    : 'text-zinc-400 hover:text-zinc-200 bg-white/5'
+                }`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setInboxFilter('unread')}
+                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full transition-colors flex items-center gap-1 ${
+                  inboxFilter === 'unread' 
+                    ? 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40' 
+                    : 'text-zinc-400 hover:text-zinc-200 bg-white/5'
+                }`}
+              >
+                Unread
+              </button>
+            </div>
+          </div>
 
-              {/* Upload Preview & Progress */}
-              {(isUploading && uploadProgress !== null) && (
-                <div className="flex items-center gap-4 p-4 bg-[#111] border border-[#D4AF37]/20 rounded-xl shadow-2xl relative overflow-hidden animate-pulse">
-                  <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-black border border-white/10 shrink-0 flex items-center justify-center">
-                    {uploadPreview ? (
-                      uploadPreview.type.startsWith('video') ? (
-                        <video src={uploadPreview.url} className="w-full h-full object-cover opacity-40" />
+          {/* Conversation List Scroll Area */}
+          <div className="flex-1 overflow-y-auto divide-y divide-white/5">
+            {conversationList.length === 0 ? (
+              <div className="p-8 text-center text-zinc-500 text-xs">
+                No conversations found.
+              </div>
+            ) : (
+              conversationList.map((item) => {
+                const isSelected = currentContact?.id === item.contactId;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSelectConversation(item)}
+                    className={`w-full p-3 text-left flex items-center gap-3 transition-colors cursor-pointer relative ${
+                      isSelected 
+                        ? 'bg-[#1a1812] border-l-3 border-[#D4AF37]' 
+                        : 'hover:bg-white/[0.03]'
+                    }`}
+                  >
+                    {/* Avatar */}
+                    <div className="relative shrink-0">
+                      {item.isAdmin ? (
+                        <div className="w-11 h-11 rounded-full bg-[#201c0c] border border-[#D4AF37]/50 flex items-center justify-center shadow-inner">
+                          <Shield className="w-5 h-5 text-[#D4AF37]" />
+                        </div>
+                      ) : item.image ? (
+                        <img 
+                          src={item.image} 
+                          alt="" 
+                          className="w-11 h-11 rounded-full object-cover border border-[#D4AF37]/30" 
+                        />
                       ) : (
-                        <img src={uploadPreview.url} className="w-full h-full object-cover opacity-40" />
-                      )
-                    ) : (
-                      <FileText className="w-6 h-6 text-[#D4AF37]/40" />
-                    )}
-                    {/* Seamless Progress Ring/Spinner Overlay */}
-                    <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center">
-                      <div className="w-8 h-8 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_10px_rgba(212,175,55,0.3)]"></div>
+                        <div className="w-11 h-11 rounded-full bg-[#18181c] border border-white/10 flex items-center justify-center text-[#D4AF37] font-bold text-sm">
+                          {item.name?.[0] || 'S'}
+                        </div>
+                      )}
+                      <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#101012]" />
                     </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-black uppercase text-[#D4AF37] tracking-[0.2em] mb-1">Transferring Asset</p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-xl font-bold text-white tracking-tight font-mono">{Math.round(uploadProgress)}%</span>
-                      <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Complete</span>
-                    </div>
-                  </div>
-                </div>
-              )}
 
-              {micPermissionError && (
-                <div id="mic-perm-error-alert" className="p-3 bg-zinc-400/10 border border-zinc-400/30 rounded-xl text-zinc-100 text-xs flex items-start gap-2.5 shadow-md">
-                  <AlertTriangle className="w-4 h-4 text-zinc-400 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1 space-y-1">
-                    <p className="font-semibold text-zinc-400">Microphone Access Needed</p>
-                    <p className="opacity-90 leading-relaxed text-[11px]">{micPermissionError}</p>
-                    <p className="text-[10px] text-zinc-400 leading-relaxed">
-                      Alternative: You can record audio on your device and attach the file using the paperclip icon instead!
+                    {/* Metadata */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-baseline mb-0.5">
+                        <span className={`text-[13.5px] truncate font-semibold ${isSelected ? 'text-[#D4AF37]' : 'text-zinc-100'}`}>
+                          {item.name}
+                        </span>
+                        <span className="text-[10px] text-zinc-500 shrink-0 ml-1">
+                          {formatConversationTime(item.lastMessageTime)}
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <p className="text-[11.5px] text-zinc-400 truncate pr-2">
+                          {item.lastMessage || 'Open chat...'}
+                        </p>
+                        {item.unreadCount > 0 && (
+                          <span className="bg-[#D4AF37] text-black text-[9.5px] font-bold px-1.5 py-0.2 rounded-full shrink-0">
+                            {item.unreadCount}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* ================= RIGHT COLUMN: CHAT CANVAS ================= */}
+        <div 
+          className={`flex-1 flex flex-col bg-[#0b0b0b] relative min-w-0 h-full ${
+            mobileView === 'list' ? 'hidden md:flex' : 'flex'
+          }`}
+        >
+          {/* WhatsApp Chat Header */}
+          <header className="bg-[#141416] px-3.5 py-2.5 border-b border-[#D4AF37]/20 flex items-center justify-between shrink-0 z-20 shadow-sm">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {/* Back to Conversation List Button (Mobile) */}
+              <button 
+                type="button"
+                onClick={() => setMobileView('list')} 
+                className="md:hidden flex items-center justify-center text-zinc-300 hover:text-[#D4AF37] p-1.5 -ml-1 rounded-full hover:bg-white/5 active:scale-95"
+                title="All Chats"
+                aria-label="All Chats"
+              >
+                <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
+              </button>
+
+              {/* Avatar with Status Ring */}
+              <div className="relative shrink-0">
+                {currentContact?.isAdmin ? (
+                  <div className="w-10 h-10 rounded-full bg-[#1e1b0d] border border-[#D4AF37]/50 flex items-center justify-center shadow-inner">
+                    <Shield className="w-5 h-5 text-[#D4AF37]" />
+                  </div>
+                ) : currentContact?.image ? (
+                  <img 
+                    src={currentContact.image} 
+                    className="w-10 h-10 rounded-full object-cover border border-[#D4AF37]/40 shadow-sm" 
+                    alt="" 
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-[#1e1b0d] border border-[#D4AF37]/50 flex items-center justify-center text-[#D4AF37] font-bold text-sm">
+                    {currentContact?.name?.[0] || 'S'}
+                  </div>
+                )}
+                {/* Green online dot */}
+                <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#141416]" />
+              </div>
+
+              {/* Contact Name & Subtitle */}
+              <div className="min-w-0">
+                <h2 className="font-semibold text-zinc-100 text-[14.5px] leading-tight truncate">
+                  {currentContact?.name || 'Simcha Contact'}
+                </h2>
+                <p className="text-[11px] text-zinc-400 font-normal leading-tight truncate mt-0.5">
+                  {otherIsTyping ? (
+                    <span className="text-[#D4AF37] font-medium animate-pulse">typing...</span>
+                  ) : (
+                    currentContact?.isAdmin ? 'Concierge Support • Online' : `${currentContact?.category || 'Vendor'} • Online`
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Header Action Controls */}
+            <div className="flex items-center gap-1 shrink-0 text-zinc-400">
+              {/* Search in chat button */}
+              <button 
+                type="button"
+                onClick={() => setIsChatSearching(prev => !prev)} 
+                className={`p-2 rounded-full transition-colors ${isChatSearching ? 'text-[#D4AF37] bg-white/10' : 'hover:text-white hover:bg-white/5'}`}
+                title="Search in conversation"
+                aria-label="Search in conversation"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+
+              {/* More options menu */}
+              <div className="relative">
+                <button 
+                  type="button"
+                  onClick={() => setShowMoreMenu(prev => !prev)}
+                  className="p-2 rounded-full hover:text-white hover:bg-white/5 transition-colors"
+                  title="More options"
+                  aria-label="More options"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+
+                <AnimatePresence>
+                  {showMoreMenu && (
+                    <motion.div 
+                      initial={{ scale: 0.95, opacity: 0, y: -5 }}
+                      animate={{ scale: 1, opacity: 1, y: 0 }}
+                      exit={{ scale: 0.95, opacity: 0, y: -5 }}
+                      className="absolute right-0 top-10 w-44 bg-[#18181c] border border-[#D4AF37]/30 rounded-xl shadow-2xl py-1.5 z-30 text-xs"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsChatSearching(true);
+                          setShowMoreMenu(false);
+                        }}
+                        className="w-full px-3.5 py-2 text-left hover:bg-white/5 text-zinc-200 flex items-center gap-2"
+                      >
+                        <Search className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        <span>Search in chat</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          scrollToBottomSmart(true);
+                          setShowMoreMenu(false);
+                        }}
+                        className="w-full px-3.5 py-2 text-left hover:bg-white/5 text-zinc-200 flex items-center gap-2"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5 rotate-[-90deg] text-[#D4AF37]" />
+                        <span>Jump to bottom</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMoreMenu(false);
+                          onClose();
+                        }}
+                        className="w-full px-3.5 py-2 text-left hover:bg-white/5 text-zinc-400 border-t border-white/5 mt-1"
+                      >
+                        Close conversation
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Close Button */}
+              <button 
+                type="button"
+                onClick={onClose} 
+                className="text-zinc-400 hover:text-white hover:bg-white/5 p-2 rounded-full transition-colors"
+                title="Close modal"
+                aria-label="Close modal"
+              >
+                <X className="w-4.5 h-4.5" />
+              </button>
+            </div>
+          </header>
+
+          {/* In-Chat Search Bar Drawer */}
+          <AnimatePresence>
+            {isChatSearching && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="bg-[#161619] border-b border-[#D4AF37]/20 px-3.5 py-2 flex items-center justify-between gap-2 z-20"
+              >
+                <div className="flex-1 flex items-center gap-2 bg-[#1c1c20] rounded-lg px-2.5 py-1 border border-white/10">
+                  <Search className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                  <input 
+                    type="text"
+                    value={chatSearchQuery}
+                    onChange={e => setChatSearchQuery(e.target.value)}
+                    placeholder="Search in chat..."
+                    className="bg-transparent text-xs text-zinc-100 placeholder:text-zinc-500 outline-none w-full"
+                    autoFocus
+                  />
+                  {chatSearchQuery && (
+                    <span className="text-[10px] text-zinc-400 font-mono shrink-0">
+                      {chatSearchMatches.length > 0 ? `${activeMatchIndex + 1} of ${chatSearchMatches.length}` : '0 results'}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button 
+                    type="button"
+                    onClick={handlePrevMatch}
+                    disabled={chatSearchMatches.length === 0}
+                    className="p-1 text-zinc-400 hover:text-white disabled:opacity-30"
+                    title="Previous match"
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={handleNextMatch}
+                    disabled={chatSearchMatches.length === 0}
+                    className="p-1 text-zinc-400 hover:text-white disabled:opacity-30"
+                    title="Next match"
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setIsChatSearching(false);
+                      setChatSearchQuery('');
+                    }}
+                    className="p-1 text-zinc-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Identity Verification Step for Guests */}
+          {!isIdentityVerified ? (
+            <div className="p-6 space-y-4 my-auto max-w-sm mx-auto text-center">
+              <div className="w-14 h-14 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center mx-auto mb-2">
+                <User className="w-7 h-7 text-[#D4AF37]" />
+              </div>
+              <h3 className="text-lg font-bold text-white font-[Cinzel]">Join Conversation</h3>
+              <p className="text-xs text-zinc-400">Enter your name and email to chat directly on Simcha Booking.</p>
+              
+              <div className="space-y-3 pt-2 text-left">
+                <input 
+                  type="text" 
+                  placeholder="Your Full Name" 
+                  className="w-full bg-[#161618] border border-[#D4AF37]/30 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-[#D4AF37]" 
+                  value={clientName} 
+                  onChange={e => setClientName(e.target.value)} 
+                />
+                <input 
+                  type="email" 
+                  placeholder="Your Email Address" 
+                  className="w-full bg-[#161618] border border-[#D4AF37]/30 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-[#D4AF37]" 
+                  value={clientEmail} 
+                  onChange={e => setClientEmail(e.target.value)} 
+                />
+                <button 
+                  type="button"
+                  onClick={() => clientName && clientEmail && setIsIdentityVerified(true)}
+                  className="w-full bg-[#D4AF37] text-black font-bold h-11 rounded-full hover:bg-[#E5C76B] transition-all text-xs uppercase tracking-widest cursor-pointer shadow-md"
+                >
+                  Start Chat
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* WhatsApp Chat Canvas with authentic gold doodle wallpaper texture */}
+              <div 
+                ref={scrollRef} 
+                onScroll={handleScroll} 
+                className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-2 relative bg-[#0b0b0b]"
+                style={{
+                  backgroundImage: `radial-gradient(circle at 50% 50%, rgba(212,175,55,0.035) 0%, transparent 70%)`
+                }}
+              >
+                {/* Pagination / History Loader */}
+                {hasMore && (
+                  <div className="flex justify-center py-1.5">
+                    {isLoadingMore ? (
+                      <div className="flex items-center gap-2 text-xs text-[#D4AF37] bg-zinc-900/80 px-3 py-1 rounded-full border border-white/5 font-mono">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Loading past messages...
+                      </div>
+                    ) : (
+                      <button 
+                        type="button"
+                        onClick={loadMoreMessages} 
+                        className="text-[11px] text-zinc-400 hover:text-[#D4AF37] transition-colors bg-zinc-900/60 px-3 py-1 rounded-full border border-white/5"
+                      >
+                        Scroll up to load older messages
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {chatMessages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full py-16 text-center opacity-40 space-y-2">
+                    <div className="w-14 h-14 rounded-full bg-[#D4AF37]/10 flex items-center justify-center border border-[#D4AF37]/20">
+                      <CheckCheck className="w-7 h-7 text-[#D4AF37]" />
+                    </div>
+                    <p className="text-xs text-zinc-300 font-medium font-[Cinzel] tracking-wider">
+                      End-to-End Encrypted Simcha Messaging
+                    </p>
+                    <p className="text-[11px] text-zinc-500 max-w-xs">
+                      {isSupportChat ? "Ask our team anything about dates, custom packages, and bookings." : "Inquire directly about availability, quotes, and special requests."}
                     </p>
                   </div>
+                ) : (
+                  chatMessages.map((msg, index) => {
+                    const isSent = checkIfSent(msg);
+                    const currentDateGroup = getMessageDateGroup(msg.timestamp);
+                    const prevDateGroup = index > 0 ? getMessageDateGroup(chatMessages[index - 1].timestamp) : null;
+                    const showDateBadge = currentDateGroup !== prevDateGroup;
+
+                    const isReadByRecipient = msg.isRead || ((msg as any).read_by && Object.keys((msg as any).read_by || {}).some(k => k !== msg.senderId));
+                    const isMatchedInSearch = chatSearchQuery.trim() && (msg.text || '').toLowerCase().includes(chatSearchQuery.toLowerCase());
+
+                    return (
+                      <React.Fragment key={msg.id || msg.tempId}>
+                        {/* WhatsApp Date Separator Pill */}
+                        {showDateBadge && (
+                          <div className="flex justify-center my-2.5">
+                            <span className="bg-[#18181c]/90 text-zinc-400 text-[10.5px] font-semibold px-3 py-0.5 rounded-md border border-white/5 uppercase tracking-wider backdrop-blur-sm shadow-sm select-none">
+                              {currentDateGroup}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Message Bubble Container */}
+                        <motion.div 
+                          id={`msg-${msg.id || msg.tempId}`}
+                          initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          transition={{ duration: 0.18, ease: "easeOut" }}
+                          className={`flex flex-col ${isSent ? 'items-end' : 'items-start'} group`}
+                        >
+                          <div 
+                            className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-2.5 sm:p-3 relative shadow-sm transition-all ${
+                              isSent 
+                                ? 'bg-[#201b0b] border border-[#D4AF37]/35 text-zinc-100 rounded-tr-xs' 
+                                : 'bg-[#18181c] border border-white/10 text-zinc-100 rounded-tl-xs'
+                            } ${isMatchedInSearch ? 'ring-2 ring-[#D4AF37] shadow-[0_0_12px_rgba(212,175,55,0.4)]' : ''}`}
+                          >
+                            {/* Image Attachment */}
+                            {msg.type === 'image' || msg.imageUrl ? (
+                              <div 
+                                className="space-y-1.5 cursor-pointer" 
+                                onClick={() => setFullscreenMedia({ url: msg.imageUrl || msg.fileUrl || '', type: 'image' })}
+                              >
+                                <ImageWithPlaceholder 
+                                  src={msg.imageUrl || msg.fileUrl || ''} 
+                                  alt="Sent media" 
+                                  isSent={isSent}
+                                  onLoadCompletes={() => scrollToBottomSmart(false)} 
+                                />
+                                {msg.text && msg.text !== 'Sent an image' && (
+                                  <p className="text-[14px] leading-relaxed px-1">{msg.text}</p>
+                                )}
+                              </div>
+                            ) : msg.type === 'file' ? (
+                              msg.fileType?.startsWith('video/') ? (
+                                <div 
+                                  className="space-y-1.5 cursor-pointer relative group/video" 
+                                  onClick={() => setFullscreenMedia({ url: msg.fileUrl || '', type: 'video' })}
+                                >
+                                  <div className="relative rounded-xl overflow-hidden border border-white/10 bg-black">
+                                    <video src={msg.fileUrl} className="w-full aspect-video object-cover" />
+                                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center group-hover/video:bg-black/50 transition-colors">
+                                      <div className="w-11 h-11 bg-[#D4AF37] text-black rounded-full flex items-center justify-center shadow-lg transform group-hover/video:scale-110 transition-transform">
+                                        <Play className="w-5 h-5 fill-current ml-0.5" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {msg.text && msg.text !== 'Sent a video' && (
+                                    <p className="text-[14px] leading-relaxed px-1">{msg.text}</p>
+                                  )}
+                                </div>
+                              ) : (
+                                /* WhatsApp-Style File / Document Card */
+                                <a 
+                                  href={msg.fileUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  className={`flex items-center gap-3 p-2.5 rounded-xl transition-all ${
+                                    isSent ? 'bg-black/25 hover:bg-black/35 text-zinc-100' : 'bg-black/30 hover:bg-black/40 text-zinc-100'
+                                  }`}
+                                >
+                                  <div className="w-10 h-10 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center shrink-0">
+                                    <FileText className="w-5 h-5 text-[#D4AF37]" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="truncate font-semibold text-[13px] text-zinc-100">{msg.fileName || 'Document'}</p>
+                                    <p className="text-[11px] text-zinc-400">Click to open or download</p>
+                                  </div>
+                                  <Download className="w-4 h-4 text-zinc-400 shrink-0" />
+                                </a>
+                              )
+                            ) : msg.type === 'voice' || msg.audioUrl ? (
+                              /* WhatsApp Voice Note Card with Real CustomAudioPlayer */
+                              <CustomAudioPlayer 
+                                src={msg.audioUrl || msg.fileUrl || ''} 
+                                theme={isSent ? 'sent' : 'received'} 
+                                duration={msg.audioDuration}
+                                avatarUrl={isSent ? user?.photoURL : currentContact?.image}
+                              />
+                            ) : (
+                              /* Text Message */
+                              <p className="text-[14px] leading-relaxed break-words whitespace-pre-wrap font-sans text-zinc-100 select-text px-1">
+                                {msg.text}
+                              </p>
+                            )}
+
+                            {/* WhatsApp Metadata Row: Timestamp + Read Receipts */}
+                            <div className="flex justify-end items-center gap-1 mt-1 pl-4 select-none leading-none">
+                              <span className="text-[10.5px] text-zinc-400 font-sans">
+                                {formatMsgTime(msg.timestamp)}
+                              </span>
+
+                              {isSent && (
+                                msg.status === 'sending' ? (
+                                  <Clock className="w-3 h-3 text-zinc-500 animate-pulse ml-0.5" />
+                                ) : msg.status === 'error' ? (
+                                  <AlertCircle className="w-3.5 h-3.5 text-red-500 ml-0.5" />
+                                ) : isReadByRecipient ? (
+                                  <span title="Read" className="inline-flex">
+                                    <CheckCheck className="w-3.5 h-3.5 text-[#D4AF37] ml-0.5" />
+                                  </span>
+                                ) : (
+                                  <span title="Delivered" className="inline-flex">
+                                    <CheckCheck className="w-3.5 h-3.5 text-zinc-400 ml-0.5" />
+                                  </span>
+                                )
+                              )}
+
+                              {/* WhatsApp quick message actions on hover */}
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyText(msg.text)}
+                                  className="text-zinc-500 hover:text-zinc-200 p-0.5 rounded"
+                                  title="Copy text"
+                                  aria-label="Copy text"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                                {isSent && !msg.isOptimistic && msg.status !== 'sending' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUnsend(msg)}
+                                    className="text-zinc-500 hover:text-red-400 p-0.5 rounded"
+                                    title="Delete message"
+                                    aria-label="Delete message"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Failed Sending Retry Box */}
+                            {isSent && msg.status === 'error' && (
+                              <div className="mt-1.5 pt-1.5 border-t border-red-500/20 flex items-center justify-between gap-2">
+                                <span className="text-red-400 text-[10px] font-bold">Failed to send</span>
+                                <button 
+                                  type="button"
+                                  onClick={() => handleRetryMessage(msg)}
+                                  className="bg-red-950/60 hover:bg-red-900 text-red-200 font-bold px-2 py-0.5 rounded text-[10px] border border-red-500/40 uppercase tracking-wider"
+                                >
+                                  Retry
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      </React.Fragment>
+                    );
+                  })
+                )}
+
+                {/* Real-time Typing Bubble */}
+                {otherIsTyping && (
+                  <div className="flex justify-start my-1 animate-in fade-in duration-200">
+                    <div className="bg-[#18181c] border border-white/10 text-zinc-300 px-3.5 py-2 rounded-2xl rounded-tl-xs text-xs flex items-center gap-2 shadow-sm">
+                      <span className="text-zinc-400 text-[11px] font-medium">
+                        {currentContact?.name || 'Contact'}
+                      </span>
+                      <div className="flex items-center gap-1" aria-hidden="true">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                <div ref={bottomRef} className="h-1" />
+              </div>
+
+              {/* Scroll to Bottom Floating Pill */}
+              {showScrollBottomBtn && (
+                <button
+                  type="button"
+                  onClick={() => scrollToBottomSmart(true)}
+                  className="absolute bottom-20 right-5 z-20 w-9 h-9 rounded-full bg-[#1c1c20] border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black flex items-center justify-center shadow-2xl transition-all active:scale-95 cursor-pointer"
+                  title="Scroll to latest"
+                >
+                  <ChevronDown className="w-5 h-5" />
+                </button>
+              )}
+
+              {/* Quick Emoji Tray Drawer */}
+              <AnimatePresence>
+                {showEmojiPicker && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="bg-[#141416] border-t border-white/10 px-3 py-2 overflow-x-auto overflow-y-hidden flex items-center gap-2 select-none z-10"
+                  >
+                    {POPULAR_EMOJIS.map(emoji => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => handleAddEmoji(emoji)}
+                        className="text-xl p-1.5 hover:bg-white/10 rounded-lg transition-transform active:scale-125"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* WhatsApp Attachment Popup Tray */}
+              <AnimatePresence>
+                {showAttachMenu && (
+                  <motion.div 
+                    initial={{ scale: 0.9, opacity: 0, y: 10 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.9, opacity: 0, y: 10 }}
+                    className="absolute bottom-16 left-4 z-30 bg-[#18181c] border border-[#D4AF37]/30 rounded-2xl p-2.5 shadow-2xl flex flex-col gap-1.5 min-w-[200px]"
+                  >
+                    <label className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 cursor-pointer text-xs text-zinc-200 transition-colors">
+                      <div className="w-8 h-8 rounded-full bg-[#D4AF37]/15 flex items-center justify-center text-[#D4AF37]">
+                        <ImageIcon className="w-4 h-4" />
+                      </div>
+                      <span>Photo or Video</span>
+                      <input type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
+                    </label>
+
+                    <label className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 cursor-pointer text-xs text-zinc-200 transition-colors">
+                      <div className="w-8 h-8 rounded-full bg-blue-500/15 flex items-center justify-center text-blue-400">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <span>Document or PDF</span>
+                      <input type="file" accept=".pdf,.doc,.docx,.txt" className="hidden" onChange={handleFileUpload} />
+                    </label>
+
+                    <label className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 cursor-pointer text-xs text-zinc-200 transition-colors">
+                      <div className="w-8 h-8 rounded-full bg-purple-500/15 flex items-center justify-center text-purple-400">
+                        <Volume2 className="w-4 h-4" />
+                      </div>
+                      <span>Audio Clip</span>
+                      <input type="file" accept="audio/*" className="hidden" onChange={handleFileUpload} />
+                    </label>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Drag & Drop Overlay */}
+              {isDragActive && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/85 backdrop-blur-sm border-2 border-dashed border-[#D4AF37] rounded-xl m-2 pointer-events-none">
+                  <div className="flex flex-col items-center text-[#D4AF37]">
+                    <Upload className="w-10 h-10 mb-2 animate-bounce" />
+                    <span className="font-bold tracking-widest text-sm uppercase font-[Cinzel]">Drop file to attach</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Upload Progress Bar */}
+              {isUploading && uploadProgress !== null && (
+                <div className="bg-[#141416] border-t border-[#D4AF37]/20 px-4 py-2 flex items-center gap-3">
+                  <Loader2 className="w-4 h-4 text-[#D4AF37] animate-spin shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between text-[11px] font-mono text-zinc-300 mb-1">
+                      <span>Uploading attachment...</span>
+                      <span>{Math.round(uploadProgress)}%</span>
+                    </div>
+                    <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-[#D4AF37] h-full transition-all duration-150" 
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Microphone Permission Notice Banner */}
+              {micPermissionError && (
+                <div className="p-3 bg-red-950/40 border-t border-red-500/30 text-red-200 text-xs flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span>{micPermissionError}</span>
+                  </div>
                   <button 
+                    type="button"
                     onClick={() => setMicPermissionError(null)}
-                    className="text-zinc-400 hover:text-white transition-colors text-sm px-1.5 focus:outline-none"
-                    aria-label="Dismiss"
+                    className="text-red-400 hover:text-white px-1.5 font-bold"
                   >
                     ×
                   </button>
                 </div>
               )}
-              
-              <div className="flex items-center gap-2">
+
+              {/* WhatsApp Bottom Composer */}
+              <div 
+                className="bg-[#121214] border-t border-[#D4AF37]/15 p-2 sm:p-2.5 flex items-end gap-1.5 shrink-0 relative z-20 pb-[max(env(safe-area-inset-bottom),0.5rem)]"
+                onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragActive(true); }}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragActive(true); }}
+                onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragActive(false); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragActive(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    handleFileUpload({ target: { files: e.dataTransfer.files } });
+                  }
+                }}
+              >
+                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+
                 {!isRecording ? (
                   <>
-                    <button 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center justify-center h-11 w-11 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-full hover:bg-zinc-900"
-                      title="Attach file"
-                      aria-label="Attach file"
-                    >
-                      <Paperclip className="w-5 h-5" />
-                    </button>
-                    <button 
-                       onClick={startRecording}
-                       className="flex items-center justify-center h-11 w-11 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-full hover:bg-zinc-900"
-                       title="Record voice note"
-                       aria-label="Record voice note"
-                    >
-                       <Mic className="w-5 h-5" />
-                    </button>
-                    <div className="relative flex-1 flex items-center">
-                      <input 
-                        type="text" 
-                        value={text}
-                        onChange={e => {
-                          setText(e.target.value);
-                          handleTypingStatus(true);
-                          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-                          typingTimeoutRef.current = setTimeout(() => {
-                            handleTypingStatus(false);
-                          }, 2000);
+                    {/* Left Action Buttons: Emoji & Paperclip */}
+                    <div className="flex items-center gap-0.5 text-zinc-400 shrink-0 mb-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowEmojiPicker(prev => !prev);
+                          setShowAttachMenu(false);
                         }}
+                        className={`p-2 rounded-full transition-colors ${showEmojiPicker ? 'text-[#D4AF37] bg-white/10' : 'hover:text-zinc-200 hover:bg-white/5'}`}
+                        title="Emojis"
+                        aria-label="Emojis"
+                      >
+                        <Smile className="w-5 h-5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAttachMenu(prev => !prev);
+                          setShowEmojiPicker(false);
+                        }}
+                        className={`p-2 rounded-full transition-colors ${showAttachMenu ? 'text-[#D4AF37] bg-white/10' : 'hover:text-zinc-200 hover:bg-white/5'}`}
+                        title="Attach"
+                        aria-label="Attach"
+                      >
+                        <Paperclip className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    {/* WhatsApp Pill Input */}
+                    <div className="flex-1 min-w-0 bg-[#1c1c20] border border-white/10 focus-within:border-[#D4AF37]/50 rounded-[22px] px-3.5 py-1.5 transition-colors flex items-center">
+                      <textarea 
+                        ref={textareaRef}
+                        rows={1}
+                        value={text}
+                        onChange={handleTextChange}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                          if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
                             if (text.trim()) {
                               handleSend();
@@ -1171,69 +1929,106 @@ const ChatModal: React.FC<ChatModalProps> = ({
                           }
                         }}
                         placeholder="Type a message..."
-                        className="w-full bg-[#111] border border-[#D4AF37]/20 rounded-xl pl-4 pr-10 h-11 text-base text-white focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-zinc-400"
+                        className="w-full bg-transparent text-zinc-100 text-[14px] leading-relaxed resize-none outline-none max-h-[120px] placeholder:text-zinc-500 overflow-y-auto"
                       />
                     </div>
-                    <button 
-                      onClick={() => {
-                        handleSend();
-                        handleTypingStatus(false);
-                      }}
-                      disabled={!text.trim()}
-                      className={`flex items-center justify-center h-11 w-11 rounded-full transition-all shadow-lg flex-shrink-0 ${
-                        text.trim() 
-                          ? 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] shadow-[#D4AF37]/10 cursor-pointer' 
-                          : 'bg-zinc-800 text-zinc-400 cursor-not-allowed shadow-none'
-                      }`}
-                      title="Send message"
-                      aria-label="Send message"
-                    >
-                      <Send className="w-5 h-5" />
-                    </button>
+
+                    {/* Right Circle Action: Send or Mic */}
+                    <div className="shrink-0 mb-0.5">
+                      {text.trim() ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleSend();
+                            handleTypingStatus(false);
+                          }}
+                          className="w-10 h-10 rounded-full bg-[#D4AF37] text-black hover:bg-[#e0bb40] transition-all flex items-center justify-center shadow-md active:scale-95 cursor-pointer"
+                          title="Send message"
+                          aria-label="Send message"
+                        >
+                          <Send className="w-4 h-4 ml-0.5" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={startRecording}
+                          className="w-10 h-10 rounded-full bg-[#1c1c20] border border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black transition-all flex items-center justify-center shadow active:scale-95 cursor-pointer"
+                          title="Record voice note"
+                          aria-label="Record voice note"
+                        >
+                          <Mic className="w-5 h-5" />
+                        </button>
+                      )}
+                    </div>
                   </>
                 ) : (
-                  <div className="flex-1 flex items-center justify-between bg-zinc-400/10 border border-zinc-400/20 rounded-xl px-4 h-11 animate-pulse">
-                    <div className="flex items-center gap-3">
-                       <div className="w-2 h-2 bg-zinc-700 rounded-full"></div>
-                       <span className="text-zinc-400 text-xs font-bold font-mono">{formatDuration(recordingDuration)}</span>
+                  /* WhatsApp-Style Live Voice Recording Bar */
+                  <div className="flex-1 flex items-center justify-between bg-[#1c1c20] border border-[#D4AF37]/40 rounded-[22px] px-3 py-1.5 shadow-lg animate-in fade-in duration-200">
+                    {/* Blinking Red Dot & Duration Timer */}
+                    <div className="flex items-center gap-2.5">
+                      <div className="relative flex items-center justify-center">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping absolute" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 relative" />
+                      </div>
+                      <span className="text-zinc-100 font-mono text-sm font-semibold tracking-wider">
+                        {formatDuration(recordingDuration)}
+                      </span>
                     </div>
+
+                    {/* Real-time Voice Audio Visualizer Wave */}
+                    <div className="flex items-center gap-[3px] h-6 px-3">
+                      {liveVolumeBars.map((height, i) => (
+                        <div 
+                          key={i} 
+                          className="w-[3px] bg-[#D4AF37] rounded-full transition-all duration-75"
+                          style={{ height: `${height}px` }}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Cancel & Send Voice Recording Controls */}
                     <div className="flex items-center gap-2">
-                      <button 
+                      <button
+                        type="button"
                         onClick={cancelRecording}
-                        className="bg-zinc-800 text-zinc-300 h-9 w-9 flex items-center justify-center rounded-full hover:bg-zinc-700 transition-all flex-shrink-0"
+                        className="p-2 text-zinc-400 hover:text-red-400 hover:bg-white/5 rounded-full transition-colors"
                         title="Cancel recording"
                         aria-label="Cancel recording"
                       >
-                        <X className="w-4 h-4" />
+                        <Trash2 className="w-5 h-5" />
                       </button>
-                      <button 
+                      <button
+                        type="button"
                         onClick={stopRecording}
-                        className="bg-zinc-700 text-white h-9 w-9 flex items-center justify-center rounded-full hover:bg-zinc-800 transition-all flex-shrink-0"
-                        title="Send recording"
-                        aria-label="Send recording"
+                        className="w-9 h-9 rounded-full bg-[#D4AF37] text-black hover:bg-[#e0bb40] flex items-center justify-center shadow-md active:scale-95 transition-all cursor-pointer"
+                        title="Send voice note"
+                        aria-label="Send voice note"
                       >
-                        <Send className="w-4 h-4" />
+                        <Send className="w-4 h-4 ml-0.5" />
                       </button>
                     </div>
                   </div>
                 )}
               </div>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
+      {/* Fullscreen Media Modal */}
       <AnimatePresence>
         {fullscreenMedia && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-md"
           >
             <button 
+              type="button"
               onClick={() => setFullscreenMedia(null)}
-              className="absolute top-4 right-4 text-white hover:text-[#D4AF37] bg-black/50 p-3 rounded-full backdrop-blur-md border border-white/10 transition-all shadow-xl z-10"
+              className="absolute top-4 right-4 text-white hover:text-[#D4AF37] bg-black/60 p-3 rounded-full backdrop-blur-md border border-white/10 transition-all shadow-xl z-10"
+              aria-label="Close fullscreen media"
             >
               <X className="w-6 h-6" />
             </button>
@@ -1241,14 +2036,14 @@ const ChatModal: React.FC<ChatModalProps> = ({
               <img 
                 src={fullscreenMedia.url} 
                 alt="Fullscreen" 
-                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
               />
             ) : (
               <video 
                 src={fullscreenMedia.url} 
                 controls
                 autoPlay
-                className="max-w-full max-h-full rounded-lg shadow-2xl"
+                className="max-w-full max-h-full rounded-xl shadow-2xl"
               />
             )}
           </motion.div>

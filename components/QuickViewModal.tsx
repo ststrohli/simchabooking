@@ -1,24 +1,27 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Star, MapPin, ShieldCheck, PlayCircle, ChevronLeft, ChevronRight, MessageCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Star, MapPin, ShieldCheck, PlayCircle, ChevronLeft, ChevronRight, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { Vendor, Review } from '../types';
 import { MOCK_BOOKINGS } from '../services/mockData';
 import BookingModal from './BookingModal';
+import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
 
 interface QuickViewModalProps {
   vendor: Vendor;
   onClose: () => void;
   onBook: (vendor: Vendor) => void;
-  onMessage: (vendor: Vendor) => void;
   onAddReview: (vendorId: string, review: Omit<Review, 'id' | 'date'>) => void;
   bookingVendor?: Vendor | null;
   onCloseBooking?: () => void;
   onConfirmBooking?: (details: any) => void;
   onBookingDone?: (isPriority: boolean) => void;
+  onAddToPlan?: (vendor: Vendor) => void;
+  isInPlan?: boolean;
+  onGoToPlan?: () => void;
 }
 
 const QuickViewModal: React.FC<QuickViewModalProps> = ({ 
-  vendor, onClose, onBook, onMessage, onAddReview, bookingVendor, onCloseBooking, onConfirmBooking, onBookingDone 
+  vendor, onClose, onBook, onAddReview, bookingVendor, onCloseBooking, onConfirmBooking, onBookingDone, onAddToPlan, onGoToPlan 
 }) => {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -118,6 +121,8 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
   const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const animDuration = prefersReducedMotion ? 0.1 : 0.55;
 
+  const { y, dragHandleProps } = useModalDragDismiss(onClose);
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -130,18 +135,27 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
       className="fixed inset-0 z-[150] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden"
     >
       <motion.div 
+        style={{ y }}
         initial={{ y: "100%", opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: "100%", opacity: 0 }}
         transition={{ duration: animDuration, ease: [0.16, 1, 0.3, 1] }}
         className="bg-[#111] w-full sm:max-w-4xl h-[96dvh] sm:h-auto sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-3xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0"
       >
+        {/* Subtle floating drag indicator pill layered in front of modal content over the image */}
+        <div 
+          {...dragHandleProps}
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+        >
+          <ModalDragIndicator />
+        </div>
+
         {/* Single vertical scroll container where media scrolls with the content */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col bg-[#111]">
-          {/* Media Section - 1:1 Square aspect ratio */}
-          <div className="w-full aspect-square relative bg-zinc-950 flex items-center justify-center flex-shrink-0 overflow-hidden">
+        <div className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col bg-[#111] rounded-t-[2.5rem] sm:rounded-t-3xl">
+          {/* Media Section - 1:1 Square aspect ratio clipped to the modal's rounded top corners */}
+          <div className="w-full aspect-square relative bg-zinc-950 flex items-center justify-center flex-shrink-0 overflow-hidden rounded-t-[2.5rem] sm:rounded-t-3xl">
             {currentMedia.type === 'video' ? (
-              <div className="w-full h-full relative group/video">
+              <div className="w-full h-full relative group/video overflow-hidden rounded-t-[2.5rem] sm:rounded-t-3xl">
                 {currentMedia.isNative ? (
                   <video 
                     key={currentMedia.url} 
@@ -171,7 +185,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 )}
               </div>
             ) : (
-              <div className="w-full h-full relative bg-zinc-950 flex items-center justify-center">
+              <div className="w-full h-full relative bg-zinc-950 flex items-center justify-center overflow-hidden rounded-t-[2.5rem] sm:rounded-t-3xl">
                 {!imageLoaded && (
                   <div className="absolute inset-0 bg-zinc-950 animate-pulse flex items-center justify-center">
                     <div className="w-6 h-6 rounded-full border-2 border-[#D4AF37]/30 border-t-[#D4AF37] animate-spin"></div>
@@ -183,7 +197,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
                   initial={{ opacity: 0, scale: 0.98 }}
                   animate={{ opacity: imageLoaded ? 1 : 0, scale: imageLoaded ? 1 : 0.98 }}
                   transition={{ duration: 0.3, ease: 'easeOut' }}
-                  className="w-full h-full object-cover" 
+                  className="w-full h-full object-cover object-top rounded-t-[2.5rem] sm:rounded-t-3xl" 
                 />
               </div>
             )}
@@ -335,17 +349,17 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 <motion.button 
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
-                  onClick={() => onMessage(vendor)}
-                  className="flex items-center justify-center gap-2 border border-[#D4AF37]/30 text-[#D4AF37] font-black py-3.5 rounded-full hover:bg-[#D4AF37]/10 transition-all uppercase tracking-widest text-[10px] cursor-pointer"
+                  onClick={() => onAddToPlan && onAddToPlan(vendor)}
+                  className="flex items-center justify-center border border-[#D4AF37] text-[#D4AF37] font-black py-3.5 rounded-full hover:bg-[#D4AF37] hover:text-black transition-all uppercase tracking-widest text-[10px] cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
                 >
-                  <MessageCircle className="w-4 h-4" /> Message
+                  Add to Plan
                 </motion.button>
                 <motion.button 
                   initial={{ boxShadow: "0 10px 15px -3px rgba(212, 175, 55, 0.2)" }}
                   whileHover={{ scale: 1.03, boxShadow: "0 10px 20px rgba(212,175,55,0.25)" }}
                   whileTap={{ scale: 0.97 }}
                   onClick={() => onBook(vendor)}
-                  className="bg-[#D4AF37] text-black font-black py-3.5 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-widest text-[10px] shadow-lg shadow-[#D4AF37]/20 cursor-pointer flex items-center justify-center"
+                  className="bg-[#D4AF37] text-black font-black py-3.5 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-widest text-[10px] shadow-lg shadow-[#D4AF37]/20 cursor-pointer flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
                 >
                   Book Now
                 </motion.button>
@@ -372,6 +386,11 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
               }}
               onConfirm={(details) => {
                 if (onConfirmBooking) onConfirmBooking(details);
+              }}
+              onGoToPlan={() => {
+                if (onCloseBooking) onCloseBooking();
+                onClose();
+                if (onGoToPlan) onGoToPlan();
               }}
               initialDetails={{ clientName: '', contactEmail: '', eventName: '' }}
             />

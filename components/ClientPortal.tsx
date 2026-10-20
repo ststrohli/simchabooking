@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, ShoppingBag, Calendar, MessageSquare, LogOut, Trash2, 
-  ChevronRight, MapPin, Clock, CreditCard, CheckCircle, Bell, X, Menu, Send,
+  ChevronRight, MapPin, Clock, CreditCard, CheckCircle, CheckCheck, Bell, X, Menu, Send,
   FileText, Upload, Download, Loader2, Plus, Search, Edit3, ArrowLeft, ShieldCheck
 } from 'lucide-react';
 import { CartItem, Booking, Message, Vendor, UserAccount } from '../types';
