@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback, startTransition } from 'react';
 import { motion, AnimatePresence, useMotionValue, animate } from 'motion/react';
-import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check, ShieldAlert, HelpCircle, UserRound, Store } from 'lucide-react';
+import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check, ShieldAlert, HelpCircle, UserRound, Store, Eye, EyeOff } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -385,6 +385,9 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
   onRegister,
   onGoogleSignIn,
 }) => {
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const { backdropOpacity, isDismissing, dragModalProps, dragHandleProps, dismissWithSlideOut } = useModalDragDismiss(
     onClose,
     !isLoading,
@@ -474,11 +477,33 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
-                <input required type="password" value={password} onChange={e => onPasswordChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
+                <div className="relative">
+                  <input required type={showPassword ? 'text' : 'password'} value={password} onChange={e => onPasswordChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl pl-4 pr-10 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(prev => !prev)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-[#D4AF37] focus-visible:text-[#D4AF37] transition-colors outline-none cursor-pointer p-1"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
               <div className="space-y-2">
                 <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Repeat Password</label>
-                <input required type="password" value={confirmPassword} onChange={e => onConfirmPasswordChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
+                <div className="relative">
+                  <input required type={showConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={e => onConfirmPasswordChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl pl-4 pr-10 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(prev => !prev)}
+                    aria-label={showConfirmPassword ? 'Hide repeat password' : 'Show repeat password'}
+                    aria-pressed={showConfirmPassword}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-[#D4AF37] focus-visible:text-[#D4AF37] transition-colors outline-none cursor-pointer p-1"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -588,6 +613,7 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
 }) => {
   const [isNestedSignUpDismissing, setIsNestedSignUpDismissing] = useState(false);
   const [nestedSignUpKey, setNestedSignUpKey] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
   const isSignInDismissingRef = useRef(false);
 
   useEffect(() => {
@@ -708,7 +734,18 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
                   <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
                   <button type="button" onClick={() => onChangeStep('forgot-password')} className="text-[10px] text-[#D4AF37] hover:underline font-bold uppercase tracking-widest px-2 py-0.5 rounded-full hover:bg-[#D4AF37]/10 transition-colors cursor-pointer">Forgot password?</button>
                 </div>
-                <input required type="password" value={password} onChange={e => onPasswordChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
+                <div className="relative">
+                  <input required type={showPassword ? 'text' : 'password'} value={password} onChange={e => onPasswordChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl pl-4 pr-11 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(prev => !prev)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-[#D4AF37] focus-visible:text-[#D4AF37] transition-colors outline-none cursor-pointer p-1"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               {error && (
