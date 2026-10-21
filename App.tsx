@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState, useMemo, useEffect, useRef, useCallback, startTransition } from 'react';
+import { motion, AnimatePresence, useMotionValue, animate } from 'motion/react';
 import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check, ShieldAlert, HelpCircle, UserRound, Store } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
@@ -24,6 +24,7 @@ import VendorCard from './components/VendorCard';
 import VendorCardSkeleton from './components/VendorCardSkeleton';
 import QuickViewModal from './components/QuickViewModal';
 import BookingModal from './components/BookingModal';
+import { useModalDragDismiss, ModalDragIndicator } from './components/useModalDragDismiss';
 import VendorPortal from './components/VendorPortal';
 import AdminPanel from './components/AdminPanel';
 import ContactModal from './components/ContactModal';
@@ -48,6 +49,167 @@ const clean = (obj: any) => {
     return null;
   }
 };
+
+const AnimatedRoleSwitcher: React.FC<{
+  isVendorView: boolean;
+  onToggleVendor: (targetVendorView?: boolean) => void;
+}> = React.memo(({ isVendorView, onToggleVendor }) => {
+  const clientBtnRef = useRef<HTMLButtonElement | null>(null);
+  const vendorBtnRef = useRef<HTMLButtonElement | null>(null);
+  const lastRoleRef = useRef(isVendorView);
+  const activeControlsRef = useRef<Array<{ stop: () => void }>>([]);
+
+  const pillX = useMotionValue(0);
+  const pillRotate = useMotionValue(0);
+  const pillScaleX = useMotionValue(1);
+
+  const getVendorOffsetX = () => {
+    if (vendorBtnRef.current && clientBtnRef.current) {
+      return vendorBtnRef.current.offsetLeft - clientBtnRef.current.offsetLeft;
+    }
+    return 62;
+  };
+
+  const runSlideWiggle = useCallback((targetVendor: boolean) => {
+    activeControlsRef.current.forEach(ctrl => ctrl.stop());
+
+    const targetX = targetVendor ? getVendorOffsetX() : 0;
+    const currentX = pillX.get();
+    const delta = targetX - currentX;
+
+    if (Math.abs(delta) < 1) {
+      pillX.set(targetX);
+      pillRotate.set(0);
+      pillScaleX.set(1);
+      return;
+    }
+
+    const dir = delta > 0 ? 1 : -1;
+
+    activeControlsRef.current = [
+      animate(
+        pillX,
+        [
+          currentX,
+          targetX + dir * 6.5,
+          targetX - dir * 6,
+          targetX + dir * 4.5,
+          targetX - dir * 3.2,
+          targetX + dir * 1.8,
+          targetX - dir * 0.9,
+          targetX,
+        ],
+        {
+          duration: 1.25,
+          times: [0, 0.36, 0.51, 0.65, 0.77, 0.87, 0.94, 1],
+          ease: 'easeInOut',
+        }
+      ),
+      animate(
+        pillRotate,
+        [
+          0,
+          dir * 4.2,
+          -dir * 4.2,
+          dir * 3.2,
+          -dir * 2.4,
+          dir * 1.4,
+          -dir * 0.7,
+          0,
+        ],
+        {
+          duration: 1.25,
+          times: [0, 0.36, 0.51, 0.65, 0.77, 0.87, 0.94, 1],
+          ease: 'easeInOut',
+        }
+      ),
+      animate(
+        pillScaleX,
+        [1, 1.06, 0.94, 1.04, 0.96, 1.02, 0.99, 1],
+        {
+          duration: 1.25,
+          times: [0, 0.36, 0.51, 0.65, 0.77, 0.87, 0.94, 1],
+          ease: 'easeInOut',
+        }
+      ),
+    ];
+  }, [pillX, pillRotate, pillScaleX]);
+
+  const hasMountedRef = useRef(false);
+
+  // Sync position on initial mount and when role is changed externally (e.g. clicking header logo)
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      lastRoleRef.current = isVendorView;
+      pillX.set(isVendorView ? getVendorOffsetX() : 0);
+      return;
+    }
+    if (lastRoleRef.current !== isVendorView) {
+      lastRoleRef.current = isVendorView;
+      runSlideWiggle(isVendorView);
+    }
+  }, [isVendorView, pillX, runSlideWiggle]);
+
+  useEffect(() => {
+    return () => {
+      activeControlsRef.current.forEach(ctrl => ctrl.stop());
+    };
+  }, []);
+
+  const handleSelectRole = useCallback((targetVendor: boolean) => {
+    if (lastRoleRef.current === targetVendor) return;
+    lastRoleRef.current = targetVendor;
+    // Start GPU-accelerated motion-value animation immediately before main app re-render
+    runSlideWiggle(targetVendor);
+    onToggleVendor(targetVendor);
+  }, [onToggleVendor, runSlideWiggle]);
+
+  return (
+    <nav aria-label="Account Role Switcher" className="fixed top-[84px] sm:top-24 left-3 sm:left-4 z-50 flex items-center pointer-events-auto">
+      <div className="relative flex items-center gap-[3px] h-[28px] sm:h-[30px] bg-zinc-950/95 border border-[#D4AF37]/45 backdrop-blur-xl rounded-full p-[3px] shadow-[0_6px_16px_rgba(0,0,0,0.9),0_0_10px_rgba(212,175,55,0.2)] text-[9.5px] sm:text-[10px] tracking-normal uppercase font-extrabold leading-none">
+        <motion.div
+          style={{
+            x: pillX,
+            rotate: pillRotate,
+            scaleX: pillScaleX,
+          }}
+          className="absolute left-[3px] top-[3px] bottom-[3px] w-[54px] sm:w-[58px] rounded-full bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.45)] pointer-events-none z-0 transform-gpu will-change-transform"
+        />
+
+        <button
+          ref={clientBtnRef}
+          type="button"
+          onClick={() => handleSelectRole(false)}
+          className={`relative z-10 h-full w-[54px] sm:w-[58px] inline-flex items-center justify-center gap-1 rounded-full transition-colors duration-300 select-none leading-none ${
+            !isVendorView
+              ? 'text-black font-black'
+              : 'text-zinc-300 hover:text-white cursor-pointer'
+          }`}
+          aria-label="Switch to Client View"
+        >
+          <UserRound className="w-2.5 h-2.5 shrink-0 stroke-[2.5]" />
+          <span className="leading-none">Client</span>
+        </button>
+
+        <button
+          ref={vendorBtnRef}
+          type="button"
+          onClick={() => handleSelectRole(true)}
+          className={`relative z-10 h-full w-[54px] sm:w-[58px] inline-flex items-center justify-center gap-1 rounded-full transition-colors duration-300 select-none leading-none ${
+            isVendorView
+              ? 'text-black font-black'
+              : 'text-zinc-300 hover:text-white cursor-pointer'
+          }`}
+          aria-label="Switch to Vendor View"
+        >
+          <Store className="w-2.5 h-2.5 shrink-0 stroke-[2.5]" />
+          <span className="leading-none">Vendor</span>
+        </button>
+      </div>
+    </nav>
+  );
+});
 
 const FixedGoldScrollbar: React.FC = () => {
   const [scrollTop, setScrollTop] = useState(0);
@@ -183,6 +345,493 @@ const SimchaLogo = ({ className = "h-10 w-10", viewBox = "0 0 100 100" }: { clas
     <text x="50" y="75" fontFamily="'Cinzel', serif" fontSize="85" fill="#D4AF37" textAnchor="middle" fontWeight="bold" letterSpacing="-5">SB</text>
   </svg>
 );
+
+const AUTH_MODAL_TRANSITION = { duration: 1, ease: [0.25, 1, 0.5, 1] as const };
+
+interface AuthSignUpModalProps {
+  onClose: () => void;
+  onDismissStart?: () => void;
+  isLoading: boolean;
+  email: string;
+  onEmailChange: (val: string) => void;
+  password: string;
+  onPasswordChange: (val: string) => void;
+  confirmPassword: string;
+  onConfirmPasswordChange: (val: string) => void;
+  fullName: string;
+  onFullNameChange: (val: string) => void;
+  photo: File | null;
+  onPhotoChange: (file: File | null) => void;
+  error: string;
+  onRegister: (e: React.FormEvent) => void;
+  onGoogleSignIn: () => void;
+}
+
+const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
+  onClose,
+  onDismissStart,
+  isLoading,
+  email,
+  onEmailChange,
+  password,
+  onPasswordChange,
+  confirmPassword,
+  onConfirmPasswordChange,
+  fullName,
+  onFullNameChange,
+  photo,
+  onPhotoChange,
+  error,
+  onRegister,
+  onGoogleSignIn,
+}) => {
+  const { backdropOpacity, isDismissing, dragModalProps, dragHandleProps, dismissWithSlideOut } = useModalDragDismiss(
+    onClose,
+    !isLoading,
+    onDismissStart
+  );
+
+  const photoPreviewUrl = useMemo(() => (photo ? URL.createObjectURL(photo) : ''), [photo]);
+  useEffect(() => {
+    return () => {
+      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    };
+  }, [photoPreviewUrl]);
+
+  return (
+    <motion.div
+      style={{ opacity: backdropOpacity }}
+      transition={AUTH_MODAL_TRANSITION}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-signup-title"
+      className={`absolute inset-0 z-30 bg-black/75 backdrop-blur-sm flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
+    >
+      <motion.div
+        {...dragModalProps}
+        transition={AUTH_MODAL_TRANSITION}
+        className={`bg-[#111] w-full sm:w-full sm:max-w-xl h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+      >
+        {/* Top bar drag indicator positioned across the top edge, leaving top-right corner clear for X button */}
+        <div
+          {...dragHandleProps}
+          data-drag-handle="true"
+          className="absolute top-0 left-0 right-14 z-30 pt-1.5 pb-4 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+        >
+          <div className="pl-14">
+            <ModalDragIndicator />
+          </div>
+        </div>
+
+        {/* Floating close button rendered at root z-[120] top-4 right-4 - identical to BookingModal */}
+        <button
+          type="button"
+          onClick={dismissWithSlideOut}
+          disabled={isLoading}
+          className={`absolute top-4 right-4 z-[120] w-8 h-8 flex items-center justify-center bg-[#1a1a1a] hover:bg-[#262626] border border-[#D4AF37]/40 rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] shadow-xl cursor-pointer ${isLoading ? 'pointer-events-none opacity-30' : ''}`}
+          aria-label="Close sign up modal"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y custom-scrollbar p-6 md:p-8 pt-8 flex flex-col">
+          <header
+            {...dragHandleProps}
+            data-drag-handle="true"
+            className="text-center mb-6 cursor-grab active:cursor-grabbing select-none"
+          >
+            <div className="flex items-center justify-center mx-auto mb-4">
+              <SimchaLogo className="w-20 h-20 overflow-visible" viewBox="-10 -8 120 110" />
+            </div>
+            <h2 id="auth-signup-title" className="text-2xl sm:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">
+              WELCOME TO SIMCHA SIGN UP
+            </h2>
+            <p className="text-[10px] text-zinc-300 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
+          </header>
+
+          <form aria-label="Registration Form" onSubmit={onRegister} className="space-y-4">
+            <div className="flex flex-col items-center mb-4">
+              <label className="relative group cursor-pointer">
+                <div className="w-20 h-20 bg-black/60 border-2 border-dashed border-[#D4AF37]/30 rounded-full flex items-center justify-center overflow-hidden transition-all group-hover:border-[#D4AF37]">
+                  {photoPreviewUrl ? <img src={photoPreviewUrl} alt="Profile preview" className="w-full h-full object-cover" /> : <Camera className="w-6 h-6 text-[#D4AF37]/40" />}
+                </div>
+                <input type="file" className="hidden" accept="image/*" onChange={e => onPhotoChange(e.target.files?.[0] || null)} />
+                <div className="absolute -bottom-1 -right-1 bg-[#D4AF37] p-1.5 rounded-full text-black shadow-lg">
+                  <Plus className="w-3 h-3" />
+                </div>
+              </label>
+              <p className="text-[8px] text-zinc-300 font-black uppercase tracking-widest mt-2">Upload Profile Photo</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Full Name</label>
+              <input required type="text" value={fullName} onChange={e => onFullNameChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="Sarah Cohen" />
+            </div>
+            <div className="space-y-2">
+              <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
+              <input required type="email" value={email} onChange={e => onEmailChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
+                <input required type="password" value={password} onChange={e => onPasswordChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Repeat Password</label>
+                <input required type="password" value={confirmPassword} onChange={e => onConfirmPasswordChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
+              </div>
+            )}
+
+            <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 mt-4 cursor-pointer">
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Complete Registration'}
+            </button>
+
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                <div className="w-full border-t border-white/10"></div>
+              </div>
+              <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
+                <span className="bg-[#111] px-4 text-zinc-300 font-black">Or join with</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onGoogleSignIn}
+              disabled={isLoading}
+              className="w-full bg-white text-black font-black py-4 rounded-full hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3 cursor-pointer"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path
+                  fill="currentColor"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z"
+                />
+              </svg>
+              Google
+            </button>
+          </form>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+});
+
+interface AuthSignInModalProps {
+  openId: number;
+  step: 'login' | 'forgot-password';
+  onChangeStep: (step: 'login' | 'forgot-password') => void;
+  onClose: (openId: number) => void;
+  isSignUpOpen: boolean;
+  onOpenSignUp: () => void;
+  onCloseSignUp: () => void;
+  isLoading: boolean;
+  email: string;
+  onEmailChange: (val: string) => void;
+  password: string;
+  onPasswordChange: (val: string) => void;
+  confirmPassword: string;
+  onConfirmPasswordChange: (val: string) => void;
+  fullName: string;
+  onFullNameChange: (val: string) => void;
+  photo: File | null;
+  onPhotoChange: (file: File | null) => void;
+  error: string;
+  onLogin: (e: React.FormEvent) => void;
+  onRegister: (e: React.FormEvent) => void;
+  onResetPassword: (e: React.FormEvent) => void;
+  onGoogleSignIn: () => void;
+}
+
+const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
+  openId,
+  step,
+  onChangeStep,
+  onClose,
+  isSignUpOpen,
+  onOpenSignUp,
+  onCloseSignUp,
+  isLoading,
+  email,
+  onEmailChange,
+  password,
+  onPasswordChange,
+  confirmPassword,
+  onConfirmPasswordChange,
+  fullName,
+  onFullNameChange,
+  photo,
+  onPhotoChange,
+  error,
+  onLogin,
+  onRegister,
+  onResetPassword,
+  onGoogleSignIn,
+}) => {
+  const [isNestedSignUpDismissing, setIsNestedSignUpDismissing] = useState(false);
+  const [nestedSignUpKey, setNestedSignUpKey] = useState(0);
+  const isSignInDismissingRef = useRef(false);
+
+  useEffect(() => {
+    if (isSignUpOpen) {
+      setIsNestedSignUpDismissing(false);
+    }
+  }, [isSignUpOpen]);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+    };
+  }, []);
+
+  const handleSignUpClick = useCallback(() => {
+    setIsNestedSignUpDismissing(false);
+    setNestedSignUpKey((prev) => prev + 1);
+    onOpenSignUp();
+  }, [onOpenSignUp]);
+
+  const handleNestedSignUpClose = useCallback(() => {
+    if (isSignInDismissingRef.current) return;
+    onCloseSignUp();
+  }, [onCloseSignUp]);
+
+  const handleNestedSignUpDismissStart = useCallback(() => {
+    setIsNestedSignUpDismissing(true);
+  }, []);
+
+  const handleSignInDismissStart = useCallback(() => {
+    isSignInDismissingRef.current = true;
+    document.body.style.overflow = '';
+    if (isNestedSignUpDismissing) {
+      onCloseSignUp();
+    }
+  }, [isNestedSignUpDismissing, onCloseSignUp]);
+
+  const handleSignInFinishClose = useCallback(() => {
+    onClose(openId);
+  }, [onClose, openId]);
+
+  const isSignInInteractive = !isSignUpOpen || isNestedSignUpDismissing;
+  const { backdropOpacity, isDismissing, dragModalProps, dragHandleProps, dismissWithSlideOut } = useModalDragDismiss(
+    handleSignInFinishClose,
+    isSignInInteractive,
+    handleSignInDismissStart
+  );
+
+  return (
+    <motion.div
+      style={{ opacity: backdropOpacity }}
+      transition={AUTH_MODAL_TRANSITION}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-signin-title"
+      className={`fixed inset-0 z-[150] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
+    >
+      <motion.div
+        {...dragModalProps}
+        transition={AUTH_MODAL_TRANSITION}
+        className={`bg-[#111] w-full sm:max-w-xl h-[96dvh] sm:h-auto sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-3xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+      >
+        {/* Top bar drag area with centered drag indicator pill, leaving top-right corner clear for X button */}
+        <div
+          {...dragHandleProps}
+          data-drag-handle="true"
+          className="absolute top-0 left-0 right-14 z-30 pt-1.5 pb-4 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+        >
+          <div className="pl-14">
+            <ModalDragIndicator />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col bg-[#111] rounded-t-[2.5rem] sm:rounded-t-3xl p-6 md:p-8 pt-8">
+          <header
+            {...dragHandleProps}
+            data-drag-handle="true"
+            className="text-center mb-6 cursor-grab active:cursor-grabbing select-none"
+          >
+            <div className="flex items-center justify-center mx-auto mb-4">
+              <SimchaLogo className="w-20 h-20 overflow-visible" viewBox="-10 -8 120 110" />
+            </div>
+            <h2 id="auth-signin-title" className="text-2xl sm:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">
+              WELCOME TO SIMCHA SIGN IN
+            </h2>
+            <p className="text-[10px] text-zinc-300 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
+          </header>
+
+          {step === 'login' ? (
+            <form aria-label="Sign In Form" onSubmit={onLogin} className="space-y-6">
+              <div className="flex rounded-full border border-[#D4AF37]/20 bg-black/60 p-1 mb-4">
+                <button
+                  type="button"
+                  onClick={() => onChangeStep('login')}
+                  className="flex-1 rounded-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors bg-[#D4AF37] text-black shadow cursor-pointer"
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSignUpClick}
+                  className="flex-1 rounded-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  Sign Up
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
+                <input required type="email" value={email} onChange={e => onEmailChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
+                  <button type="button" onClick={() => onChangeStep('forgot-password')} className="text-[10px] text-[#D4AF37] hover:underline font-bold uppercase tracking-widest px-2 py-0.5 rounded-full hover:bg-[#D4AF37]/10 transition-colors cursor-pointer">Forgot password?</button>
+                </div>
+                <input required type="password" value={password} onChange={e => onPasswordChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
+              </div>
+
+              {error && (
+                <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
+                  <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                  <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
+                </div>
+              )}
+
+              <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer">
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign In'}
+              </button>
+
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                  <div className="w-full border-t border-white/10"></div>
+                </div>
+                <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
+                  <span className="bg-[#111] px-4 text-zinc-300 font-black">Or continue with</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={onGoogleSignIn}
+                disabled={isLoading}
+                className="w-full bg-white text-black font-black py-4 rounded-full hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3 cursor-pointer"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path
+                    fill="currentColor"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="currentColor"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="currentColor"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                  />
+                  <path
+                    fill="currentColor"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z"
+                  />
+                </svg>
+                Google
+              </button>
+            </form>
+          ) : (
+            <form aria-label="Password Reset Form" onSubmit={onResetPassword} className="space-y-6 animate-in fade-in duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <button
+                  type="button"
+                  onClick={() => onChangeStep('login')}
+                  className="text-xs text-zinc-300 hover:text-[#D4AF37] flex items-center gap-1 font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Back
+                </button>
+              </div>
+              <div className="bg-[#D4AF37]/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+                <RefreshCw className="w-8 h-8 text-[#D4AF37]" />
+              </div>
+              <div className="text-center mb-6">
+                <h2 className="text-white font-bold uppercase tracking-widest text-sm mb-2">Password Reset</h2>
+                <p className="text-[10px] text-zinc-300 uppercase leading-relaxed px-4">Enter your email and we'll send you a link to regain access to your simcha planning.</p>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
+                <input required type="email" value={email} onChange={e => onEmailChange(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
+              </div>
+              {error && (
+                <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
+                  <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                  <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
+                </div>
+              )}
+              <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer">
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Get Reset Link'}
+              </button>
+              <button type="button" onClick={() => onChangeStep('login')} className="w-full text-zinc-300 hover:text-white text-[10px] font-black uppercase tracking-widest cursor-pointer">Return to Login</button>
+            </form>
+          )}
+        </div>
+
+        {/* Nested Sign Up Fill-Up Form Modal layered inside AuthSignInModal */}
+        {isSignUpOpen && (
+          <AuthSignUpModal
+            key={`auth-signup-${nestedSignUpKey}`}
+            onClose={handleNestedSignUpClose}
+            onDismissStart={handleNestedSignUpDismissStart}
+            isLoading={isLoading}
+            email={email}
+            onEmailChange={onEmailChange}
+            password={password}
+            onPasswordChange={onPasswordChange}
+            confirmPassword={confirmPassword}
+            onConfirmPasswordChange={onConfirmPasswordChange}
+            fullName={fullName}
+            onFullNameChange={onFullNameChange}
+            photo={photo}
+            onPhotoChange={onPhotoChange}
+            error={error}
+            onRegister={onRegister}
+            onGoogleSignIn={onGoogleSignIn}
+          />
+        )}
+
+        {/* Floating close button rendered above the sheet - immediately active as soon as nested Sign Up starts dismissing */}
+        {isSignInInteractive && (
+          <button
+            type="button"
+            onClick={dismissWithSlideOut}
+            className="absolute top-4 right-4 z-[120] w-8 h-8 flex items-center justify-center bg-[#1a1a1a] hover:bg-[#262626] border border-[#D4AF37]/40 rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] shadow-xl cursor-pointer"
+            aria-label="Close sign in modal"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+});
 
 const INITIAL_CATEGORY_IMAGES: Record<string, string> = {
   [VendorCategory.VENUE]: "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=600",
@@ -432,7 +1081,36 @@ const renderMedia = (url: string | undefined | null, className: string, alt?: st
   if (isVideo(url)) {
     return <video src={url} className={className} autoPlay muted loop playsInline aria-hidden={ariaHidden} />;
   }
-  return <img src={url} alt={alt || ""} className={className} aria-hidden={ariaHidden} />;
+  return <img src={url} alt={alt || ""} decoding="async" className={className} aria-hidden={ariaHidden} />;
+};
+
+const APP_SLIDE_UP_TRANSITION = {
+  type: 'spring' as const,
+  stiffness: 100,
+  damping: 15,
+};
+
+const CARD_GRID_VARIANTS = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.04,
+    },
+  },
+};
+
+const CARD_ITEM_VARIANTS = {
+  hidden: { opacity: 0, y: 30 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: 'spring' as const,
+      stiffness: 100,
+      damping: 15,
+    },
+  },
 };
 
 function App() {
@@ -490,38 +1168,43 @@ function App() {
   }, [isInitializing, isRoleLoading, fbUser, userDocData, isAdmin, isActuallyVendor]);
 
   const [isVendorView, setIsVendorView] = useState(false);
+  const isVendorViewRef = useRef(isVendorView);
+  isVendorViewRef.current = isVendorView;
+  const activeBottomTabRef = useRef(activeBottomTab);
+  activeBottomTabRef.current = activeBottomTab;
 
-  const handleToggleVendor = () => {
-    const nextVendorView = !isVendorView;
+  const handleToggleVendor = useCallback((targetVendorView?: boolean) => {
+    const currentVendorView = isVendorViewRef.current;
+    const nextVendorView = typeof targetVendorView === 'boolean' ? targetVendorView : !currentVendorView;
+    if (nextVendorView === currentVendorView) return;
+
+    isVendorViewRef.current = nextVendorView;
     setIsVendorView(nextVendorView);
-    
-    setView('portal');
-    setPortalTab(nextVendorView ? 'vendor' : 'client');
-    
-    if (nextVendorView) {
-      if (activeBottomTab === 'plan' || activeBottomTab === 'events') {
-        setPortalInitialTab('overview');
-        setActiveBottomTab('home');
-      } else if (activeBottomTab === 'chat') {
-        setPortalInitialTab('messages');
-      } else if (activeBottomTab === 'profile') {
-        setPortalInitialTab('profile');
-      } else if (activeBottomTab === 'home') {
-        setPortalInitialTab('overview');
+
+    startTransition(() => {
+      if (nextVendorView) {
+        setView(prev => (prev === 'portal' ? prev : 'portal'));
+        setPortalTab(prev => (prev === 'vendor' ? prev : 'vendor'));
+
+        const currentTab = activeBottomTabRef.current;
+        if (currentTab === 'plan' || currentTab === 'events') {
+          setPortalInitialTab(prev => (prev === 'overview' ? prev : 'overview'));
+          setActiveBottomTab(prev => (prev === 'home' ? prev : 'home'));
+        } else if (currentTab === 'chat') {
+          setPortalInitialTab(prev => (prev === 'messages' ? prev : 'messages'));
+        } else if (currentTab === 'profile') {
+          setPortalInitialTab(prev => (prev === 'profile' ? prev : 'profile'));
+        } else if (currentTab === 'home') {
+          setPortalInitialTab(prev => (prev === 'overview' ? prev : 'overview'));
+        }
+      } else {
+        // Switching from Vendor back to Client takes the user directly to the homepage (marketplace)
+        setPortalTab(prev => (prev === 'client' ? prev : 'client'));
+        setActiveBottomTab(prev => (prev === 'home' ? prev : 'home'));
+        setView(prev => (prev === 'marketplace' ? prev : 'marketplace'));
       }
-    } else {
-      if (activeBottomTab === 'bookings' || activeBottomTab === 'calendar') {
-        setPortalInitialTab('overview');
-        setActiveBottomTab('home');
-      } else if (activeBottomTab === 'chat') {
-        setPortalInitialTab('chats');
-      } else if (activeBottomTab === 'profile') {
-        setPortalInitialTab('profile');
-      } else if (activeBottomTab === 'home') {
-        setPortalInitialTab('overview');
-      }
-    }
-  };
+    });
+  }, []);
   
   const [activeCategories, setActiveCategories] = useState<string[]>(Object.values(VendorCategory));
   const [categoryImages, setCategoryImages] = useState<Record<string, string>>(INITIAL_CATEGORY_IMAGES);
@@ -1081,13 +1764,29 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [bookingVendor, setBookingVendor] = useState<Vendor | null>(null);
+  const [bookingOpenCount, setBookingOpenCount] = useState(0);
   const [initialBookingDetails, setInitialBookingDetails] = useState<any>(null);
   const [quickViewVendor, setQuickViewVendor] = useState<Vendor | null>(null);
+  const [quickViewOpenCount, setQuickViewOpenCount] = useState(0);
+
+  const handleOpenBooking = (v: Vendor | null, clearQuickView = false) => {
+    if (clearQuickView) {
+      setQuickViewVendor(null);
+    }
+    if (v) {
+      setBookingOpenCount(c => c + 1);
+    }
+    setBookingVendor(v);
+  };
 
   const handleViewVendor = (v: Vendor | null) => {
     if (v) {
       trackFunnelStep.viewVendor(v.id, v.name, v.category);
+      setQuickViewOpenCount(c => c + 1);
     }
+    setIsBookingModalSuccess(false);
+    setBookingVendor(null);
+    setInitialBookingDetails(null);
     setQuickViewVendor(v);
   };
   const [chatVendor, setChatVendor] = useState<Vendor | null>(null);
@@ -1144,7 +1843,7 @@ function App() {
   }, [vendors, activeCategory, showAllCategoriesGrid, searchTerm, eventDate, activeSubCategories, activeSubCategoryGroup, activeSubSubCategory, categorySubCategories]);
 
   useEffect(() => {
-    setActiveSubCategories([]);
+    setActiveSubCategories(prev => (prev.length === 0 ? prev : []));
     setActiveSubCategoryGroup(null);
     setActiveSubSubCategory(null);
     setShowAllCategoriesGrid(false);
@@ -2023,264 +2722,285 @@ function App() {
     }
   };
 
-  const AuthWall = () => {
-    const [step, setStep] = useState<'welcome' | 'login' | 'register' | 'verification' | 'forgot-password' | 'reset-success'>('welcome');
-    const [targetRole, setTargetRole] = useState<'client' | 'vendor' | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    
-    // Form States
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [fullName, setFullName] = useState('');
-    const [photo, setPhoto] = useState<File | null>(null);
-    const [error, setError] = useState('');
-    const [unverifiedEmail, setUnverifiedEmail] = useState('');
+  const [authStep, setAuthStep] = useState<'welcome' | 'login' | 'verification' | 'forgot-password' | 'reset-success'>('welcome');
+  const [isAuthSignUpOpen, setIsAuthSignUpOpen] = useState(false);
+  const [authSignInOpenCount, setAuthSignInOpenCount] = useState(0);
+  const authSignInOpenCountRef = useRef(0);
+  const [authTargetRole] = useState<'client' | 'vendor' | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authConfirmPassword, setAuthConfirmPassword] = useState('');
+  const [authFullName, setAuthFullName] = useState('');
+  const [authPhoto, setAuthPhoto] = useState<File | null>(null);
+  const [authError, setAuthError] = useState('');
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
 
-    const handleLogin = async (e: React.FormEvent) => {
-      e.preventDefault();
-      setIsLoading(true);
-      setError('');
+  const handleOpenAuthSignIn = useCallback(() => {
+    setAuthError('');
+    setIsAuthSignUpOpen(false);
+    setAuthSignInOpenCount(prev => {
+      const next = prev + 1;
+      authSignInOpenCountRef.current = next;
+      return next;
+    });
+    setAuthStep('login');
+  }, []);
+
+  const handleCloseAuthSignIn = useCallback((closingOpenId: number) => {
+    if (authSignInOpenCountRef.current !== closingOpenId) return;
+    setIsAuthSignUpOpen(false);
+    setAuthError('');
+    setAuthStep(prev => (prev === 'verification' || prev === 'reset-success' ? prev : 'welcome'));
+    document.body.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
+  }, []);
+
+  const handleAuthLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAuthLoading(true);
+    setAuthError('');
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      const user = userCredential.user;
+
+      let isVendor = false;
+      let matchedVendor = null;
       try {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-
-        // Determine if this user corresponds to a vendor
-        let isVendor = false;
-        let matchedVendor = null;
-        try {
-          const vendorDoc = await getDocSafe(doc(db, 'vendors', user.uid));
-          if (vendorDoc.exists()) {
+        const vendorDoc = await getDocSafe(doc(db, 'vendors', user.uid));
+        if (vendorDoc.exists()) {
+          isVendor = true;
+          matchedVendor = { id: vendorDoc.id, ...vendorDoc.data() } as Vendor;
+        } else {
+          const q = query(collection(db, 'vendors'), where('contactEmail', '==', authEmail.trim()));
+          const qSnap = await getDocsSafe(q);
+          if (!qSnap.empty) {
             isVendor = true;
-            matchedVendor = { id: vendorDoc.id, ...vendorDoc.data() } as Vendor;
+            matchedVendor = { id: qSnap.docs[0].id, ...qSnap.docs[0].data() } as Vendor;
           } else {
-            const q = query(collection(db, 'vendors'), where('contactEmail', '==', email.trim()));
-            const qSnap = await getDocsSafe(q);
-            if (!qSnap.empty) {
+            const q2 = query(collection(db, 'vendors'), where('username', '==', authEmail.trim()));
+            const qSnap2 = await getDocsSafe(q2);
+            if (!qSnap2.empty) {
               isVendor = true;
-              matchedVendor = { id: qSnap.docs[0].id, ...qSnap.docs[0].data() } as Vendor;
-            } else {
-              const q2 = query(collection(db, 'vendors'), where('username', '==', email.trim()));
-              const qSnap2 = await getDocsSafe(q2);
-              if (!qSnap2.empty) {
-                isVendor = true;
-                matchedVendor = { id: qSnap2.docs[0].id, ...qSnap2.docs[0].data() } as Vendor;
-              }
+              matchedVendor = { id: qSnap2.docs[0].id, ...qSnap2.docs[0].data() } as Vendor;
             }
           }
-        } catch (err: any) {
-          if (err.message?.includes('offline') || err.message?.includes('Failed to get document')) {
-            console.warn("Vendor status check paused (offline mode) on login:", err.message);
-            if (email && INITIAL_VENDORS.some(v => v.username?.toLowerCase() === email.toLowerCase())) {
-              isVendor = true;
-            }
-          } else {
-            console.error("Error checking vendor status on login:", err);
-          }
         }
-
-        if (!user.emailVerified && !isVendor) {
-          setUnverifiedEmail(email);
-          setStep('verification');
-          await signOut(auth);
-          return;
-        }
-
-        if (targetRole === 'vendor' || isVendor) {
-           const vendor = matchedVendor || vendors.find(v => 
-             v.username?.toLowerCase() === email.toLowerCase() || 
-             v.contactEmail?.toLowerCase() === email.toLowerCase()
-           );
-           if (vendor) {
-             setCurrentUserVendorId(vendor.id);
-             setUserRole('vendor');
-             setView('marketplace');
-           } else {
-             setUserRole('client');
-             setView('marketplace');
-           }
-        } else {
-          setUserRole('client');
-          setView('marketplace');
-        }
-        await syncUserProfile(user);
       } catch (err: any) {
-        setError('Password or email incorrect, or account requires verification.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    const handleGoogleSignIn = async () => {
-      setIsLoading(true);
-      setError('');
-      try {
-        const provider = new GoogleAuthProvider();
-        const userCredential = await signInWithPopup(auth, provider);
-        const user = userCredential.user;
-
-        // For Google sign-in, we assume email is verified by Google
-        if (targetRole === 'vendor') {
-          const vendor = vendors.find(v => 
-            v.username?.toLowerCase() === user.email?.toLowerCase() || 
-            v.contactEmail?.toLowerCase() === user.email?.toLowerCase()
-          );
-          if (vendor) {
-            setCurrentUserVendorId(vendor.id);
-            setUserRole('vendor');
-            setView('marketplace');
-          } else {
-            setUserRole('client');
-            setView('marketplace');
+        if (err.message?.includes('offline') || err.message?.includes('Failed to get document')) {
+          console.warn("Vendor status check paused (offline mode) on login:", err.message);
+          if (authEmail && INITIAL_VENDORS.some(v => v.username?.toLowerCase() === authEmail.toLowerCase())) {
+            isVendor = true;
           }
         } else {
-          setUserRole('client');
-          setView('marketplace');
+          console.error("Error checking vendor status on login:", err);
         }
-        await syncUserProfile(user);
-        showNotification(`Welcome, ${user.displayName || 'User'}!`);
-      } catch (err: any) {
-        setError(err.message || 'An error occurred during Google Sign-In.');
-      } finally {
-        setIsLoading(false);
       }
-    };
 
-    const handleRegister = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (password !== confirmPassword) {
-        setError('Passwords do not match');
-        return;
-      }
-      setIsLoading(true);
-      setError('');
-      try {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        
-        let photoURL = '';
-        let photoStoragePath = '';
-
-        if (photo) {
-          try {
-            const storagePath = `user_uploads/${user.uid}/profile_photo_${Date.now()}`;
-            const url = await uploadFileRobustly(photo, storagePath);
-            photoURL = url;
-            photoStoragePath = storagePath;
-          } catch (uploadErr) {
-            console.error("Registration photo upload failed:", uploadErr);
-          }
-        }
-
-        const safeAuthPhotoURL = (photoURL && photoURL.length <= 2000 && !photoURL.startsWith('data:')) ? photoURL : undefined;
-        try {
-          await updateProfile(user, {
-            displayName: fullName,
-            photoURL: safeAuthPhotoURL
-          });
-        } catch (authErr: any) {
-          console.warn("Firebase Auth updateProfile non-fatal error during registration:", authErr);
-        }
-
-        await syncUserProfile(user, { fullName, photoURL, photoStoragePath });
-
-        // Trigger official Firebase Email Verification as well!
-        try {
-          await sendEmailVerification(user);
-        } catch (fbVerifErr: any) {
-          console.warn("Firebase Auth SDK sendEmailVerification failed or rate-limited during registration:", fbVerifErr?.message || fbVerifErr);
-        }
-
-        // Use custom verification email via server SMTP
-        try {
-          const apiUrl = `${window.location.protocol}//${window.location.host}/api/auth/send-verification`;
-          await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, name: fullName })
-          });
-        } catch (emailErr) {
-          console.error("Failed to trigger custom verification email:", emailErr);
-        }
-
-        setUnverifiedEmail(email);
-        setStep('verification');
+      if (!user.emailVerified && !isVendor) {
+        setUnverifiedEmail(authEmail);
+        setIsAuthSignUpOpen(false);
+        setAuthStep('verification');
         await signOut(auth);
-      } catch (err: any) {
-        if (err.code === 'auth/email-already-in-use') {
-          setError('An account with this email already exists.');
+        return;
+      }
+
+      if (authTargetRole === 'vendor' || isVendor) {
+        const vendor = matchedVendor || vendors.find(v => 
+          v.username?.toLowerCase() === authEmail.toLowerCase() || 
+          v.contactEmail?.toLowerCase() === authEmail.toLowerCase()
+        );
+        if (vendor) {
+          setCurrentUserVendorId(vendor.id);
+          setUserRole('vendor');
+          setView('marketplace');
         } else {
-          setError(err.message || 'An error occurred during registration.');
+          setUserRole('client');
+          setView('marketplace');
         }
-      } finally {
-        setIsLoading(false);
+      } else {
+        setUserRole('client');
+        setView('marketplace');
       }
-    };
+      await syncUserProfile(user);
+    } catch (err: any) {
+      setAuthError('Password or email incorrect, or account requires verification.');
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
 
-    const handleResetPassword = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!email.trim()) {
-        setError('Please enter your email address');
-        return;
+  const handleAuthGoogleSignIn = async () => {
+    setIsAuthLoading(true);
+    setAuthError('');
+    try {
+      const provider = new GoogleAuthProvider();
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
+
+      if (authTargetRole === 'vendor') {
+        const vendor = vendors.find(v => 
+          v.username?.toLowerCase() === user.email?.toLowerCase() || 
+          v.contactEmail?.toLowerCase() === user.email?.toLowerCase()
+        );
+        if (vendor) {
+          setCurrentUserVendorId(vendor.id);
+          setUserRole('vendor');
+          setView('marketplace');
+        } else {
+          setUserRole('client');
+          setView('marketplace');
+        }
+      } else {
+        setUserRole('client');
+        setView('marketplace');
       }
-      setIsLoading(true);
-      setError('');
+      await syncUserProfile(user);
+      showNotification(`Welcome, ${user.displayName || 'User'}!`);
+    } catch (err: any) {
+      setAuthError(err.message || 'An error occurred during Google Sign-In.');
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  const handleAuthRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (authPassword !== authConfirmPassword) {
+      setAuthError('Passwords do not match');
+      return;
+    }
+    setIsAuthLoading(true);
+    setAuthError('');
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+      const user = userCredential.user;
+      
+      let photoURL = '';
+      let photoStoragePath = '';
+
+      if (authPhoto) {
+        try {
+          const storagePath = `user_uploads/${user.uid}/profile_photo_${Date.now()}`;
+          const url = await uploadFileRobustly(authPhoto, storagePath);
+          photoURL = url;
+          photoStoragePath = storagePath;
+        } catch (uploadErr) {
+          console.error("Registration photo upload failed:", uploadErr);
+        }
+      }
+
+      const safeAuthPhotoURL = (photoURL && photoURL.length <= 2000 && !photoURL.startsWith('data:')) ? photoURL : undefined;
       try {
-        // Use custom password reset email via server SMTP
-        const apiUrl = `${window.location.protocol}//${window.location.host}/api/auth/reset-password`;
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
+        await updateProfile(user, {
+          displayName: authFullName,
+          photoURL: safeAuthPhotoURL
         });
-        
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || 'Failed to send reset email');
-        }
-
-        setUnverifiedEmail(email);
-        setStep('reset-success');
-      } catch (err: any) {
-        setError(err.message || 'Could not send reset link. Verify email.');
-      } finally {
-        setIsLoading(false);
+      } catch (authErr: any) {
+        console.warn("Firebase Auth updateProfile non-fatal error during registration:", authErr);
       }
-    };
 
-    const handleResendVerification = async () => {
-      if (!unverifiedEmail) {
-        showNotification('No unverified email set. Please log in first.', 'info');
-        return;
+      await syncUserProfile(user, { fullName: authFullName, photoURL, photoStoragePath });
+
+      try {
+        await sendEmailVerification(user);
+      } catch (fbVerifErr: any) {
+        console.warn("Firebase Auth SDK sendEmailVerification failed or rate-limited during registration:", fbVerifErr?.message || fbVerifErr);
       }
-      setIsLoading(true);
+
       try {
         const apiUrl = `${window.location.protocol}//${window.location.host}/api/auth/send-verification`;
-        const response = await fetch(apiUrl, {
+        await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: unverifiedEmail })
+          body: JSON.stringify({ email: authEmail, name: authFullName })
         });
-        
-        const data = await response.json();
-        if (!response.ok) {
-          if (response.status === 429 || data.error === 'TOO_MANY_ATTEMPTS') {
-            showNotification('Rate limit exceeded. Please wait a few minutes before resending.', 'info');
-          } else {
-            showNotification(data.message || data.error || 'Failed to send verification email.', 'info');
-          }
-        } else {
-          showNotification('Verification email resent successfully!', 'success');
-        }
-      } catch (err: any) {
-        console.error("Resend error:", err);
-        showNotification('Failed to connect to verification service.', 'info');
-      } finally {
-        setIsLoading(false);
+      } catch (emailErr) {
+        console.error("Failed to trigger custom verification email:", emailErr);
       }
-    };
 
-    if (step === 'verification') {
+      setUnverifiedEmail(authEmail);
+      setIsAuthSignUpOpen(false);
+      setAuthStep('verification');
+      await signOut(auth);
+    } catch (err: any) {
+      if (err.code === 'auth/email-already-in-use') {
+        setAuthError('An account with this email already exists.');
+      } else {
+        setAuthError(err.message || 'An error occurred during registration.');
+      }
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  const handleAuthResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail.trim()) {
+      setAuthError('Please enter your email address');
+      return;
+    }
+    setIsAuthLoading(true);
+    setAuthError('');
+    try {
+      const apiUrl = `${window.location.protocol}//${window.location.host}/api/auth/reset-password`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to send reset email');
+      }
+
+      setUnverifiedEmail(authEmail);
+      setIsAuthSignUpOpen(false);
+      setAuthStep('reset-success');
+    } catch (err: any) {
+      setAuthError(err.message || 'Could not send reset link. Verify email.');
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  const handleAuthResendVerification = async () => {
+    if (!unverifiedEmail) {
+      showNotification('No unverified email set. Please log in first.', 'info');
+      return;
+    }
+    setIsAuthLoading(true);
+    try {
+      const apiUrl = `${window.location.protocol}//${window.location.host}/api/auth/send-verification`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: unverifiedEmail })
+      });
+      
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 429 || data.error === 'TOO_MANY_ATTEMPTS') {
+          showNotification('Rate limit exceeded. Please wait a few minutes before resending.', 'info');
+        } else {
+          showNotification(data.message || data.error || 'Failed to send verification email.', 'info');
+        }
+      } else {
+        showNotification('Verification email resent successfully!', 'success');
+      }
+    } catch (err: any) {
+      console.error("Resend error:", err);
+      showNotification('Failed to connect to verification service.', 'info');
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  const renderAuthWall = () => {
+    if (authStep === 'verification') {
       return (
         <main className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden" aria-label="Email Verification">
           <div className="absolute inset-0 bg-gradient-to-br from-[#D4AF37]/5 via-black to-black" aria-hidden="true"></div>
@@ -2295,14 +3015,14 @@ function App() {
             </p>
             <div className="flex flex-col gap-3">
               <button 
-                onClick={handleResendVerification}
-                disabled={isLoading}
+                onClick={handleAuthResendVerification}
+                disabled={isAuthLoading}
                 className="w-full bg-[#111] border border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black py-4 rounded-full transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /> Resend Verification Email
+                <RefreshCw className={`w-4 h-4 ${isAuthLoading ? 'animate-spin' : ''}`} /> Resend Verification Email
               </button>
               <button 
-                onClick={() => setStep('login')}
+                onClick={handleOpenAuthSignIn}
                 className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer"
               >
                 <LogIn className="w-4 h-4" /> Return to Login
@@ -2313,7 +3033,7 @@ function App() {
       );
     }
 
-    if (step === 'reset-success') {
+    if (authStep === 'reset-success') {
       return (
         <main className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden" aria-label="Password Reset Confirmation">
           <div className="absolute inset-0 bg-gradient-to-br from-[#D4AF37]/5 via-black to-black" aria-hidden="true"></div>
@@ -2327,8 +3047,8 @@ function App() {
               Please follow the instructions in the email to set a new password.
             </p>
             <button 
-              onClick={() => setStep('login')}
-              className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2"
+              onClick={handleOpenAuthSignIn}
+              className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer"
             >
               <LogIn className="w-4 h-4" /> Sign In
             </button>
@@ -2351,7 +3071,7 @@ function App() {
 
           <div className="space-y-6">
             <div
-              onClick={() => setStep('login')}
+              onClick={handleOpenAuthSignIn}
               className="bg-[#0d0d0d] border border-[#D4AF37]/30 rounded-2xl p-8 text-center cursor-pointer hover:border-[#D4AF37] hover:bg-black/60 hover:scale-[1.02] transition-all duration-300 shadow-xl group"
             >
               <div className="bg-[#D4AF37]/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#D4AF37]/20 group-hover:border-[#D4AF37]/40 group-hover:bg-[#D4AF37]/20 transition-all">
@@ -2367,228 +3087,43 @@ function App() {
           </div>
         </div>
 
-        {/* Slide-up Modal for Login, Register, Forgot-Password */}
-        <AnimatePresence>
-          {step !== 'welcome' && (
-            <motion.div
-              key="auth-modal-overlay"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-hidden"
-            >
-              <motion.div 
-                key="auth-modal-sheet"
-                initial={{ y: "100%", opacity: 0 }} 
-                animate={{ y: 0, opacity: 1 }} 
-                exit={{ y: "100%", opacity: 0 }} 
-                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }} 
-                className="bg-[#111] h-[92dvh] sm:h-auto sm:max-h-[88vh] max-w-xl w-full rounded-t-[2.5rem] rounded-b-none sm:rounded-3xl p-6 md:p-8 border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-y-auto relative z-10 mt-auto sm:mt-0 flex flex-col"
-              >
-                <header className="text-center mb-6">
-                  <div className="flex items-center justify-center mx-auto mb-4"><SimchaLogo className="w-20 h-20 overflow-visible" viewBox="-10 -8 120 110" /></div>
-                  <h2 className="text-2xl sm:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">
-                    {step === 'register' ? 'WELCOME TO SIMCHA SIGN UP' : 'WELCOME TO SIMCHA SIGN IN'}
-                  </h2>
-                  <p className="text-[10px] text-zinc-300 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
-                </header>
-
-                {step === 'login' ? (
-                  <form aria-label="Sign In Form" onSubmit={handleLogin} className="space-y-6">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="flex flex-1 rounded-full border border-[#D4AF37]/20 bg-black/60 p-1">
-                        <button type="button" onClick={() => setStep("login")} className="flex-1 rounded-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors bg-[#D4AF37] text-black shadow">Sign In</button>
-                        <button type="button" onClick={() => setStep("register")} className="flex-1 rounded-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors text-zinc-400 hover:text-white">Sign Up</button>
-                      </div>
-                      <button type="button" aria-label="Close sign-in" onClick={() => setStep("welcome")} className="w-9 h-9 shrink-0 rounded-full border border-white/10 bg-white/5 text-zinc-300 hover:text-white hover:bg-white/10 transition flex items-center justify-center text-lg cursor-pointer">×</button>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
-                      <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
-                        <button type="button" onClick={() => setStep('forgot-password')} className="text-[10px] text-[#D4AF37] hover:underline font-bold uppercase tracking-widest px-2 py-0.5 rounded-full hover:bg-[#D4AF37]/10 transition-colors">Forgot password?</button>
-                      </div>
-                      <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
-                    </div>
-                    
-                    {error && (
-                      <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
-                        <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
-                        <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
-                      </div>
-                    )}
-
-                    <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer">
-                      {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign In'}
-                    </button>
-
-                    <div className="relative my-6">
-                      <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                        <div className="w-full border-t border-white/10"></div>
-                      </div>
-                      <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-                        <span className="bg-[#111] px-4 text-zinc-300 font-black">Or continue with</span>
-                      </div>
-                    </div>
-
-                    <button 
-                      type="button" 
-                      onClick={handleGoogleSignIn}
-                      disabled={isLoading}
-                      className="w-full bg-white text-black font-black py-4 rounded-full hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3 cursor-pointer"
-                    >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24">
-                        <path
-                          fill="currentColor"
-                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                        />
-                        <path
-                          fill="currentColor"
-                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                        />
-                        <path
-                          fill="currentColor"
-                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                        />
-                        <path
-                          fill="currentColor"
-                          d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z"
-                        />
-                      </svg>
-                      Google
-                    </button>
-                  </form>
-                ) : step === 'forgot-password' ? (
-                  <form aria-label="Password Reset Form" onSubmit={handleResetPassword} className="space-y-6 animate-in fade-in duration-300">
-                    <div className="flex items-center justify-between mb-4">
-                      <button
-                        type="button"
-                        onClick={() => setStep('login')}
-                        className="text-xs text-zinc-300 hover:text-[#D4AF37] flex items-center gap-1 font-bold uppercase tracking-wider transition-colors cursor-pointer"
-                      >
-                        <ChevronLeft className="w-3.5 h-3.5" /> Back
-                      </button>
-                      <button type="button" aria-label="Close sign-in" onClick={() => setStep("welcome")} className="w-9 h-9 shrink-0 rounded-full border border-white/10 bg-white/5 text-zinc-300 hover:text-white hover:bg-white/10 transition flex items-center justify-center text-lg cursor-pointer">×</button>
-                    </div>
-                    <div className="bg-[#D4AF37]/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-                      <RefreshCw className="w-8 h-8 text-[#D4AF37]" />
-                    </div>
-                    <div className="text-center mb-6">
-                      <h2 className="text-white font-bold uppercase tracking-widest text-sm mb-2">Password Reset</h2>
-                      <p className="text-[10px] text-zinc-300 uppercase leading-relaxed px-4">Enter your email and we'll send you a link to regain access to your simcha planning.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
-                      <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
-                    </div>
-                    {error && (
-                      <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-shake">
-                        <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
-                        <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
-                      </div>
-                    )}
-                    <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer">
-                      {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Get Reset Link'}
-                    </button>
-                    <button type="button" onClick={() => setStep('login')} className="w-full text-zinc-300 hover:text-white text-[10px] font-black uppercase tracking-widest cursor-pointer">Return to Login</button>
-                  </form>
-                ) : (
-                  <form aria-label="Registration Form" onSubmit={handleRegister} className="space-y-4">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="flex flex-1 rounded-full border border-[#D4AF37]/20 bg-black/60 p-1">
-                        <button type="button" onClick={() => setStep("login")} className="flex-1 rounded-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors text-zinc-400 hover:text-white">Sign In</button>
-                        <button type="button" onClick={() => setStep("register")} className="flex-1 rounded-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors bg-[#D4AF37] text-black shadow">Sign Up</button>
-                      </div>
-                      <button type="button" aria-label="Close sign-in" onClick={() => setStep("welcome")} className="w-9 h-9 shrink-0 rounded-full border border-white/10 bg-white/5 text-zinc-300 hover:text-white hover:bg-white/10 transition flex items-center justify-center text-lg cursor-pointer">×</button>
-                    </div>
-                    <div className="flex flex-col items-center mb-4">
-                      <label className="relative group cursor-pointer">
-                        <div className="w-20 h-20 bg-black/60 border-2 border-dashed border-[#D4AF37]/30 rounded-full flex items-center justify-center overflow-hidden transition-all group-hover:border-[#D4AF37]">
-                          {photo ? <img src={URL.createObjectURL(photo)} className="w-full h-full object-cover" /> : <Camera className="w-6 h-6 text-[#D4AF37]/40" />}
-                        </div>
-                        <input type="file" className="hidden" accept="image/*" onChange={e => setPhoto(e.target.files?.[0] || null)} />
-                        <div className="absolute -bottom-1 -right-1 bg-[#D4AF37] p-1.5 rounded-full text-black shadow-lg">
-                          <Plus className="w-3 h-3" />
-                        </div>
-                      </label>
-                      <p className="text-[8px] text-zinc-300 font-black uppercase tracking-widest mt-2">Upload Profile Photo</p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Full Name</label>
-                      <input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="Sarah Cohen" />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Email Address</label>
-                      <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="sarah@example.com" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Password</label>
-                        <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">Repeat Password</label>
-                        <input required type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-[#D4AF37]" placeholder="••••••••" />
-                      </div>
-                    </div>
-
-                    {error && (
-                      <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-in fade-in">
-                        <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
-                        <p className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">{error}</p>
-                      </div>
-                    )}
-
-                    <button disabled={isLoading} type="submit" className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-2 mt-4 cursor-pointer">
-                      {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Complete Registration'}
-                    </button>
-
-                    <div className="relative my-4">
-                      <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                        <div className="w-full border-t border-white/10"></div>
-                      </div>
-                      <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-                        <span className="bg-[#111] px-4 text-zinc-300 font-black">Or join with</span>
-                      </div>
-                    </div>
-
-                    <button 
-                      type="button" 
-                      onClick={handleGoogleSignIn}
-                      disabled={isLoading}
-                      className="w-full bg-white text-black font-black py-4 rounded-full hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] text-xs shadow-xl flex items-center justify-center gap-3 cursor-pointer"
-                    >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24">
-                        <path
-                          fill="currentColor"
-                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                        />
-                        <path
-                          fill="currentColor"
-                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                        />
-                        <path
-                          fill="currentColor"
-                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                        />
-                        <path
-                          fill="currentColor"
-                          d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z"
-                        />
-                      </svg>
-                      Google
-                    </button>
-                  </form>
-                )}
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {(authStep === 'login' || authStep === 'forgot-password') && (
+          <AuthSignInModal
+            key={`auth-signin-${authSignInOpenCount}`}
+            openId={authSignInOpenCount}
+            step={authStep}
+            onChangeStep={(nextStep) => {
+              setAuthError('');
+              setAuthStep(nextStep);
+            }}
+            onClose={handleCloseAuthSignIn}
+            isSignUpOpen={isAuthSignUpOpen}
+            onOpenSignUp={() => {
+              setAuthError('');
+              setIsAuthSignUpOpen(true);
+            }}
+            onCloseSignUp={() => {
+              setAuthError('');
+              setIsAuthSignUpOpen(false);
+            }}
+            isLoading={isAuthLoading}
+            email={authEmail}
+            onEmailChange={setAuthEmail}
+            password={authPassword}
+            onPasswordChange={setAuthPassword}
+            confirmPassword={authConfirmPassword}
+            onConfirmPasswordChange={setAuthConfirmPassword}
+            fullName={authFullName}
+            onFullNameChange={setAuthFullName}
+            photo={authPhoto}
+            onPhotoChange={setAuthPhoto}
+            error={authError}
+            onLogin={handleAuthLogin}
+            onRegister={handleAuthRegister}
+            onResetPassword={handleAuthResetPassword}
+            onGoogleSignIn={handleAuthGoogleSignIn}
+          />
+        )}
       </main>
     );
   };
@@ -2692,7 +3227,7 @@ function App() {
     );
   }
 
-  if (!fbUser) return <AuthWall />;
+  if (!fbUser) return renderAuthWall();
 
   const currentAuthenticatedUser: UserAccount = {
     id: fbUser?.uid || '',
@@ -2710,9 +3245,9 @@ function App() {
       }
       return (
         <motion.div 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
+          transition={APP_SLIDE_UP_TRANSITION}
           className="min-h-screen bg-black"
         >
           <AdminPanel 
@@ -2758,9 +3293,9 @@ function App() {
         if (v) {
           return (
             <motion.div 
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
+              transition={APP_SLIDE_UP_TRANSITION}
               className="min-h-screen bg-black flex flex-col"
             >
                             <div className="flex-grow flex flex-col">
@@ -2789,9 +3324,9 @@ function App() {
       const myMessages = messages.filter(m => m.clientEmail === fbUser.email);
       return (
         <motion.div 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
+          transition={APP_SLIDE_UP_TRANSITION}
           className="min-h-screen bg-black flex flex-col"
         >
                     <div className="flex-grow flex flex-col">
@@ -2822,9 +3357,9 @@ function App() {
     if (view === 'posts') {
       return (
         <motion.div 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
+          transition={APP_SLIDE_UP_TRANSITION}
           className="min-h-screen bg-black flex flex-col"
         >
           <PostsPage posts={posts} vendors={vendors} onBack={() => setView('marketplace')} onViewVendor={navigateToVendor} />
@@ -2835,9 +3370,9 @@ function App() {
     if (view === 'payment-success') {
       return (
         <motion.div 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
+          transition={APP_SLIDE_UP_TRANSITION}
           className="min-h-screen bg-black flex flex-col"
         >
           <PaymentSuccess 
@@ -2872,7 +3407,13 @@ function App() {
     return (
       <>
             
-      <main id="main-content" className="flex-1 flex flex-col pb-36 md:pb-0">
+      <motion.main 
+        id="main-content" 
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
+        transition={APP_SLIDE_UP_TRANSITION}
+        className="flex-1 flex flex-col pb-36 md:pb-0"
+      >
         <section className="relative bg-black text-white overflow-hidden rounded-t-[5px] md:rounded-t-none" aria-labelledby="hero-title">
           <div className="absolute inset-0" aria-hidden="true">
             {renderMedia(heroBackgroundUrl, "w-full h-full object-cover opacity-80")}
@@ -2903,7 +3444,7 @@ function App() {
                 onClick={() => {
                   if (activeCategory !== 'All') setActiveCategory('All');
                 }}
-                className="bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] hover:bg-[#E5C76B] text-black px-4 sm:px-6 py-2 sm:py-2.5 rounded-full font-black uppercase tracking-wider text-xs sm:text-sm transition-all shadow-lg border border-[#FFF8D1]/50 shrink-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-white flex items-center gap-1.5"
+                className="bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] hover:bg-[#E5C76B] text-black px-4 sm:px-6 py-2 sm:py-2.5 rounded-full font-black uppercase tracking-wider text-xs sm:text-sm transition-colors duration-300 shadow-lg border border-[#FFF8D1]/50 shrink-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-white flex items-center gap-1.5"
               >
                 <span>Search</span>
               </motion.button>
@@ -2914,166 +3455,224 @@ function App() {
         {activeCategory === 'All' && !showAllCategoriesGrid && !searchTerm ? (
             <div className="py-4 sm:py-6 bg-black flex-1 border-b border-[#D4AF37]/10">
                 <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-                    <nav className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4" aria-label="Category Browser">
+                    <motion.nav 
+                      key="main-categories-grid"
+                      variants={CARD_GRID_VARIANTS}
+                      initial="hidden"
+                      animate="show"
+                      className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4" 
+                      aria-label="Category Browser"
+                    >
                         {activeCategories.map((cat) => (
-                            <motion.button 
-                              key={cat} 
-                              initial={{ borderColor: "rgba(212, 175, 55, 0.2)" }}
-                              whileHover={{ scale: 1.02, y: -2, borderColor: "rgba(212, 175, 55, 0.5)" }}
-                              whileTap={{ scale: 0.97 }}
-                              transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                              onClick={() => { setActiveCategory(cat); setActiveSubCategoryGroup(null); setActiveSubSubCategory(null); }} 
-                              className="group relative h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-all cursor-pointer shadow-lg"
+                            <motion.div
+                              key={cat}
+                              variants={CARD_ITEM_VARIANTS}
+                              className="transform-gpu will-change-transform"
                             >
-                                {renderMedia(categoryImages[cat], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500", undefined, true)}
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
-                                <div className="absolute inset-0 flex items-center justify-center p-3.5 sm:p-4 text-center">
-                                  <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{cat}</h3>
-                                </div>
-                            </motion.button>
+                              <motion.button 
+                                whileHover={{ scale: 1.02, y: -4 }}
+                                whileTap={{ scale: 0.97 }}
+                                transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                                onClick={() => { setActiveCategory(cat); setActiveSubCategoryGroup(null); setActiveSubSubCategory(null); }} 
+                                className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
+                              >
+                                  {renderMedia(categoryImages[cat], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", undefined, true)}
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                                  <div className="absolute inset-0 flex items-center justify-center p-3.5 sm:p-4 text-center">
+                                    <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{cat}</h3>
+                                  </div>
+                              </motion.button>
+                            </motion.div>
                         ))}
                         {/* View All Card */}
-                        <motion.button 
-                          initial={{ borderColor: "rgba(212, 175, 55, 0.2)" }}
-                          whileHover={{ scale: 1.02, y: -2, borderColor: "rgba(212, 175, 55, 0.5)" }}
-                          whileTap={{ scale: 0.97 }}
-                          transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                          onClick={() => setShowAllCategoriesGrid(true)} 
-                          className="group relative h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-all cursor-pointer shadow-lg"
+                        <motion.div
+                          key="view-all-main-categories"
+                          variants={CARD_ITEM_VARIANTS}
+                          className="transform-gpu will-change-transform"
                         >
-                            {renderMedia("https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500", undefined, true)}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
-                            <div className="absolute inset-0 flex items-center justify-center p-3.5 sm:p-4 text-center">
-                              <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">View All</h3>
-                            </div>
-                        </motion.button>
-                    </nav>
+                          <motion.button 
+                            whileHover={{ scale: 1.02, y: -4 }}
+                            whileTap={{ scale: 0.97 }}
+                            transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                            onClick={() => setShowAllCategoriesGrid(true)} 
+                            className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
+                          >
+                              {renderMedia("https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", undefined, true)}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                              <div className="absolute inset-0 flex items-center justify-center p-3.5 sm:p-4 text-center">
+                                <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">View All</h3>
+                              </div>
+                          </motion.button>
+                        </motion.div>
+                    </motion.nav>
                 </div>
             </div>
         ) : (
-            <div className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 w-full animate-in fade-in">
+            <div className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 w-full">
                 <div className="flex flex-wrap items-center gap-2 mb-6" aria-label="Breadcrumb">
                    {/* Selected Category Pill with integrated back arrow */}
                    {activeCategory !== 'All' && (
-                     <button 
+                     <motion.button 
+                       key={`crumb-cat-${activeCategory}`}
+                       initial={{ opacity: 0, y: 18 }}
+                       animate={{ opacity: 1, y: 0 }}
+                       transition={APP_SLIDE_UP_TRANSITION}
                        onClick={() => { setActiveCategory('All'); setShowAllCategoriesGrid(false); setActiveSubCategoryGroup(null); setActiveSubSubCategory(null); }}
-                       className="h-7 px-3 rounded-full flex items-center gap-1.5 bg-[#111] border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+                       className="h-7 px-3 rounded-full flex items-center gap-1.5 bg-[#111] border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black text-[10px] uppercase tracking-wider transition-colors duration-300 cursor-pointer shadow-sm transform-gpu"
                      >
                        <ChevronLeft className="w-3.5 h-3.5" />
                        <span>{activeCategory}</span>
-                     </button>
+                     </motion.button>
                    )}
 
                    {/* Subcategory Pill with integrated back arrow */}
                    {activeSubCategoryGroup && activeSubCategoryGroup !== '__ALL__' && (
-                     <button 
+                     <motion.button 
+                       key={`crumb-sub-${activeSubCategoryGroup}`}
+                       initial={{ opacity: 0, y: 18 }}
+                       animate={{ opacity: 1, y: 0 }}
+                       transition={APP_SLIDE_UP_TRANSITION}
                        onClick={() => { setActiveSubCategoryGroup(null); setActiveSubSubCategory(null); }}
-                       className="h-7 px-3 rounded-full flex items-center gap-1.5 bg-[#111] border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+                       className="h-7 px-3 rounded-full flex items-center gap-1.5 bg-[#111] border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black text-[10px] uppercase tracking-wider transition-colors duration-300 cursor-pointer shadow-sm transform-gpu"
                      >
                        <ChevronLeft className="w-3.5 h-3.5" />
                        <span>{activeSubCategoryGroup}</span>
-                     </button>
+                     </motion.button>
                    )}
 
                    {/* Sub-Subcategory Pill with integrated back arrow */}
                    {activeSubSubCategory && activeSubSubCategory !== '__ALL__' && (
-                     <button 
+                     <motion.button 
+                       key={`crumb-subsub-${activeSubSubCategory}`}
+                       initial={{ opacity: 0, y: 18 }}
+                       animate={{ opacity: 1, y: 0 }}
+                       transition={APP_SLIDE_UP_TRANSITION}
                        onClick={() => setActiveSubSubCategory(null)}
-                       className="h-7 px-3 rounded-full flex items-center gap-1.5 bg-[#111] border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+                       className="h-7 px-3 rounded-full flex items-center gap-1.5 bg-[#111] border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-black text-[10px] uppercase tracking-wider transition-colors duration-300 cursor-pointer shadow-sm transform-gpu"
                      >
                        <ChevronLeft className="w-3.5 h-3.5" />
                        <span>{activeSubSubCategory}</span>
-                     </button>
+                     </motion.button>
                    )}
                 </div>
 
                 {activeCategory !== 'All' && !showAllCategoriesGrid && categorySubCategories?.[activeCategory] && Object.keys(categorySubCategories[activeCategory]).length > 0 && !activeSubCategoryGroup && (
-                  <div className="mb-12 animate-in slide-in-from-top-4 duration-500">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                  <div className="mb-12">
+                    <motion.div 
+                      key={`subcategories-${activeCategory}`}
+                      variants={CARD_GRID_VARIANTS}
+                      initial="hidden"
+                      animate="show"
+                      className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4"
+                    >
                       {Object.keys(categorySubCategories[activeCategory] || {}).map(group => (
-                        <motion.button
+                        <motion.div
                           key={group}
-                          initial={{ borderColor: "rgba(212, 175, 55, 0.2)" }}
-                          whileHover={{ scale: 1.02, y: -2, borderColor: "rgba(212, 175, 55, 0.5)" }}
-                          whileTap={{ scale: 0.97 }}
-                          transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                          onClick={() => { setActiveSubCategoryGroup(group); setActiveSubSubCategory(null); }}
-                          className="group relative h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-all cursor-pointer shadow-lg"
+                          variants={CARD_ITEM_VARIANTS}
+                          className="transform-gpu will-change-transform"
                         >
-                           {subCategoryImages[group] ? (
-                             <>{renderMedia(subCategoryImages[group], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500", group, true)}</>
-                           ) : (
-                             <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-transform duration-500">
-                               <span className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No Image</span>
+                          <motion.button
+                            whileHover={{ scale: 1.02, y: -4 }}
+                            whileTap={{ scale: 0.97 }}
+                            transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                            onClick={() => { setActiveSubCategoryGroup(group); setActiveSubSubCategory(null); }}
+                            className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
+                          >
+                             {subCategoryImages[group] ? (
+                               <>{renderMedia(subCategoryImages[group], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", group, true)}</>
+                             ) : (
+                               <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-transform duration-500 transform-gpu">
+                                 <span className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No Image</span>
+                               </div>
+                             )}
+                             <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                             <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
+                               <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{group}</h3>
                              </div>
-                           )}
-                           <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
-                           <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
-                             <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{group}</h3>
-                           </div>
-                        </motion.button>
+                          </motion.button>
+                        </motion.div>
                       ))}
                       {/* Subcategory View All */}
-                      <motion.button
-                        initial={{ borderColor: "rgba(212, 175, 55, 0.2)" }}
-                        whileHover={{ scale: 1.02, y: -2, borderColor: "rgba(212, 175, 55, 0.5)" }}
-                        whileTap={{ scale: 0.97 }}
-                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                        onClick={() => { setActiveSubCategoryGroup('__ALL__'); setActiveSubSubCategory(null); }}
-                        className="group relative h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-all cursor-pointer shadow-lg"
+                      <motion.div
+                        key={`view-all-subcategories-${activeCategory}`}
+                        variants={CARD_ITEM_VARIANTS}
+                        className="transform-gpu will-change-transform"
                       >
-                         {renderMedia("https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500", undefined, true)}
-                         <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
-                         <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
-                           <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">View All</h3>
-                         </div>
-                      </motion.button>
-                    </div>
+                        <motion.button
+                          whileHover={{ scale: 1.02, y: -4 }}
+                          whileTap={{ scale: 0.97 }}
+                          transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                          onClick={() => { setActiveSubCategoryGroup('__ALL__'); setActiveSubSubCategory(null); }}
+                          className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
+                        >
+                           {renderMedia("https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", undefined, true)}
+                           <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                           <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
+                             <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">View All</h3>
+                           </div>
+                        </motion.button>
+                      </motion.div>
+                    </motion.div>
                   </div>
                 )}
 
                 {activeCategory !== 'All' && !showAllCategoriesGrid && activeSubCategoryGroup && activeSubCategoryGroup !== '__ALL__' && !activeSubSubCategory && (
-                  <div className="mb-12 animate-in slide-in-from-top-4 duration-500">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                  <div className="mb-12">
+                    <motion.div 
+                      key={`subsubcategories-${activeCategory}-${activeSubCategoryGroup}`}
+                      variants={CARD_GRID_VARIANTS}
+                      initial="hidden"
+                      animate="show"
+                      className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4"
+                    >
                       {(categorySubCategories[activeCategory]?.[activeSubCategoryGroup] || []).map(sub => (
-                        <motion.button
+                        <motion.div
                           key={sub}
-                          initial={{ borderColor: "rgba(212, 175, 55, 0.2)" }}
-                          whileHover={{ scale: 1.02, y: -2, borderColor: "rgba(212, 175, 55, 0.5)" }}
-                          whileTap={{ scale: 0.97 }}
-                          transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                          onClick={() => setActiveSubSubCategory(sub)}
-                          className="group relative h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-all cursor-pointer shadow-lg"
+                          variants={CARD_ITEM_VARIANTS}
+                          className="transform-gpu will-change-transform"
                         >
-                          {subCategoryImages[sub] ? (
-                            <>{renderMedia(subCategoryImages[sub], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500", sub, true)}</>
-                          ) : (
-                            <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-transform duration-500">
-                              <span className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No Image</span>
+                          <motion.button
+                            whileHover={{ scale: 1.02, y: -4 }}
+                            whileTap={{ scale: 0.97 }}
+                            transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                            onClick={() => setActiveSubSubCategory(sub)}
+                            className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
+                          >
+                            {subCategoryImages[sub] ? (
+                              <>{renderMedia(subCategoryImages[sub], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", sub, true)}</>
+                            ) : (
+                              <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-transform duration-500 transform-gpu">
+                                <span className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No Image</span>
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
+                              <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{sub}</h3>
                             </div>
-                          )}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
-                          <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
-                            <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{sub}</h3>
-                          </div>
-                        </motion.button>
+                          </motion.button>
+                        </motion.div>
                       ))}
                       {/* Sub-subcategory View All */}
-                      <motion.button
-                        initial={{ borderColor: "rgba(212, 175, 55, 0.2)" }}
-                        whileHover={{ scale: 1.02, y: -2, borderColor: "rgba(212, 175, 55, 0.5)" }}
-                        whileTap={{ scale: 0.97 }}
-                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                        onClick={() => setActiveSubSubCategory('__ALL__')}
-                        className="group relative h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-all cursor-pointer shadow-lg"
+                      <motion.div
+                        key={`view-all-subsubcategories-${activeCategory}-${activeSubCategoryGroup}`}
+                        variants={CARD_ITEM_VARIANTS}
+                        className="transform-gpu will-change-transform"
                       >
-                        {renderMedia("https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500", undefined, true)}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
-                          <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">View All</h3>
-                        </div>
-                      </motion.button>
-                    </div>
+                        <motion.button
+                          whileHover={{ scale: 1.02, y: -4 }}
+                          whileTap={{ scale: 0.97 }}
+                          transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                          onClick={() => setActiveSubSubCategory('__ALL__')}
+                          className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
+                        >
+                          {renderMedia("https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", undefined, true)}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
+                            <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">View All</h3>
+                          </div>
+                        </motion.button>
+                      </motion.div>
+                    </motion.div>
                   </div>
                 )}
 
@@ -3083,32 +3682,18 @@ function App() {
                 {(showAllCategoriesGrid || activeSubCategoryGroup === '__ALL__' || activeSubSubCategory === '__ALL__' || activeSubSubCategory || !categorySubCategories?.[activeCategory] || Object.keys(categorySubCategories[activeCategory] || {}).length === 0) && (
                   <>
                   <motion.div 
-                    layout
-                    key={`${activeCategory}-${showAllCategoriesGrid}-${activeSubCategoryGroup}-${activeSubSubCategory}-${searchTerm}`}
-                    variants={{
-                      hidden: { opacity: 0 },
-                      show: {
-                        opacity: 1,
-                        transition: {
-                          staggerChildren: 0.05
-                        }
-                      }
-                    }}
+                    key={`vendors-${activeCategory}-${showAllCategoriesGrid}-${activeSubCategoryGroup}-${activeSubSubCategory}-${searchTerm}-${isLoadingVendors}`}
+                    variants={CARD_GRID_VARIANTS}
                     initial="hidden"
-                    whileInView="show"
-                    viewport={{ once: true, amount: 0.02 }}
+                    animate="show"
                     className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4"
-                >
-                  <AnimatePresence mode="popLayout">
+                  >
                     {isLoadingVendors ? (
                       Array.from({ length: 8 }).map((_, i) => (
                         <motion.div
                           key={`skeleton-main-${i}`}
-                          variants={{
-                            hidden: { opacity: 0, y: 30 },
-                            show: { opacity: 1, y: 0 }
-                          }}
-                          className="outline-none rounded-xl w-full aspect-[4/5]"
+                          variants={CARD_ITEM_VARIANTS}
+                          className="outline-none rounded-xl w-full aspect-[4/5] transform-gpu will-change-transform"
                         >
                           <VendorCardSkeleton />
                         </motion.div>
@@ -3116,20 +3701,15 @@ function App() {
                     ) : (
                       filteredVendors.map(v => (
                         <motion.div 
-                          layout
-                          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-                          variants={{
-                            hidden: { opacity: 0, y: 30 },
-                            show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100, damping: 15 } }
-                          }}
+                          variants={CARD_ITEM_VARIANTS}
                           id={`vendor-${v.id}`} 
                           key={v.id} 
                           tabIndex={-1} 
-                          className="outline-none focus:ring-2 focus:ring-[#D4AF37] rounded-xl"
+                          className="outline-none focus:ring-2 focus:ring-[#D4AF37] rounded-xl transform-gpu will-change-transform"
                         >
                           <VendorCard 
                             vendor={v} 
-                            onBook={v => setBookingVendor(v)} 
+                            onBook={v => handleOpenBooking(v, true)} 
                             onMessage={v => setChatVendor(v)} 
                             onQuickView={handleViewVendor}
                             selectedDate={eventDate} 
@@ -3138,8 +3718,7 @@ function App() {
                         </motion.div>
                       ))
                     )}
-                  </AnimatePresence>
-                </motion.div>
+                  </motion.div>
                 {!isLoadingVendors && filteredVendors.length === 0 && (
                     <div className="py-20 text-center" role="status">
                       <Search className="w-16 h-16 mx-auto mb-4 text-[#D4AF37]" aria-hidden="true" />
@@ -3150,7 +3729,7 @@ function App() {
                 )}
             </div>
         )}
-      </main>
+      </motion.main>
 
       <footer className="bg-black border-t border-[#D4AF37]/10 py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -3163,9 +3742,9 @@ function App() {
                 </div>
                 <nav className="flex flex-col md:flex-row items-center gap-8 md:gap-16" aria-label="Footer Navigation">
                     <div className="flex flex-col gap-3 items-center md:items-start">
-                        <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Directory</p>
-                        <button onClick={() => {setView('marketplace'); setActiveCategory('All');}} className="text-zinc-400 hover:text-white text-sm transition-colors outline-none focus-visible:underline">Browse Marketplace</button>
-                        <button onClick={() => setView('posts')} className="text-zinc-400 hover:text-white text-sm transition-colors outline-none focus-visible:underline">Community Gallery</button>
+                      <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Directory</p>
+                      <button onClick={() => {setView('marketplace'); setActiveCategory('All');}} className="text-zinc-400 hover:text-white text-sm transition-colors outline-none focus-visible:underline">Browse Marketplace</button>
+                      <button onClick={() => setView('posts')} className="text-zinc-400 hover:text-white text-sm transition-colors outline-none focus-visible:underline">Community Gallery</button>
                     </div>
                     <div className="flex flex-col gap-3 items-center md:items-start">
                         <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Access</p>
@@ -3183,9 +3762,10 @@ function App() {
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      key={fbUser.uid}
+      initial={{ opacity: 0, y: 30 }}
+      animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
+      transition={APP_SLIDE_UP_TRANSITION}
       className="min-h-screen bg-black text-zinc-100 flex flex-col relative pb-28"
     >
       <FixedGoldScrollbar />
@@ -3206,40 +3786,13 @@ function App() {
       )}
       {/* Floating Header Controls (? Ask on Right & Role Switcher on Left below header) */}
       {!isInitializing && !isRoleLoading && !!fbUser && !!userDocData && isActuallyVendor && (
-        <nav aria-label="Account Role Switcher" className="fixed top-[82px] sm:top-24 left-3 sm:left-5 md:left-6 lg:left-8 xl:left-10 z-50 flex items-center pointer-events-auto">
-          <div className="flex items-center bg-zinc-950/95 border border-[#D4AF37]/40 backdrop-blur-xl rounded-full p-0.5 sm:p-1 shadow-[0_8px_20px_rgba(0,0,0,0.9),0_0_12px_rgba(212,175,55,0.2)] text-[9px] sm:text-[10px] tracking-wider uppercase font-bold">
-            <button
-              type="button"
-              onClick={() => { if (isVendorView) handleToggleVendor(); }}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1 rounded-full transition-all duration-300 ${
-                !isVendorView
-                  ? 'bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] text-black font-black border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.5)] scale-100'
-                  : 'text-zinc-400 hover:text-white cursor-pointer'
-              }`}
-              aria-label="Switch to Client View"
-            >
-              <UserRound className="w-3 h-3" />
-              <span>Client</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { if (!isVendorView) handleToggleVendor(); }}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1 rounded-full transition-all duration-300 ${
-                isVendorView
-                  ? 'bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] text-black font-black border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.5)] scale-100'
-                  : 'text-zinc-400 hover:text-white cursor-pointer'
-              }`}
-              aria-label="Switch to Vendor View"
-            >
-              <Store className="w-3 h-3" />
-              <span>Vendor</span>
-            </button>
-          </div>
-        </nav>
+        <AnimatedRoleSwitcher
+          isVendorView={isVendorView}
+          onToggleVendor={handleToggleVendor}
+        />
       )}
 
-      <aside aria-label="Support Assistance" className="fixed top-[82px] sm:top-24 right-3 sm:right-5 md:right-6 lg:right-8 xl:right-10 z-50 flex items-center pointer-events-auto">
+      <aside aria-label="Support Assistance" className="fixed top-[84px] sm:top-24 right-3 sm:right-4 z-50 flex items-center pointer-events-auto">
         <motion.button 
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
@@ -3250,11 +3803,11 @@ function App() {
             }
             setIsAdminChatOpen(true);
           }}
-          className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-zinc-950/90 border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-extrabold text-[11px] sm:text-xs tracking-wider uppercase shadow-[0_4px_15px_rgba(0,0,0,0.8),0_0_10px_rgba(212,175,55,0.2)] backdrop-blur-md transition-all duration-300 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+          className="h-[28px] sm:h-[30px] inline-flex items-center justify-center gap-1 px-3 sm:px-3.5 rounded-full bg-zinc-950/90 border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black font-extrabold text-[9.5px] sm:text-[10px] tracking-normal uppercase leading-none shadow-[0_4px_15px_rgba(0,0,0,0.8),0_0_10px_rgba(212,175,55,0.2)] backdrop-blur-md transition-all duration-300 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
           aria-label="Ask Support"
         >
-          <HelpCircle className="w-3.5 h-3.5 stroke-[2.5]" />
-          <span>Ask</span>
+          <HelpCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3 shrink-0 stroke-[2.5]" />
+          <span className="leading-none">Ask</span>
         </motion.button>
       </aside>
 
@@ -3401,46 +3954,56 @@ function App() {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {bookingVendor && !quickViewVendor && (
-          <BookingModal 
-            isOpen={!!bookingVendor} 
-            isNested={false}
-            vendor={bookingVendor} 
-            selectedDate={suggestionsEventDate || eventDate} 
-            isPriorityFromSuggestions={isPriorityFromSuggestions}
-            onSuccessStateChange={(isSuccess) => setIsBookingModalSuccess(isSuccess)}
-            onClose={() => { 
-              setIsBookingModalSuccess(false);
-              setBookingVendor(null); 
-              setInitialBookingDetails(null); 
-              if (isPriorityFromSuggestions) {
-                setShowSuggestions(true);
-              }
-            }} 
-            onDone={(isPriority: boolean) => {
-              setIsBookingModalSuccess(false);
-              setBookingVendor(null);
-              setInitialBookingDetails(null);
-              if (isPriority) {
-                setShowSuggestions(true);
-                setPendingPrioritySuggestions(false);
-              } else {
-                setShowSuggestions(false);
-                setPendingPrioritySuggestions(false);
-                setIsPriorityFromSuggestions(false);
-                setView('marketplace');
-                setActiveCategory('All');
-                setSearchTerm('');
-                setActiveBottomTab('home');
-              }
-            }}
-            onConfirm={handleConfirmBooking} 
-            onGoToPlan={handleGoToPlan}
-            initialDetails={initialBookingDetails || { clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} 
-          />
-        )}
-      </AnimatePresence>
+      {bookingVendor && !quickViewVendor && (
+        <BookingModal 
+          key={`${bookingVendor.id}-${bookingOpenCount}`}
+          isOpen={!!bookingVendor} 
+          isNested={false}
+          vendor={bookingVendor} 
+          selectedDate={suggestionsEventDate || eventDate} 
+          isPriorityFromSuggestions={isPriorityFromSuggestions}
+          onSuccessStateChange={(isSuccess) => setIsBookingModalSuccess(isSuccess)}
+          onClose={() => { 
+            const closingId = bookingVendor.id;
+            setIsBookingModalSuccess(false);
+            setBookingVendor(prev => (prev?.id === closingId ? null : prev)); 
+            setInitialBookingDetails(null); 
+            setPendingPrioritySuggestions(false);
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.width = '';
+            if (isPriorityFromSuggestions) {
+              setIsPriorityFromSuggestions(false);
+              setShowSuggestions(true);
+            }
+          }} 
+          onDone={(isPriority: boolean) => {
+            setIsBookingModalSuccess(false);
+            setBookingVendor(null);
+            setInitialBookingDetails(null);
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.width = '';
+            if (isPriority) {
+              setShowSuggestions(true);
+              setPendingPrioritySuggestions(false);
+            } else {
+              setShowSuggestions(false);
+              setPendingPrioritySuggestions(false);
+              setIsPriorityFromSuggestions(false);
+              setView('marketplace');
+              setActiveCategory('All');
+              setSearchTerm('');
+              setActiveBottomTab('home');
+            }
+          }}
+          onConfirm={handleConfirmBooking} 
+          onGoToPlan={handleGoToPlan}
+          initialDetails={initialBookingDetails || { clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} 
+        />
+      )}
       <ChatModal 
         isOpen={!!chatVendor || isAdminChatOpen} 
         vendor={chatVendor} 
@@ -3453,43 +4016,57 @@ function App() {
         vendors={vendors}
       />
 
-      <AnimatePresence>
-        {quickViewVendor && (
-          <QuickViewModal 
-            vendor={quickViewVendor} 
-            onClose={() => {
-              setQuickViewVendor(null);
-              setBookingVendor(null);
-            }} 
-            bookingVendor={bookingVendor}
-            onBook={(v) => setBookingVendor(v)}
-            onCloseBooking={() => {
-              setBookingVendor(null);
-            }}
-            onAddReview={handleAddReview}
-            onConfirmBooking={handleConfirmBooking}
-            isInPlan={quickViewVendor ? cart.some(c => c.vendor.id === quickViewVendor.id) : false}
-            onAddToPlan={handleAddToPlan}
-            onGoToPlan={handleGoToPlan}
-            onBookingDone={(isPriority) => {
-              setQuickViewVendor(null);
-              setBookingVendor(null);
-              if (isPriority) {
-                setShowSuggestions(true);
-                setPendingPrioritySuggestions(false);
-              } else {
-                setShowSuggestions(false);
-                setPendingPrioritySuggestions(false);
-                setIsPriorityFromSuggestions(false);
-                setView('marketplace');
-                setActiveCategory('All');
-                setSearchTerm('');
-                setActiveBottomTab('home');
-              }
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {quickViewVendor && (
+        <QuickViewModal 
+          key={`${quickViewVendor.id}-${quickViewOpenCount}`}
+          vendor={quickViewVendor} 
+          onClose={() => {
+            const closingId = quickViewVendor.id;
+            setIsBookingModalSuccess(false);
+            setQuickViewVendor(prev => (prev?.id === closingId ? null : prev));
+            setBookingVendor(prev => (prev?.id === closingId ? null : prev));
+            setInitialBookingDetails(null);
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.width = '';
+          }} 
+          bookingVendor={bookingVendor}
+          onBook={(v) => handleOpenBooking(v)}
+          onCloseBooking={() => {
+            setIsBookingModalSuccess(false);
+            setBookingVendor(null);
+            setInitialBookingDetails(null);
+          }}
+          onAddReview={handleAddReview}
+          onConfirmBooking={handleConfirmBooking}
+          isInPlan={quickViewVendor ? cart.some(c => c.vendor.id === quickViewVendor.id) : false}
+          onAddToPlan={handleAddToPlan}
+          onGoToPlan={handleGoToPlan}
+          onBookingDone={(isPriority) => {
+            setIsBookingModalSuccess(false);
+            setQuickViewVendor(null);
+            setBookingVendor(null);
+            setInitialBookingDetails(null);
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.width = '';
+            if (isPriority) {
+              setShowSuggestions(true);
+              setPendingPrioritySuggestions(false);
+            } else {
+              setShowSuggestions(false);
+              setPendingPrioritySuggestions(false);
+              setIsPriorityFromSuggestions(false);
+              setView('marketplace');
+              setActiveCategory('All');
+              setSearchTerm('');
+              setActiveBottomTab('home');
+            }
+          }}
+        />
+      )}
 
       {/* Add-to-Plan Interactive Confirmation Notification */}
       <AnimatePresence>
@@ -3562,8 +4139,6 @@ function App() {
       )}
       
       {currentAuthenticatedUser && 
-        (!bookingVendor || isBookingModalSuccess) && 
-        !quickViewVendor && 
         !showSuggestions && 
         !showPriorityHoldPopup && 
         !chatVendor && 

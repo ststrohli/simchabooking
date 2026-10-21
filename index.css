@@ -8,11 +8,9 @@
 @layer base {
   html {
     overflow-y: scroll;
-    scrollbar-gutter: stable both-edges;
   }
   body {
     @apply font-sans bg-black text-slate-100;
-    scrollbar-gutter: stable both-edges;
   }
   
   h1, h2, h3, h4, h5, h6 {

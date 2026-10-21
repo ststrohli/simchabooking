@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { X, Star, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, CheckCircle, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import { Vendor, SelectedService, VendorCategory } from '../types';
 import LocationAutocomplete from './LocationAutocomplete';
 import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
+
+const MODAL_TRANSITION = { duration: 1, ease: [0.25, 1, 0.5, 1] as const };
 
 const FloatingInput: React.FC<{
   id: string;
@@ -15,9 +17,11 @@ const FloatingInput: React.FC<{
   type?: string;
   className?: string;
   highlighted?: boolean;
-}> = ({ id, label, icon: Icon, value, onChange, required = false, type = "text", className = "", highlighted = false }) => {
+}> = React.memo(({ id, label, icon: Icon, value, onChange, required = false, type = "text", className = "", highlighted = false }) => {
   const [focused, setFocused] = useState(false);
   const isFilled = value !== '';
+  const handleFocus = useCallback(() => setFocused(true), []);
+  const handleBlur = useCallback(() => setFocused(false), []);
 
   return (
     <div className="relative w-full">
@@ -31,8 +35,8 @@ const FloatingInput: React.FC<{
           required={required}
           value={value}
           onChange={onChange}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
           className={`w-full bg-black/60 border rounded-xl text-zinc-100 placeholder-transparent focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all duration-300 pt-6 pb-2 pr-4 ${Icon ? 'pl-10' : 'pl-4'} ${highlighted ? 'border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-[#D4AF37]/20'} ${className}`}
           placeholder={label}
         />
@@ -49,7 +53,7 @@ const FloatingInput: React.FC<{
       </div>
     </div>
   );
-};
+});
 
 const FloatingTextarea: React.FC<{
   id: string;
@@ -60,9 +64,11 @@ const FloatingTextarea: React.FC<{
   required?: boolean;
   rows?: number;
   className?: string;
-}> = ({ id, label, icon: Icon, value, onChange, required = false, rows = 3, className = "" }) => {
+}> = React.memo(({ id, label, icon: Icon, value, onChange, required = false, rows = 3, className = "" }) => {
   const [focused, setFocused] = useState(false);
   const isFilled = value !== '';
+  const handleFocus = useCallback(() => setFocused(true), []);
+  const handleBlur = useCallback(() => setFocused(false), []);
 
   return (
     <div className="relative w-full">
@@ -75,8 +81,8 @@ const FloatingTextarea: React.FC<{
           required={required}
           value={value}
           onChange={onChange}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
           rows={rows}
           className={`w-full bg-black/60 border border-[#D4AF37]/20 rounded-xl text-zinc-100 placeholder-transparent focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all duration-300 pt-6 pb-2 pr-4 resize-none ${Icon ? 'pl-10' : 'pl-4'} ${className}`}
           placeholder={label}
@@ -94,7 +100,7 @@ const FloatingTextarea: React.FC<{
       </div>
     </div>
   );
-};
+});
 
 interface BookingModalProps {
   isOpen: boolean;
@@ -127,10 +133,11 @@ interface BookingModalProps {
   onDone?: (isPriority: boolean) => void;
   onSuccessStateChange?: (isSuccess: boolean) => void;
   onGoToPlan?: () => void;
+  onDismissStart?: () => void;
 }
 
-const BookingModal: React.FC<BookingModalProps> = ({ 
-  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone, onSuccessStateChange, onGoToPlan, isNested = false 
+const BookingModal: React.FC<BookingModalProps> = React.memo(({ 
+  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone, onSuccessStateChange, onGoToPlan, onDismissStart, isNested = false 
 }) => {
   const [formData, setFormData] = useState({ eventName: '', clientName: '', contactEmail: '', eventLocation: '', eventTime: '', notes: '' });
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
@@ -327,17 +334,17 @@ const BookingModal: React.FC<BookingModalProps> = ({
     return `${y}-${m}-${d}`;
   };
 
-  const prevMonth = () => {
+  const prevMonth = useCallback(() => {
     setUserInteracted(true);
     setClickedUnavailableDate(null);
     setCurrentCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-  };
+  }, []);
 
-  const nextMonth = () => {
+  const nextMonth = useCallback(() => {
     setUserInteracted(true);
     setClickedUnavailableDate(null);
     setCurrentCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
-  };
+  }, []);
 
   const getReadableLocalDate = () => {
     if (!localDate) return 'No Date Selected';
@@ -429,28 +436,34 @@ const BookingModal: React.FC<BookingModalProps> = ({
     }
   }, [isOpen, initialDetails, vendor, isVenue]);
 
+  const onCloseRef = React.useRef(onClose);
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    if (isOpen) {
-      window.addEventListener('keydown', handleEsc);
-      if (!isNested) {
-        const scrollY = window.scrollY;
-        document.body.style.position = 'fixed';
-        document.body.style.top = `-${scrollY}px`;
-        document.body.style.width = '100%';
-        document.body.style.overflow = 'hidden';
-        return () => {
-          window.removeEventListener('keydown', handleEsc);
-          document.body.style.position = '';
-          document.body.style.top = '';
-          document.body.style.width = '';
-          document.body.style.overflow = '';
-          window.scrollTo(0, scrollY);
-        };
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsSubmitting(false);
+        setIsSuccess(false);
+        onCloseRef.current();
       }
-    }
+    };
+    window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [isOpen, onClose, isNested]);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || isNested) return;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+    };
+  }, [isOpen, isNested]);
 
   const totalAmount = useMemo(() => {
     if (!vendor) return 0;
@@ -468,30 +481,89 @@ const BookingModal: React.FC<BookingModalProps> = ({
     return servicesTotal || vendor.priceStart;
   }, [selectedServiceIds, quantities, vendor]);
 
-  if (!isOpen || !vendor) return null;
-
-  const toggleService = (serviceId: string) => {
-    if (selectedServiceIds.includes(serviceId)) {
-        setSelectedServiceIds(prev => prev.filter(id => id !== serviceId));
-        setQuantities(prev => {
-            const next = { ...prev };
-            delete next[serviceId];
-            return next;
+  const toggleService = useCallback((serviceId: string) => {
+    setSelectedServiceIds(prev => {
+      if (prev.includes(serviceId)) {
+        setQuantities(qPrev => {
+          const next = { ...qPrev };
+          delete next[serviceId];
+          return next;
         });
-    } else {
-        setSelectedServiceIds(prev => [...prev, serviceId]);
-        setQuantities(prev => ({ ...prev, [serviceId]: 1 }));
-    }
-  };
+        return prev.filter(id => id !== serviceId);
+      } else {
+        setQuantities(qPrev => ({ ...qPrev, [serviceId]: 1 }));
+        return [...prev, serviceId];
+      }
+    });
+  }, []);
 
-  const handleQuantityChange = (serviceId: string, val: string) => {
+  const handleQuantityChange = useCallback((serviceId: string, val: string) => {
     const num = parseInt(val) || 0;
     setQuantities(prev => ({ ...prev, [serviceId]: Math.max(0, num) }));
-  };
+  }, []);
 
-  const handleSubmit = async (e: React.FormEvent | React.MouseEvent, explicitSubmitType?: 'add' | 'book') => {
+  const handleEventNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setFormData(prev => ({ ...prev, eventName: val }));
+  }, []);
+
+  const handleEventTimeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setFormData(prev => ({ ...prev, eventTime: val }));
+  }, []);
+
+  const handleClientNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setFormData(prev => ({ ...prev, clientName: val }));
+  }, []);
+
+  const handleLocationChange = useCallback((val: string) => {
+    setFormData(prev => ({ ...prev, eventLocation: val }));
+  }, []);
+
+  const handleEmailChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setFormData(prev => ({ ...prev, contactEmail: val }));
+  }, []);
+
+  const handleNotesChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setFormData(prev => ({ ...prev, notes: val }));
+  }, []);
+
+  const handleOfferedPriceChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setOfferedPrice(e.target.value);
+  }, []);
+
+  const handleToggleCalendar = useCallback(() => {
+    setIsCalendarOpen(prev => !prev);
+  }, []);
+
+  const handleEnableOfferMode = useCallback(() => {
+    setIsOfferMode(true);
+    setOfferedPrice(totalAmount.toString());
+  }, [totalAmount]);
+
+  const handleDisableOfferMode = useCallback(() => {
+    setIsOfferMode(false);
+  }, []);
+
+  const handleTogglePriority = useCallback((e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setIsPriorityDate(prev => !prev);
+  }, []);
+
+  const handlePriorityKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setIsPriorityDate(prev => !prev);
+    }
+  }, []);
+
+  const handleSubmit = useCallback(async (e: React.FormEvent | React.MouseEvent, explicitSubmitType?: 'add' | 'book') => {
     e.preventDefault();
     e.stopPropagation();
+    if (!vendor) return;
     setIsSubmitting(true);
 
     let failedFieldId: string | null = null;
@@ -565,7 +637,19 @@ const BookingModal: React.FC<BookingModalProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [vendor, localDate, hasSelectedPackage, formData, isVenue, isOfferMode, offeredPrice, selectedServiceIds, quantities, submitType, onConfirm, totalAmount, isPriorityDate]);
+
+  const handleAddClick = useCallback((e: React.MouseEvent) => {
+    setSubmitType('add');
+    handleSubmit(e, 'add');
+  }, [handleSubmit]);
+
+  const handleBookClick = useCallback((e: React.MouseEvent) => {
+    setSubmitType('book');
+    handleSubmit(e, 'book');
+  }, [handleSubmit]);
+
+  if (!isOpen || !vendor) return null;
 
   const renderInteractiveCalendar = () => {
     const year = currentCalendarMonth.getFullYear();
@@ -707,18 +791,58 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
   const isPriority = isPriorityDate || !!isPriorityFromSuggestions;
 
-  const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const animDuration = prefersReducedMotion ? 0.1 : 0.55;
+  const handleDismissModal = useCallback(() => {
+    setIsSubmitting(false);
+    setIsSuccess(false);
+    onCloseRef.current();
+  }, []);
 
-  const { y, dragHandleProps } = useModalDragDismiss(onClose);
+  const { backdropOpacity, isDismissing, dragModalProps, dragHandleProps, triggerSlideUpEntry, dismissWithSlideOut } = useModalDragDismiss(
+    handleDismissModal,
+    !isSubmitting,
+    onDismissStart
+  );
+
+  const handleGoToPlanAction = useCallback(() => {
+    dismissWithSlideOut(() => {
+      setIsSuccess(false);
+      if (onGoToPlan) {
+        onGoToPlan();
+      } else if (onDone) {
+        onDone(isPriority);
+      } else {
+        onClose();
+      }
+    });
+  }, [dismissWithSlideOut, onGoToPlan, onDone, isPriority, onClose]);
+
+  const handleDoneAction = useCallback(() => {
+    dismissWithSlideOut(() => {
+      setIsSuccess(false);
+      if (onDone) {
+        onDone(isPriority);
+      } else {
+        onClose();
+      }
+    });
+  }, [dismissWithSlideOut, onDone, isPriority, onClose]);
+
+  useEffect(() => {
+    if (isDismissing && !isNested) {
+      document.body.style.overflow = '';
+    }
+  }, [isDismissing, isNested]);
+
+  useEffect(() => {
+    if (!isSuccess) return;
+    return triggerSlideUpEntry();
+  }, [isSuccess, triggerSlideUpEntry]);
 
   return (
     <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: animDuration, ease: 'easeOut' }}
-      className={isNested ? "absolute inset-0 z-30 bg-[#111] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 overflow-hidden" : "fixed inset-0 z-[160] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden"} 
+      style={{ opacity: backdropOpacity }}
+      transition={MODAL_TRANSITION}
+      className={`${isNested ? "absolute inset-0 z-30 bg-black/75 backdrop-blur-sm flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 overflow-hidden" : "fixed inset-0 z-[160] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden"} ${isDismissing ? 'pointer-events-none' : ''}`} 
       role="dialog" 
       aria-modal="true" 
       aria-labelledby="modal-title"
@@ -736,20 +860,30 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
       {isSuccess ? (
         <motion.div 
-          style={{ y }}
-          initial={{ y: "100%", opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: "100%", opacity: 0 }}
-          transition={{ duration: animDuration, ease: [0.16, 1, 0.3, 1] }}
-          className="bg-[#0a0a0a] w-full sm:max-w-md h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 relative overflow-hidden shadow-2xl flex flex-col mt-auto sm:mt-0 p-6 md:p-10 text-center"
+          key="booking-success"
+          {...dragModalProps}
+          transition={MODAL_TRANSITION}
+          className={`bg-[#0a0a0a] w-full sm:max-w-md h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 relative overflow-hidden shadow-2xl flex flex-col mt-auto sm:mt-0 p-6 md:p-10 text-center transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
         >
-          {/* Centered Drag Indicator Handle on success view */}
+          {/* Top bar drag handle on success view, leaving top-right corner clear for X button */}
           <div 
             {...dragHandleProps}
-            className="absolute top-3 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+            data-drag-handle="true"
+            className="absolute top-0 left-0 right-14 z-30 pt-1.5 pb-4 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
           >
-            <ModalDragIndicator />
+            <div className="pl-14">
+              <ModalDragIndicator />
+            </div>
           </div>
+
+          <button 
+            type="button"
+            onClick={dismissWithSlideOut} 
+            className="absolute top-4 right-4 z-[120] w-8 h-8 flex items-center justify-center bg-[#1a1a1a] hover:bg-[#262626] border border-[#D4AF37]/40 rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] shadow-xl cursor-pointer" 
+            aria-label="Close booking modal"
+          >
+            <X className="w-4 h-4" />
+          </button>
 
           <div className="absolute -top-40 -left-40 w-80 h-80 bg-[#D4AF37]/10 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-[#D4AF37]/10 rounded-full blur-3xl pointer-events-none" />
@@ -774,30 +908,14 @@ const BookingModal: React.FC<BookingModalProps> = ({
               <div className="w-full max-w-xs mx-auto flex flex-col sm:flex-row gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsSuccess(false);
-                    if (onGoToPlan) {
-                      onGoToPlan();
-                    } else if (onDone) {
-                      onDone(isPriority);
-                    } else {
-                      onClose();
-                    }
-                  }}
+                  onClick={handleGoToPlanAction}
                   className="flex-1 bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/30 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center"
                 >
                   Go to Plan
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsSuccess(false);
-                    if (onDone) {
-                      onDone(isPriority);
-                    } else {
-                      onClose();
-                    }
-                  }}
+                  onClick={handleDoneAction}
                   className="px-5 py-3.5 rounded-xl border border-white/20 text-zinc-300 hover:text-white hover:border-white/40 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer text-center"
                 >
                   Dismiss
@@ -807,14 +925,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
               <div className="w-full max-w-[220px] mx-auto block">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsSuccess(false);
-                    if (onDone) {
-                      onDone(isPriority);
-                    } else {
-                      onClose();
-                    }
-                  }}
+                  onClick={handleDoneAction}
                   className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/30 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center mx-auto block"
                 >
                   I'm Done
@@ -825,39 +936,45 @@ const BookingModal: React.FC<BookingModalProps> = ({
         </motion.div>
       ) : (
       <motion.div 
-        style={{ y }}
-        initial={{ y: "100%", opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: "100%", opacity: 0 }}
-        transition={{ duration: animDuration, ease: [0.16, 1, 0.3, 1] }}
+        key="booking-form"
+        {...dragModalProps}
+        transition={MODAL_TRANSITION}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className="bg-[#0a0a0a] w-full sm:w-full sm:max-w-xl h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0"
+        className={`bg-[#0a0a0a] w-full sm:w-full sm:max-w-xl h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
       >
-        {/* Subtle floating drag indicator pill at top center */}
+        {/* Top bar drag indicator positioned across the top edge, leaving top-right corner clear for X button */}
         <div 
           {...dragHandleProps}
-          className="absolute top-2.5 left-1/2 -translate-x-1/2 z-30 px-4 py-1 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+          data-drag-handle="true"
+          className="absolute top-0 left-0 right-14 z-30 pt-1.5 pb-4 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
         >
-          <ModalDragIndicator />
+          <div className="pl-14">
+            <ModalDragIndicator />
+          </div>
         </div>
 
-        <div className="bg-black p-6 text-white flex justify-between items-start sticky top-0 z-10 border-b border-[#D4AF37]/20">
+        {/* Floating close button rendered at root z-[120] top-4 right-4 - identical to QuickViewModal */}
+        <button 
+          type="button"
+          onClick={dismissWithSlideOut} 
+          disabled={isSubmitting}
+          className={`absolute top-4 right-4 z-[120] w-8 h-8 flex items-center justify-center bg-[#1a1a1a] hover:bg-[#262626] border border-[#D4AF37]/40 rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] shadow-xl cursor-pointer ${isSubmitting ? 'pointer-events-none opacity-30' : ''}`} 
+          aria-label="Close booking modal"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        <div 
+          {...dragHandleProps}
+          data-drag-handle="true"
+          className="bg-black p-6 pr-14 text-white flex justify-between items-start sticky top-0 z-10 border-b border-[#D4AF37]/20 cursor-grab active:cursor-grabbing select-none"
+        >
           <div>
             <h2 id="modal-title" className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">{initialDetails ? 'Update Your Selection' : 'Book Service'}</h2>
             <p className="text-zinc-300 text-xs mt-1">Vendor: <span className="text-zinc-100 font-bold">{vendor.name}</span></p>
           </div>
-          {!isNested && (
-            <button 
-              onClick={onClose} 
-              disabled={isSubmitting}
-              className={`text-zinc-400 hover:text-[#D4AF37] p-2 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full transition-colors cursor-pointer ${isSubmitting ? 'pointer-events-none opacity-30' : ''}`} 
-              aria-label="Close booking modal"
-            >
-              <X className="w-6 h-6" />
-            </button>
-          )}
         </div>
 
         <div 
@@ -882,7 +999,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
             <button
               type="button"
               id="date-section"
-              onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+              onClick={handleToggleCalendar}
               className={`w-full flex items-center gap-3 p-3 bg-black hover:bg-neutral-900 border rounded-xl transition-all outline-none focus:ring-1 focus:ring-[#D4AF37] text-left cursor-pointer ${highlightedField === 'date-section' ? 'border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-[#D4AF37]/30 hover:border-[#D4AF37]/60'}`}
             >
               <Calendar className="w-5 h-5 text-[#D4AF37] flex-shrink-0" />
@@ -962,7 +1079,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
               label="Event Name" 
               icon={PartyPopper} 
               value={formData.eventName} 
-              onChange={(e) => setFormData({...formData, eventName: e.target.value})} 
+              onChange={handleEventNameChange} 
               highlighted={highlightedField === 'event-name'}
             />
             
@@ -975,7 +1092,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 icon={Clock} 
                 className="[color-scheme:dark]" 
                 value={formData.eventTime} 
-                onChange={(e) => setFormData({...formData, eventTime: e.target.value})} 
+                onChange={handleEventTimeChange} 
                 highlighted={highlightedField === 'event-time'}
               />
               <FloatingInput 
@@ -984,7 +1101,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 label="Your Name" 
                 icon={User} 
                 value={formData.clientName} 
-                onChange={(e) => setFormData({...formData, clientName: e.target.value})} 
+                onChange={handleClientNameChange} 
                 highlighted={highlightedField === 'client-name'}
               />
             </div>
@@ -996,7 +1113,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 label="Location" 
                 icon={MapPin} 
                 value={formData.eventLocation} 
-                onChange={(val) => setFormData({...formData, eventLocation: val})} 
+                onChange={handleLocationChange} 
                 highlighted={highlightedField === 'event-location'}
                 floating
               />
@@ -1009,7 +1126,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
               type="email" 
               icon={Mail} 
               value={formData.contactEmail} 
-              onChange={(e) => setFormData({...formData, contactEmail: e.target.value})} 
+              onChange={handleEmailChange} 
               highlighted={highlightedField === 'client-email'}
             />
 
@@ -1018,7 +1135,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
               label="Special Requests / Custom Notes" 
               icon={MessageSquare} 
               value={formData.notes} 
-              onChange={(e) => setFormData({...formData, notes: e.target.value})} 
+              onChange={handleNotesChange} 
             />
           </div>
 
@@ -1033,7 +1150,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                                 <input 
                                     type="number" 
                                     value={offeredPrice} 
-                                    onChange={(e) => setOfferedPrice(e.target.value)} 
+                                    onChange={handleOfferedPriceChange} 
                                     className="bg-transparent border-b-2 border-[#D4AF37] w-32 focus:outline-none" 
                                     placeholder="Price"
                                     autoFocus
@@ -1047,7 +1164,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 {vendor.allowOffers && !isOfferMode && (
                     <button 
                         type="button" 
-                        onClick={() => { setIsOfferMode(true); setOfferedPrice(totalAmount.toString()); }}
+                        onClick={handleEnableOfferMode}
                         className="text-[10px] font-black text-[#D4AF37] border border-[#D4AF37]/30 px-3 py-1.5 rounded-full hover:bg-[#D4AF37]/10 transition-all uppercase tracking-widest cursor-pointer"
                     >
                         Make an Offer
@@ -1056,7 +1173,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 {isOfferMode && (
                     <button 
                         type="button" 
-                        onClick={() => setIsOfferMode(false)}
+                        onClick={handleDisableOfferMode}
                         className="text-[10px] font-black text-zinc-300 hover:text-white transition-all uppercase tracking-widest cursor-pointer"
                     >
                         Standard Price
@@ -1080,13 +1197,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
           {/* Priority Event Toggle */}
           {localDate && !isPastDate(localDate) && (
             <div 
-              onClick={() => setIsPriorityDate(!isPriorityDate)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setIsPriorityDate(!isPriorityDate);
-                }
-              }}
+              onClick={handleTogglePriority}
+              onKeyDown={handlePriorityKeyDown}
               role="button"
               tabIndex={0}
               className={`p-5 bg-[#0a0a0a] border rounded-xl space-y-3 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center outline-none select-none ${
@@ -1101,10 +1213,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
               
                <button 
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation(); // Avoid double toggle from container click
-                  setIsPriorityDate(!isPriorityDate);
-                }}
+                onClick={handleTogglePriority}
                 role="switch"
                 aria-checked={isPriorityDate}
                 className={`px-6 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer hover:scale-105 active:scale-95 ${
@@ -1125,20 +1234,14 @@ const BookingModal: React.FC<BookingModalProps> = ({
           <div className="flex flex-row gap-4 w-full mt-6">
             <button 
                 type="button" 
-                onClick={(e) => {
-                  setSubmitType('add');
-                  handleSubmit(e, 'add');
-                }}
+                onClick={handleAddClick}
                 className="flex-1 py-3.5 border border-[#D4AF37] text-[#D4AF37] font-semibold rounded-full hover:bg-[#D4AF37] hover:text-black transition-all text-xs uppercase tracking-widest outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] duration-200 cursor-pointer hover:scale-105 active:scale-95"
             >
                 Add to Plan
             </button>
             <button 
                 type="button" 
-                onClick={(e) => {
-                  setSubmitType('book');
-                  handleSubmit(e, 'book');
-                }}
+                onClick={handleBookClick}
                 className="flex-1 py-3.5 rounded-full text-xs font-black uppercase tracking-widest transition-all shadow-lg border bg-[#D4AF37] text-black hover:bg-[#E5C76B] border-[#D4AF37]/20 hover:scale-105 active:scale-95 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] duration-200"
             >
                 {isOfferMode ? 'Send Offer' : 'Book Now'}
@@ -1149,6 +1252,6 @@ const BookingModal: React.FC<BookingModalProps> = ({
       )}
     </motion.div>
   );
-};
+});
 
 export default BookingModal;

@@ -12,7 +12,7 @@ interface VendorCardProps {
   onAddReview: (vendorId: string, review: Omit<Review, 'id' | 'date'>) => void;
 }
 
-const VendorCard: React.FC<VendorCardProps> = ({ vendor, onQuickView, selectedDate }) => {
+const VendorCard: React.FC<VendorCardProps> = React.memo(({ vendor, onQuickView, selectedDate }) => {
   const isCurrentlySelectedDateBlocked = selectedDate && vendor.unavailableDates?.includes(selectedDate);
   
   const formatDate = (dateStr: string) => {
@@ -27,19 +27,10 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onQuickView, selectedDa
   return (
     <motion.button 
       onClick={() => onQuickView(vendor)}
-      initial={{ 
-         borderColor: "rgba(212, 175, 55, 0.1)",
-         boxShadow: "0 0px 0px rgba(212, 175, 55, 0)"
-       }}
-      whileHover={{ 
-         y: -6,
-         scale: 1.02,
-         boxShadow: "0 20px 40px rgba(212, 175, 55, 0.12)",
-        borderColor: "rgba(212, 175, 55, 0.4)"
-       }}
+      whileHover={{ y: -5, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       transition={{ type: "spring", stiffness: 260, damping: 20 }}
-      className={`relative w-full aspect-[4/5] bg-[#111] rounded-2xl shadow-2xl border-2 border-[#D4AF37]/10 overflow-hidden hover:border-[#D4AF37]/40 transition-all group flex flex-col justify-end text-left cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${isCurrentlySelectedDateBlocked ? 'opacity-70' : ''}`} 
+      className={`relative w-full aspect-[4/5] bg-[#111] rounded-2xl shadow-2xl border-2 border-[#D4AF37]/10 overflow-hidden hover:border-[#D4AF37]/40 hover:shadow-[0_20px_40px_rgba(212,175,55,0.12)] transition-[border-color,box-shadow] duration-300 group flex flex-col justify-end text-left cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transform-gpu will-change-transform ${isCurrentlySelectedDateBlocked ? 'opacity-70' : ''}`} 
       aria-labelledby={`vendor-name-${vendor.id}`}
     >
       {isCurrentlySelectedDateBlocked && (
@@ -50,7 +41,7 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onQuickView, selectedDa
         </div>
       )}
       
-      <img src={coverImage} alt={vendor.name} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+      <img src={coverImage} alt={vendor.name} decoding="async" className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 transform-gpu" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent"></div>
       
       <div className="relative z-10 p-5 md:p-6 w-full">
@@ -59,6 +50,6 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onQuickView, selectedDa
       </div>
     </motion.button>
   );
-};
+});
 
 export default VendorCard;

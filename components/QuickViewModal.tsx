@@ -1,10 +1,13 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Star, MapPin, ShieldCheck, PlayCircle, ChevronLeft, ChevronRight, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { Vendor, Review } from '../types';
 import { MOCK_BOOKINGS } from '../services/mockData';
 import BookingModal from './BookingModal';
 import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
+
+const MODAL_TRANSITION = { duration: 1, ease: [0.25, 1, 0.5, 1] as const };
+const EMPTY_INITIAL_DETAILS = { clientName: '', contactEmail: '', eventName: '' };
 
 interface QuickViewModalProps {
   vendor: Vendor;
@@ -20,7 +23,7 @@ interface QuickViewModalProps {
   onGoToPlan?: () => void;
 }
 
-const QuickViewModal: React.FC<QuickViewModalProps> = ({ 
+const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({ 
   vendor, onClose, onBook, onAddReview, bookingVendor, onCloseBooking, onConfirmBooking, onBookingDone, onAddToPlan, onGoToPlan 
 }) => {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
@@ -29,6 +32,15 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
   
   const [showReviews, setShowReviews] = useState(false);
   const [newReview, setNewReview] = useState({ author: '', rating: 5, text: '' });
+  const [isNestedBookingDismissing, setIsNestedBookingDismissing] = useState(false);
+  const [nestedBookingKey, setNestedBookingKey] = useState(0);
+  const isQuickViewDismissingRef = React.useRef(false);
+
+  useEffect(() => {
+    if (bookingVendor) {
+      setIsNestedBookingDismissing(false);
+    }
+  }, [bookingVendor]);
 
   const mediaItems = useMemo(() => {
     const items: Array<{ type: 'image' | 'video', url: string, isNative?: boolean }> = [];
@@ -50,12 +62,16 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
   const currentMedia = mediaItems[currentMediaIndex];
 
   useEffect(() => {
-    const scrollY = window.scrollY;
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+    };
+  }, []);
 
+  useEffect(() => {
     // Preload first image concurrently
     if (mediaItems[0]?.type === 'image' && mediaItems[0]?.url) {
       const img = new Image();
@@ -69,14 +85,6 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
     } else {
       setImageLoaded(true);
     }
-
-    return () => {
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.width = '';
-      document.body.style.overflow = '';
-      window.scrollTo(0, scrollY);
-    };
   }, [mediaItems]);
 
   useEffect(() => {
@@ -107,47 +115,122 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
     return 'Usually responds within 24 hrs';
   }, [vendor]);
 
-  const nextMedia = () => { setIsPlaying(false); setCurrentMediaIndex((prev) => (prev + 1) % mediaItems.length); };
-  const prevMedia = () => { setIsPlaying(false); setCurrentMediaIndex((prev) => (prev - 1 + mediaItems.length) % mediaItems.length); };
+  const nextMedia = useCallback(() => {
+    setIsPlaying(false);
+    setCurrentMediaIndex((prev) => (prev + 1) % mediaItems.length);
+  }, [mediaItems.length]);
 
-  const handleSubmitReview = (e: React.FormEvent) => {
+  const prevMedia = useCallback(() => {
+    setIsPlaying(false);
+    setCurrentMediaIndex((prev) => (prev - 1 + mediaItems.length) % mediaItems.length);
+  }, [mediaItems.length]);
+
+  const handlePlayShowcase = useCallback(() => {
+    setIsPlaying(true);
+  }, []);
+
+  const handleToggleReviews = useCallback(() => {
+    setShowReviews((prev) => !prev);
+  }, []);
+
+  const handleAuthorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setNewReview((prev) => ({ ...prev, author: val }));
+  }, []);
+
+  const handleRatingChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = Number(e.target.value);
+    setNewReview((prev) => ({ ...prev, rating: val }));
+  }, []);
+
+  const handleReviewTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setNewReview((prev) => ({ ...prev, text: val }));
+  }, []);
+
+  const handleSubmitReview = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (newReview.author.trim() && newReview.text.trim()) {
       onAddReview(vendor.id, newReview);
       setNewReview({ author: '', rating: 5, text: '' });
     }
-  };
+  }, [newReview, onAddReview, vendor.id]);
 
-  const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const animDuration = prefersReducedMotion ? 0.1 : 0.55;
+  const handleAddToPlanClick = useCallback(() => {
+    if (onAddToPlan) onAddToPlan(vendor);
+  }, [onAddToPlan, vendor]);
 
-  const { y, dragHandleProps } = useModalDragDismiss(onClose);
+  const handleBookClick = useCallback(() => {
+    setIsNestedBookingDismissing(false);
+    setNestedBookingKey((prev) => prev + 1);
+    onBook(vendor);
+  }, [onBook, vendor]);
+
+  const handleNestedBookingClose = useCallback(() => {
+    if (isQuickViewDismissingRef.current) return;
+    if (onCloseBooking) onCloseBooking();
+    else onClose();
+  }, [onCloseBooking, onClose]);
+
+  const handleNestedBookingDone = useCallback((isPriority: boolean) => {
+    if (onBookingDone) onBookingDone(isPriority);
+    else onClose();
+  }, [onBookingDone, onClose]);
+
+  const handleNestedBookingConfirm = useCallback((details: any) => {
+    if (onConfirmBooking) onConfirmBooking(details);
+  }, [onConfirmBooking]);
+
+  const handleNestedGoToPlan = useCallback(() => {
+    if (onCloseBooking) onCloseBooking();
+    onClose();
+    if (onGoToPlan) onGoToPlan();
+  }, [onCloseBooking, onClose, onGoToPlan]);
+
+  const handleNestedBookingDismissStart = useCallback(() => {
+    setIsNestedBookingDismissing(true);
+  }, []);
+
+  const handleQuickViewDismissStart = useCallback(() => {
+    isQuickViewDismissingRef.current = true;
+    document.body.style.overflow = '';
+    if (isNestedBookingDismissing && onCloseBooking) {
+      onCloseBooking();
+    }
+  }, [isNestedBookingDismissing, onCloseBooking]);
+
+  const defaultSelectedDate = useMemo(() => new Date().toLocaleDateString('en-CA'), []);
+
+  const isQuickViewInteractive = !bookingVendor || isNestedBookingDismissing;
+  const { backdropOpacity, isDismissing, dragModalProps, dragHandleProps, dismissWithSlideOut } = useModalDragDismiss(
+    onClose,
+    isQuickViewInteractive,
+    handleQuickViewDismissStart
+  );
 
   return (
     <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: animDuration, ease: 'easeOut' }}
+      style={{ opacity: backdropOpacity }}
+      transition={MODAL_TRANSITION}
       role="dialog"
       aria-modal="true"
       aria-labelledby="quick-view-title"
-      className="fixed inset-0 z-[150] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden"
+      className={`fixed inset-0 z-[150] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
     >
       <motion.div 
-        style={{ y }}
-        initial={{ y: "100%", opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: "100%", opacity: 0 }}
-        transition={{ duration: animDuration, ease: [0.16, 1, 0.3, 1] }}
-        className="bg-[#111] w-full sm:max-w-4xl h-[96dvh] sm:h-auto sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-3xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0"
+        {...dragModalProps}
+        transition={MODAL_TRANSITION}
+        className={`bg-[#111] w-full sm:max-w-4xl h-[96dvh] sm:h-auto sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-3xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
       >
-        {/* Subtle floating drag indicator pill layered in front of modal content over the image */}
+        {/* Top bar drag area with centered drag indicator pill, leaving top-right corner clear for X button */}
         <div 
           {...dragHandleProps}
-          className="absolute top-3 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+          data-drag-handle="true"
+          className="absolute top-0 left-0 right-14 z-30 pt-1.5 pb-4 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
         >
-          <ModalDragIndicator />
+          <div className="pl-14">
+            <ModalDragIndicator />
+          </div>
         </div>
 
         {/* Single vertical scroll container where media scrolls with the content */}
@@ -176,7 +259,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 )}
                 {!isPlaying && (
                   <button 
-                    onClick={() => setIsPlaying(true)} 
+                    onClick={handlePlayShowcase} 
                     className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/50 hover:bg-black/30 transition-all group/play cursor-pointer"
                   >
                     <PlayCircle className="w-20 h-20 text-[#D4AF37] opacity-90 group-hover/play:scale-110 transition-transform" />
@@ -194,10 +277,11 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 <motion.img 
                   src={currentMedia.url} 
                   alt={vendor.name} 
+                  draggable={false}
                   initial={{ opacity: 0, scale: 0.98 }}
                   animate={{ opacity: imageLoaded ? 1 : 0, scale: imageLoaded ? 1 : 0.98 }}
                   transition={{ duration: 0.3, ease: 'easeOut' }}
-                  className="w-full h-full object-cover object-top rounded-t-[2.5rem] sm:rounded-t-3xl" 
+                  className="w-full h-full object-cover object-top rounded-t-[2.5rem] sm:rounded-t-3xl select-none" 
                 />
               </div>
             )}
@@ -270,7 +354,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
               {/* Reviews Section */}
               <div className="border-t border-[#D4AF37]/10 pt-6">
                 <button 
-                  onClick={() => setShowReviews(!showReviews)} 
+                  onClick={handleToggleReviews} 
                   className="w-full flex items-center justify-between text-zinc-300 hover:text-[#D4AF37] text-[10px] font-black uppercase tracking-[0.2em] transition-colors outline-none cursor-pointer"
                   aria-expanded={showReviews}
                 >
@@ -314,12 +398,12 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
                             required 
                             className="w-full bg-black/50 border border-[#D4AF37]/20 rounded-lg px-3 py-2 text-[10px] text-white focus:border-[#D4AF37] outline-none" 
                             value={newReview.author} 
-                            onChange={e => setNewReview({...newReview, author: e.target.value})} 
+                            onChange={handleAuthorChange} 
                           />
                           <select 
                             className="w-full bg-black/50 border border-[#D4AF37]/20 rounded-lg px-3 py-2 text-[10px] text-[#D4AF37] focus:border-[#D4AF37] outline-none" 
                             value={newReview.rating} 
-                            onChange={e => setNewReview({...newReview, rating: Number(e.target.value)})}
+                            onChange={handleRatingChange}
                           >
                             {[5,4,3,2,1].map(num => <option key={num} value={num}>{num} STARS</option>)}
                           </select>
@@ -329,7 +413,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
                           required 
                           className="bg-black/50 border border-[#D4AF37]/20 rounded-lg px-3 py-2 text-[10px] text-white focus:border-[#D4AF37] outline-none resize-none h-16" 
                           value={newReview.text} 
-                          onChange={e => setNewReview({...newReview, text: e.target.value})} 
+                          onChange={handleReviewTextChange} 
                         />
                         <button 
                           type="submit" 
@@ -349,7 +433,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 <motion.button 
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
-                  onClick={() => onAddToPlan && onAddToPlan(vendor)}
+                  onClick={handleAddToPlanClick}
                   className="flex items-center justify-center border border-[#D4AF37] text-[#D4AF37] font-black py-3.5 rounded-full hover:bg-[#D4AF37] hover:text-black transition-all uppercase tracking-widest text-[10px] cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
                 >
                   Add to Plan
@@ -358,7 +442,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
                   initial={{ boxShadow: "0 10px 15px -3px rgba(212, 175, 55, 0.2)" }}
                   whileHover={{ scale: 1.03, boxShadow: "0 10px 20px rgba(212,175,55,0.25)" }}
                   whileTap={{ scale: 0.97 }}
-                  onClick={() => onBook(vendor)}
+                  onClick={handleBookClick}
                   className="bg-[#D4AF37] text-black font-black py-3.5 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-widest text-[10px] shadow-lg shadow-[#D4AF37]/20 cursor-pointer flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
                 >
                   Book Now
@@ -369,45 +453,36 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({
         </div>
 
         {/* Nested Booking Modal layered inside QuickViewModal */}
-        <AnimatePresence>
-          {bookingVendor && (
-            <BookingModal
-              isOpen={true}
-              isNested={true}
-              vendor={bookingVendor}
-              selectedDate={new Date().toLocaleDateString('en-CA')}
-              onClose={() => {
-                if (onCloseBooking) onCloseBooking();
-                else onClose();
-              }}
-              onDone={(isPriority) => {
-                if (onBookingDone) onBookingDone(isPriority);
-                else onClose();
-              }}
-              onConfirm={(details) => {
-                if (onConfirmBooking) onConfirmBooking(details);
-              }}
-              onGoToPlan={() => {
-                if (onCloseBooking) onCloseBooking();
-                onClose();
-                if (onGoToPlan) onGoToPlan();
-              }}
-              initialDetails={{ clientName: '', contactEmail: '', eventName: '' }}
-            />
-          )}
-        </AnimatePresence>
+        {bookingVendor && (
+          <BookingModal
+            key={`${bookingVendor.id}-${nestedBookingKey}`}
+            isOpen={true}
+            isNested={true}
+            vendor={bookingVendor}
+            selectedDate={defaultSelectedDate}
+            onClose={handleNestedBookingClose}
+            onDismissStart={handleNestedBookingDismissStart}
+            onDone={handleNestedBookingDone}
+            onConfirm={handleNestedBookingConfirm}
+            onGoToPlan={handleNestedGoToPlan}
+            initialDetails={EMPTY_INITIAL_DETAILS}
+          />
+        )}
 
-        {/* Floating close button rendered above the nested booking sheet */}
-        <button 
-          onClick={onClose}
-          className="absolute top-4 right-4 z-[120] w-8 h-8 flex items-center justify-center bg-[#1a1a1a] hover:bg-[#262626] border border-[#D4AF37]/40 rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] shadow-xl cursor-pointer"
-          aria-label="Close modal"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        {/* Floating close button rendered above the sheet - immediately active as soon as nested booking starts dismissing */}
+        {isQuickViewInteractive && (
+          <button 
+            type="button"
+            onClick={dismissWithSlideOut}
+            className="absolute top-4 right-4 z-[120] w-8 h-8 flex items-center justify-center bg-[#1a1a1a] hover:bg-[#262626] border border-[#D4AF37]/40 rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] shadow-xl cursor-pointer"
+            aria-label="Close modal"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </motion.div>
     </motion.div>
   );
-};
+});
 
 export default QuickViewModal;
