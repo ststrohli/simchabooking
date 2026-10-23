@@ -53,3 +53,402 @@
     transform: translateX(100%);
   }
 }
+
+@keyframes regBtnPop {
+  0% {
+    transform: scale(0.96);
+  }
+  40% {
+    transform: scale(1.035);
+  }
+  75% {
+    transform: scale(0.99);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes regCheckCircle {
+  0% {
+    stroke-dashoffset: 76;
+    transform: scale(0.6) rotate(-45deg);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes regCheckMark {
+  0% {
+    stroke-dashoffset: 28;
+    opacity: 0;
+  }
+  35% {
+    stroke-dashoffset: 28;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes regRingBurst {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@keyframes regShimmerSweep {
+  0% {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(220%) skewX(-20deg);
+  }
+}
+
+@keyframes regSparkleFloat {
+  0% {
+    transform: translate(0, 0) scale(0);
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+    transform: translate(var(--tx, 10px), var(--ty, -10px)) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--tx, 10px) * 1.75), calc(var(--ty, -10px) * 1.75)) scale(0);
+  }
+}
+
+.animate-reg-btn-pop {
+  animation: regBtnPop 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-reg-check-circle {
+  stroke-dasharray: 76;
+  stroke-dashoffset: 76;
+  transform-origin: center;
+  animation: regCheckCircle 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-reg-check-mark {
+  stroke-dasharray: 28;
+  stroke-dashoffset: 28;
+  animation: regCheckMark 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.12s forwards;
+}
+
+.animate-reg-ring-burst {
+  animation: regRingBurst 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-reg-shimmer-sweep {
+  animation: regShimmerSweep 1.15s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards;
+}
+
+.animate-reg-sparkle {
+  animation: regSparkleFloat 0.95s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards;
+}
+
+/* ==========================================================================
+   LIGHT MODE THEME OVERRIDES (Reverses Black <-> White & Image Faders)
+   ========================================================================== */
+
+html.light-mode,
+body.light-mode {
+  background-color: #ffffff !important;
+  color: #09090b !important;
+}
+
+.light-mode ::-webkit-scrollbar-track {
+  background: #ffffff;
+}
+
+/* 1. Dark Backgrounds -> White / Crisp Light Surfaces */
+.light-mode .bg-black {
+  background-color: #ffffff !important;
+}
+
+.light-mode .bg-\[\#111\],
+.light-mode .bg-\[\#0a0a0a\],
+.light-mode .bg-\[\#050505\],
+.light-mode .bg-\[\#0b0b0b\],
+.light-mode .bg-\[\#0c0c0c\],
+.light-mode .bg-\[\#0d0d0d\],
+.light-mode .bg-\[\#141414\],
+.light-mode .bg-\[\#151515\],
+.light-mode .bg-zinc-950,
+.light-mode .bg-zinc-900 {
+  background-color: #f8f8fa !important;
+}
+
+.light-mode .bg-\[\#1a1a1a\],
+.light-mode .bg-\[\#262626\],
+.light-mode .bg-zinc-800 {
+  background-color: #f1f1f4 !important;
+}
+
+.light-mode .hover\:bg-\[\#262626\]:hover,
+.light-mode .hover\:bg-zinc-800:hover,
+.light-mode .hover\:bg-zinc-900:hover,
+.light-mode .hover\:bg-white\/10:hover,
+.light-mode .hover\:bg-white\/5:hover {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Translucent Dark Backgrounds -> Translucent White / Frosted Light */
+.light-mode .bg-black\/95,
+.light-mode .bg-zinc-950\/95,
+.light-mode .bg-zinc-900\/95,
+.light-mode .bg-\[\#0b0b0b\]\/95 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.light-mode .bg-black\/90,
+.light-mode .bg-zinc-950\/90,
+.light-mode .bg-zinc-900\/90 {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.light-mode .bg-black\/80,
+.light-mode .bg-zinc-950\/80,
+.light-mode .bg-zinc-900\/80,
+.light-mode .bg-black\/75,
+.light-mode .bg-black\/70 {
+  background-color: rgba(255, 255, 255, 0.86) !important;
+}
+
+.light-mode .bg-black\/60,
+.light-mode .bg-black\/50,
+.light-mode .bg-black\/40 {
+  background-color: rgba(245, 245, 247, 0.88) !important;
+}
+
+.light-mode .bg-black\/30,
+.light-mode .bg-black\/20 {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+/* White Buttons with Black Text -> Black Buttons with White Text */
+.light-mode .bg-white.text-black {
+  background-color: #09090b !important;
+  color: #ffffff !important;
+}
+
+.light-mode .bg-white.text-black:hover {
+  background-color: #27272a !important;
+}
+
+/* 2. White / Light Text -> Black / Dark Text */
+.light-mode .text-white,
+.light-mode .text-slate-100,
+.light-mode .text-zinc-100 {
+  color: #09090b !important;
+}
+
+.light-mode .text-zinc-200 {
+  color: #18181b !important;
+}
+
+.light-mode .text-zinc-300 {
+  color: #27272a !important;
+}
+
+.light-mode .text-zinc-400 {
+  color: #3f3f46 !important;
+}
+
+.light-mode .text-zinc-500 {
+  color: #52525b !important;
+}
+
+.light-mode .hover\:text-white:hover,
+.light-mode .group:hover .group-hover\:text-white {
+  color: #09090b !important;
+}
+
+.light-mode input::placeholder,
+.light-mode textarea::placeholder {
+  color: #71717a !important;
+}
+
+/* Keep solid semantic alert buttons (e.g. red delete hover) readable */
+.light-mode .hover\:bg-red-500:hover.hover\:text-white:hover,
+.light-mode .bg-red-600.text-white,
+.light-mode .bg-red-500.text-white,
+.light-mode .bg-green-600.text-white {
+  color: #ffffff !important;
+}
+
+/* 3. Subtle White Borders -> Subtle Dark Borders */
+.light-mode .border-white\/5 {
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+.light-mode .border-white\/10 {
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+.light-mode .border-white\/20,
+.light-mode .border-zinc-800,
+.light-mode .border-zinc-700 {
+  border-color: rgba(0, 0, 0, 0.14) !important;
+}
+
+/* 4. Image Faders & Gradients */
+/* Dark Mode: Rich, atmospheric dark fade */
+.simcha-image-fader-hero {
+  background-image: linear-gradient(
+    to top,
+    #000000 0%,
+    rgba(0, 0, 0, 0.65) 50%,
+    rgba(0, 0, 0, 0.15) 100%
+  );
+}
+
+.simcha-image-fader-card {
+  background-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.95) 0%,
+    rgba(0, 0, 0, 0.62) 50%,
+    rgba(0, 0, 0, 0.32) 100%
+  );
+}
+
+.simcha-image-fader-vendor {
+  background-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.95) 0%,
+    rgba(0, 0, 0, 0.48) 50%,
+    rgba(0, 0, 0, 0.1) 100%
+  );
+}
+
+.simcha-image-fader-post {
+  background-image: linear-gradient(
+    to top,
+    #000000 0%,
+    rgba(0, 0, 0, 0.4) 50%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+/* Light Mode: Balanced white fade (noticeable fade without washing out the photo) */
+.light-mode .group > .opacity-50 {
+  opacity: 0.8 !important;
+}
+
+.light-mode section > div > .opacity-80 {
+  opacity: 0.85 !important;
+}
+
+.light-mode .simcha-image-fader-hero {
+  background-image: linear-gradient(
+    to top,
+    #ffffff 0%,
+    rgba(255, 255, 255, 0.94) 12%,
+    rgba(255, 255, 255, 0.45) 48%,
+    rgba(255, 255, 255, 0.08) 100%
+  ) !important;
+}
+
+.light-mode .simcha-image-fader-card {
+  background-image: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 0.78) 0%,
+    rgba(255, 255, 255, 0.36) 50%,
+    rgba(255, 255, 255, 0.12) 100%
+  ) !important;
+}
+
+.light-mode .simcha-image-fader-vendor {
+  background-image: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 0.85) 0%,
+    rgba(255, 255, 255, 0.3) 48%,
+    rgba(255, 255, 255, 0.05) 90%
+  ) !important;
+}
+
+.light-mode .simcha-image-fader-post {
+  background-image: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(255, 255, 255, 0.25) 45%,
+    rgba(255, 255, 255, 0) 85%
+  ) !important;
+}
+
+/* Generic Tailwind black gradient stop reversals for any other faders/bars */
+.light-mode .from-black {
+  --tw-gradient-from: rgba(255, 255, 255, 0.85) !important;
+}
+
+.light-mode .from-black\/95,
+.light-mode .from-zinc-900\/95 {
+  --tw-gradient-from: rgba(255, 255, 255, 0.72) !important;
+}
+
+.light-mode .via-black,
+.light-mode .via-zinc-950 {
+  --tw-gradient-via: #ffffff !important;
+}
+
+.light-mode .via-black\/95 {
+  --tw-gradient-via: rgba(255, 255, 255, 0.85) !important;
+}
+
+.light-mode .via-black\/90 {
+  --tw-gradient-via: rgba(255, 255, 255, 0.75) !important;
+}
+
+.light-mode .via-black\/60 {
+  --tw-gradient-via: rgba(255, 255, 255, 0.22) !important;
+}
+
+.light-mode .via-black\/40 {
+  --tw-gradient-via: rgba(255, 255, 255, 0.15) !important;
+}
+
+.light-mode .to-black,
+.light-mode .to-zinc-950 {
+  --tw-gradient-to: #ffffff !important;
+}
+
+.light-mode .to-black\/98 {
+  --tw-gradient-to: rgba(248, 248, 250, 0.98) !important;
+}
+
+.light-mode .to-black\/70 {
+  --tw-gradient-to: rgba(255, 255, 255, 0.45) !important;
+}
+
+.light-mode .to-black\/40 {
+  --tw-gradient-to: rgba(255, 255, 255, 0.15) !important;
+}
+
+.light-mode .to-black\/30 {
+  --tw-gradient-to: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Clean light text-halo on cards & hero headings in Light Mode */
+.light-mode .drop-shadow-lg,
+.light-mode .drop-shadow-md {
+  filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.95)) drop-shadow(0 2px 8px rgba(255, 255, 255, 0.85)) !important;
+}
+
+

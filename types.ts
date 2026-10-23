@@ -23,6 +23,7 @@ export interface UserAccount {
   username: string;
   photoURL?: string;
   photoStoragePath?: string;
+  themeMode?: 'dark' | 'light';
   password?: string;
 }
 

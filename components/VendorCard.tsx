@@ -42,7 +42,7 @@ const VendorCard: React.FC<VendorCardProps> = React.memo(({ vendor, onQuickView,
       )}
       
       <img src={coverImage} alt={vendor.name} decoding="async" className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 transform-gpu" />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent"></div>
+      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent simcha-image-fader-vendor"></div>
       
       <div className="relative z-10 p-5 md:p-6 w-full">
          <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.25em] mb-1.5 drop-shadow-md">{vendor.category}</p>

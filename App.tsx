@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback, startTransition } from 'react';
 import { motion, AnimatePresence, useMotionValue, animate } from 'motion/react';
-import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check, ShieldAlert, HelpCircle, UserRound, Store, Eye, EyeOff } from 'lucide-react';
+import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check, ShieldAlert, HelpCircle, UserRound, Store, Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -34,6 +34,7 @@ import ChatModal from './components/ChatModal';
 import SuggestionModal from './components/SuggestionModal';
 import ClientPortal from './components/ClientPortal';
 import PaymentSuccess from './components/PaymentSuccess';
+import { ThemeModeSwitch } from './components/ThemeModeSwitch';
 import { VENDORS as INITIAL_VENDORS, MOCK_BOOKINGS } from './services/mockData';
 import { Vendor, VendorCategory, CartItem, Booking, Review, Post, Message, UserAccount, SelectedService } from './types';
 
@@ -362,6 +363,8 @@ interface AuthSignUpModalProps {
   onFullNameChange: (val: string) => void;
   photo: File | null;
   onPhotoChange: (file: File | null) => void;
+  themeMode: 'dark' | 'light';
+  onThemeModeChange: (mode: 'dark' | 'light') => void;
   error: string;
   onRegister: (e: React.FormEvent) => void;
   onGoogleSignIn: () => void;
@@ -381,6 +384,8 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
   onFullNameChange,
   photo,
   onPhotoChange,
+  themeMode,
+  onThemeModeChange,
   error,
   onRegister,
   onGoogleSignIn,
@@ -507,6 +512,15 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
               </div>
             </div>
 
+            <div className="space-y-2">
+              <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">App Appearance</label>
+              <ThemeModeSwitch
+                fullWidth
+                themeMode={themeMode}
+                onToggleThemeMode={onThemeModeChange}
+              />
+            </div>
+
             {error && (
               <div className="bg-zinc-400/10 border border-zinc-400/20 p-3 rounded-lg flex items-center gap-3 animate-in fade-in">
                 <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0" />
@@ -518,13 +532,10 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Complete Registration'}
             </button>
 
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                <div className="w-full border-t border-white/10"></div>
-              </div>
-              <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-                <span className="bg-[#111] px-4 text-zinc-300 font-black">Or join with</span>
-              </div>
+            <div className="flex items-center gap-4 my-4">
+              <div className="flex-1 border-t border-white/10" aria-hidden="true"></div>
+              <span className="text-[10px] uppercase tracking-widest text-zinc-400 font-black">Or join with</span>
+              <div className="flex-1 border-t border-white/10" aria-hidden="true"></div>
             </div>
 
             <button
@@ -579,6 +590,8 @@ interface AuthSignInModalProps {
   onFullNameChange: (val: string) => void;
   photo: File | null;
   onPhotoChange: (file: File | null) => void;
+  themeMode: 'dark' | 'light';
+  onThemeModeChange: (mode: 'dark' | 'light') => void;
   error: string;
   onLogin: (e: React.FormEvent) => void;
   onRegister: (e: React.FormEvent) => void;
@@ -605,6 +618,8 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
   onFullNameChange,
   photo,
   onPhotoChange,
+  themeMode,
+  onThemeModeChange,
   error,
   onLogin,
   onRegister,
@@ -759,13 +774,10 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign In'}
               </button>
 
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                  <div className="w-full border-t border-white/10"></div>
-                </div>
-                <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-                  <span className="bg-[#111] px-4 text-zinc-300 font-black">Or continue with</span>
-                </div>
+              <div className="flex items-center gap-4 my-6">
+                <div className="flex-1 border-t border-white/10" aria-hidden="true"></div>
+                <span className="text-[10px] uppercase tracking-widest text-zinc-400 font-black">Or continue with</span>
+                <div className="flex-1 border-t border-white/10" aria-hidden="true"></div>
               </div>
 
               <button
@@ -848,6 +860,8 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
             onFullNameChange={onFullNameChange}
             photo={photo}
             onPhotoChange={onPhotoChange}
+            themeMode={themeMode}
+            onThemeModeChange={onThemeModeChange}
             error={error}
             onRegister={onRegister}
             onGoogleSignIn={onGoogleSignIn}
@@ -1249,7 +1263,38 @@ function App() {
   const [subCategoryImages, setSubCategoryImages] = useState<Record<string, string>>({});
   const [heroBackgroundUrl, setHeroBackgroundUrl] = useState<string>("https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80");
 
-  const syncUserProfile = async (user: FirebaseUser, additionalData: { fullName?: string, photoURL?: string, photoStoragePath?: string } = {}) => {
+  const [themeMode, setThemeMode] = useState<'dark' | 'light'>(() => {
+    try {
+      const saved = localStorage.getItem('simcha_theme_mode');
+      if (saved === 'light' || saved === 'dark') return saved;
+    } catch (e) {}
+    return 'dark';
+  });
+
+  useEffect(() => {
+    const isLight = themeMode === 'light';
+    document.documentElement.classList.toggle('light-mode', isLight);
+    document.body.classList.toggle('light-mode', isLight);
+    document.documentElement.setAttribute('data-theme', themeMode);
+  }, [themeMode]);
+
+  const handleToggleThemeMode = useCallback((nextMode: 'dark' | 'light') => {
+    setThemeMode(nextMode);
+    try {
+      localStorage.setItem('simcha_theme_mode', nextMode);
+    } catch (e) {}
+    setUserDocData((prev: any) => (prev ? { ...prev, themeMode: nextMode } : prev));
+    if (fbUser) {
+      updateDoc(doc(db, 'users', fbUser.uid), {
+        themeMode: nextMode,
+        updatedAt: new Date().toISOString(),
+      }).catch(err => {
+        console.warn('Error updating theme mode in user profile:', err);
+      });
+    }
+  }, [fbUser]);
+
+  const syncUserProfile = async (user: FirebaseUser, additionalData: { fullName?: string, photoURL?: string, photoStoragePath?: string, themeMode?: 'dark' | 'light' } = {}) => {
     try {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDocSafe(userDocRef);
@@ -1266,9 +1311,14 @@ function App() {
         userData.photoStoragePath = additionalData.photoStoragePath;
       }
 
+      if (additionalData.themeMode !== undefined) {
+        userData.themeMode = additionalData.themeMode;
+      }
+
       if (!userDoc.exists()) {
         await setDoc(userDocRef, {
           ...userData,
+          themeMode: userData.themeMode || 'dark',
           createdAt: new Date().toISOString()
         });
       } else {
@@ -1580,6 +1630,10 @@ function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setUserDocData(data);
+        if (data.themeMode === 'light' || data.themeMode === 'dark') {
+          setThemeMode(data.themeMode);
+          try { localStorage.setItem('simcha_theme_mode', data.themeMode); } catch (e) {}
+        }
         const userEmail = fbUser.email ? fbUser.email.trim().toLowerCase() : '';
         if (isWhitelistedAdminEmail(userEmail)) {
           setUserRole('admin');
@@ -1725,6 +1779,10 @@ function App() {
         if (userDoc.exists()) {
           const data = userDoc.data();
           setUserDocData(data);
+          if (data.themeMode === 'light' || data.themeMode === 'dark') {
+            setThemeMode(data.themeMode);
+            try { localStorage.setItem('simcha_theme_mode', data.themeMode); } catch (e) {}
+          }
           if (isWhitelistedAdminEmail(userEmail)) {
             finalRole = 'admin';
           } else if (finalRole === 'client' && data.role && !CLIENT_OVERRIDE_EMAILS.includes(userEmail)) {
@@ -2939,7 +2997,8 @@ function App() {
         console.warn("Firebase Auth updateProfile non-fatal error during registration:", authErr);
       }
 
-      await syncUserProfile(user, { fullName: authFullName, photoURL, photoStoragePath });
+      try { localStorage.setItem('simcha_theme_mode', themeMode); } catch (e) {}
+      await syncUserProfile(user, { fullName: authFullName, photoURL, photoStoragePath, themeMode });
 
       try {
         await sendEmailVerification(user);
@@ -3154,6 +3213,8 @@ function App() {
             onFullNameChange={setAuthFullName}
             photo={authPhoto}
             onPhotoChange={setAuthPhoto}
+            themeMode={themeMode}
+            onThemeModeChange={handleToggleThemeMode}
             error={authError}
             onLogin={handleAuthLogin}
             onRegister={handleAuthRegister}
@@ -3349,6 +3410,8 @@ function App() {
                   onSwitchToClientView={() => setView('marketplace')}
                   onActiveChatChange={setIsPortalChatActive}
                   onTabChange={tab => setPortalInitialTab(tab)}
+                  themeMode={themeMode}
+                  onToggleThemeMode={handleToggleThemeMode}
                 />
               </div>
             </motion.div>
@@ -3385,6 +3448,8 @@ function App() {
               onMessageVendor={v => setChatVendor(v)}
               onActiveChatChange={setIsPortalChatActive}
               onTabChange={tab => setPortalInitialTab(tab)}
+              themeMode={themeMode}
+              onToggleThemeMode={handleToggleThemeMode}
             />
           </div>
         </motion.div>
@@ -3454,7 +3519,7 @@ function App() {
         <section className="relative bg-black text-white overflow-hidden rounded-t-[5px] md:rounded-t-none" aria-labelledby="hero-title">
           <div className="absolute inset-0" aria-hidden="true">
             {renderMedia(heroBackgroundUrl, "w-full h-full object-cover opacity-80")}
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero"></div>
           </div>
           <div className="relative max-w-7xl mx-auto px-4 py-[72px] md:py-32 text-center">
             <h2 id="hero-title" className="font-bold font-[Cinzel] mb-6 tracking-[0.015em] leading-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)] flex flex-col items-center gap-y-2 sm:gap-y-3 md:gap-y-4">
@@ -3514,7 +3579,7 @@ function App() {
                                 className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
                               >
                                   {renderMedia(categoryImages[cat], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", undefined, true)}
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
                                   <div className="absolute inset-0 flex items-center justify-center p-3.5 sm:p-4 text-center">
                                     <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{cat}</h3>
                                   </div>
@@ -3535,7 +3600,7 @@ function App() {
                             className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
                           >
                               {renderMedia("https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", undefined, true)}
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
                               <div className="absolute inset-0 flex items-center justify-center p-3.5 sm:p-4 text-center">
                                 <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">View All</h3>
                               </div>
@@ -3622,7 +3687,7 @@ function App() {
                                  <span className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No Image</span>
                                </div>
                              )}
-                             <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                             <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
                              <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
                                <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{group}</h3>
                              </div>
@@ -3643,7 +3708,7 @@ function App() {
                           className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
                         >
                            {renderMedia("https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", undefined, true)}
-                           <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                           <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
                            <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
                              <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">View All</h3>
                            </div>
@@ -3682,7 +3747,7 @@ function App() {
                                 <span className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No Image</span>
                               </div>
                             )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
                             <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
                               <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{sub}</h3>
                             </div>
@@ -3703,7 +3768,7 @@ function App() {
                           className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
                         >
                           {renderMedia("https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", undefined, true)}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30"></div>
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
                           <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
                             <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">View All</h3>
                           </div>

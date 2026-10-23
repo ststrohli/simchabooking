@@ -13,6 +13,7 @@ import { uploadFileRobustly } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import { trackFunnelStep } from '../services/analyticsService';
 import { EmbeddedCheckoutModal } from './EmbeddedCheckoutModal';
+import { ThemeModeSwitch } from './ThemeModeSwitch';
 import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 
 interface ClientPortalProps {
@@ -33,10 +34,12 @@ interface ClientPortalProps {
   onActiveChatChange?: (isActive: boolean) => void;
   onTabChange?: (tab: string) => void;
   initialTab?: string;
+  themeMode?: 'dark' | 'light';
+  onToggleThemeMode?: (mode: 'dark' | 'light') => void;
 }
 
 const ClientPortal: React.FC<ClientPortalProps> = ({ 
-  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor, onActiveChatChange, onTabChange, initialTab
+  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile'>(initialTab as any || 'overview');
   
@@ -809,6 +812,16 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
               </div>
 
               <div className="space-y-6">
+                {onToggleThemeMode && (
+                  <div className="flex items-center justify-between bg-black/40 border border-[#D4AF37]/25 rounded-xl px-3.5 py-1.5">
+                    <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">App Preference</span>
+                    <ThemeModeSwitch
+                      themeMode={themeMode}
+                      onToggleThemeMode={onToggleThemeMode}
+                    />
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Full Name</label>
                   <input 

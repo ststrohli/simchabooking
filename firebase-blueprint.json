@@ -103,7 +103,8 @@
         "email": { "type": "string" },
         "name": { "type": "string" },
         "role": { "type": "string", "enum": ["client", "vendor", "admin"] },
-        "vendorId": { "type": "string" }
+        "vendorId": { "type": "string" },
+        "themeMode": { "type": "string", "enum": ["dark", "light"] }
       }
     },
     "AnalyticsLog": {

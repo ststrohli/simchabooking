@@ -14,6 +14,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import LocationAutocomplete from './LocationAutocomplete';
+import { ThemeModeSwitch } from './ThemeModeSwitch';
 
 interface VendorPortalProps {
   vendor: Vendor;
@@ -28,6 +29,8 @@ interface VendorPortalProps {
   onActiveChatChange?: (isActive: boolean) => void;
   onTabChange?: (tab: string) => void;
   initialTab?: string;
+  themeMode?: 'dark' | 'light';
+  onToggleThemeMode?: (mode: 'dark' | 'light') => void;
 }
 
 const isVideo = (url?: string | null) => {
@@ -48,7 +51,7 @@ const renderMedia = (url: string | undefined | null, className: string, defaultC
   return <img src={url} className={className} alt="" />;
 };
 
-const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, onActiveChatChange, onTabChange, initialTab }) => {
+const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'history' | 'calendar' | 'profile' | 'messages'>(initialTab as any || 'overview');
   
   const onTabChangeRef = useRef(onTabChange);
@@ -3192,6 +3195,16 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
           {activeTab === 'profile' && (
             <div className="animate-in fade-in duration-500 max-w-4xl mx-auto pb-20 space-y-12">
+               {onToggleThemeMode && (
+                 <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/20 shadow-md px-4 py-2 flex items-center justify-between gap-4">
+                   <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">App Preference</span>
+                   <ThemeModeSwitch
+                     themeMode={themeMode}
+                     onToggleThemeMode={onToggleThemeMode}
+                   />
+                 </div>
+               )}
+
                {/* Offer System Section */}
                <div className="bg-[#111] rounded-3xl border border-[#D4AF37]/20 shadow-2xl overflow-hidden">
                   <button 

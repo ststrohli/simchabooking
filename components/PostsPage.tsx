@@ -101,7 +101,7 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
                       />
                     )}
                     
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60"></div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60 simcha-image-fader-post"></div>
                     
                     <div className="absolute bottom-6 left-6 right-6">
                         <h3 className="text-2xl font-bold text-white font-[Cinzel] drop-shadow-lg">{post.title}</h3>
