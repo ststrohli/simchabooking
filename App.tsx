@@ -34,7 +34,7 @@ import ChatModal from './components/ChatModal';
 import SuggestionModal from './components/SuggestionModal';
 import ClientPortal from './components/ClientPortal';
 import PaymentSuccess from './components/PaymentSuccess';
-import { ThemeModeSwitch } from './components/ThemeModeSwitch';
+import { ThemeModeSwitch, ThemeStyleSwitch } from './components/ThemeModeSwitch';
 import { VENDORS as INITIAL_VENDORS, MOCK_BOOKINGS } from './services/mockData';
 import { Vendor, VendorCategory, CartItem, Booking, Review, Post, Message, UserAccount, SelectedService } from './types';
 
@@ -168,14 +168,14 @@ const AnimatedRoleSwitcher: React.FC<{
 
   return (
     <nav aria-label="Account Role Switcher" className="fixed top-[84px] sm:top-24 left-3 sm:left-4 z-50 flex items-center pointer-events-auto">
-      <div className="relative flex items-center gap-[3px] h-[28px] sm:h-[30px] bg-zinc-950/95 border border-[#D4AF37]/45 backdrop-blur-xl rounded-full p-[3px] shadow-[0_6px_16px_rgba(0,0,0,0.9),0_0_10px_rgba(212,175,55,0.2)] text-[9.5px] sm:text-[10px] tracking-normal uppercase font-extrabold leading-none">
+      <div className="simcha-switch-track relative flex items-center gap-[3px] h-[28px] sm:h-[30px] bg-zinc-950/95 border border-[#D4AF37]/45 backdrop-blur-xl rounded-full p-[3px] shadow-[0_6px_16px_rgba(0,0,0,0.9),0_0_10px_rgba(212,175,55,0.2)] text-[9.5px] sm:text-[10px] tracking-normal uppercase font-extrabold leading-none">
         <motion.div
           style={{
             x: pillX,
             rotate: pillRotate,
             scaleX: pillScaleX,
           }}
-          className="absolute left-[3px] top-[3px] bottom-[3px] w-[54px] sm:w-[58px] rounded-full bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.45)] pointer-events-none z-0 transform-gpu will-change-transform"
+          className="simcha-gold-pill absolute left-[3px] top-[3px] bottom-[3px] w-[54px] sm:w-[58px] rounded-full bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] border border-[#FFF8D1] shadow-[0_2px_10px_rgba(212,175,55,0.6),inset_0_1px_2px_rgba(255,255,255,0.85)] pointer-events-none z-0 transform-gpu will-change-transform"
         />
 
         <button
@@ -184,8 +184,8 @@ const AnimatedRoleSwitcher: React.FC<{
           onClick={() => handleSelectRole(false)}
           className={`relative z-10 h-full w-[54px] sm:w-[58px] inline-flex items-center justify-center gap-1 rounded-full transition-colors duration-300 select-none leading-none ${
             !isVendorView
-              ? 'text-black font-black'
-              : 'text-zinc-300 hover:text-white cursor-pointer'
+              ? 'simcha-switch-btn-active text-black font-black'
+              : 'simcha-switch-btn-inactive text-zinc-300 hover:text-white cursor-pointer'
           }`}
           aria-label="Switch to Client View"
         >
@@ -199,8 +199,8 @@ const AnimatedRoleSwitcher: React.FC<{
           onClick={() => handleSelectRole(true)}
           className={`relative z-10 h-full w-[54px] sm:w-[58px] inline-flex items-center justify-center gap-1 rounded-full transition-colors duration-300 select-none leading-none ${
             isVendorView
-              ? 'text-black font-black'
-              : 'text-zinc-300 hover:text-white cursor-pointer'
+              ? 'simcha-switch-btn-active text-black font-black'
+              : 'simcha-switch-btn-inactive text-zinc-300 hover:text-white cursor-pointer'
           }`}
           aria-label="Switch to Vendor View"
         >
@@ -342,8 +342,8 @@ const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | '
 };
 
 const SimchaLogo = ({ className = "h-10 w-10", viewBox = "0 0 100 100" }: { className?: string; viewBox?: string }) => (
-  <svg className={`${className}`} viewBox={viewBox} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <text x="50" y="75" fontFamily="'Cinzel', serif" fontSize="85" fill="#D4AF37" textAnchor="middle" fontWeight="bold" letterSpacing="-5">SB</text>
+  <svg className={`simcha-logo-svg ${className}`} viewBox={viewBox} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <text className="simcha-logo-text" x="50" y="75" fontFamily="'Cinzel', serif" fontSize="85" fill="#D4AF37" textAnchor="middle" fontWeight="bold" letterSpacing="-5">SB</text>
   </svg>
 );
 
@@ -365,6 +365,8 @@ interface AuthSignUpModalProps {
   onPhotoChange: (file: File | null) => void;
   themeMode: 'dark' | 'light';
   onThemeModeChange: (mode: 'dark' | 'light') => void;
+  styleMode: 'regular' | 'outline';
+  onStyleModeChange: (mode: 'regular' | 'outline') => void;
   error: string;
   onRegister: (e: React.FormEvent) => void;
   onGoogleSignIn: () => void;
@@ -386,6 +388,8 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
   onPhotoChange,
   themeMode,
   onThemeModeChange,
+  styleMode,
+  onStyleModeChange,
   error,
   onRegister,
   onGoogleSignIn,
@@ -514,11 +518,19 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
 
             <div className="space-y-2">
               <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">App Appearance</label>
-              <ThemeModeSwitch
-                fullWidth
-                themeMode={themeMode}
-                onToggleThemeMode={onThemeModeChange}
-              />
+              <div className="grid grid-cols-2 gap-2.5">
+                <ThemeStyleSwitch
+                  fullWidth
+                  styleMode={styleMode}
+                  onToggleStyleMode={onStyleModeChange}
+                />
+                <ThemeModeSwitch
+                  fullWidth
+                  themeMode={themeMode}
+                  onToggleThemeMode={onThemeModeChange}
+                />
+              </div>
+              <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest text-center pt-0.5 whitespace-nowrap">Can always be changed in Profile</p>
             </div>
 
             {error && (
@@ -592,6 +604,8 @@ interface AuthSignInModalProps {
   onPhotoChange: (file: File | null) => void;
   themeMode: 'dark' | 'light';
   onThemeModeChange: (mode: 'dark' | 'light') => void;
+  styleMode: 'regular' | 'outline';
+  onStyleModeChange: (mode: 'regular' | 'outline') => void;
   error: string;
   onLogin: (e: React.FormEvent) => void;
   onRegister: (e: React.FormEvent) => void;
@@ -620,6 +634,8 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
   onPhotoChange,
   themeMode,
   onThemeModeChange,
+  styleMode,
+  onStyleModeChange,
   error,
   onLogin,
   onRegister,
@@ -862,6 +878,8 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
             onPhotoChange={onPhotoChange}
             themeMode={themeMode}
             onThemeModeChange={onThemeModeChange}
+            styleMode={styleMode}
+            onStyleModeChange={onStyleModeChange}
             error={error}
             onRegister={onRegister}
             onGoogleSignIn={onGoogleSignIn}
@@ -1127,18 +1145,27 @@ const isVideo = (url?: string | null) => {
   return !!(url.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || url.includes('video%2F') || url.includes('video/'));
 };
 
-const renderMedia = (url: string | undefined | null, className: string, alt?: string, ariaHidden?: boolean) => {
+const renderMedia = (url: string | undefined | null, className: string, alt?: string, ariaHidden?: boolean, priority?: boolean) => {
   if (!url) return null;
   if (isVideo(url)) {
     return <video src={url} className={className} autoPlay muted loop playsInline aria-hidden={ariaHidden} />;
   }
-  return <img src={url} alt={alt || ""} decoding="async" className={className} aria-hidden={ariaHidden} />;
+  return (
+    <img
+      src={url}
+      alt={alt || ""}
+      decoding={priority ? "sync" : "async"}
+      loading={priority ? "eager" : undefined}
+      fetchPriority={priority ? "high" : undefined}
+      className={className}
+      aria-hidden={ariaHidden}
+    />
+  );
 };
 
 const APP_SLIDE_UP_TRANSITION = {
-  type: 'spring' as const,
-  stiffness: 100,
-  damping: 15,
+  duration: 0.4,
+  ease: [0.22, 1, 0.36, 1] as const,
 };
 
 const CARD_GRID_VARIANTS = {
@@ -1271,14 +1298,46 @@ function App() {
     return 'dark';
   });
 
-  useEffect(() => {
-    const isLight = themeMode === 'light';
+  const [styleMode, setStyleMode] = useState<'regular' | 'outline'>(() => {
+    try {
+      const saved = localStorage.getItem('simcha_style_mode');
+      if (saved === 'regular' || saved === 'outline') return saved;
+    } catch (e) {}
+    return 'regular';
+  });
+
+  const applyThemeDomClasses = useCallback((mode: 'dark' | 'light') => {
+    const isLight = mode === 'light';
     document.documentElement.classList.toggle('light-mode', isLight);
     document.body.classList.toggle('light-mode', isLight);
-    document.documentElement.setAttribute('data-theme', themeMode);
-  }, [themeMode]);
+    document.documentElement.setAttribute('data-theme', mode);
+  }, []);
+
+  const applyStyleDomClasses = useCallback((style: 'regular' | 'outline') => {
+    const isOutline = style === 'outline';
+    document.documentElement.classList.toggle('outline-mode', isOutline);
+    document.body.classList.toggle('outline-mode', isOutline);
+    document.documentElement.setAttribute('data-style', style);
+  }, []);
+
+  useEffect(() => {
+    applyThemeDomClasses(themeMode);
+  }, [themeMode, applyThemeDomClasses]);
+
+  useEffect(() => {
+    applyStyleDomClasses(styleMode);
+  }, [styleMode, applyStyleDomClasses]);
+
+  // Preload hero background image while on sign-in screen so it renders immediately on login
+  useEffect(() => {
+    if (!heroBackgroundUrl || isVideo(heroBackgroundUrl)) return;
+    const img = new Image();
+    img.decoding = 'sync';
+    img.src = heroBackgroundUrl;
+  }, [heroBackgroundUrl]);
 
   const handleToggleThemeMode = useCallback((nextMode: 'dark' | 'light') => {
+    applyThemeDomClasses(nextMode);
     setThemeMode(nextMode);
     try {
       localStorage.setItem('simcha_theme_mode', nextMode);
@@ -1294,7 +1353,23 @@ function App() {
     }
   }, [fbUser]);
 
-  const syncUserProfile = async (user: FirebaseUser, additionalData: { fullName?: string, photoURL?: string, photoStoragePath?: string, themeMode?: 'dark' | 'light' } = {}) => {
+  const handleToggleStyleMode = useCallback((nextStyle: 'regular' | 'outline') => {
+    setStyleMode(nextStyle);
+    try {
+      localStorage.setItem('simcha_style_mode', nextStyle);
+    } catch (e) {}
+    setUserDocData((prev: any) => (prev ? { ...prev, styleMode: nextStyle } : prev));
+    if (fbUser) {
+      updateDoc(doc(db, 'users', fbUser.uid), {
+        styleMode: nextStyle,
+        updatedAt: new Date().toISOString(),
+      }).catch(err => {
+        console.warn('Error updating style mode in user profile:', err);
+      });
+    }
+  }, [fbUser]);
+
+  const syncUserProfile = async (user: FirebaseUser, additionalData: { fullName?: string, photoURL?: string, photoStoragePath?: string, themeMode?: 'dark' | 'light', styleMode?: 'regular' | 'outline' } = {}) => {
     try {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDocSafe(userDocRef);
@@ -1315,10 +1390,15 @@ function App() {
         userData.themeMode = additionalData.themeMode;
       }
 
+      if (additionalData.styleMode !== undefined) {
+        userData.styleMode = additionalData.styleMode;
+      }
+
       if (!userDoc.exists()) {
         await setDoc(userDocRef, {
           ...userData,
           themeMode: userData.themeMode || 'dark',
+          styleMode: userData.styleMode || 'regular',
           createdAt: new Date().toISOString()
         });
       } else {
@@ -1634,6 +1714,10 @@ function App() {
           setThemeMode(data.themeMode);
           try { localStorage.setItem('simcha_theme_mode', data.themeMode); } catch (e) {}
         }
+        if (data.styleMode === 'regular' || data.styleMode === 'outline') {
+          setStyleMode(data.styleMode);
+          try { localStorage.setItem('simcha_style_mode', data.styleMode); } catch (e) {}
+        }
         const userEmail = fbUser.email ? fbUser.email.trim().toLowerCase() : '';
         if (isWhitelistedAdminEmail(userEmail)) {
           setUserRole('admin');
@@ -1696,7 +1780,6 @@ function App() {
       setUserDocData(null);
       setUserRole(null);
 
-      setFbUser(user);
       const userEmail = user.email ? user.email.trim().toLowerCase() : '';
       
       // Fast-path whitelist check for instant admin role derivation without waiting for network
@@ -1754,6 +1837,25 @@ function App() {
         }
       }
 
+      // Fetch user doc immediately in parallel so themeMode & styleMode apply on the very first frame
+      const userDocPromise = getDocSafe(doc(db, 'users', user.uid)).catch(() => null);
+      const initialUserDoc = await userDocPromise;
+      if (initialUserDoc && initialUserDoc.exists()) {
+        const initData = initialUserDoc.data();
+        if (initData.themeMode === 'light' || initData.themeMode === 'dark') {
+          applyThemeDomClasses(initData.themeMode);
+          setThemeMode(initData.themeMode);
+          try { localStorage.setItem('simcha_theme_mode', initData.themeMode); } catch (e) {}
+        }
+        if (initData.styleMode === 'regular' || initData.styleMode === 'outline') {
+          applyStyleDomClasses(initData.styleMode);
+          setStyleMode(initData.styleMode);
+          try { localStorage.setItem('simcha_style_mode', initData.styleMode); } catch (e) {}
+        }
+      }
+
+      setFbUser(user);
+
       // Non-blocking profile sync
       syncUserProfile(user).catch(err => console.error("Background profile sync failed:", err));
       
@@ -1773,15 +1875,20 @@ function App() {
           setUserRole(finalRole);
         }
 
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDocSafe(userDocRef);
+        const userDoc = initialUserDoc || await getDocSafe(doc(db, 'users', user.uid));
 
-        if (userDoc.exists()) {
+        if (userDoc && userDoc.exists()) {
           const data = userDoc.data();
           setUserDocData(data);
           if (data.themeMode === 'light' || data.themeMode === 'dark') {
+            applyThemeDomClasses(data.themeMode);
             setThemeMode(data.themeMode);
             try { localStorage.setItem('simcha_theme_mode', data.themeMode); } catch (e) {}
+          }
+          if (data.styleMode === 'regular' || data.styleMode === 'outline') {
+            applyStyleDomClasses(data.styleMode);
+            setStyleMode(data.styleMode);
+            try { localStorage.setItem('simcha_style_mode', data.styleMode); } catch (e) {}
           }
           if (isWhitelistedAdminEmail(userEmail)) {
             finalRole = 'admin';
@@ -2997,8 +3104,11 @@ function App() {
         console.warn("Firebase Auth updateProfile non-fatal error during registration:", authErr);
       }
 
-      try { localStorage.setItem('simcha_theme_mode', themeMode); } catch (e) {}
-      await syncUserProfile(user, { fullName: authFullName, photoURL, photoStoragePath, themeMode });
+      try {
+        localStorage.setItem('simcha_theme_mode', themeMode);
+        localStorage.setItem('simcha_style_mode', styleMode);
+      } catch (e) {}
+      await syncUserProfile(user, { fullName: authFullName, photoURL, photoStoragePath, themeMode, styleMode });
 
       try {
         await sendEmailVerification(user);
@@ -3215,6 +3325,8 @@ function App() {
             onPhotoChange={setAuthPhoto}
             themeMode={themeMode}
             onThemeModeChange={handleToggleThemeMode}
+            styleMode={styleMode}
+            onStyleModeChange={handleToggleStyleMode}
             error={authError}
             onLogin={handleAuthLogin}
             onRegister={handleAuthRegister}
@@ -3412,6 +3524,8 @@ function App() {
                   onTabChange={tab => setPortalInitialTab(tab)}
                   themeMode={themeMode}
                   onToggleThemeMode={handleToggleThemeMode}
+                  styleMode={styleMode}
+                  onToggleStyleMode={handleToggleStyleMode}
                 />
               </div>
             </motion.div>
@@ -3450,6 +3564,8 @@ function App() {
               onTabChange={tab => setPortalInitialTab(tab)}
               themeMode={themeMode}
               onToggleThemeMode={handleToggleThemeMode}
+              styleMode={styleMode}
+              onToggleStyleMode={handleToggleStyleMode}
             />
           </div>
         </motion.div>
@@ -3509,25 +3625,22 @@ function App() {
     return (
       <>
             
-      <motion.main 
+      <main 
         id="main-content" 
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
-        transition={APP_SLIDE_UP_TRANSITION}
         className="flex-1 flex flex-col pb-36 md:pb-0"
       >
-        <section className="relative bg-black text-white overflow-hidden rounded-t-[5px] md:rounded-t-none" aria-labelledby="hero-title">
-          <div className="absolute inset-0" aria-hidden="true">
-            {renderMedia(heroBackgroundUrl, "w-full h-full object-cover opacity-80")}
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero"></div>
+        <section className="relative bg-black text-white overflow-hidden" aria-labelledby="hero-title">
+          <div className="absolute -inset-x-1 -top-1 -bottom-2 pointer-events-none" aria-hidden="true">
+            {renderMedia(heroBackgroundUrl, "w-full h-full object-cover opacity-80", undefined, true, true)}
+            <div className="absolute -inset-x-1 -top-1 -bottom-2 bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero"></div>
           </div>
           <div className="relative max-w-7xl mx-auto px-4 py-[72px] md:py-32 text-center">
             <h2 id="hero-title" className="font-bold font-[Cinzel] mb-6 tracking-[0.015em] leading-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)] flex flex-col items-center gap-y-2 sm:gap-y-3 md:gap-y-4">
-              <span className="block text-3xl sm:text-4xl md:text-6xl">Celebrate Your</span><span className="block text-3xl sm:text-4xl md:text-6xl text-[#D4AF37]">Simcha.</span>
-              <span className="block text-3xl sm:text-4xl md:text-6xl opacity-90">Book Perfection.</span>
+              <span className="simcha-hero-title-main block text-3xl sm:text-4xl md:text-6xl">Celebrate Your</span><span className="simcha-hero-title-gold block text-3xl sm:text-4xl md:text-6xl text-[#D4AF37]">Simcha.</span>
+              <span className="simcha-hero-title-main block text-3xl sm:text-4xl md:text-6xl">Book Perfection.</span>
             </h2>
             <p className="mb-10 text-zinc-300 text-base md:text-lg font-light max-w-2xl mx-auto leading-relaxed">From world-class kosher caterers to soulful bands, create your complete simcha in one place.</p>
-            <div className="max-w-3xl mx-auto bg-zinc-950/90 rounded-full p-1.5 pl-4 sm:pl-6 flex items-center shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_15px_rgba(212,175,55,0.15)] border border-[#D4AF37]/30 backdrop-blur-md">
+            <div className="simcha-search-bar max-w-3xl mx-auto bg-zinc-950/90 rounded-full p-1.5 pl-4 sm:pl-6 flex items-center shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_15px_rgba(212,175,55,0.15)] border border-[#D4AF37]/30 backdrop-blur-md">
               <div className="flex-1 flex items-center min-w-0 pr-2">
                 <label htmlFor="search-input" className="sr-only">Search vendors</label>
                 <Search className="w-4 h-4 sm:w-5 sm:h-5 text-[#D4AF37] mr-2.5 sm:mr-3 shrink-0" aria-hidden="true" />
@@ -3546,7 +3659,7 @@ function App() {
                 onClick={() => {
                   if (activeCategory !== 'All') setActiveCategory('All');
                 }}
-                className="bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] hover:bg-[#E5C76B] text-black px-4 sm:px-6 py-2 sm:py-2.5 rounded-full font-black uppercase tracking-wider text-xs sm:text-sm transition-colors duration-300 shadow-lg border border-[#FFF8D1]/50 shrink-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-white flex items-center gap-1.5"
+                className="simcha-gold-pill bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] hover:from-[#FFF0A8] hover:via-[#E5C76B] hover:to-[#B88B14] text-black px-4 sm:px-6 py-2 sm:py-2.5 rounded-full font-black uppercase tracking-wider text-xs sm:text-sm transition-all duration-300 shadow-[0_4px_14px_rgba(212,175,55,0.5),inset_0_1px_2px_rgba(255,255,255,0.85)] border border-[#FFF8D1] shrink-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-white flex items-center gap-1.5"
               >
                 <span>Search</span>
               </motion.button>
@@ -3831,7 +3944,7 @@ function App() {
                 )}
             </div>
         )}
-      </motion.main>
+      </main>
 
       <footer className="bg-black border-t border-[#D4AF37]/10 py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -3927,7 +4040,7 @@ function App() {
               >
                   <SimchaLogo className="h-8 w-8 sm:h-9 sm:w-9 group-hover:scale-110 transition-transform" />
                   <div className="text-left">
-                      <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
+                      <h1 className="simcha-brand-title text-lg sm:text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
                         <span className="block md:inline">Simcha</span><span className="block md:inline md:ml-1.5">Booking</span>
                       </h1>
                   </div>

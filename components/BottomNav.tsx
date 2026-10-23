@@ -138,14 +138,9 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isVendor
 
   return (
     <nav aria-label="Bottom Navigation" className="fixed bottom-[9px] sm:bottom-5 left-2 right-2 sm:left-4 sm:right-4 max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl mx-auto z-50 transition-all duration-300">
-      <div className="rounded-[32px] bg-gradient-to-b from-zinc-900/95 via-black/95 to-black/98 backdrop-blur-2xl border border-white/20 shadow-[0_10px_30px_rgba(0,0,0,0.9),0_0_20px_rgba(212,175,55,0.12)] pb-[env(safe-area-inset-bottom)] sm:pb-0 overflow-hidden">
-        {/* Liquid glass top rim specular reflection */}
-        <div className="absolute top-0 inset-x-6 h-[1.5px] bg-gradient-to-r from-transparent via-white/50 to-transparent pointer-events-none" />
-        {/* Glass sheen overlay */}
-        <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/40 rounded-[32px] pointer-events-none" />
-
+      <div className="simcha-bottom-nav rounded-[32px] bg-gradient-to-b from-zinc-900/95 via-black/95 to-black/98 backdrop-blur-2xl border border-[#D4AF37]/35 shadow-[0_10px_30px_rgba(0,0,0,0.9),0_0_20px_rgba(212,175,55,0.12)] pb-[env(safe-area-inset-bottom)] sm:pb-0 overflow-hidden">
         <div ref={containerRef} className="flex justify-around items-center h-[60px] sm:h-[60px] px-2 relative z-10">
-          {/* Sliding 3D Molten Gold Active Capsule */}
+          {/* Sliding Gold Active Capsule */}
           <motion.div
             style={{
               x: pillX,
@@ -153,10 +148,12 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isVendor
               scaleX: pillScaleX,
               width: pillWidth,
             }}
-            className="absolute left-0 top-[6px] h-[48px] rounded-[22px] bg-gradient-to-br from-[#FFE885] via-[#D4AF37] to-[#7B5800] border border-[#FFF8D1] shadow-[0_4px_16px_rgba(212,175,55,0.5),inset_0_1.5px_3px_rgba(255,255,255,0.95)] pointer-events-none z-0 transform-gpu"
+            className="simcha-gold-pill absolute left-0 top-[6px] h-[48px] rounded-[22px] bg-gradient-to-br from-[#FFE885] via-[#D4AF37] to-[#7B5800] border border-[#FFF8D1] shadow-[0_6px_20px_rgba(212,175,55,0.6),0_0_15px_rgba(255,232,133,0.4),inset_0_2px_3px_rgba(255,255,255,0.9),inset_0_-3px_6px_rgba(90,60,0,0.6)] pointer-events-none z-0 overflow-hidden transform-gpu"
           >
-            {/* Top curved specular gloss arc */}
-            <div className="absolute top-0.5 inset-x-2 h-2.5 rounded-t-[14px] bg-gradient-to-b from-white/90 via-white/40 to-transparent pointer-events-none" />
+            {/* Rich 3D top glass reflection */}
+            <div className="simcha-pill-gloss absolute inset-x-1 top-0.5 h-[42%] rounded-t-[18px] bg-gradient-to-b from-white/70 via-white/20 to-transparent pointer-events-none" />
+            {/* Subtle bottom warm rim glow */}
+            <div className="simcha-pill-gloss absolute inset-x-2 bottom-0.5 h-[20%] rounded-b-[18px] bg-gradient-to-t from-[#FFE885]/50 to-transparent pointer-events-none" />
           </motion.div>
 
           {tabs.map((tab) => {
@@ -172,15 +169,17 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isVendor
                 onClick={() => onNavigate(tab.id)}
                 whileTap={{ scale: 0.93 }}
                 transition={{ duration: 0.2 }}
-                className="relative z-10 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full w-[70px] sm:w-[68px] h-[48px] flex flex-col items-center justify-center cursor-pointer select-none"
+                className={`relative z-10 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full w-[70px] sm:w-[68px] h-[48px] flex flex-col items-center justify-center cursor-pointer select-none ${
+                  isActive ? 'simcha-nav-btn-active' : 'simcha-nav-btn-inactive'
+                }`}
                 aria-label={tab.label}
                 aria-current={isActive ? 'page' : undefined}
               >
                 <Icon 
                   className={
                     isActive
-                      ? "w-4 h-4 text-zinc-950 fill-zinc-950 mb-0.5 filter drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)] transition-colors duration-500"
-                      : "w-5 h-5 mb-1 text-zinc-300 stroke-[1.75] transition-colors duration-500"
+                      ? "simcha-nav-icon-active w-4 h-4 text-zinc-950 fill-zinc-950 mb-0.5 filter drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)] transition-colors duration-500"
+                      : "simcha-nav-icon-inactive w-5 h-5 mb-1 text-zinc-300 stroke-[1.75] transition-colors duration-500"
                   }
                   aria-hidden="true" 
                   fill={isActive ? "currentColor" : "none"}
@@ -188,8 +187,8 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isVendor
                 <span 
                   className={
                     isActive
-                      ? "text-[9.5px] font-black text-zinc-950 tracking-tight leading-none mt-0.5 transition-colors duration-500"
-                      : "text-[9.5px] font-medium text-zinc-400 tracking-tight mt-0.5 transition-colors duration-500"
+                      ? "simcha-nav-label-active text-[9.5px] font-black text-zinc-950 tracking-tight leading-none mt-0.5 transition-colors duration-500"
+                      : "simcha-nav-label-inactive text-[9.5px] font-medium text-zinc-400 tracking-tight mt-0.5 transition-colors duration-500"
                   }
                 >
                   {tab.label}

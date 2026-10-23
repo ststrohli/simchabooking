@@ -13,7 +13,7 @@ import { uploadFileRobustly } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import { trackFunnelStep } from '../services/analyticsService';
 import { EmbeddedCheckoutModal } from './EmbeddedCheckoutModal';
-import { ThemeModeSwitch } from './ThemeModeSwitch';
+import { ThemeModeSwitch, ThemeStyleSwitch } from './ThemeModeSwitch';
 import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 
 interface ClientPortalProps {
@@ -36,10 +36,12 @@ interface ClientPortalProps {
   initialTab?: string;
   themeMode?: 'dark' | 'light';
   onToggleThemeMode?: (mode: 'dark' | 'light') => void;
+  styleMode?: 'regular' | 'outline';
+  onToggleStyleMode?: (mode: 'regular' | 'outline') => void;
 }
 
 const ClientPortal: React.FC<ClientPortalProps> = ({ 
-  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode
+  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode, styleMode = 'regular', onToggleStyleMode
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile'>(initialTab as any || 'overview');
   
@@ -812,13 +814,23 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
               </div>
 
               <div className="space-y-6">
-                {onToggleThemeMode && (
-                  <div className="flex items-center justify-between bg-black/40 border border-[#D4AF37]/25 rounded-xl px-3.5 py-1.5">
-                    <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">App Preference</span>
-                    <ThemeModeSwitch
-                      themeMode={themeMode}
-                      onToggleThemeMode={onToggleThemeMode}
-                    />
+                {(onToggleThemeMode || onToggleStyleMode) && (
+                  <div className="flex flex-col items-center justify-center gap-2.5 py-1 text-center">
+                    <span className="text-xs font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.2em]">App Preference</span>
+                    <div className="flex items-center justify-center gap-3">
+                      {onToggleStyleMode && (
+                        <ThemeStyleSwitch
+                          styleMode={styleMode}
+                          onToggleStyleMode={onToggleStyleMode}
+                        />
+                      )}
+                      {onToggleThemeMode && (
+                        <ThemeModeSwitch
+                          themeMode={themeMode}
+                          onToggleThemeMode={onToggleThemeMode}
+                        />
+                      )}
+                    </div>
                   </div>
                 )}
 

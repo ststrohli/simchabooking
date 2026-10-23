@@ -222,8 +222,8 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
                   backgroundColor: isPlayed 
                     ? '#D4AF37' 
                     : isSent 
-                      ? 'rgba(212, 175, 55, 0.25)' 
-                      : 'rgba(255, 255, 255, 0.25)',
+                      ? 'rgba(212, 175, 55, 0.3)' 
+                      : 'rgba(161, 161, 170, 0.45)',
                 }}
               />
             );

@@ -179,68 +179,128 @@ body.light-mode {
 }
 
 /* 1. Dark Backgrounds -> White / Crisp Light Surfaces */
-.light-mode .bg-black {
-  background-color: #ffffff !important;
-}
-
+.light-mode .bg-black,
+.light-mode .bg-\[\#141416\],
+.light-mode .bg-\[\#161619\],
+.light-mode .bg-\[\#121214\],
 .light-mode .bg-\[\#111\],
 .light-mode .bg-\[\#0a0a0a\],
 .light-mode .bg-\[\#050505\],
 .light-mode .bg-\[\#0b0b0b\],
 .light-mode .bg-\[\#0c0c0c\],
 .light-mode .bg-\[\#0d0d0d\],
+.light-mode .bg-\[\#0e0e0e\],
+.light-mode .bg-\[\#0f0f0f\],
+.light-mode .bg-\[\#101012\],
 .light-mode .bg-\[\#141414\],
 .light-mode .bg-\[\#151515\],
+.light-mode .bg-\[\#161618\],
 .light-mode .bg-zinc-950,
-.light-mode .bg-zinc-900 {
-  background-color: #f8f8fa !important;
+.light-mode .bg-zinc-900,
+.light-mode .bg-neutral-900 {
+  background-color: #ffffff !important;
 }
 
 .light-mode .bg-\[\#1a1a1a\],
+.light-mode .bg-\[\#18181c\],
+.light-mode .bg-\[\#1c1c20\],
 .light-mode .bg-\[\#262626\],
-.light-mode .bg-zinc-800 {
-  background-color: #f1f1f4 !important;
+.light-mode .bg-zinc-800,
+.light-mode .bg-zinc-700 {
+  background-color: #f4f4f6 !important;
+}
+
+/* Warm Gold-Tinted Light Surfaces for Chat Sent Bubbles, Selected Threads & Avatars */
+.light-mode .bg-\[\#201b0b\],
+.light-mode .bg-\[\#1a1812\],
+.light-mode .bg-\[\#201c0c\],
+.light-mode .bg-\[\#1e1b0d\] {
+  background-color: #fdf8e7 !important;
 }
 
 .light-mode .hover\:bg-\[\#262626\]:hover,
 .light-mode .hover\:bg-zinc-800:hover,
 .light-mode .hover\:bg-zinc-900:hover,
+.light-mode .hover\:bg-neutral-900:hover,
 .light-mode .hover\:bg-white\/10:hover,
-.light-mode .hover\:bg-white\/5:hover {
-  background-color: rgba(0, 0, 0, 0.06) !important;
+.light-mode .hover\:bg-white\/5:hover,
+.light-mode .hover\:bg-white\/\[0\.02\]:hover,
+.light-mode .hover\:bg-white\/\[0\.01\]:hover {
+  background-color: rgba(0, 0, 0, 0.05) !important;
 }
 
 /* Translucent Dark Backgrounds -> Translucent White / Frosted Light */
 .light-mode .bg-black\/95,
 .light-mode .bg-zinc-950\/95,
 .light-mode .bg-zinc-900\/95,
+.light-mode .bg-\[\#050505\]\/95,
 .light-mode .bg-\[\#0b0b0b\]\/95 {
-  background-color: rgba(255, 255, 255, 0.95) !important;
+  background-color: rgba(255, 255, 255, 0.96) !important;
 }
 
 .light-mode .bg-black\/90,
 .light-mode .bg-zinc-950\/90,
-.light-mode .bg-zinc-900\/90 {
-  background-color: rgba(255, 255, 255, 0.92) !important;
+.light-mode .bg-zinc-900\/90,
+.light-mode .bg-black\/85,
+.light-mode .bg-\[\#18181c\]\/90 {
+  background-color: rgba(255, 255, 255, 0.94) !important;
 }
 
 .light-mode .bg-black\/80,
 .light-mode .bg-zinc-950\/80,
 .light-mode .bg-zinc-900\/80,
+.light-mode .bg-\[\#1a1a1a\]\/80,
 .light-mode .bg-black\/75,
 .light-mode .bg-black\/70 {
-  background-color: rgba(255, 255, 255, 0.86) !important;
+  background-color: rgba(255, 255, 255, 0.88) !important;
 }
 
 .light-mode .bg-black\/60,
+.light-mode .bg-zinc-900\/60,
 .light-mode .bg-black\/50,
 .light-mode .bg-black\/40 {
-  background-color: rgba(245, 245, 247, 0.88) !important;
+  background-color: rgba(255, 255, 255, 0.94) !important;
 }
 
+.light-mode .bg-black\/35,
 .light-mode .bg-black\/30,
-.light-mode .bg-black\/20 {
-  background-color: rgba(0, 0, 0, 0.05) !important;
+.light-mode .bg-black\/25,
+.light-mode .bg-black\/20,
+.light-mode .bg-\[\#111\]\/20 {
+  background-color: rgba(0, 0, 0, 0.03) !important;
+}
+
+/* Force native date/time inputs to use light color-scheme in Light Mode */
+.light-mode .\[color-scheme\:dark\],
+.light-mode input[type="time"],
+.light-mode input[type="date"] {
+  color-scheme: light !important;
+}
+
+/* Modal top drag handle pill contrast on white modal surfaces (targets ONLY the small pill) */
+.light-mode .simcha-drag-pill {
+  background-color: rgba(0, 0, 0, 0.22) !important;
+  box-shadow: none !important;
+}
+
+/* Online indicator dot borders in ChatModal */
+.light-mode .border-\[\#101012\],
+.light-mode .border-\[\#141416\] {
+  border-color: #ffffff !important;
+}
+
+/* Clean White Surfaces & Soft Shadows for BottomNav, Switch Tracks & Search Bar in Light Mode */
+.light-mode .simcha-bottom-nav {
+  background-image: none !important;
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  border-color: rgba(212, 175, 55, 0.35) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1), 0 0 18px rgba(212, 175, 55, 0.18) !important;
+}
+
+.light-mode .simcha-switch-track,
+.light-mode .simcha-search-bar {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08), 0 0 12px rgba(212, 175, 55, 0.18) !important;
 }
 
 /* White Buttons with Black Text -> Black Buttons with White Text */
@@ -310,97 +370,102 @@ body.light-mode {
 }
 
 /* 4. Image Faders & Gradients */
-/* Dark Mode: Rich, atmospheric dark fade */
+/* Dark Mode: Smooth bottom dark fade with solid bottom buffer to prevent any seam line */
 .simcha-image-fader-hero {
   background-image: linear-gradient(
     to top,
     #000000 0%,
-    rgba(0, 0, 0, 0.65) 50%,
-    rgba(0, 0, 0, 0.15) 100%
-  );
+    #000000 8%,
+    rgba(0, 0, 0, 0.65) 26%,
+    rgba(0, 0, 0, 0.32) 48%,
+    rgba(0, 0, 0, 0.04) 100%
+  ) !important;
 }
 
 .simcha-image-fader-card {
   background-image: linear-gradient(
     to top,
-    rgba(0, 0, 0, 0.95) 0%,
-    rgba(0, 0, 0, 0.62) 50%,
-    rgba(0, 0, 0, 0.32) 100%
-  );
+    rgba(0, 0, 0, 0.84) 0%,
+    rgba(0, 0, 0, 0.4) 40%,
+    rgba(0, 0, 0, 0.12) 100%
+  ) !important;
 }
 
 .simcha-image-fader-vendor {
   background-image: linear-gradient(
     to top,
-    rgba(0, 0, 0, 0.95) 0%,
-    rgba(0, 0, 0, 0.48) 50%,
-    rgba(0, 0, 0, 0.1) 100%
-  );
+    rgba(0, 0, 0, 0.86) 0%,
+    rgba(0, 0, 0, 0.34) 36%,
+    rgba(0, 0, 0, 0.04) 100%
+  ) !important;
 }
 
 .simcha-image-fader-post {
   background-image: linear-gradient(
     to top,
     #000000 0%,
-    rgba(0, 0, 0, 0.4) 50%,
+    rgba(0, 0, 0, 0.28) 34%,
     rgba(0, 0, 0, 0) 100%
-  );
+  ) !important;
 }
 
-/* Light Mode: Balanced white fade (noticeable fade without washing out the photo) */
+/* Light Mode: Smooth bottom fade on Hero image and subtle bottom fade on cards */
 .light-mode .group > .opacity-50 {
-  opacity: 0.8 !important;
+  opacity: 0.92 !important;
 }
 
 .light-mode section > div > .opacity-80 {
-  opacity: 0.85 !important;
+  opacity: 0.88 !important;
 }
 
 .light-mode .simcha-image-fader-hero {
   background-image: linear-gradient(
     to top,
     #ffffff 0%,
-    rgba(255, 255, 255, 0.94) 12%,
-    rgba(255, 255, 255, 0.45) 48%,
-    rgba(255, 255, 255, 0.08) 100%
+    #ffffff 12%,
+    rgba(255, 255, 255, 0.94) 22%,
+    rgba(255, 255, 255, 0.74) 34%,
+    rgba(255, 255, 255, 0.42) 50%,
+    rgba(255, 255, 255, 0.14) 72%,
+    rgba(255, 255, 255, 0) 100%
   ) !important;
 }
 
 .light-mode .simcha-image-fader-card {
   background-image: linear-gradient(
     to top,
-    rgba(255, 255, 255, 0.78) 0%,
-    rgba(255, 255, 255, 0.36) 50%,
-    rgba(255, 255, 255, 0.12) 100%
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.12) 35%,
+    rgba(255, 255, 255, 0) 75%
   ) !important;
 }
 
 .light-mode .simcha-image-fader-vendor {
   background-image: linear-gradient(
     to top,
-    rgba(255, 255, 255, 0.85) 0%,
-    rgba(255, 255, 255, 0.3) 48%,
-    rgba(255, 255, 255, 0.05) 90%
+    rgba(255, 255, 255, 0.48) 0%,
+    rgba(255, 255, 255, 0.12) 32%,
+    rgba(255, 255, 255, 0) 68%
   ) !important;
 }
 
 .light-mode .simcha-image-fader-post {
   background-image: linear-gradient(
     to top,
-    rgba(255, 255, 255, 0.82) 0%,
-    rgba(255, 255, 255, 0.25) 45%,
-    rgba(255, 255, 255, 0) 85%
+    rgba(255, 255, 255, 0.48) 0%,
+    rgba(255, 255, 255, 0.1) 30%,
+    rgba(255, 255, 255, 0) 65%
   ) !important;
 }
 
 /* Generic Tailwind black gradient stop reversals for any other faders/bars */
 .light-mode .from-black {
-  --tw-gradient-from: rgba(255, 255, 255, 0.85) !important;
+  --tw-gradient-from: rgba(255, 255, 255, 0.55) !important;
 }
 
 .light-mode .from-black\/95,
 .light-mode .from-zinc-900\/95 {
-  --tw-gradient-from: rgba(255, 255, 255, 0.72) !important;
+  --tw-gradient-from: rgba(255, 255, 255, 0.5) !important;
 }
 
 .light-mode .via-black,
@@ -409,19 +474,19 @@ body.light-mode {
 }
 
 .light-mode .via-black\/95 {
-  --tw-gradient-via: rgba(255, 255, 255, 0.85) !important;
+  --tw-gradient-via: rgba(255, 255, 255, 0.65) !important;
 }
 
 .light-mode .via-black\/90 {
-  --tw-gradient-via: rgba(255, 255, 255, 0.75) !important;
+  --tw-gradient-via: rgba(255, 255, 255, 0.55) !important;
 }
 
 .light-mode .via-black\/60 {
-  --tw-gradient-via: rgba(255, 255, 255, 0.22) !important;
+  --tw-gradient-via: rgba(255, 255, 255, 0.12) !important;
 }
 
 .light-mode .via-black\/40 {
-  --tw-gradient-via: rgba(255, 255, 255, 0.15) !important;
+  --tw-gradient-via: rgba(255, 255, 255, 0.08) !important;
 }
 
 .light-mode .to-black,
@@ -430,25 +495,225 @@ body.light-mode {
 }
 
 .light-mode .to-black\/98 {
-  --tw-gradient-to: rgba(248, 248, 250, 0.98) !important;
+  --tw-gradient-to: rgba(255, 255, 255, 0.98) !important;
 }
 
 .light-mode .to-black\/70 {
-  --tw-gradient-to: rgba(255, 255, 255, 0.45) !important;
+  --tw-gradient-to: rgba(255, 255, 255, 0.25) !important;
 }
 
 .light-mode .to-black\/40 {
-  --tw-gradient-to: rgba(255, 255, 255, 0.15) !important;
+  --tw-gradient-to: rgba(255, 255, 255, 0.08) !important;
 }
 
 .light-mode .to-black\/30 {
-  --tw-gradient-to: rgba(255, 255, 255, 0.04) !important;
+  --tw-gradient-to: rgba(255, 255, 255, 0) !important;
 }
 
-/* Clean light text-halo on cards & hero headings in Light Mode */
+/* Remove white shine/light behind text on categories, subcategories, View All, and vendor cards in Light Mode */
 .light-mode .drop-shadow-lg,
 .light-mode .drop-shadow-md {
-  filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.95)) drop-shadow(0 2px 8px rgba(255, 255, 255, 0.85)) !important;
+  filter: none !important;
+  text-shadow: none !important;
 }
 
+/* ==========================================================================
+   OUTLINE MODE THEME OVERRIDES (Works in both Dark Mode & Light Mode)
+   - Keeps all Hero, Category, Subcategory, Vendor, and Post images & faders
+   - Outlines all cards, pills, inputs, buttons, and navigation in Gold (#D4AF37)
+   - Active pills/buttons use surface fill (White in Light, Black in Dark)
+     with Gold outline border and contrasting text (Black in Light, White in Dark)
+   - Inactive navigation icons/labels and secondary controls are Gold
+   ========================================================================== */
 
+/* 1. Universal Gold Outlines for Borders in Outline Mode */
+.outline-mode .border-white\/5,
+.outline-mode .border-white\/10,
+.outline-mode .border-white\/20,
+.outline-mode .border-zinc-800,
+.outline-mode .border-zinc-700,
+.outline-mode .border-zinc-400\/20,
+.outline-mode .border-\[\#D4AF37\]\/10,
+.outline-mode .border-\[\#D4AF37\]\/20,
+.outline-mode .border-\[\#D4AF37\]\/25,
+.outline-mode .border-\[\#D4AF37\]\/30,
+.outline-mode .border-\[\#D4AF37\]\/40,
+.outline-mode .border-\[\#D4AF37\]\/45,
+.outline-mode .border-\[\#D4AF37\]\/50 {
+  border-color: #D4AF37 !important;
+}
+
+/* Category & Subcategory image cards: crisp gold outline + subtle gold glow while keeping images */
+.outline-mode .group.border-2 {
+  border-color: #D4AF37 !important;
+  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.22) !important;
+}
+
+.outline-mode .group.border-2:hover {
+  border-color: #D4AF37 !important;
+  box-shadow: 0 8px 26px rgba(212, 175, 55, 0.38) !important;
+}
+
+/* Search bar & Switch tracks: crisp gold outline */
+.outline-mode .simcha-search-bar,
+.outline-mode .simcha-switch-track {
+  border: 1.5px solid #D4AF37 !important;
+  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.22) !important;
+}
+
+.light-mode.outline-mode .simcha-search-bar,
+.light-mode.outline-mode .simcha-switch-track {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08), 0 0 12px rgba(212, 175, 55, 0.22) !important;
+}
+
+.outline-mode:not(.light-mode) .simcha-search-bar,
+.outline-mode:not(.light-mode) .simcha-switch-track {
+  background-color: rgba(9, 9, 11, 0.95) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.85), 0 0 14px rgba(212, 175, 55, 0.28) !important;
+}
+
+/* 2. Active Sliding Pills & Primary Gold Buttons -> Outlined Gold Capsules */
+.outline-mode .simcha-pill-gloss {
+  display: none !important;
+}
+
+/* Light + Outline: White capsule, Gold (#D4AF37) border, Black text/icon */
+.light-mode.outline-mode .simcha-gold-pill,
+.light-mode.outline-mode .bg-\[\#D4AF37\],
+.light-mode.outline-mode .bg-white.text-black {
+  background-image: none !important;
+  background-color: #ffffff !important;
+  border: 1.5px solid #D4AF37 !important;
+  color: #09090b !important;
+  box-shadow: 0 3px 12px rgba(212, 175, 55, 0.28) !important;
+}
+
+.light-mode.outline-mode .bg-\[\#D4AF37\]:hover,
+.light-mode.outline-mode .simcha-gold-pill:hover,
+.light-mode.outline-mode .bg-white.text-black:hover {
+  background-color: #fdfaf0 !important;
+  border-color: #D4AF37 !important;
+  color: #09090b !important;
+}
+
+/* Dark + Outline: Black capsule, Gold (#D4AF37) border, White text/icon */
+.outline-mode:not(.light-mode) .simcha-gold-pill,
+.outline-mode:not(.light-mode) .bg-\[\#D4AF37\],
+.outline-mode:not(.light-mode) .bg-white.text-black {
+  background-image: none !important;
+  background-color: #09090b !important;
+  border: 1.5px solid #D4AF37 !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 14px rgba(212, 175, 55, 0.35) !important;
+}
+
+.outline-mode:not(.light-mode) .bg-\[\#D4AF37\]:hover,
+.outline-mode:not(.light-mode) .simcha-gold-pill:hover,
+.outline-mode:not(.light-mode) .bg-white.text-black:hover {
+  background-color: #18181b !important;
+  border-color: #D4AF37 !important;
+  color: #ffffff !important;
+}
+
+/* Active vs Inactive Button Labels/Icons inside Sliding Switches */
+.light-mode.outline-mode .simcha-switch-btn-active {
+  color: #09090b !important;
+}
+
+.outline-mode:not(.light-mode) .simcha-switch-btn-active {
+  color: #ffffff !important;
+}
+
+.outline-mode .simcha-switch-btn-inactive {
+  color: #D4AF37 !important;
+}
+
+/* 3. Bottom Navigation Bar in Outline Mode */
+.light-mode.outline-mode .simcha-bottom-nav {
+  background-image: none !important;
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  border: 1.5px solid #D4AF37 !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1), 0 0 18px rgba(212, 175, 55, 0.25) !important;
+}
+
+.outline-mode:not(.light-mode) .simcha-bottom-nav {
+  background-image: none !important;
+  background-color: rgba(9, 9, 11, 0.96) !important;
+  border: 1.5px solid #D4AF37 !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), 0 0 20px rgba(212, 175, 55, 0.3) !important;
+}
+
+/* Active BottomNav Icon & Label: Black in Light Mode, White in Dark Mode */
+.light-mode.outline-mode .simcha-nav-icon-active {
+  color: #09090b !important;
+  fill: #09090b !important;
+  filter: none !important;
+}
+
+.light-mode.outline-mode .simcha-nav-label-active {
+  color: #09090b !important;
+}
+
+.outline-mode:not(.light-mode) .simcha-nav-icon-active {
+  color: #ffffff !important;
+  fill: #ffffff !important;
+  filter: none !important;
+}
+
+.outline-mode:not(.light-mode) .simcha-nav-label-active {
+  color: #ffffff !important;
+}
+
+/* Inactive BottomNav Icons & Labels: Standard Gold (#D4AF37) in Outline Mode */
+.outline-mode .simcha-nav-icon-inactive {
+  color: #D4AF37 !important;
+}
+
+.outline-mode .simcha-nav-label-inactive {
+  color: #D4AF37 !important;
+  font-weight: 700 !important;
+}
+
+/* Header Action Icons (Shield, LogOut) -> Gold (#D4AF37) in Outline Mode */
+.outline-mode header button.text-zinc-300 {
+  color: #D4AF37 !important;
+  border: 1px solid rgba(212, 175, 55, 0.45) !important;
+}
+
+/* 4. Hero Title in Outline Mode (Both Dark & Light):
+   - No background element or drop-shadow behind the title
+   - "Celebrate Your" & "Book Perfection." outlined in #D4AF37 gold
+   - "Simcha." in regular solid #D4AF37 gold */
+.outline-mode #hero-title {
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+.outline-mode .simcha-hero-title-main {
+  color: transparent !important;
+  -webkit-text-stroke: 1.5px #D4AF37 !important;
+  filter: none !important;
+  text-shadow: none !important;
+  opacity: 1 !important;
+}
+
+.outline-mode .simcha-hero-title-gold {
+  color: #D4AF37 !important;
+  -webkit-text-stroke: 0px transparent !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+/* 5. Simcha Booking Logo (SB Icon & Brand Title) Outlined in Gold in Outline Mode */
+.outline-mode .simcha-logo-text {
+  fill: transparent !important;
+  stroke: #D4AF37 !important;
+  stroke-width: 3.5px !important;
+  paint-order: stroke fill;
+}
+
+.outline-mode .simcha-brand-title {
+  color: transparent !important;
+  -webkit-text-stroke: 1.25px #D4AF37 !important;
+}

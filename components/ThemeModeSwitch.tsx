@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { motion, useMotionValue, animate } from 'motion/react';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, Layers, Sparkles } from 'lucide-react';
 
 interface ThemeModeSwitchProps {
   themeMode: 'dark' | 'light';
@@ -148,7 +148,7 @@ export const ThemeModeSwitch: React.FC<ThemeModeSwitchProps> = React.memo(({
         ref={containerRef}
         role="group"
         aria-label="Theme Mode Switcher"
-        className="relative flex items-center w-full gap-1 h-11 bg-black border border-[#D4AF37]/35 rounded-full p-1 shadow-md text-xs tracking-wider uppercase font-extrabold leading-none"
+        className="simcha-switch-track relative flex items-center w-full gap-1 h-9 bg-black border border-[#D4AF37]/35 rounded-full p-1 shadow-md text-[10px] tracking-wider uppercase font-extrabold leading-none"
       >
         <motion.div
           style={{
@@ -156,7 +156,7 @@ export const ThemeModeSwitch: React.FC<ThemeModeSwitchProps> = React.memo(({
             rotate: pillRotate,
             scaleX: pillScaleX,
           }}
-          className="absolute left-1 top-1 bottom-1 w-[calc(50%-6px)] rounded-full bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] border border-[#FFF8D1] shadow-[0_2px_10px_rgba(212,175,55,0.4)] pointer-events-none z-0 transform-gpu will-change-transform"
+          className="simcha-gold-pill absolute left-1 top-1 bottom-1 w-[calc(50%-6px)] rounded-full bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] border border-[#FFF8D1] shadow-[0_2px_10px_rgba(212,175,55,0.55),inset_0_1px_2px_rgba(255,255,255,0.85)] pointer-events-none z-0 transform-gpu will-change-transform"
         />
 
         <button
@@ -164,15 +164,15 @@ export const ThemeModeSwitch: React.FC<ThemeModeSwitchProps> = React.memo(({
           type="button"
           onClick={() => handleSelectMode('light')}
           aria-pressed={!isDark}
-          aria-label="Switch to Light Mode"
-          className={`relative z-10 flex-1 h-full inline-flex items-center justify-center gap-2 rounded-full transition-colors duration-300 select-none leading-none ${
+          aria-label="Switch to Light"
+          className={`relative z-10 flex-1 h-full inline-flex items-center justify-center gap-1.5 rounded-full transition-colors duration-300 select-none leading-none ${
             !isDark
-              ? 'text-black font-black'
-              : 'text-zinc-300 hover:text-white cursor-pointer'
+              ? 'simcha-switch-btn-active text-black font-black'
+              : 'simcha-switch-btn-inactive text-zinc-300 hover:text-white cursor-pointer'
           }`}
         >
-          <Sun className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
-          <span className="leading-none">Light Mode</span>
+          <Sun className="w-3 h-3 shrink-0 stroke-[2.5]" />
+          <span className="leading-none">Light</span>
         </button>
 
         <button
@@ -180,15 +180,15 @@ export const ThemeModeSwitch: React.FC<ThemeModeSwitchProps> = React.memo(({
           type="button"
           onClick={() => handleSelectMode('dark')}
           aria-pressed={isDark}
-          aria-label="Switch to Dark Mode"
-          className={`relative z-10 flex-1 h-full inline-flex items-center justify-center gap-2 rounded-full transition-colors duration-300 select-none leading-none ${
+          aria-label="Switch to Dark"
+          className={`relative z-10 flex-1 h-full inline-flex items-center justify-center gap-1.5 rounded-full transition-colors duration-300 select-none leading-none ${
             isDark
-              ? 'text-black font-black'
-              : 'text-zinc-300 hover:text-white cursor-pointer'
+              ? 'simcha-switch-btn-active text-black font-black'
+              : 'simcha-switch-btn-inactive text-zinc-300 hover:text-white cursor-pointer'
           }`}
         >
-          <Moon className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
-          <span className="leading-none">Dark Mode</span>
+          <Moon className="w-3 h-3 shrink-0 stroke-[2.5]" />
+          <span className="leading-none">Dark</span>
         </button>
       </div>
     );
@@ -199,7 +199,7 @@ export const ThemeModeSwitch: React.FC<ThemeModeSwitchProps> = React.memo(({
       ref={containerRef}
       role="group"
       aria-label="Theme Mode Switcher"
-      className="relative inline-flex items-center gap-[3px] h-[28px] sm:h-[30px] bg-zinc-950/95 border border-[#D4AF37]/45 backdrop-blur-xl rounded-full p-[3px] shadow-[0_6px_16px_rgba(0,0,0,0.45),0_0_10px_rgba(212,175,55,0.2)] text-[9.5px] sm:text-[10px] tracking-normal uppercase font-extrabold leading-none"
+      className="simcha-switch-track relative inline-flex items-center gap-[3px] h-[28px] sm:h-[30px] bg-zinc-950/95 border border-[#D4AF37]/45 backdrop-blur-xl rounded-full p-[3px] shadow-[0_6px_16px_rgba(0,0,0,0.45),0_0_10px_rgba(212,175,55,0.2)] text-[9.5px] sm:text-[10px] tracking-normal uppercase font-extrabold leading-none"
     >
       <motion.div
         style={{
@@ -207,7 +207,7 @@ export const ThemeModeSwitch: React.FC<ThemeModeSwitchProps> = React.memo(({
           rotate: pillRotate,
           scaleX: pillScaleX,
         }}
-        className="absolute left-[3px] top-[3px] bottom-[3px] w-[54px] sm:w-[58px] rounded-full bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] border border-[#FFF8D1] shadow-[0_2px_8px_rgba(212,175,55,0.45)] pointer-events-none z-0 transform-gpu will-change-transform"
+        className="simcha-gold-pill absolute left-[3px] top-[3px] bottom-[3px] w-[54px] sm:w-[58px] rounded-full bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] border border-[#FFF8D1] shadow-[0_2px_10px_rgba(212,175,55,0.6),inset_0_1px_2px_rgba(255,255,255,0.85)] pointer-events-none z-0 transform-gpu will-change-transform"
       />
 
       <button
@@ -215,11 +215,11 @@ export const ThemeModeSwitch: React.FC<ThemeModeSwitchProps> = React.memo(({
         type="button"
         onClick={() => handleSelectMode('light')}
         aria-pressed={!isDark}
-        aria-label="Switch to Light Mode"
+        aria-label="Switch to Light"
         className={`relative z-10 h-full w-[54px] sm:w-[58px] inline-flex items-center justify-center gap-1 rounded-full transition-colors duration-300 select-none leading-none ${
           !isDark
-            ? 'text-black font-black'
-            : 'text-zinc-300 hover:text-white cursor-pointer'
+            ? 'simcha-switch-btn-active text-black font-black'
+            : 'simcha-switch-btn-inactive text-zinc-300 hover:text-white cursor-pointer'
         }`}
       >
         <Sun className="w-2.5 h-2.5 shrink-0 stroke-[2.5]" />
@@ -231,11 +231,11 @@ export const ThemeModeSwitch: React.FC<ThemeModeSwitchProps> = React.memo(({
         type="button"
         onClick={() => handleSelectMode('dark')}
         aria-pressed={isDark}
-        aria-label="Switch to Dark Mode"
+        aria-label="Switch to Dark"
         className={`relative z-10 h-full w-[54px] sm:w-[58px] inline-flex items-center justify-center gap-1 rounded-full transition-colors duration-300 select-none leading-none ${
           isDark
-            ? 'text-black font-black'
-            : 'text-zinc-300 hover:text-white cursor-pointer'
+            ? 'simcha-switch-btn-active text-black font-black'
+            : 'simcha-switch-btn-inactive text-zinc-300 hover:text-white cursor-pointer'
         }`}
       >
         <Moon className="w-2.5 h-2.5 shrink-0 stroke-[2.5]" />
@@ -244,4 +244,248 @@ export const ThemeModeSwitch: React.FC<ThemeModeSwitchProps> = React.memo(({
     </div>
   );
 });
+
+interface ThemeStyleSwitchProps {
+  styleMode: 'regular' | 'outline';
+  onToggleStyleMode: (mode: 'regular' | 'outline') => void;
+  fullWidth?: boolean;
+}
+
+export const ThemeStyleSwitch: React.FC<ThemeStyleSwitchProps> = React.memo(({
+  styleMode,
+  onToggleStyleMode,
+  fullWidth = false,
+}) => {
+  const isOutline = styleMode === 'outline';
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const regularBtnRef = useRef<HTMLButtonElement | null>(null);
+  const outlineBtnRef = useRef<HTMLButtonElement | null>(null);
+  const lastOutlineRef = useRef(isOutline);
+  const isAnimatingRef = useRef(false);
+  const activeControlsRef = useRef<Array<{ stop: () => void }>>([]);
+
+  const pillX = useMotionValue(0);
+  const pillRotate = useMotionValue(0);
+  const pillScaleX = useMotionValue(1);
+
+  const getOutlineOffsetX = useCallback(() => {
+    if (outlineBtnRef.current && regularBtnRef.current) {
+      return outlineBtnRef.current.offsetLeft - regularBtnRef.current.offsetLeft;
+    }
+    return fullWidth ? 180 : 61;
+  }, [fullWidth]);
+
+  const runSlideWiggle = useCallback((targetOutline: boolean) => {
+    activeControlsRef.current.forEach(ctrl => ctrl.stop());
+
+    const targetX = targetOutline ? getOutlineOffsetX() : 0;
+    const currentX = pillX.get();
+    const delta = targetX - currentX;
+
+    if (Math.abs(delta) < 1) {
+      pillX.set(targetX);
+      pillRotate.set(0);
+      pillScaleX.set(1);
+      isAnimatingRef.current = false;
+      return;
+    }
+
+    const dir = delta > 0 ? 1 : -1;
+    isAnimatingRef.current = true;
+
+    activeControlsRef.current = [
+      animate(
+        pillX,
+        [
+          currentX,
+          targetX + dir * 6.5,
+          targetX - dir * 6,
+          targetX + dir * 4.5,
+          targetX - dir * 3.2,
+          targetX + dir * 1.8,
+          targetX - dir * 0.9,
+          targetX,
+        ],
+        {
+          duration: 1.25,
+          times: [0, 0.36, 0.51, 0.65, 0.77, 0.87, 0.94, 1],
+          ease: 'easeInOut',
+          onComplete: () => {
+            isAnimatingRef.current = false;
+          },
+        }
+      ),
+      animate(
+        pillRotate,
+        [
+          0,
+          dir * 4.2,
+          -dir * 4.2,
+          dir * 3.2,
+          -dir * 2.4,
+          dir * 1.4,
+          -dir * 0.7,
+          0,
+        ],
+        {
+          duration: 1.25,
+          times: [0, 0.36, 0.51, 0.65, 0.77, 0.87, 0.94, 1],
+          ease: 'easeInOut',
+        }
+      ),
+      animate(
+        pillScaleX,
+        [1, 1.06, 0.94, 1.04, 0.96, 1.02, 0.99, 1],
+        {
+          duration: 1.25,
+          times: [0, 0.36, 0.51, 0.65, 0.77, 0.87, 0.94, 1],
+          ease: 'easeInOut',
+        }
+      ),
+    ];
+  }, [getOutlineOffsetX, pillX, pillRotate, pillScaleX]);
+
+  const hasMountedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      lastOutlineRef.current = isOutline;
+      pillX.set(isOutline ? getOutlineOffsetX() : 0);
+      return;
+    }
+    if (lastOutlineRef.current !== isOutline) {
+      lastOutlineRef.current = isOutline;
+      runSlideWiggle(isOutline);
+    }
+  }, [isOutline, getOutlineOffsetX, pillX, runSlideWiggle]);
+
+  useEffect(() => {
+    if (!containerRef.current || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (!isAnimatingRef.current) {
+        pillX.set(lastOutlineRef.current ? getOutlineOffsetX() : 0);
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [getOutlineOffsetX, pillX]);
+
+  useEffect(() => {
+    return () => {
+      activeControlsRef.current.forEach(ctrl => ctrl.stop());
+    };
+  }, []);
+
+  const handleSelectStyle = useCallback((mode: 'regular' | 'outline') => {
+    const targetOutline = mode === 'outline';
+    if (lastOutlineRef.current === targetOutline) return;
+    lastOutlineRef.current = targetOutline;
+    runSlideWiggle(targetOutline);
+    onToggleStyleMode(mode);
+  }, [onToggleStyleMode, runSlideWiggle]);
+
+  if (fullWidth) {
+    return (
+      <div
+        ref={containerRef}
+        role="group"
+        aria-label="Theme Style Switcher"
+        className="simcha-switch-track relative flex items-center w-full gap-1 h-9 bg-black border border-[#D4AF37]/35 rounded-full p-1 shadow-md text-[10px] tracking-wider uppercase font-extrabold leading-none"
+      >
+        <motion.div
+          style={{
+            x: pillX,
+            rotate: pillRotate,
+            scaleX: pillScaleX,
+          }}
+          className="simcha-gold-pill absolute left-1 top-1 bottom-1 w-[calc(50%-6px)] rounded-full bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] border border-[#FFF8D1] shadow-[0_2px_10px_rgba(212,175,55,0.55),inset_0_1px_2px_rgba(255,255,255,0.85)] pointer-events-none z-0 transform-gpu will-change-transform"
+        />
+
+        <button
+          ref={regularBtnRef}
+          type="button"
+          onClick={() => handleSelectStyle('regular')}
+          aria-pressed={!isOutline}
+          aria-label="Switch to Regular"
+          className={`relative z-10 flex-1 h-full inline-flex items-center justify-center gap-1.5 rounded-full transition-colors duration-300 select-none leading-none ${
+            !isOutline
+              ? 'simcha-switch-btn-active text-black font-black'
+              : 'simcha-switch-btn-inactive text-zinc-300 hover:text-white cursor-pointer'
+          }`}
+        >
+          <Layers className="w-3 h-3 shrink-0 stroke-[2.5]" />
+          <span className="leading-none">Regular</span>
+        </button>
+
+        <button
+          ref={outlineBtnRef}
+          type="button"
+          onClick={() => handleSelectStyle('outline')}
+          aria-pressed={isOutline}
+          aria-label="Switch to Outline"
+          className={`relative z-10 flex-1 h-full inline-flex items-center justify-center gap-1.5 rounded-full transition-colors duration-300 select-none leading-none ${
+            isOutline
+              ? 'simcha-switch-btn-active text-black font-black'
+              : 'simcha-switch-btn-inactive text-zinc-300 hover:text-white cursor-pointer'
+          }`}
+        >
+          <Sparkles className="w-3 h-3 shrink-0 stroke-[2.5]" />
+          <span className="leading-none">Outline</span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      role="group"
+      aria-label="Theme Style Switcher"
+      className="simcha-switch-track relative inline-flex items-center gap-[3px] h-[28px] sm:h-[30px] bg-zinc-950/95 border border-[#D4AF37]/45 backdrop-blur-xl rounded-full p-[3px] shadow-[0_6px_16px_rgba(0,0,0,0.45),0_0_10px_rgba(212,175,55,0.2)] text-[9.5px] sm:text-[10px] tracking-normal uppercase font-extrabold leading-none"
+    >
+      <motion.div
+        style={{
+          x: pillX,
+          rotate: pillRotate,
+          scaleX: pillScaleX,
+        }}
+        className="simcha-gold-pill absolute left-[3px] top-[3px] bottom-[3px] w-[58px] sm:w-[62px] rounded-full bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] border border-[#FFF8D1] shadow-[0_2px_10px_rgba(212,175,55,0.6),inset_0_1px_2px_rgba(255,255,255,0.85)] pointer-events-none z-0 transform-gpu will-change-transform"
+      />
+
+      <button
+        ref={regularBtnRef}
+        type="button"
+        onClick={() => handleSelectStyle('regular')}
+        aria-pressed={!isOutline}
+        aria-label="Switch to Regular"
+        className={`relative z-10 h-full w-[58px] sm:w-[62px] inline-flex items-center justify-center gap-1 rounded-full transition-colors duration-300 select-none leading-none ${
+          !isOutline
+            ? 'simcha-switch-btn-active text-black font-black'
+            : 'simcha-switch-btn-inactive text-zinc-300 hover:text-white cursor-pointer'
+        }`}
+      >
+        <Layers className="w-2.5 h-2.5 shrink-0 stroke-[2.5]" />
+        <span className="leading-none">Regular</span>
+      </button>
+
+      <button
+        ref={outlineBtnRef}
+        type="button"
+        onClick={() => handleSelectStyle('outline')}
+        aria-pressed={isOutline}
+        aria-label="Switch to Outline"
+        className={`relative z-10 h-full w-[58px] sm:w-[62px] inline-flex items-center justify-center gap-1 rounded-full transition-colors duration-300 select-none leading-none ${
+          isOutline
+            ? 'simcha-switch-btn-active text-black font-black'
+            : 'simcha-switch-btn-inactive text-zinc-300 hover:text-white cursor-pointer'
+        }`}
+      >
+        <Sparkles className="w-2.5 h-2.5 shrink-0 stroke-[2.5]" />
+        <span className="leading-none">Outline</span>
+      </button>
+    </div>
+  );
+});
+
 

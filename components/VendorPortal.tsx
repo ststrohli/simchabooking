@@ -14,7 +14,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import LocationAutocomplete from './LocationAutocomplete';
-import { ThemeModeSwitch } from './ThemeModeSwitch';
+import { ThemeModeSwitch, ThemeStyleSwitch } from './ThemeModeSwitch';
 
 interface VendorPortalProps {
   vendor: Vendor;
@@ -31,6 +31,8 @@ interface VendorPortalProps {
   initialTab?: string;
   themeMode?: 'dark' | 'light';
   onToggleThemeMode?: (mode: 'dark' | 'light') => void;
+  styleMode?: 'regular' | 'outline';
+  onToggleStyleMode?: (mode: 'regular' | 'outline') => void;
 }
 
 const isVideo = (url?: string | null) => {
@@ -51,7 +53,7 @@ const renderMedia = (url: string | undefined | null, className: string, defaultC
   return <img src={url} className={className} alt="" />;
 };
 
-const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode }) => {
+const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode, styleMode = 'regular', onToggleStyleMode }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'history' | 'calendar' | 'profile' | 'messages'>(initialTab as any || 'overview');
   
   const onTabChangeRef = useRef(onTabChange);
@@ -3194,14 +3196,24 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           )}
 
           {activeTab === 'profile' && (
-            <div className="animate-in fade-in duration-500 max-w-4xl mx-auto pb-20 space-y-12">
-               {onToggleThemeMode && (
-                 <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/20 shadow-md px-4 py-2 flex items-center justify-between gap-4">
-                   <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">App Preference</span>
-                   <ThemeModeSwitch
-                     themeMode={themeMode}
-                     onToggleThemeMode={onToggleThemeMode}
-                   />
+            <div className="animate-in fade-in duration-500 max-w-4xl mx-auto pb-20 space-y-10">
+               {(onToggleThemeMode || onToggleStyleMode) && (
+                 <div className="flex flex-col items-center justify-center gap-2.5 py-1 text-center">
+                   <span className="text-xs font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.2em]">App Preference</span>
+                   <div className="flex items-center justify-center gap-3">
+                     {onToggleStyleMode && (
+                       <ThemeStyleSwitch
+                         styleMode={styleMode}
+                         onToggleStyleMode={onToggleStyleMode}
+                       />
+                     )}
+                     {onToggleThemeMode && (
+                       <ThemeModeSwitch
+                         themeMode={themeMode}
+                         onToggleThemeMode={onToggleThemeMode}
+                       />
+                     )}
+                   </div>
                  </div>
                )}
 
