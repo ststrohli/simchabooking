@@ -169,7 +169,8 @@
    ========================================================================== */
 
 html.light-mode,
-body.light-mode {
+body.light-mode,
+.light-mode body {
   background-color: #ffffff !important;
   color: #09090b !important;
 }
@@ -199,6 +200,7 @@ body.light-mode {
 .light-mode .bg-zinc-900,
 .light-mode .bg-neutral-900 {
   background-color: #ffffff !important;
+  background-image: linear-gradient(to bottom, #ffffff, #ffffff) !important;
 }
 
 .light-mode .bg-\[\#1a1a1a\],
@@ -409,25 +411,29 @@ body.light-mode {
   ) !important;
 }
 
-/* Light Mode: Smooth bottom fade on Hero image and subtle bottom fade on cards */
+/* Light Mode: Smooth bottom fade on Hero image matching Dark Mode visual weight, plus subtle bottom fade on cards */
 .light-mode .group > .opacity-50 {
   opacity: 0.92 !important;
 }
 
+.light-mode .simcha-hero-section {
+  background-color: #ffffff !important;
+}
+
+.light-mode .simcha-hero-media,
 .light-mode section > div > .opacity-80 {
-  opacity: 0.88 !important;
+  opacity: 0.8 !important;
 }
 
 .light-mode .simcha-image-fader-hero {
   background-image: linear-gradient(
     to top,
     #ffffff 0%,
-    #ffffff 12%,
-    rgba(255, 255, 255, 0.94) 22%,
-    rgba(255, 255, 255, 0.74) 34%,
-    rgba(255, 255, 255, 0.42) 50%,
-    rgba(255, 255, 255, 0.14) 72%,
-    rgba(255, 255, 255, 0) 100%
+    #ffffff 8%,
+    rgba(255, 255, 255, 0.65) 26%,
+    rgba(255, 255, 255, 0.32) 48%,
+    rgba(255, 255, 255, 0.14) 74%,
+    rgba(255, 255, 255, 0.04) 100%
   ) !important;
 }
 

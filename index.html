@@ -12,6 +12,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Lato:wght@300;400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/index.css">
+    <script>
+      try {
+        var savedTheme = localStorage.getItem('simcha_theme_mode');
+        if (savedTheme === 'light') {
+          document.documentElement.classList.add('light-mode');
+        }
+        var savedStyle = localStorage.getItem('simcha_style_mode');
+        if (savedStyle === 'outline') {
+          document.documentElement.classList.add('outline-mode');
+        }
+      } catch (e) {}
+    </script>
     <script type="module">
       const mapsKey = import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY;
       if (mapsKey && typeof mapsKey === 'string' && !mapsKey.startsWith("%") && !window.google?.maps?.places) {

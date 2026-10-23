@@ -1763,10 +1763,32 @@ function App() {
   }, [fbUser, userRole, currentUserVendorId, isAdmin]);
 
   // Firebase Auth Observer
+  const isFirstAuthCheckRef = useRef(true);
+  const appMountTimeRef = useRef(Date.now());
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      // Set initializing to false early if not logged in to show guest UI faster
+    const waitMinReloadTime = async () => {
+      if (isFirstAuthCheckRef.current) {
+        isFirstAuthCheckRef.current = false;
+        const elapsed = Date.now() - appMountTimeRef.current;
+        const minDisplayMs = 650;
+        if (elapsed < minDisplayMs) {
+          await new Promise(resolve => setTimeout(resolve, minDisplayMs - elapsed));
+        }
+      }
+    };
+
+    const unsubscribe = onAuthStateChanged(auth, async (rawUser) => {
+      try {
+        if (typeof auth.authStateReady === 'function') {
+          await auth.authStateReady();
+        }
+      } catch (e) {}
+
+      const user = auth.currentUser ?? rawUser;
+
       if (!user) {
+        await waitMinReloadTime();
         setFbUser(null);
         setUserDocData(null);
         setUserRole(null);
@@ -1777,26 +1799,8 @@ function App() {
       }
 
       setIsRoleLoading(true);
-      setUserDocData(null);
-      setUserRole(null);
 
       const userEmail = user.email ? user.email.trim().toLowerCase() : '';
-      
-      // Fast-path whitelist check for instant admin role derivation without waiting for network
-      if (isWhitelistedAdminEmail(userEmail)) {
-        setUserRole('admin');
-        setUserDocData((prev: any) => ({
-          ...prev,
-          role: 'admin',
-          isAdmin: true,
-          isVendor: false,
-          email: userEmail
-        }));
-        setIsRoleLoading(false);
-        setIsInitializing(false);
-      } else if (CLIENT_OVERRIDE_EMAILS.includes(userEmail)) {
-        setUserRole('client');
-      }
 
       // If logged in but email not verified, we also treat it as not fully authenticated for the app, EXCEPT if they are a vendor or admin!
       if (!user.emailVerified && !isWhitelistedAdminEmail(userEmail)) {
@@ -1830,56 +1834,45 @@ function App() {
         }
 
         if (!isVendor) {
+          await waitMinReloadTime();
           setFbUser(null);
+          setUserDocData(null);
+          setUserRole(null);
+          setCurrentUserVendorId(null);
           setIsRoleLoading(false);
           setIsInitializing(false);
           return;
         }
       }
 
-      // Fetch user doc immediately in parallel so themeMode & styleMode apply on the very first frame
-      const userDocPromise = getDocSafe(doc(db, 'users', user.uid)).catch(() => null);
-      const initialUserDoc = await userDocPromise;
-      if (initialUserDoc && initialUserDoc.exists()) {
-        const initData = initialUserDoc.data();
-        if (initData.themeMode === 'light' || initData.themeMode === 'dark') {
-          applyThemeDomClasses(initData.themeMode);
-          setThemeMode(initData.themeMode);
-          try { localStorage.setItem('simcha_theme_mode', initData.themeMode); } catch (e) {}
-        }
-        if (initData.styleMode === 'regular' || initData.styleMode === 'outline') {
-          applyStyleDomClasses(initData.styleMode);
-          setStyleMode(initData.styleMode);
-          try { localStorage.setItem('simcha_style_mode', initData.styleMode); } catch (e) {}
-        }
-      }
-
-      setFbUser(user);
-
       // Non-blocking profile sync
       syncUserProfile(user).catch(err => console.error("Background profile sync failed:", err));
       
-      // Fetch user doc data securely from Firestore
+      // Fetch user doc data and role in parallel while keeping the SB logo loading state active
       try {
-        const secureRole = await fetchUserRole(user);
+        const [initialUserDoc, secureRole] = await Promise.all([
+          getDocSafe(doc(db, 'users', user.uid)).catch(() => null),
+          fetchUserRole(user)
+        ]);
+
         let finalRole = secureRole;
-        
-        // Instant state updates for predefined roles
         if (isWhitelistedAdminEmail(userEmail)) {
           finalRole = 'admin';
-          setUserRole('admin');
         } else if (CLIENT_OVERRIDE_EMAILS.includes(userEmail)) {
           finalRole = 'client';
-          setUserRole('client');
-        } else {
-          setUserRole(finalRole);
         }
 
-        const userDoc = initialUserDoc || await getDocSafe(doc(db, 'users', user.uid));
+        let resolvedUserDocData: any = {
+          role: finalRole,
+          isAdmin: finalRole === 'admin',
+          isVendor: finalRole === 'vendor',
+          email: userEmail
+        };
+        let resolvedVendorId: string | null = null;
 
-        if (userDoc && userDoc.exists()) {
-          const data = userDoc.data();
-          setUserDocData(data);
+        if (initialUserDoc && initialUserDoc.exists()) {
+          const data = initialUserDoc.data();
+          resolvedUserDocData = data;
           if (data.themeMode === 'light' || data.themeMode === 'dark') {
             applyThemeDomClasses(data.themeMode);
             setThemeMode(data.themeMode);
@@ -1898,22 +1891,16 @@ function App() {
              else if (docRole === 'vendor' || data.isVendor === true) finalRole = 'vendor';
              else finalRole = data.role;
           }
-          setUserRole(finalRole);
-          try { localStorage.setItem('simcha_user_role', finalRole); } catch (e) {}
-          setCurrentUserVendorId(data.vendorId || null);
-        } else {
-          // Default for new users
-          const defaultUserData = {
-            role: finalRole,
-            isAdmin: finalRole === 'admin',
-            isVendor: finalRole === 'vendor',
-            email: userEmail
-          };
-          setUserDocData(defaultUserData);
-          setUserRole(finalRole);
-          try { localStorage.setItem('simcha_user_role', finalRole); } catch (e) {}
-          setCurrentUserVendorId(null);
+          resolvedVendorId = data.vendorId || null;
         }
+
+        await waitMinReloadTime();
+
+        setUserDocData(resolvedUserDocData);
+        setUserRole(finalRole);
+        try { localStorage.setItem('simcha_user_role', finalRole); } catch (e) {}
+        setCurrentUserVendorId(resolvedVendorId);
+        setFbUser(user);
         console.log("Logged in UID:", user.uid, "| Detected Role:", finalRole);
       } catch (err: any) {
         if (err.message?.includes('offline') || err.message?.includes('Failed to get document')) {
@@ -1921,7 +1908,7 @@ function App() {
         } else {
           console.error("Error fetching user document:", err);
         }
-        // Fallback default role on error
+        await waitMinReloadTime();
         if (isWhitelistedAdminEmail(userEmail)) {
           setUserRole('admin');
           setUserDocData({ role: 'admin', isAdmin: true, isVendor: false, email: userEmail });
@@ -1929,6 +1916,7 @@ function App() {
           setUserRole('client');
           setUserDocData({ role: 'client', isAdmin: false, isVendor: false, email: user.email || '' });
         }
+        setFbUser(user);
       } finally {
         setIsRoleLoading(false);
         setIsInitializing(false);
@@ -3629,12 +3617,12 @@ function App() {
         id="main-content" 
         className="flex-1 flex flex-col pb-36 md:pb-0"
       >
-        <section className="relative bg-black text-white overflow-hidden" aria-labelledby="hero-title">
-          <div className="absolute -inset-x-1 -top-1 -bottom-2 pointer-events-none" aria-hidden="true">
-            {renderMedia(heroBackgroundUrl, "w-full h-full object-cover opacity-80", undefined, true, true)}
-            <div className="absolute -inset-x-1 -top-1 -bottom-2 bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero"></div>
+        <section className="simcha-hero-section relative bg-black text-white overflow-hidden" aria-labelledby="hero-title">
+          <div className="absolute -inset-x-1 -top-1 -bottom-2 z-0" aria-hidden="true">
+            {renderMedia(heroBackgroundUrl, "simcha-hero-media w-full h-full object-cover opacity-80", undefined, true, true)}
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero"></div>
           </div>
-          <div className="relative max-w-7xl mx-auto px-4 py-[72px] md:py-32 text-center">
+          <div className="relative z-10 max-w-7xl mx-auto px-4 py-[72px] md:py-32 text-center">
             <h2 id="hero-title" className="font-bold font-[Cinzel] mb-6 tracking-[0.015em] leading-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)] flex flex-col items-center gap-y-2 sm:gap-y-3 md:gap-y-4">
               <span className="simcha-hero-title-main block text-3xl sm:text-4xl md:text-6xl">Celebrate Your</span><span className="simcha-hero-title-gold block text-3xl sm:text-4xl md:text-6xl text-[#D4AF37]">Simcha.</span>
               <span className="simcha-hero-title-main block text-3xl sm:text-4xl md:text-6xl">Book Perfection.</span>
