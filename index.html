@@ -14,24 +14,17 @@
     <link rel="stylesheet" href="/index.css">
     <script>
       try {
-        localStorage.removeItem('simcha_theme_mode');
-        localStorage.removeItem('simcha_style_mode');
         var activeUid = localStorage.getItem('simcha_active_uid');
-        if (activeUid) {
-          var savedTheme = localStorage.getItem('simcha_theme_mode_' + activeUid);
-          if (savedTheme === 'light') {
-            document.documentElement.classList.add('light-mode');
-          } else {
-            document.documentElement.classList.remove('light-mode');
-          }
-          var savedStyle = localStorage.getItem('simcha_style_mode_' + activeUid);
-          if (savedStyle === 'outline') {
-            document.documentElement.classList.add('outline-mode');
-          } else {
-            document.documentElement.classList.remove('outline-mode');
-          }
+        var savedTheme = (activeUid && localStorage.getItem('simcha_theme_mode_' + activeUid)) || localStorage.getItem('simcha_theme_mode') || 'dark';
+        var savedStyle = (activeUid && localStorage.getItem('simcha_style_mode_' + activeUid)) || localStorage.getItem('simcha_style_mode') || 'regular';
+        if (savedTheme === 'light') {
+          document.documentElement.classList.add('light-mode');
         } else {
           document.documentElement.classList.remove('light-mode');
+        }
+        if (savedStyle === 'outline') {
+          document.documentElement.classList.add('outline-mode');
+        } else {
           document.documentElement.classList.remove('outline-mode');
         }
       } catch (e) {}

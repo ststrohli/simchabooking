@@ -560,32 +560,55 @@ body.light-mode,
   box-shadow: 0 8px 26px rgba(212, 175, 55, 0.38) !important;
 }
 
-/* Search bar & Switch tracks: crisp gold outline */
-.outline-mode .simcha-search-bar,
-.outline-mode .simcha-switch-track {
-  border: 1.5px solid #D4AF37 !important;
-  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.22) !important;
-}
-
+/* Search bar & Switch tracks: rich metallic New Gold outline in Outline Mode */
 .light-mode.outline-mode .simcha-search-bar,
 .light-mode.outline-mode .simcha-switch-track {
-  background-color: rgba(255, 255, 255, 0.96) !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08), 0 0 12px rgba(212, 175, 55, 0.22) !important;
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    linear-gradient(135deg, #FFE885 0%, #C59B27 48%, #7B5800 100%) border-box !important;
+  border: 1.5px solid transparent !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08), 0 0 14px rgba(163, 123, 13, 0.32) !important;
 }
 
 .outline-mode:not(.light-mode) .simcha-search-bar,
 .outline-mode:not(.light-mode) .simcha-switch-track {
-  background-color: rgba(9, 9, 11, 0.95) !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.85), 0 0 14px rgba(212, 175, 55, 0.28) !important;
+  background:
+    linear-gradient(#09090b, #09090b) padding-box,
+    linear-gradient(135deg, #FFE885 0%, #C59B27 48%, #7B5800 100%) border-box !important;
+  border: 1.5px solid transparent !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.85), 0 0 14px rgba(197, 155, 39, 0.38) !important;
 }
 
-/* 2. Active Sliding Pills & Primary Gold Buttons -> Outlined Gold Capsules */
+.outline-mode .simcha-search-bar svg,
+.outline-mode .simcha-search-icon {
+  color: #C59B27 !important;
+}
+
+/* 2. Active Sliding Pills (.simcha-gold-pill) -> New Gold Metallic Outlined Capsules
+      Standard Gold Buttons (.bg-[#D4AF37]) -> Old Gold (#D4AF37) Outlined Capsules */
 .outline-mode .simcha-pill-gloss {
   display: none !important;
 }
 
-/* Light + Outline: White capsule, Gold (#D4AF37) border, Black text/icon */
-.light-mode.outline-mode .simcha-gold-pill,
+/* Light + Outline: Active Sliding Pills & Search Button in New Gold */
+.light-mode.outline-mode .simcha-gold-pill {
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    linear-gradient(135deg, #FFE885 0%, #C59B27 45%, #7B5800 100%) border-box !important;
+  border: 2px solid transparent !important;
+  color: #09090b !important;
+  box-shadow: 0 3px 12px rgba(163, 123, 13, 0.35), inset 0 1px 1px rgba(197, 155, 39, 0.25) !important;
+}
+
+.light-mode.outline-mode .simcha-gold-pill:hover {
+  background:
+    linear-gradient(#fdfaf0, #fdfaf0) padding-box,
+    linear-gradient(135deg, #FFE885 0%, #C59B27 45%, #7B5800 100%) border-box !important;
+  border: 2px solid transparent !important;
+  color: #09090b !important;
+}
+
+/* Light + Outline: Standard Gold Buttons in Old Gold (#D4AF37) */
 .light-mode.outline-mode .bg-\[\#D4AF37\],
 .light-mode.outline-mode .bg-white.text-black {
   background-image: none !important;
@@ -596,15 +619,31 @@ body.light-mode,
 }
 
 .light-mode.outline-mode .bg-\[\#D4AF37\]:hover,
-.light-mode.outline-mode .simcha-gold-pill:hover,
 .light-mode.outline-mode .bg-white.text-black:hover {
   background-color: #fdfaf0 !important;
   border-color: #D4AF37 !important;
   color: #09090b !important;
 }
 
-/* Dark + Outline: Black capsule, Gold (#D4AF37) border, White text/icon */
-.outline-mode:not(.light-mode) .simcha-gold-pill,
+/* Dark + Outline: Active Sliding Pills & Search Button in New Gold */
+.outline-mode:not(.light-mode) .simcha-gold-pill {
+  background:
+    linear-gradient(#09090b, #09090b) padding-box,
+    linear-gradient(135deg, #FFE885 0%, #C59B27 45%, #7B5800 100%) border-box !important;
+  border: 2px solid transparent !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(197, 155, 39, 0.45), inset 0 1px 1px rgba(197, 155, 39, 0.3) !important;
+}
+
+.outline-mode:not(.light-mode) .simcha-gold-pill:hover {
+  background:
+    linear-gradient(#18181b, #18181b) padding-box,
+    linear-gradient(135deg, #FFE885 0%, #C59B27 45%, #7B5800 100%) border-box !important;
+  border: 2px solid transparent !important;
+  color: #ffffff !important;
+}
+
+/* Dark + Outline: Standard Gold Buttons in Old Gold (#D4AF37) */
 .outline-mode:not(.light-mode) .bg-\[\#D4AF37\],
 .outline-mode:not(.light-mode) .bg-white.text-black {
   background-image: none !important;
@@ -615,7 +654,6 @@ body.light-mode,
 }
 
 .outline-mode:not(.light-mode) .bg-\[\#D4AF37\]:hover,
-.outline-mode:not(.light-mode) .simcha-gold-pill:hover,
 .outline-mode:not(.light-mode) .bg-white.text-black:hover {
   background-color: #18181b !important;
   border-color: #D4AF37 !important;
@@ -632,22 +670,31 @@ body.light-mode,
 }
 
 .outline-mode .simcha-switch-btn-inactive {
-  color: #D4AF37 !important;
+  color: #C59B27 !important;
 }
 
-/* 3. Bottom Navigation Bar in Outline Mode */
+.outline-mode .simcha-switch-btn-inactive span {
+  background: linear-gradient(135deg, #FFE885 0%, #C59B27 50%, #9A7209 100%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+/* 3. Bottom Navigation Bar in Outline Mode -> New Gold */
 .light-mode.outline-mode .simcha-bottom-nav {
-  background-image: none !important;
-  background-color: rgba(255, 255, 255, 0.96) !important;
-  border: 1.5px solid #D4AF37 !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1), 0 0 18px rgba(212, 175, 55, 0.25) !important;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.97), rgba(255, 255, 255, 0.97)) padding-box,
+    linear-gradient(135deg, #FFE885 0%, #C59B27 48%, #7B5800 100%) border-box !important;
+  border: 1.5px solid transparent !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1), 0 0 18px rgba(163, 123, 13, 0.3) !important;
 }
 
 .outline-mode:not(.light-mode) .simcha-bottom-nav {
-  background-image: none !important;
-  background-color: rgba(9, 9, 11, 0.96) !important;
-  border: 1.5px solid #D4AF37 !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), 0 0 20px rgba(212, 175, 55, 0.3) !important;
+  background:
+    linear-gradient(rgba(9, 9, 11, 0.97), rgba(9, 9, 11, 0.97)) padding-box,
+    linear-gradient(135deg, #FFE885 0%, #C59B27 48%, #7B5800 100%) border-box !important;
+  border: 1.5px solid transparent !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), 0 0 20px rgba(197, 155, 39, 0.35) !important;
 }
 
 /* Active BottomNav Icon & Label: Black in Light Mode, White in Dark Mode */
@@ -671,13 +718,17 @@ body.light-mode,
   color: #ffffff !important;
 }
 
-/* Inactive BottomNav Icons & Labels: Standard Gold (#D4AF37) in Outline Mode */
+/* Inactive BottomNav Icons & Labels: Rich New Gold in Outline Mode */
 .outline-mode .simcha-nav-icon-inactive {
-  color: #D4AF37 !important;
+  color: #C59B27 !important;
 }
 
 .outline-mode .simcha-nav-label-inactive {
-  color: #D4AF37 !important;
+  background: linear-gradient(135deg, #FFE885 0%, #C59B27 50%, #9A7209 100%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: #C59B27 !important;
   font-weight: 700 !important;
 }
 
@@ -723,3 +774,75 @@ body.light-mode,
   color: transparent !important;
   -webkit-text-stroke: 1.25px #D4AF37 !important;
 }
+
+/* ==========================================================================
+   3D PAPER PICK-UP & UNFOLD TRANSITION STYLES (SINGLE UNIFIED SIGN-IN SHEET)
+   ========================================================================== */
+.simcha-paper-3d-stage {
+  perspective: 1200px;
+  perspective-origin: 50% 100%;
+  transform-style: preserve-3d;
+}
+
+.simcha-paper-3d-sheet {
+  background-color: #050507;
+  border-left: 1.5px solid rgba(255, 255, 255, 0.2);
+  border-right: 1.5px solid rgba(255, 255, 255, 0.22);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.24);
+  border-bottom-left-radius: 22px;
+  border-bottom-right-radius: 22px;
+  box-shadow:
+    /* Physical multi-ply 3D paper thickness on bottom, left, and right edges */
+    0 3px 0 rgba(48, 48, 58, 0.96),
+    0 6px 0 rgba(30, 30, 38, 0.94),
+    0 9px 2px rgba(16, 16, 22, 0.9),
+    -3px 0 0 rgba(42, 42, 52, 0.95),
+    3px 0 0 rgba(46, 46, 56, 0.95),
+    -6px 4px 0 rgba(24, 24, 32, 0.92),
+    6px 4px 0 rgba(24, 24, 32, 0.92),
+    /* Deep 3D elevation shadow underneath and along sides as the sheet picks itself up */
+    -24px 20px 48px rgba(0, 0, 0, 0.85),
+    24px 20px 48px rgba(0, 0, 0, 0.85),
+    0 46px 88px rgba(0, 0, 0, 0.96),
+    0 16px 34px rgba(0, 0, 0, 0.85);
+}
+
+.simcha-paper-curl-shadow-below {
+  background: radial-gradient(
+    ellipse 94% 100% at 52% 0%,
+    rgba(0, 0, 0, 0.88) 0%,
+    rgba(0, 0, 0, 0.5) 45%,
+    rgba(0, 0, 0, 0.14) 76%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.light-mode .simcha-paper-3d-sheet {
+  background-color: #ffffff !important;
+  border-left: 1.5px solid rgba(205, 198, 184, 0.95) !important;
+  border-right: 1.5px solid rgba(205, 198, 184, 0.95) !important;
+  border-bottom: 2px solid rgba(195, 188, 172, 0.98) !important;
+  box-shadow:
+    0 3px 0 #f4f1ea,
+    0 6px 0 #e6e1d6,
+    0 9px 2px rgba(190, 182, 166, 0.9),
+    -3px 0 0 #f4f1ea,
+    3px 0 0 #f4f1ea,
+    -6px 4px 0 #e6e1d6,
+    6px 4px 0 #e6e1d6,
+    -22px 18px 44px rgba(0, 0, 0, 0.22),
+    22px 18px 44px rgba(0, 0, 0, 0.22),
+    0 42px 76px rgba(0, 0, 0, 0.34),
+    0 14px 28px rgba(0, 0, 0, 0.2) !important;
+}
+
+.light-mode .simcha-paper-curl-shadow-below {
+  background: radial-gradient(
+    ellipse 94% 100% at 52% 0%,
+    rgba(0, 0, 0, 0.32) 0%,
+    rgba(0, 0, 0, 0.15) 45%,
+    rgba(0, 0, 0, 0.04) 76%,
+    rgba(0, 0, 0, 0) 100%
+  ) !important;
+}
+

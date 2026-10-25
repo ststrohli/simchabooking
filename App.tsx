@@ -347,7 +347,133 @@ const SimchaLogo = ({ className = "h-10 w-10", viewBox = "0 0 100 100" }: { clas
   </svg>
 );
 
-const AUTH_MODAL_TRANSITION = { duration: 1, ease: [0.25, 1, 0.5, 1] as const };
+const AUTH_MODAL_TRANSITION = { duration: 1.15, ease: [0.25, 0.85, 0.35, 1] as const };
+
+const AuthSlideActionButton: React.FC<{
+  visible: boolean;
+  disabled?: boolean;
+  label?: string;
+  onSlideComplete: () => void;
+}> = React.memo(({ visible, disabled = false, label = 'Slide to Sign In', onSlideComplete }) => {
+  const thumbX = useMotionValue(0);
+  const isDraggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startYRef = useRef(0);
+  const triggeredRef = useRef(false);
+  const maxTravel = 150;
+
+  useEffect(() => {
+    if (!visible || !disabled) {
+      triggeredRef.current = false;
+      thumbX.set(0);
+    }
+  }, [visible, disabled, thumbX]);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (disabled || triggeredRef.current) return;
+    e.stopPropagation();
+    isDraggingRef.current = true;
+    startXRef.current = e.clientX - thumbX.get();
+    startYRef.current = e.clientY;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current || disabled || triggeredRef.current) return;
+    e.stopPropagation();
+    const rawX = e.clientX - startXRef.current;
+    const deltaY = startYRef.current - e.clientY;
+    // Allow horizontal slide OR upward paper-flip gesture
+    const combinedProgress = Math.max(rawX, deltaY * 1.6);
+    const clampedX = Math.max(0, Math.min(maxTravel, combinedProgress));
+    thumbX.set(clampedX);
+
+    if (clampedX >= maxTravel * 0.72) {
+      triggeredRef.current = true;
+      isDraggingRef.current = false;
+      animate(thumbX, maxTravel, {
+        duration: 0.2,
+        ease: 'easeOut',
+        onComplete: () => {
+          onSlideComplete();
+        },
+      });
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return;
+    e.stopPropagation();
+    isDraggingRef.current = false;
+    if (triggeredRef.current) return;
+
+    const currentX = thumbX.get();
+    if (currentX >= maxTravel * 0.55) {
+      triggeredRef.current = true;
+      animate(thumbX, maxTravel, {
+        duration: 0.22,
+        ease: 'easeOut',
+        onComplete: () => {
+          onSlideComplete();
+        },
+      });
+    } else {
+      animate(thumbX, 0, {
+        type: 'spring',
+        stiffness: 380,
+        damping: 26,
+      });
+    }
+  };
+
+  return (
+    <AnimatePresence initial={false}>
+      {visible && (
+        <motion.div
+          initial={{ opacity: 0, height: 0, y: 6 }}
+          animate={{ opacity: 1, height: 'auto', y: 0 }}
+          exit={{ opacity: 0, height: 0, y: 6 }}
+          transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+          className="overflow-hidden flex justify-center pt-1"
+        >
+          <div
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            role="button"
+            tabIndex={0}
+            aria-label={label}
+            onKeyDown={(e) => {
+              if ((e.key === 'Enter' || e.key === ' ') && !disabled && !triggeredRef.current) {
+                e.preventDefault();
+                triggeredRef.current = true;
+                animate(thumbX, maxTravel, {
+                  duration: 0.25,
+                  ease: 'easeOut',
+                  onComplete: () => onSlideComplete(),
+                });
+              }
+            }}
+            className={`simcha-switch-track relative flex items-center w-[196px] h-[34px] bg-zinc-950/95 border border-[#D4AF37]/45 rounded-full p-[3px] shadow-[0_6px_16px_rgba(0,0,0,0.6),0_0_12px_rgba(212,175,55,0.22)] select-none touch-none cursor-grab active:cursor-grabbing ${
+              disabled ? 'opacity-50 pointer-events-none' : ''
+            }`}
+          >
+            <span className="simcha-switch-btn-inactive w-full text-center pl-7 pr-2 text-[9.5px] font-extrabold uppercase tracking-[0.18em] text-zinc-300 pointer-events-none">
+              <span>{label}</span>
+            </span>
+            <motion.div
+              style={{ x: thumbX }}
+              className="simcha-gold-pill absolute left-[3px] top-[3px] bottom-[3px] w-[38px] rounded-full bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] border border-[#FFF8D1] shadow-[0_2px_10px_rgba(212,175,55,0.6),inset_0_1px_2px_rgba(255,255,255,0.85)] flex items-center justify-center pointer-events-none z-10 transform-gpu will-change-transform"
+            >
+              <ChevronRight className="simcha-switch-btn-active w-3.5 h-3.5 text-black stroke-[2.75]" />
+            </motion.div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+});
 
 interface AuthSignUpModalProps {
   onClose: () => void;
@@ -396,6 +522,12 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
 }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const signUpFormRef = useRef<HTMLFormElement | null>(null);
+  const isSignUpReady =
+    fullName.trim().length > 0 &&
+    email.trim().length > 0 &&
+    password.length > 0 &&
+    confirmPassword.length > 0;
 
   const { backdropOpacity, isDismissing, dragModalProps, dragHandleProps, dismissWithSlideOut } = useModalDragDismiss(
     onClose,
@@ -422,7 +554,7 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
       <motion.div
         {...dragModalProps}
         transition={AUTH_MODAL_TRANSITION}
-        className={`bg-[#111] w-full sm:w-full sm:max-w-xl h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+        className={`bg-[#111] w-full sm:w-full sm:max-w-xl h-[calc(93dvh+2.5rem)] pb-[2.5rem] sm:h-auto sm:pb-0 sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-[2.5rem] sm:rounded-2xl border-2 sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
       >
         {/* Top bar drag indicator positioned across the top edge, leaving top-right corner clear for X button */}
         <div
@@ -446,7 +578,7 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
           <X className="w-4 h-4" />
         </button>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y custom-scrollbar p-6 md:p-8 pt-8 flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y custom-scrollbar p-6 md:p-8 pt-8 pb-12 flex flex-col">
           <header
             {...dragHandleProps}
             data-drag-handle="true"
@@ -461,7 +593,7 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
             <p className="text-[10px] text-zinc-300 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
           </header>
 
-          <form aria-label="Registration Form" onSubmit={onRegister} className="space-y-4">
+          <form ref={signUpFormRef} aria-label="Registration Form" onSubmit={onRegister} className="space-y-4">
             <div className="flex flex-col items-center mb-4">
               <label className="relative group cursor-pointer">
                 <div className="w-20 h-20 bg-black/60 border-2 border-dashed border-[#D4AF37]/30 rounded-full flex items-center justify-center overflow-hidden transition-all group-hover:border-[#D4AF37]">
@@ -578,6 +710,11 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
             </button>
           </form>
         </div>
+        {/* Permanent subtle bottom fade matching phone screen curvature */}
+        <div
+          aria-hidden="true"
+          className="simcha-image-fader-card pointer-events-none absolute inset-x-0 bottom-[2.5rem] sm:bottom-0 h-11 bg-gradient-to-t from-[#111] via-[#111]/75 to-transparent z-20"
+        />
       </motion.div>
     </motion.div>
   );
@@ -646,6 +783,8 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
   const [nestedSignUpKey, setNestedSignUpKey] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const isSignInDismissingRef = useRef(false);
+  const signInFormRef = useRef<HTMLFormElement | null>(null);
+  const isSignInReady = email.trim().length > 0 && password.length > 0;
 
   useEffect(() => {
     if (isSignUpOpen) {
@@ -709,7 +848,7 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
       <motion.div
         {...dragModalProps}
         transition={AUTH_MODAL_TRANSITION}
-        className={`bg-[#111] w-full sm:max-w-xl h-[96dvh] sm:h-auto sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-3xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+        className={`bg-[#111] w-full sm:max-w-xl h-[calc(96dvh+2.5rem)] -mb-[2.5rem] pb-[2.5rem] sm:h-auto sm:mb-0 sm:pb-0 sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-[2.5rem] sm:rounded-3xl border-2 sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
       >
         {/* Top bar drag area with centered drag indicator pill, leaving top-right corner clear for X button */}
         <div
@@ -722,7 +861,7 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col bg-[#111] rounded-t-[2.5rem] sm:rounded-t-3xl p-6 md:p-8 pt-8">
+        <div className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col bg-[#111] rounded-t-[2.5rem] sm:rounded-t-3xl p-6 md:p-8 pt-8 pb-12">
           <header
             {...dragHandleProps}
             data-drag-handle="true"
@@ -738,7 +877,7 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
           </header>
 
           {step === 'login' ? (
-            <form aria-label="Sign In Form" onSubmit={onLogin} className="space-y-6">
+            <form ref={signInFormRef} aria-label="Sign In Form" onSubmit={onLogin} className="space-y-6">
               <div className="flex rounded-full border border-[#D4AF37]/20 bg-black/60 p-1 mb-4">
                 <button
                   type="button"
@@ -858,6 +997,12 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
             </form>
           )}
         </div>
+
+        {/* Permanent subtle bottom fade matching phone screen curvature */}
+        <div
+          aria-hidden="true"
+          className="simcha-image-fader-card pointer-events-none absolute inset-x-0 bottom-[2.5rem] sm:bottom-0 h-11 bg-gradient-to-t from-[#111] via-[#111]/75 to-transparent z-20"
+        />
 
         {/* Nested Sign Up Fill-Up Form Modal layered inside AuthSignInModal */}
         {isSignUpOpen && (
@@ -1292,24 +1437,18 @@ function App() {
 
   const [themeMode, setThemeMode] = useState<'dark' | 'light'>(() => {
     try {
-      localStorage.removeItem('simcha_theme_mode');
       const activeUid = localStorage.getItem('simcha_active_uid');
-      if (activeUid) {
-        const saved = localStorage.getItem(`simcha_theme_mode_${activeUid}`);
-        if (saved === 'light' || saved === 'dark') return saved;
-      }
+      const saved = (activeUid && localStorage.getItem(`simcha_theme_mode_${activeUid}`)) || localStorage.getItem('simcha_theme_mode');
+      if (saved === 'light' || saved === 'dark') return saved;
     } catch (e) {}
     return 'dark';
   });
 
   const [styleMode, setStyleMode] = useState<'regular' | 'outline'>(() => {
     try {
-      localStorage.removeItem('simcha_style_mode');
       const activeUid = localStorage.getItem('simcha_active_uid');
-      if (activeUid) {
-        const saved = localStorage.getItem(`simcha_style_mode_${activeUid}`);
-        if (saved === 'regular' || saved === 'outline') return saved;
-      }
+      const saved = (activeUid && localStorage.getItem(`simcha_style_mode_${activeUid}`)) || localStorage.getItem('simcha_style_mode');
+      if (saved === 'regular' || saved === 'outline') return saved;
     } catch (e) {}
     return 'regular';
   });
@@ -1347,6 +1486,9 @@ function App() {
   const handleToggleThemeMode = useCallback((nextMode: 'dark' | 'light') => {
     applyThemeDomClasses(nextMode);
     setThemeMode(nextMode);
+    try {
+      localStorage.setItem('simcha_theme_mode', nextMode);
+    } catch (e) {}
     setUserDocData((prev: any) => (prev ? { ...prev, themeMode: nextMode } : prev));
     if (fbUser) {
       try {
@@ -1365,6 +1507,9 @@ function App() {
   const handleToggleStyleMode = useCallback((nextStyle: 'regular' | 'outline') => {
     applyStyleDomClasses(nextStyle);
     setStyleMode(nextStyle);
+    try {
+      localStorage.setItem('simcha_style_mode', nextStyle);
+    } catch (e) {}
     setUserDocData((prev: any) => (prev ? { ...prev, styleMode: nextStyle } : prev));
     if (fbUser) {
       try {
@@ -1563,6 +1708,25 @@ function App() {
     return () => unsubWebhooks();
   }, [fbUser]);
 
+  // Firebase Auth Observer & 3D Angled Paper Roll Sign-In Transition State
+  const isFirstAuthCheckRef = useRef(true);
+  const appMountTimeRef = useRef(Date.now());
+  const [isSignInFlipping, setIsSignInFlipping] = useState(false);
+  const isSignInFlippingRef = useRef(false);
+  const isInteractiveSignInRef = useRef(false);
+  const peelWindowRef = useRef<HTMLDivElement | null>(null);
+  const peelSceneRef = useRef<HTMLDivElement | null>(null);
+  const peelFlapTrackRef = useRef<HTMLDivElement | null>(null);
+  const peelFlapBodyRef = useRef<HTMLDivElement | null>(null);
+  const mainMenuUnfoldRef = useRef<HTMLElement | null>(null);
+  const pageFlipAnimRef = useRef<{ stop: () => void } | null>(null);
+
+  const startSignInPageFlip = useCallback(() => {
+    if (isSignInFlippingRef.current) return;
+    isSignInFlippingRef.current = true;
+    setIsSignInFlipping(true);
+  }, []);
+
   // Firestore Sync - User Data
   useEffect(() => {
     if (!fbUser || !userRole) {
@@ -1571,6 +1735,7 @@ function App() {
       setCart([]);
       return;
     }
+    if (isSignInFlipping) return;
 
     const notifyErr = (msg: string, type: 'success' | 'info' | 'error' = 'error') => {
       setPermissionErrorBanner(msg);
@@ -1731,8 +1896,8 @@ function App() {
         let cachedTheme: string | null = null;
         let cachedStyle: string | null = null;
         try {
-          cachedTheme = localStorage.getItem(`simcha_theme_mode_${fbUser.uid}`);
-          cachedStyle = localStorage.getItem(`simcha_style_mode_${fbUser.uid}`);
+          cachedTheme = localStorage.getItem(`simcha_theme_mode_${fbUser.uid}`) || localStorage.getItem('simcha_theme_mode');
+          cachedStyle = localStorage.getItem(`simcha_style_mode_${fbUser.uid}`) || localStorage.getItem('simcha_style_mode');
         } catch (e) {}
         const resolvedTheme: 'dark' | 'light' =
           data.themeMode === 'light' || data.themeMode === 'dark'
@@ -1748,6 +1913,8 @@ function App() {
         setStyleMode(resolvedStyle);
         try {
           localStorage.setItem('simcha_active_uid', fbUser.uid);
+          localStorage.setItem('simcha_theme_mode', resolvedTheme);
+          localStorage.setItem('simcha_style_mode', resolvedStyle);
           localStorage.setItem(`simcha_theme_mode_${fbUser.uid}`, resolvedTheme);
           localStorage.setItem(`simcha_style_mode_${fbUser.uid}`, resolvedStyle);
         } catch (e) {}
@@ -1793,11 +1960,58 @@ function App() {
       unsubUserDoc();
       unsubUsers();
     };
-  }, [fbUser, userRole, currentUserVendorId, isAdmin, applyThemeDomClasses, applyStyleDomClasses]);
+  }, [fbUser, userRole, currentUserVendorId, isAdmin, isSignInFlipping, applyThemeDomClasses, applyStyleDomClasses]);
 
-  // Firebase Auth Observer
-  const isFirstAuthCheckRef = useRef(true);
-  const appMountTimeRef = useRef(Date.now());
+  // Clean Layer Slide-Up Sign-In Transition Effect (1.25s Modal Speed)
+  useEffect(() => {
+    if (!isSignInFlipping) return;
+
+    if (peelWindowRef.current) {
+      peelWindowRef.current.style.transformOrigin = '50% 50%';
+      peelWindowRef.current.style.transform = 'translate3d(0%, 0%, 0px)';
+    }
+
+    pageFlipAnimRef.current?.stop();
+
+    let raf1 = 0;
+    let raf2 = 0;
+    let controls: { stop: () => void } | null = null;
+
+    // Wait 2 animation frames so the Main App (Categories + BottomNav) is painted on the GPU before sliding up
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        controls = animate(0, 1, {
+          duration: 1.15,
+          ease: [0.25, 0.85, 0.35, 1],
+          onUpdate: (t) => {
+            const liftY = t * 100;
+            if (peelWindowRef.current) {
+              peelWindowRef.current.style.transform = `translate3d(0%, -${liftY.toFixed(2)}%, 0px)`;
+            }
+          },
+          onComplete: () => {
+            isSignInFlippingRef.current = false;
+            isInteractiveSignInRef.current = false;
+            setIsSignInFlipping(false);
+            setIsAuthLoading(false);
+            setIsAuthSignUpOpen(false);
+            setAuthStep('welcome');
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.width = '';
+          },
+        });
+        pageFlipAnimRef.current = controls;
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      controls?.stop();
+    };
+  }, [isSignInFlipping]);
 
   useEffect(() => {
     const waitMinReloadTime = async () => {
@@ -1811,19 +2025,24 @@ function App() {
       }
     };
 
-    const resetToDefaultDarkRegular = () => {
+    const syncSavedThemePreference = () => {
+      let savedTheme: 'dark' | 'light' = 'dark';
+      let savedStyle: 'regular' | 'outline' = 'regular';
       try {
-        localStorage.removeItem('simcha_active_uid');
-        localStorage.removeItem('simcha_theme_mode');
-        localStorage.removeItem('simcha_style_mode');
+        const activeUid = localStorage.getItem('simcha_active_uid');
+        const rawTheme = (activeUid && localStorage.getItem(`simcha_theme_mode_${activeUid}`)) || localStorage.getItem('simcha_theme_mode');
+        const rawStyle = (activeUid && localStorage.getItem(`simcha_style_mode_${activeUid}`)) || localStorage.getItem('simcha_style_mode');
+        if (rawTheme === 'light' || rawTheme === 'dark') savedTheme = rawTheme;
+        if (rawStyle === 'regular' || rawStyle === 'outline') savedStyle = rawStyle;
       } catch (e) {}
-      applyThemeDomClasses('dark');
-      applyStyleDomClasses('regular');
-      setThemeMode('dark');
-      setStyleMode('regular');
+      applyThemeDomClasses(savedTheme);
+      applyStyleDomClasses(savedStyle);
+      setThemeMode(savedTheme);
+      setStyleMode(savedStyle);
     };
 
     const unsubscribe = onAuthStateChanged(auth, async (rawUser) => {
+      const isInitialBoot = isFirstAuthCheckRef.current;
       try {
         if (typeof auth.authStateReady === 'function') {
           await auth.authStateReady();
@@ -1834,7 +2053,7 @@ function App() {
 
       if (!user) {
         await waitMinReloadTime();
-        resetToDefaultDarkRegular();
+        syncSavedThemePreference();
         setFbUser(null);
         setUserDocData(null);
         setUserRole(null);
@@ -1844,7 +2063,17 @@ function App() {
         return;
       }
 
-      setIsRoleLoading(true);
+      // If handleAuthLogin / handleAuthGoogleSignIn is actively authenticating the user,
+      // let it finish full role/vendor/admin verification while the Sign In button loads
+      // so the slide-up animation only starts once everything is authenticated with zero mid-animation re-renders.
+      if (isInteractiveSignInRef.current) {
+        isFirstAuthCheckRef.current = false;
+        return;
+      }
+
+      if (isInitialBoot) {
+        setIsRoleLoading(true);
+      }
 
       const userEmail = user.email ? user.email.trim().toLowerCase() : '';
 
@@ -1881,7 +2110,7 @@ function App() {
 
         if (!isVendor) {
           await waitMinReloadTime();
-          resetToDefaultDarkRegular();
+          syncSavedThemePreference();
           setFbUser(null);
           setUserDocData(null);
           setUserRole(null);
@@ -1892,10 +2121,18 @@ function App() {
         }
       }
 
+      // If signing in interactively from the Sign-In screen, immediately mount the Main App underneath and start the bottom-up paper peel animation with zero loading screen!
+      if (!isInitialBoot) {
+        startSignInPageFlip();
+        setIsRoleLoading(false);
+        setIsInitializing(false);
+        setFbUser(user);
+      }
+
       // Non-blocking profile sync
       syncUserProfile(user).catch(err => console.error("Background profile sync failed:", err));
       
-      // Fetch user doc data and role in parallel while keeping the SB logo loading state active
+      // Fetch user doc data and role in parallel
       try {
         const [initialUserDoc, secureRole] = await Promise.all([
           getDocSafe(doc(db, 'users', user.uid)).catch(() => null),
@@ -1912,8 +2149,8 @@ function App() {
         let cachedUidTheme: string | null = null;
         let cachedUidStyle: string | null = null;
         try {
-          cachedUidTheme = localStorage.getItem(`simcha_theme_mode_${user.uid}`);
-          cachedUidStyle = localStorage.getItem(`simcha_style_mode_${user.uid}`);
+          cachedUidTheme = localStorage.getItem(`simcha_theme_mode_${user.uid}`) || localStorage.getItem('simcha_theme_mode');
+          cachedUidStyle = localStorage.getItem(`simcha_style_mode_${user.uid}`) || localStorage.getItem('simcha_style_mode');
         } catch (e) {}
 
         let resolvedTheme: 'dark' | 'light' = cachedUidTheme === 'light' ? 'light' : 'dark';
@@ -1959,6 +2196,8 @@ function App() {
         setStyleMode(resolvedStyle);
         try {
           localStorage.setItem('simcha_active_uid', user.uid);
+          localStorage.setItem('simcha_theme_mode', resolvedTheme);
+          localStorage.setItem('simcha_style_mode', resolvedStyle);
           localStorage.setItem(`simcha_theme_mode_${user.uid}`, resolvedTheme);
           localStorage.setItem(`simcha_style_mode_${user.uid}`, resolvedStyle);
         } catch (e) {}
@@ -1980,9 +2219,13 @@ function App() {
         let fallbackTheme: 'dark' | 'light' = 'dark';
         let fallbackStyle: 'regular' | 'outline' = 'regular';
         try {
-          if (localStorage.getItem(`simcha_theme_mode_${user.uid}`) === 'light') fallbackTheme = 'light';
-          if (localStorage.getItem(`simcha_style_mode_${user.uid}`) === 'outline') fallbackStyle = 'outline';
+          const t = localStorage.getItem(`simcha_theme_mode_${user.uid}`) || localStorage.getItem('simcha_theme_mode');
+          const s = localStorage.getItem(`simcha_style_mode_${user.uid}`) || localStorage.getItem('simcha_style_mode');
+          if (t === 'light') fallbackTheme = 'light';
+          if (s === 'outline') fallbackStyle = 'outline';
           localStorage.setItem('simcha_active_uid', user.uid);
+          localStorage.setItem('simcha_theme_mode', fallbackTheme);
+          localStorage.setItem('simcha_style_mode', fallbackStyle);
         } catch (e) {}
         applyThemeDomClasses(fallbackTheme);
         setThemeMode(fallbackTheme);
@@ -2003,7 +2246,7 @@ function App() {
       }
     });
     return () => unsubscribe();
-  }, [applyThemeDomClasses, applyStyleDomClasses]);
+  }, [applyThemeDomClasses, applyStyleDomClasses, startSignInPageFlip]);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const lastSyncedCartJsonRef = useRef<string>('');
@@ -2280,15 +2523,9 @@ function App() {
   const handleSignOut = async () => {
     try {
       try {
-        localStorage.removeItem('simcha_active_uid');
-        localStorage.removeItem('simcha_theme_mode');
-        localStorage.removeItem('simcha_style_mode');
         localStorage.removeItem('simcha_user_role');
       } catch (e) {}
-      applyThemeDomClasses('dark');
-      applyStyleDomClasses('regular');
-      setThemeMode('dark');
-      setStyleMode('regular');
+      setNotification(null);
       await signOut(auth);
       setCart([]);
       setUserRole(null);
@@ -2296,7 +2533,6 @@ function App() {
       setIsRoleLoading(false);
       setCurrentUserVendorId(null);
       setView('marketplace');
-      showNotification('Signed out safely.');
     } catch (err) {
       console.error("Sign out error", err);
     }
@@ -3018,56 +3254,57 @@ function App() {
   const handleOpenAuthSignIn = useCallback(() => {
     setAuthError('');
     setIsAuthSignUpOpen(false);
-    applyThemeDomClasses('dark');
-    applyStyleDomClasses('regular');
-    setThemeMode('dark');
-    setStyleMode('regular');
     setAuthSignInOpenCount(prev => {
       const next = prev + 1;
       authSignInOpenCountRef.current = next;
       return next;
     });
     setAuthStep('login');
-  }, [applyThemeDomClasses, applyStyleDomClasses]);
+  }, []);
 
   const handleCloseAuthSignIn = useCallback((closingOpenId: number) => {
     if (authSignInOpenCountRef.current !== closingOpenId) return;
     setIsAuthSignUpOpen(false);
     setAuthError('');
-    applyThemeDomClasses('dark');
-    applyStyleDomClasses('regular');
-    setThemeMode('dark');
-    setStyleMode('regular');
     setAuthStep(prev => (prev === 'verification' || prev === 'reset-success' ? prev : 'welcome'));
     document.body.style.overflow = '';
     document.body.style.position = '';
     document.body.style.top = '';
     document.body.style.width = '';
-  }, [applyThemeDomClasses, applyStyleDomClasses]);
+  }, []);
 
-  const handleAuthLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsAuthLoading(true);
-    setAuthError('');
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, authEmail, authPassword);
-      const user = userCredential.user;
+  const completeAuthenticatedSignIn = async (user: FirebaseUser, fallbackEmail?: string) => {
+    const rawEmail = (user.email || fallbackEmail || '').trim();
+    const lowerEmail = rawEmail.toLowerCase();
+    const isKnownAdmin = isWhitelistedAdminEmail(lowerEmail);
 
-      let isVendor = false;
-      let matchedVendor = null;
+    let matchedVendor: Vendor | null =
+      vendors.find(
+        v =>
+          v.id === user.uid ||
+          v.username?.toLowerCase() === lowerEmail ||
+          v.contactEmail?.toLowerCase() === lowerEmail
+      ) || null;
+
+    let isVendor =
+      Boolean(matchedVendor) ||
+      (lowerEmail ? INITIAL_VENDORS.some(v => v.username?.toLowerCase() === lowerEmail) : false);
+
+    // Only wait for remote vendor lookup before sliding if the email is unverified and not already known as admin/vendor
+    if (!user.emailVerified && !isVendor && !isKnownAdmin) {
       try {
-        const vendorDoc = await getDocSafe(doc(db, 'vendors', user.uid));
-        if (vendorDoc.exists()) {
+        const directVendorDoc = await getDocSafe(doc(db, 'vendors', user.uid)).catch(() => null);
+        if (directVendorDoc && directVendorDoc.exists()) {
           isVendor = true;
-          matchedVendor = { id: vendorDoc.id, ...vendorDoc.data() } as Vendor;
-        } else {
-          const q = query(collection(db, 'vendors'), where('contactEmail', '==', authEmail.trim()));
+          matchedVendor = { id: directVendorDoc.id, ...directVendorDoc.data() } as Vendor;
+        } else if (rawEmail) {
+          const q = query(collection(db, 'vendors'), where('contactEmail', '==', rawEmail));
           const qSnap = await getDocsSafe(q);
           if (!qSnap.empty) {
             isVendor = true;
             matchedVendor = { id: qSnap.docs[0].id, ...qSnap.docs[0].data() } as Vendor;
           } else {
-            const q2 = query(collection(db, 'vendors'), where('username', '==', authEmail.trim()));
+            const q2 = query(collection(db, 'vendors'), where('username', '==', rawEmail));
             const qSnap2 = await getDocsSafe(q2);
             if (!qSnap2.empty) {
               isVendor = true;
@@ -3075,81 +3312,187 @@ function App() {
             }
           }
         }
-      } catch (err: any) {
-        if (err.message?.includes('offline') || err.message?.includes('Failed to get document')) {
-          console.warn("Vendor status check paused (offline mode) on login:", err.message);
-          if (authEmail && INITIAL_VENDORS.some(v => v.username?.toLowerCase() === authEmail.toLowerCase())) {
-            isVendor = true;
-          }
-        } else {
-          console.error("Error checking vendor status on login:", err);
-        }
-      }
+      } catch (err) {}
 
-      if (!user.emailVerified && !isVendor) {
-        setUnverifiedEmail(authEmail);
+      if (!isVendor) {
+        isInteractiveSignInRef.current = false;
+        setIsAuthLoading(false);
+        setUnverifiedEmail(rawEmail || authEmail);
         setIsAuthSignUpOpen(false);
         setAuthStep('verification');
         await signOut(auth);
         return;
       }
+    }
 
-      if (authTargetRole === 'vendor' || isVendor) {
-        const vendor = matchedVendor || vendors.find(v => 
-          v.username?.toLowerCase() === authEmail.toLowerCase() || 
-          v.contactEmail?.toLowerCase() === authEmail.toLowerCase()
-        );
-        if (vendor) {
-          setCurrentUserVendorId(vendor.id);
-          setUserRole('vendor');
-          setView('marketplace');
-        } else {
-          setUserRole('client');
-          setView('marketplace');
-        }
-      } else {
-        setUserRole('client');
-        setView('marketplace');
+    // Resolve initial role and appearance synchronously so the slide-up begins immediately while the Sign In button stays loading
+    let cachedUidTheme: string | null = null;
+    let cachedUidStyle: string | null = null;
+    let cachedRole: string | null = null;
+    try {
+      cachedUidTheme = localStorage.getItem(`simcha_theme_mode_${user.uid}`) || localStorage.getItem('simcha_theme_mode');
+      cachedUidStyle = localStorage.getItem(`simcha_style_mode_${user.uid}`) || localStorage.getItem('simcha_style_mode');
+      if (localStorage.getItem('simcha_active_uid') === user.uid) {
+        cachedRole = localStorage.getItem('simcha_user_role');
       }
-      await syncUserProfile(user);
+    } catch (e) {}
+
+    let initialRole: 'admin' | 'vendor' | 'client' = 'client';
+    if (isKnownAdmin) {
+      initialRole = 'admin';
+    } else if (CLIENT_OVERRIDE_EMAILS.includes(lowerEmail)) {
+      initialRole = 'client';
+    } else if (isVendor || matchedVendor) {
+      initialRole = 'vendor';
+    } else if (cachedRole === 'admin' || cachedRole === 'vendor' || cachedRole === 'client') {
+      initialRole = cachedRole;
+    }
+
+    let resolvedTheme: 'dark' | 'light' = cachedUidTheme === 'light' ? 'light' : 'dark';
+    let resolvedStyle: 'regular' | 'outline' = cachedUidStyle === 'outline' ? 'outline' : 'regular';
+    let resolvedVendorId: string | null = matchedVendor?.id || null;
+
+    applyThemeDomClasses(resolvedTheme);
+    setThemeMode(resolvedTheme);
+    applyStyleDomClasses(resolvedStyle);
+    setStyleMode(resolvedStyle);
+    try {
+      localStorage.setItem('simcha_active_uid', user.uid);
+      localStorage.setItem('simcha_theme_mode', resolvedTheme);
+      localStorage.setItem('simcha_style_mode', resolvedStyle);
+      localStorage.setItem(`simcha_theme_mode_${user.uid}`, resolvedTheme);
+      localStorage.setItem(`simcha_style_mode_${user.uid}`, resolvedStyle);
+      localStorage.setItem('simcha_user_role', initialRole);
+    } catch (e) {}
+
+    // Start the slide-up immediately while keeping isAuthLoading=true so the button keeps spinning during the slide
+    setNotification(null);
+    setUserDocData({
+      role: initialRole,
+      isAdmin: initialRole === 'admin',
+      isVendor: initialRole === 'vendor',
+      email: lowerEmail,
+      themeMode: resolvedTheme,
+      styleMode: resolvedStyle,
+    });
+    setCurrentUserVendorId(resolvedVendorId);
+    setUserRole(initialRole);
+    setView('marketplace');
+    setIsRoleLoading(false);
+    setIsInitializing(false);
+    setFbUser(user);
+    startSignInPageFlip();
+
+    // Verify full Firestore role & profile in parallel without blocking or lagging the slide animation
+    void (async () => {
+      try {
+        const [initialUserDoc, secureRole, directVendorDoc] = await Promise.all([
+          getDocSafe(doc(db, 'users', user.uid)).catch(() => null),
+          fetchUserRole(user).catch(() => initialRole),
+          !matchedVendor ? getDocSafe(doc(db, 'vendors', user.uid)).catch(() => null) : Promise.resolve(null),
+        ]);
+
+        if (!matchedVendor && directVendorDoc && directVendorDoc.exists()) {
+          isVendor = true;
+          matchedVendor = { id: directVendorDoc.id, ...directVendorDoc.data() } as Vendor;
+        }
+
+        let finalRole: 'admin' | 'vendor' | 'client' = secureRole;
+        if (isKnownAdmin) {
+          finalRole = 'admin';
+        } else if (CLIENT_OVERRIDE_EMAILS.includes(lowerEmail)) {
+          finalRole = 'client';
+        } else if (isVendor || matchedVendor) {
+          finalRole = 'vendor';
+        }
+
+        let updatedTheme = resolvedTheme;
+        let updatedStyle = resolvedStyle;
+        let updatedVendorId = matchedVendor?.id || resolvedVendorId;
+
+        if (initialUserDoc && initialUserDoc.exists()) {
+          const data = initialUserDoc.data();
+          if (data.themeMode === 'light' || data.themeMode === 'dark') {
+            updatedTheme = data.themeMode;
+          }
+          if (data.styleMode === 'regular' || data.styleMode === 'outline') {
+            updatedStyle = data.styleMode;
+          }
+          if (isKnownAdmin) {
+            finalRole = 'admin';
+          } else if (!CLIENT_OVERRIDE_EMAILS.includes(lowerEmail)) {
+            const docRole = typeof data.role === 'string' ? data.role.toLowerCase() : '';
+            if (docRole === 'admin' || data.isAdmin === true) finalRole = 'admin';
+            else if (docRole === 'vendor' || data.isVendor === true || isVendor) finalRole = 'vendor';
+          }
+          updatedVendorId = matchedVendor?.id || data.vendorId || null;
+          setUserDocData({
+            ...data,
+            role: finalRole,
+            isAdmin: finalRole === 'admin',
+            isVendor: finalRole === 'vendor',
+            themeMode: updatedTheme,
+            styleMode: updatedStyle,
+          });
+        }
+
+        if (updatedTheme !== resolvedTheme) {
+          applyThemeDomClasses(updatedTheme);
+          setThemeMode(updatedTheme);
+        }
+        if (updatedStyle !== resolvedStyle) {
+          applyStyleDomClasses(updatedStyle);
+          setStyleMode(updatedStyle);
+        }
+        if (updatedVendorId !== resolvedVendorId) {
+          setCurrentUserVendorId(updatedVendorId);
+        }
+        if (finalRole !== initialRole) {
+          setUserRole(finalRole);
+        }
+
+        try {
+          localStorage.setItem('simcha_theme_mode', updatedTheme);
+          localStorage.setItem('simcha_style_mode', updatedStyle);
+          localStorage.setItem(`simcha_theme_mode_${user.uid}`, updatedTheme);
+          localStorage.setItem(`simcha_style_mode_${user.uid}`, updatedStyle);
+          localStorage.setItem('simcha_user_role', finalRole);
+        } catch (e) {}
+
+        await syncUserProfile(user).catch(() => {});
+      } catch (e) {}
+    })();
+  };
+
+  const handleAuthLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAuthLoading(true);
+    setAuthError('');
+    setNotification(null);
+    isInteractiveSignInRef.current = true;
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      await completeAuthenticatedSignIn(userCredential.user, authEmail);
     } catch (err: any) {
-      setAuthError('Password or email incorrect, or account requires verification.');
-    } finally {
+      isInteractiveSignInRef.current = false;
       setIsAuthLoading(false);
+      setAuthError('Password or email incorrect, or account requires verification.');
     }
   };
 
   const handleAuthGoogleSignIn = async () => {
     setIsAuthLoading(true);
     setAuthError('');
+    setNotification(null);
+    isInteractiveSignInRef.current = true;
     try {
       const provider = new GoogleAuthProvider();
       const userCredential = await signInWithPopup(auth, provider);
-      const user = userCredential.user;
-
-      if (authTargetRole === 'vendor') {
-        const vendor = vendors.find(v => 
-          v.username?.toLowerCase() === user.email?.toLowerCase() || 
-          v.contactEmail?.toLowerCase() === user.email?.toLowerCase()
-        );
-        if (vendor) {
-          setCurrentUserVendorId(vendor.id);
-          setUserRole('vendor');
-          setView('marketplace');
-        } else {
-          setUserRole('client');
-          setView('marketplace');
-        }
-      } else {
-        setUserRole('client');
-        setView('marketplace');
-      }
-      await syncUserProfile(user);
-      showNotification(`Welcome, ${user.displayName || 'User'}!`);
+      await completeAuthenticatedSignIn(userCredential.user);
     } catch (err: any) {
-      setAuthError(err.message || 'An error occurred during Google Sign-In.');
-    } finally {
+      isInteractiveSignInRef.current = false;
       setIsAuthLoading(false);
+      setAuthError(err.message || 'An error occurred during Google Sign-In.');
     }
   };
 
@@ -3192,6 +3535,9 @@ function App() {
       const chosenThemeMode = themeMode;
       const chosenStyleMode = styleMode;
       try {
+        localStorage.setItem('simcha_active_uid', user.uid);
+        localStorage.setItem('simcha_theme_mode', chosenThemeMode);
+        localStorage.setItem('simcha_style_mode', chosenStyleMode);
         localStorage.setItem(`simcha_theme_mode_${user.uid}`, chosenThemeMode);
         localStorage.setItem(`simcha_style_mode_${user.uid}`, chosenStyleMode);
       } catch (e) {}
@@ -3218,10 +3564,6 @@ function App() {
       setIsAuthSignUpOpen(false);
       setAuthStep('verification');
       await signOut(auth);
-      applyThemeDomClasses('dark');
-      applyStyleDomClasses('regular');
-      setThemeMode('dark');
-      setStyleMode('regular');
     } catch (err: any) {
       if (err.code === 'auth/email-already-in-use') {
         setAuthError('An account with this email already exists.');
@@ -3397,18 +3739,10 @@ function App() {
             isSignUpOpen={isAuthSignUpOpen}
             onOpenSignUp={() => {
               setAuthError('');
-              applyThemeDomClasses('dark');
-              applyStyleDomClasses('regular');
-              setThemeMode('dark');
-              setStyleMode('regular');
               setIsAuthSignUpOpen(true);
             }}
             onCloseSignUp={() => {
               setAuthError('');
-              applyThemeDomClasses('dark');
-              applyStyleDomClasses('regular');
-              setThemeMode('dark');
-              setStyleMode('regular');
               setIsAuthSignUpOpen(false);
             }}
             isLoading={isAuthLoading}
@@ -3526,7 +3860,7 @@ function App() {
     }
   };
 
-  if (isInitializing || isRoleLoading) {
+  if (isInitializing) {
     return (
       <main className="min-h-screen bg-black flex flex-col items-center justify-center" aria-label="Loading Simcha Booking">
         <SimchaLogo className="w-24 h-24 animate-pulse mb-8" />
@@ -3536,7 +3870,27 @@ function App() {
     );
   }
 
-  if (!fbUser) return renderAuthWall();
+  const authWallOverlay = (!fbUser || isSignInFlipping) ? (
+    <div
+      key="simcha-auth-peel-overlay"
+      className={
+        isSignInFlipping
+          ? "fixed inset-0 z-[300] pointer-events-none overflow-hidden"
+          : "relative z-10 w-full min-h-screen"
+      }
+    >
+      <div
+        ref={peelWindowRef}
+        className={
+          isSignInFlipping
+            ? "relative z-20 w-full h-full overflow-hidden rounded-b-[2.5rem] border-b-2 border-x border-[#D4AF37]/50 shadow-[0_24px_60px_rgba(0,0,0,0.85)] will-change-transform transform-gpu"
+            : "w-full min-h-screen"
+        }
+      >
+        {renderAuthWall()}
+      </div>
+    </div>
+  ) : null;
 
   const currentAuthenticatedUser: UserAccount = {
     id: fbUser?.uid || '',
@@ -3726,7 +4080,8 @@ function App() {
             
       <main 
         id="main-content" 
-        className="flex-1 flex flex-col pb-36 md:pb-0"
+        ref={mainMenuUnfoldRef}
+        className="flex-1 flex flex-col pb-36 md:pb-0 will-change-transform"
       >
         <section className="simcha-hero-section relative bg-black text-white overflow-hidden" aria-labelledby="hero-title">
           <div className="absolute -inset-x-1 -top-1 -bottom-2 z-0" aria-hidden="true">
@@ -3742,7 +4097,7 @@ function App() {
             <div className="simcha-search-bar max-w-3xl mx-auto bg-zinc-950/90 rounded-full p-1.5 pl-4 sm:pl-6 flex items-center shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_15px_rgba(212,175,55,0.15)] border border-[#D4AF37]/30 backdrop-blur-md">
               <div className="flex-1 flex items-center min-w-0 pr-2">
                 <label htmlFor="search-input" className="sr-only">Search vendors</label>
-                <Search className="w-4 h-4 sm:w-5 sm:h-5 text-[#D4AF37] mr-2.5 sm:mr-3 shrink-0" aria-hidden="true" />
+                <Search className="simcha-search-icon w-4 h-4 sm:w-5 sm:h-5 text-[#D4AF37] mr-2.5 sm:mr-3 shrink-0" aria-hidden="true" />
                 <input 
                   id="search-input" 
                   type="text" 
@@ -3772,7 +4127,7 @@ function App() {
                     <motion.nav 
                       key="main-categories-grid"
                       variants={CARD_GRID_VARIANTS}
-                      initial="hidden"
+                      initial={isSignInFlipping ? false : "hidden"}
                       animate="show"
                       className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4" 
                       aria-label="Category Browser"
@@ -4075,13 +4430,16 @@ function App() {
   };
 
   return (
-    <motion.div 
-      key={fbUser.uid}
-      initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
-      transition={APP_SLIDE_UP_TRANSITION}
-      className="min-h-screen bg-black text-zinc-100 flex flex-col relative pb-28"
-    >
+    <>
+      {authWallOverlay}
+      {fbUser && (
+        <motion.div 
+          key={fbUser.uid}
+          initial={isSignInFlipping ? false : { opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
+          transition={APP_SLIDE_UP_TRANSITION}
+          className="min-h-screen bg-black text-zinc-100 flex flex-col relative pb-28"
+        >
       <FixedGoldScrollbar />
       {permissionErrorBanner && (
         <aside aria-label="System Notice" className="bg-red-950/80 border-b border-red-500/40 px-4 py-3 text-red-200 text-xs font-medium flex items-center justify-between gap-3 backdrop-blur-md sticky top-0 z-[120]">
@@ -4466,7 +4824,9 @@ function App() {
           onToggleVendor={handleToggleVendor}
         />
       )}
-    </motion.div>
+        </motion.div>
+      )}
+    </>
   );
 }
 
