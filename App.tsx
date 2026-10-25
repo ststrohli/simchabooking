@@ -1292,16 +1292,24 @@ function App() {
 
   const [themeMode, setThemeMode] = useState<'dark' | 'light'>(() => {
     try {
-      const saved = localStorage.getItem('simcha_theme_mode');
-      if (saved === 'light' || saved === 'dark') return saved;
+      localStorage.removeItem('simcha_theme_mode');
+      const activeUid = localStorage.getItem('simcha_active_uid');
+      if (activeUid) {
+        const saved = localStorage.getItem(`simcha_theme_mode_${activeUid}`);
+        if (saved === 'light' || saved === 'dark') return saved;
+      }
     } catch (e) {}
     return 'dark';
   });
 
   const [styleMode, setStyleMode] = useState<'regular' | 'outline'>(() => {
     try {
-      const saved = localStorage.getItem('simcha_style_mode');
-      if (saved === 'regular' || saved === 'outline') return saved;
+      localStorage.removeItem('simcha_style_mode');
+      const activeUid = localStorage.getItem('simcha_active_uid');
+      if (activeUid) {
+        const saved = localStorage.getItem(`simcha_style_mode_${activeUid}`);
+        if (saved === 'regular' || saved === 'outline') return saved;
+      }
     } catch (e) {}
     return 'regular';
   });
@@ -1339,35 +1347,38 @@ function App() {
   const handleToggleThemeMode = useCallback((nextMode: 'dark' | 'light') => {
     applyThemeDomClasses(nextMode);
     setThemeMode(nextMode);
-    try {
-      localStorage.setItem('simcha_theme_mode', nextMode);
-    } catch (e) {}
     setUserDocData((prev: any) => (prev ? { ...prev, themeMode: nextMode } : prev));
     if (fbUser) {
-      updateDoc(doc(db, 'users', fbUser.uid), {
+      try {
+        localStorage.setItem('simcha_active_uid', fbUser.uid);
+        localStorage.setItem(`simcha_theme_mode_${fbUser.uid}`, nextMode);
+      } catch (e) {}
+      setDoc(doc(db, 'users', fbUser.uid), {
         themeMode: nextMode,
         updatedAt: new Date().toISOString(),
-      }).catch(err => {
+      }, { merge: true }).catch(err => {
         console.warn('Error updating theme mode in user profile:', err);
       });
     }
-  }, [fbUser]);
+  }, [fbUser, applyThemeDomClasses]);
 
   const handleToggleStyleMode = useCallback((nextStyle: 'regular' | 'outline') => {
+    applyStyleDomClasses(nextStyle);
     setStyleMode(nextStyle);
-    try {
-      localStorage.setItem('simcha_style_mode', nextStyle);
-    } catch (e) {}
     setUserDocData((prev: any) => (prev ? { ...prev, styleMode: nextStyle } : prev));
     if (fbUser) {
-      updateDoc(doc(db, 'users', fbUser.uid), {
+      try {
+        localStorage.setItem('simcha_active_uid', fbUser.uid);
+        localStorage.setItem(`simcha_style_mode_${fbUser.uid}`, nextStyle);
+      } catch (e) {}
+      setDoc(doc(db, 'users', fbUser.uid), {
         styleMode: nextStyle,
         updatedAt: new Date().toISOString(),
-      }).catch(err => {
+      }, { merge: true }).catch(err => {
         console.warn('Error updating style mode in user profile:', err);
       });
     }
-  }, [fbUser]);
+  }, [fbUser, applyStyleDomClasses]);
 
   const syncUserProfile = async (user: FirebaseUser, additionalData: { fullName?: string, photoURL?: string, photoStoragePath?: string, themeMode?: 'dark' | 'light', styleMode?: 'regular' | 'outline' } = {}) => {
     try {
@@ -1402,6 +1413,13 @@ function App() {
           createdAt: new Date().toISOString()
         });
       } else {
+        const existingData = userDoc.data();
+        if (existingData?.themeMode === undefined && userData.themeMode === undefined) {
+          userData.themeMode = 'dark';
+        }
+        if (existingData?.styleMode === undefined && userData.styleMode === undefined) {
+          userData.styleMode = 'regular';
+        }
         await updateDoc(userDocRef, userData);
       }
     } catch (err: any) {
@@ -1710,14 +1728,29 @@ function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setUserDocData(data);
-        if (data.themeMode === 'light' || data.themeMode === 'dark') {
-          setThemeMode(data.themeMode);
-          try { localStorage.setItem('simcha_theme_mode', data.themeMode); } catch (e) {}
-        }
-        if (data.styleMode === 'regular' || data.styleMode === 'outline') {
-          setStyleMode(data.styleMode);
-          try { localStorage.setItem('simcha_style_mode', data.styleMode); } catch (e) {}
-        }
+        let cachedTheme: string | null = null;
+        let cachedStyle: string | null = null;
+        try {
+          cachedTheme = localStorage.getItem(`simcha_theme_mode_${fbUser.uid}`);
+          cachedStyle = localStorage.getItem(`simcha_style_mode_${fbUser.uid}`);
+        } catch (e) {}
+        const resolvedTheme: 'dark' | 'light' =
+          data.themeMode === 'light' || data.themeMode === 'dark'
+            ? data.themeMode
+            : (cachedTheme === 'light' ? 'light' : 'dark');
+        const resolvedStyle: 'regular' | 'outline' =
+          data.styleMode === 'regular' || data.styleMode === 'outline'
+            ? data.styleMode
+            : (cachedStyle === 'outline' ? 'outline' : 'regular');
+        applyThemeDomClasses(resolvedTheme);
+        setThemeMode(resolvedTheme);
+        applyStyleDomClasses(resolvedStyle);
+        setStyleMode(resolvedStyle);
+        try {
+          localStorage.setItem('simcha_active_uid', fbUser.uid);
+          localStorage.setItem(`simcha_theme_mode_${fbUser.uid}`, resolvedTheme);
+          localStorage.setItem(`simcha_style_mode_${fbUser.uid}`, resolvedStyle);
+        } catch (e) {}
         const userEmail = fbUser.email ? fbUser.email.trim().toLowerCase() : '';
         if (isWhitelistedAdminEmail(userEmail)) {
           setUserRole('admin');
@@ -1760,7 +1793,7 @@ function App() {
       unsubUserDoc();
       unsubUsers();
     };
-  }, [fbUser, userRole, currentUserVendorId, isAdmin]);
+  }, [fbUser, userRole, currentUserVendorId, isAdmin, applyThemeDomClasses, applyStyleDomClasses]);
 
   // Firebase Auth Observer
   const isFirstAuthCheckRef = useRef(true);
@@ -1778,6 +1811,18 @@ function App() {
       }
     };
 
+    const resetToDefaultDarkRegular = () => {
+      try {
+        localStorage.removeItem('simcha_active_uid');
+        localStorage.removeItem('simcha_theme_mode');
+        localStorage.removeItem('simcha_style_mode');
+      } catch (e) {}
+      applyThemeDomClasses('dark');
+      applyStyleDomClasses('regular');
+      setThemeMode('dark');
+      setStyleMode('regular');
+    };
+
     const unsubscribe = onAuthStateChanged(auth, async (rawUser) => {
       try {
         if (typeof auth.authStateReady === 'function') {
@@ -1789,6 +1834,7 @@ function App() {
 
       if (!user) {
         await waitMinReloadTime();
+        resetToDefaultDarkRegular();
         setFbUser(null);
         setUserDocData(null);
         setUserRole(null);
@@ -1835,6 +1881,7 @@ function App() {
 
         if (!isVendor) {
           await waitMinReloadTime();
+          resetToDefaultDarkRegular();
           setFbUser(null);
           setUserDocData(null);
           setUserRole(null);
@@ -1862,27 +1909,39 @@ function App() {
           finalRole = 'client';
         }
 
+        let cachedUidTheme: string | null = null;
+        let cachedUidStyle: string | null = null;
+        try {
+          cachedUidTheme = localStorage.getItem(`simcha_theme_mode_${user.uid}`);
+          cachedUidStyle = localStorage.getItem(`simcha_style_mode_${user.uid}`);
+        } catch (e) {}
+
+        let resolvedTheme: 'dark' | 'light' = cachedUidTheme === 'light' ? 'light' : 'dark';
+        let resolvedStyle: 'regular' | 'outline' = cachedUidStyle === 'outline' ? 'outline' : 'regular';
+
         let resolvedUserDocData: any = {
           role: finalRole,
           isAdmin: finalRole === 'admin',
           isVendor: finalRole === 'vendor',
-          email: userEmail
+          email: userEmail,
+          themeMode: resolvedTheme,
+          styleMode: resolvedStyle
         };
         let resolvedVendorId: string | null = null;
 
         if (initialUserDoc && initialUserDoc.exists()) {
           const data = initialUserDoc.data();
-          resolvedUserDocData = data;
           if (data.themeMode === 'light' || data.themeMode === 'dark') {
-            applyThemeDomClasses(data.themeMode);
-            setThemeMode(data.themeMode);
-            try { localStorage.setItem('simcha_theme_mode', data.themeMode); } catch (e) {}
+            resolvedTheme = data.themeMode;
           }
           if (data.styleMode === 'regular' || data.styleMode === 'outline') {
-            applyStyleDomClasses(data.styleMode);
-            setStyleMode(data.styleMode);
-            try { localStorage.setItem('simcha_style_mode', data.styleMode); } catch (e) {}
+            resolvedStyle = data.styleMode;
           }
+          resolvedUserDocData = {
+            ...data,
+            themeMode: resolvedTheme,
+            styleMode: resolvedStyle
+          };
           if (isWhitelistedAdminEmail(userEmail)) {
             finalRole = 'admin';
           } else if (finalRole === 'client' && data.role && !CLIENT_OVERRIDE_EMAILS.includes(userEmail)) {
@@ -1893,6 +1952,16 @@ function App() {
           }
           resolvedVendorId = data.vendorId || null;
         }
+
+        applyThemeDomClasses(resolvedTheme);
+        setThemeMode(resolvedTheme);
+        applyStyleDomClasses(resolvedStyle);
+        setStyleMode(resolvedStyle);
+        try {
+          localStorage.setItem('simcha_active_uid', user.uid);
+          localStorage.setItem(`simcha_theme_mode_${user.uid}`, resolvedTheme);
+          localStorage.setItem(`simcha_style_mode_${user.uid}`, resolvedStyle);
+        } catch (e) {}
 
         await waitMinReloadTime();
 
@@ -1908,13 +1977,24 @@ function App() {
         } else {
           console.error("Error fetching user document:", err);
         }
+        let fallbackTheme: 'dark' | 'light' = 'dark';
+        let fallbackStyle: 'regular' | 'outline' = 'regular';
+        try {
+          if (localStorage.getItem(`simcha_theme_mode_${user.uid}`) === 'light') fallbackTheme = 'light';
+          if (localStorage.getItem(`simcha_style_mode_${user.uid}`) === 'outline') fallbackStyle = 'outline';
+          localStorage.setItem('simcha_active_uid', user.uid);
+        } catch (e) {}
+        applyThemeDomClasses(fallbackTheme);
+        setThemeMode(fallbackTheme);
+        applyStyleDomClasses(fallbackStyle);
+        setStyleMode(fallbackStyle);
         await waitMinReloadTime();
         if (isWhitelistedAdminEmail(userEmail)) {
           setUserRole('admin');
-          setUserDocData({ role: 'admin', isAdmin: true, isVendor: false, email: userEmail });
+          setUserDocData({ role: 'admin', isAdmin: true, isVendor: false, email: userEmail, themeMode: fallbackTheme, styleMode: fallbackStyle });
         } else {
           setUserRole('client');
-          setUserDocData({ role: 'client', isAdmin: false, isVendor: false, email: user.email || '' });
+          setUserDocData({ role: 'client', isAdmin: false, isVendor: false, email: user.email || '', themeMode: fallbackTheme, styleMode: fallbackStyle });
         }
         setFbUser(user);
       } finally {
@@ -1923,7 +2003,7 @@ function App() {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [applyThemeDomClasses, applyStyleDomClasses]);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const lastSyncedCartJsonRef = useRef<string>('');
@@ -2199,12 +2279,21 @@ function App() {
 
   const handleSignOut = async () => {
     try {
+      try {
+        localStorage.removeItem('simcha_active_uid');
+        localStorage.removeItem('simcha_theme_mode');
+        localStorage.removeItem('simcha_style_mode');
+        localStorage.removeItem('simcha_user_role');
+      } catch (e) {}
+      applyThemeDomClasses('dark');
+      applyStyleDomClasses('regular');
+      setThemeMode('dark');
+      setStyleMode('regular');
       await signOut(auth);
       setCart([]);
       setUserRole(null);
       setUserDocData(null);
       setIsRoleLoading(false);
-      try { localStorage.removeItem('simcha_user_role'); } catch (e) {}
       setCurrentUserVendorId(null);
       setView('marketplace');
       showNotification('Signed out safely.');
@@ -2929,24 +3018,32 @@ function App() {
   const handleOpenAuthSignIn = useCallback(() => {
     setAuthError('');
     setIsAuthSignUpOpen(false);
+    applyThemeDomClasses('dark');
+    applyStyleDomClasses('regular');
+    setThemeMode('dark');
+    setStyleMode('regular');
     setAuthSignInOpenCount(prev => {
       const next = prev + 1;
       authSignInOpenCountRef.current = next;
       return next;
     });
     setAuthStep('login');
-  }, []);
+  }, [applyThemeDomClasses, applyStyleDomClasses]);
 
   const handleCloseAuthSignIn = useCallback((closingOpenId: number) => {
     if (authSignInOpenCountRef.current !== closingOpenId) return;
     setIsAuthSignUpOpen(false);
     setAuthError('');
+    applyThemeDomClasses('dark');
+    applyStyleDomClasses('regular');
+    setThemeMode('dark');
+    setStyleMode('regular');
     setAuthStep(prev => (prev === 'verification' || prev === 'reset-success' ? prev : 'welcome'));
     document.body.style.overflow = '';
     document.body.style.position = '';
     document.body.style.top = '';
     document.body.style.width = '';
-  }, []);
+  }, [applyThemeDomClasses, applyStyleDomClasses]);
 
   const handleAuthLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3092,11 +3189,13 @@ function App() {
         console.warn("Firebase Auth updateProfile non-fatal error during registration:", authErr);
       }
 
+      const chosenThemeMode = themeMode;
+      const chosenStyleMode = styleMode;
       try {
-        localStorage.setItem('simcha_theme_mode', themeMode);
-        localStorage.setItem('simcha_style_mode', styleMode);
+        localStorage.setItem(`simcha_theme_mode_${user.uid}`, chosenThemeMode);
+        localStorage.setItem(`simcha_style_mode_${user.uid}`, chosenStyleMode);
       } catch (e) {}
-      await syncUserProfile(user, { fullName: authFullName, photoURL, photoStoragePath, themeMode, styleMode });
+      await syncUserProfile(user, { fullName: authFullName, photoURL, photoStoragePath, themeMode: chosenThemeMode, styleMode: chosenStyleMode });
 
       try {
         await sendEmailVerification(user);
@@ -3119,6 +3218,10 @@ function App() {
       setIsAuthSignUpOpen(false);
       setAuthStep('verification');
       await signOut(auth);
+      applyThemeDomClasses('dark');
+      applyStyleDomClasses('regular');
+      setThemeMode('dark');
+      setStyleMode('regular');
     } catch (err: any) {
       if (err.code === 'auth/email-already-in-use') {
         setAuthError('An account with this email already exists.');
@@ -3294,10 +3397,18 @@ function App() {
             isSignUpOpen={isAuthSignUpOpen}
             onOpenSignUp={() => {
               setAuthError('');
+              applyThemeDomClasses('dark');
+              applyStyleDomClasses('regular');
+              setThemeMode('dark');
+              setStyleMode('regular');
               setIsAuthSignUpOpen(true);
             }}
             onCloseSignUp={() => {
               setAuthError('');
+              applyThemeDomClasses('dark');
+              applyStyleDomClasses('regular');
+              setThemeMode('dark');
+              setStyleMode('regular');
               setIsAuthSignUpOpen(false);
             }}
             isLoading={isAuthLoading}
@@ -3415,7 +3526,7 @@ function App() {
     }
   };
 
-  if (isInitializing) {
+  if (isInitializing || isRoleLoading) {
     return (
       <main className="min-h-screen bg-black flex flex-col items-center justify-center" aria-label="Loading Simcha Booking">
         <SimchaLogo className="w-24 h-24 animate-pulse mb-8" />
