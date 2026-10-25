@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback, startTransition } from 'react';
-import { motion, AnimatePresence, useMotionValue, animate } from 'motion/react';
+import { motion, AnimatePresence, useMotionValue, animate, useScroll, useTransform } from 'motion/react';
 import { ShoppingBag, Search, Filter, Menu, User, Star, Calendar, LogIn, Mail, PartyPopper, CheckCircle, X, DollarSign, Clock, Loader2, Shield, MapPin, Lock, ChevronLeft, Tag, Trash2, ExternalLink, ChevronRight, UserPlus, Key, LogOut, MessageSquare, LayoutDashboard, ClipboardList, Camera, AlertCircle, Plus, Send, RefreshCw, ShieldCheck, Check, ShieldAlert, HelpCircle, UserRound, Store, Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
@@ -549,12 +549,12 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-signup-title"
-      className={`absolute inset-0 z-30 bg-black/75 backdrop-blur-sm flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
+      className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu absolute inset-0 z-30 bg-black/75 backdrop-blur-sm flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
     >
       <motion.div
         {...dragModalProps}
         transition={AUTH_MODAL_TRANSITION}
-        className={`bg-[#111] w-full sm:w-full sm:max-w-xl h-[calc(93dvh+2.5rem)] pb-[2.5rem] sm:h-auto sm:pb-0 sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-[2.5rem] sm:rounded-2xl border-2 sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+        className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu bg-[#111] w-full sm:w-full sm:max-w-xl h-[calc(93dvh+2.5rem)] pb-[2.5rem] sm:h-auto sm:pb-0 sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-[2.5rem] sm:rounded-2xl border-2 sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 ${isDismissing ? 'pointer-events-none' : ''}`}
       >
         {/* Top bar drag indicator positioned across the top edge, leaving top-right corner clear for X button */}
         <div
@@ -710,11 +710,6 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
             </button>
           </form>
         </div>
-        {/* Permanent subtle bottom fade matching phone screen curvature */}
-        <div
-          aria-hidden="true"
-          className="simcha-image-fader-card pointer-events-none absolute inset-x-0 bottom-[2.5rem] sm:bottom-0 h-11 bg-gradient-to-t from-[#111] via-[#111]/75 to-transparent z-20"
-        />
       </motion.div>
     </motion.div>
   );
@@ -843,12 +838,12 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-signin-title"
-      className={`fixed inset-0 z-[150] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
+      className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu fixed inset-0 z-[150] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
     >
       <motion.div
         {...dragModalProps}
         transition={AUTH_MODAL_TRANSITION}
-        className={`bg-[#111] w-full sm:max-w-xl h-[calc(96dvh+2.5rem)] -mb-[2.5rem] pb-[2.5rem] sm:h-auto sm:mb-0 sm:pb-0 sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-[2.5rem] sm:rounded-3xl border-2 sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+        className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu bg-[#111] w-full sm:max-w-xl h-[calc(96dvh+2.5rem)] -mb-[2.5rem] pb-[2.5rem] sm:h-auto sm:mb-0 sm:pb-0 sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-[2.5rem] sm:rounded-3xl border-2 sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 ${isDismissing ? 'pointer-events-none' : ''}`}
       >
         {/* Top bar drag area with centered drag indicator pill, leaving top-right corner clear for X button */}
         <div
@@ -997,12 +992,6 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
             </form>
           )}
         </div>
-
-        {/* Permanent subtle bottom fade matching phone screen curvature */}
-        <div
-          aria-hidden="true"
-          className="simcha-image-fader-card pointer-events-none absolute inset-x-0 bottom-[2.5rem] sm:bottom-0 h-11 bg-gradient-to-t from-[#111] via-[#111]/75 to-transparent z-20"
-        />
 
         {/* Nested Sign Up Fill-Up Form Modal layered inside AuthSignInModal */}
         {isSignUpOpen && (
@@ -1336,7 +1325,36 @@ const CARD_ITEM_VARIANTS = {
   },
 };
 
+const HERO_TITLE_CONTAINER_VARIANTS = {
+  hidden: {},
+  show: {
+    transition: {
+      staggerChildren: 0.12,
+      delayChildren: 0,
+    },
+  },
+};
+
+const HERO_TITLE_LINE_VARIANTS = {
+  hidden: { opacity: 0, y: 20 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.6,
+      ease: [0.22, 1, 0.36, 1] as const,
+    },
+  },
+};
+
 function App() {
+  const { scrollY } = useScroll();
+  const heroTitleOpacity = useTransform(scrollY, [0, 200], [1, 0]);
+  const heroTitleScale = useTransform(scrollY, [0, 200], [1, 0.8]);
+  const heroTitleY = useTransform(scrollY, [0, 200], [0, -28]);
+  const heroBgY = useTransform(scrollY, [0, 320], [0, 32]);
+  const heroBgScale = useTransform(scrollY, [0, 320], [1, 1.06]);
+
   const [view, setView] = useState<'marketplace' | 'vendor-portal' | 'admin' | 'posts' | 'client-portal' | 'payment-success' | 'verify-account' | 'portal'>('marketplace');
   const [portalTab, setPortalTab] = useState<'client' | 'vendor'>('client');
   const [portalInitialTab, setPortalInitialTab] = useState<string>('overview');
@@ -1712,7 +1730,9 @@ function App() {
   const isFirstAuthCheckRef = useRef(true);
   const appMountTimeRef = useRef(Date.now());
   const [isSignInFlipping, setIsSignInFlipping] = useState(false);
+  const [isHeroTitleHoldForSignIn, setIsHeroTitleHoldForSignIn] = useState(false);
   const isSignInFlippingRef = useRef(false);
+  const heroTitleHoldRef = useRef(false);
   const isInteractiveSignInRef = useRef(false);
   const peelWindowRef = useRef<HTMLDivElement | null>(null);
   const peelSceneRef = useRef<HTMLDivElement | null>(null);
@@ -1724,6 +1744,8 @@ function App() {
   const startSignInPageFlip = useCallback(() => {
     if (isSignInFlippingRef.current) return;
     isSignInFlippingRef.current = true;
+    heroTitleHoldRef.current = true;
+    setIsHeroTitleHoldForSignIn(true);
     setIsSignInFlipping(true);
   }, []);
 
@@ -1967,48 +1989,51 @@ function App() {
     if (!isSignInFlipping) return;
 
     if (peelWindowRef.current) {
+      peelWindowRef.current.style.willChange = 'transform';
       peelWindowRef.current.style.transformOrigin = '50% 50%';
-      peelWindowRef.current.style.transform = 'translate3d(0%, 0%, 0px)';
+      peelWindowRef.current.style.transform = 'translate3d(0px, 0%, 0px)';
     }
 
     pageFlipAnimRef.current?.stop();
 
-    let raf1 = 0;
-    let raf2 = 0;
+    let rafId = 0;
     let controls: { stop: () => void } | null = null;
 
-    // Wait 2 animation frames so the Main App (Categories + BottomNav) is painted on the GPU before sliding up
-    raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        controls = animate(0, 1, {
-          duration: 1.15,
-          ease: [0.25, 0.85, 0.35, 1],
-          onUpdate: (t) => {
-            const liftY = t * 100;
-            if (peelWindowRef.current) {
-              peelWindowRef.current.style.transform = `translate3d(0%, -${liftY.toFixed(2)}%, 0px)`;
-            }
-          },
-          onComplete: () => {
-            isSignInFlippingRef.current = false;
-            isInteractiveSignInRef.current = false;
-            setIsSignInFlipping(false);
-            setIsAuthLoading(false);
-            setIsAuthSignUpOpen(false);
-            setAuthStep('welcome');
-            document.body.style.overflow = '';
-            document.body.style.position = '';
-            document.body.style.top = '';
-            document.body.style.width = '';
-          },
-        });
-        pageFlipAnimRef.current = controls;
+    rafId = requestAnimationFrame(() => {
+      controls = animate(0, 1, {
+        duration: 1.25,
+        ease: [0.25, 0.85, 0.35, 1],
+        onUpdate: (t) => {
+          const liftY = t * 100;
+          if (peelWindowRef.current) {
+            peelWindowRef.current.style.transform = `translate3d(0px, -${liftY.toFixed(3)}%, 0px)`;
+          }
+          // Trigger the hero title staggered entrance once the sliding sign-in sheet passes "Celebrate Your"
+          if (heroTitleHoldRef.current && liftY >= 80) {
+            heroTitleHoldRef.current = false;
+            setIsHeroTitleHoldForSignIn(false);
+          }
+        },
+        onComplete: () => {
+          isSignInFlippingRef.current = false;
+          isInteractiveSignInRef.current = false;
+          heroTitleHoldRef.current = false;
+          setIsHeroTitleHoldForSignIn(false);
+          setIsSignInFlipping(false);
+          setIsAuthLoading(false);
+          setIsAuthSignUpOpen(false);
+          setAuthStep('welcome');
+          document.body.style.overflow = '';
+          document.body.style.position = '';
+          document.body.style.top = '';
+          document.body.style.width = '';
+        },
       });
+      pageFlipAnimRef.current = controls;
     });
 
     return () => {
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
+      cancelAnimationFrame(rafId);
       controls?.stop();
     };
   }, [isSignInFlipping]);
@@ -3875,16 +3900,16 @@ function App() {
       key="simcha-auth-peel-overlay"
       className={
         isSignInFlipping
-          ? "fixed inset-0 z-[300] pointer-events-none overflow-hidden"
-          : "relative z-10 w-full min-h-screen"
+          ? "fixed inset-0 z-[300] pointer-events-none overflow-hidden transform-gpu"
+          : "relative z-10 w-full min-h-screen transform-gpu"
       }
     >
       <div
         ref={peelWindowRef}
         className={
           isSignInFlipping
-            ? "relative z-20 w-full h-full overflow-hidden rounded-b-[2.5rem] border-b-2 border-x border-[#D4AF37]/50 shadow-[0_24px_60px_rgba(0,0,0,0.85)] will-change-transform transform-gpu"
-            : "w-full min-h-screen"
+            ? "simcha-signin-slide-layer simcha-signin-sliding will-change-transform transform-gpu relative z-20 w-full h-full overflow-hidden rounded-b-[2.5rem] border-b-2 border-x border-[#D4AF37]/50 shadow-[0_24px_60px_rgba(0,0,0,0.85)]"
+            : "simcha-signin-slide-layer will-change-transform transform-gpu w-full min-h-screen"
         }
       >
         {renderAuthWall()}
@@ -4084,15 +4109,27 @@ function App() {
         className="flex-1 flex flex-col pb-36 md:pb-0 will-change-transform"
       >
         <section className="simcha-hero-section relative bg-black text-white overflow-hidden" aria-labelledby="hero-title">
-          <div className="absolute -inset-x-1 -top-1 -bottom-2 z-0" aria-hidden="true">
+          <motion.div
+            className="absolute -inset-x-1 -top-1 -bottom-2 z-0 will-change-transform transform-gpu"
+            style={{ y: heroBgY, scale: heroBgScale }}
+            aria-hidden="true"
+          >
             {renderMedia(heroBackgroundUrl, "simcha-hero-media w-full h-full object-cover opacity-80", undefined, true, true)}
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero"></div>
-          </div>
+          </motion.div>
           <div className="relative z-10 max-w-7xl mx-auto px-4 py-[72px] md:py-32 text-center">
-            <h2 id="hero-title" className="font-bold font-[Cinzel] mb-6 tracking-[0.015em] leading-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)] flex flex-col items-center gap-y-2 sm:gap-y-3 md:gap-y-4">
-              <span className="simcha-hero-title-main block text-3xl sm:text-4xl md:text-6xl">Celebrate Your</span><span className="simcha-hero-title-gold block text-3xl sm:text-4xl md:text-6xl text-[#D4AF37]">Simcha.</span>
-              <span className="simcha-hero-title-main block text-3xl sm:text-4xl md:text-6xl">Book Perfection.</span>
-            </h2>
+            <motion.h2
+              id="hero-title"
+              variants={HERO_TITLE_CONTAINER_VARIANTS}
+              initial="hidden"
+              animate={isHeroTitleHoldForSignIn ? "hidden" : "show"}
+              style={{ opacity: heroTitleOpacity, scale: heroTitleScale, y: heroTitleY }}
+              className="will-change-[opacity,transform] transform-gpu font-bold font-[Cinzel] mb-6 tracking-[0.015em] leading-tight text-white drop-shadow-[0_2px_10px_rgba(212,175,55,0.3)] flex flex-col items-center gap-y-2 sm:gap-y-3 md:gap-y-4"
+            >
+              <motion.span variants={HERO_TITLE_LINE_VARIANTS} className="simcha-hero-title-line simcha-hero-title-main block text-3xl sm:text-4xl md:text-6xl will-change-[opacity,transform] transform-gpu">Celebrate Your</motion.span>
+              <motion.span variants={HERO_TITLE_LINE_VARIANTS} className="simcha-hero-title-line simcha-hero-title-gold block text-3xl sm:text-4xl md:text-6xl text-[#D4AF37] will-change-[opacity,transform] transform-gpu">Simcha.</motion.span>
+              <motion.span variants={HERO_TITLE_LINE_VARIANTS} className="simcha-hero-title-line simcha-hero-title-main block text-3xl sm:text-4xl md:text-6xl will-change-[opacity,transform] transform-gpu">Book Perfection.</motion.span>
+            </motion.h2>
             <p className="mb-10 text-zinc-300 text-base md:text-lg font-light max-w-2xl mx-auto leading-relaxed">From world-class kosher caterers to soulful bands, create your complete simcha in one place.</p>
             <div className="simcha-search-bar max-w-3xl mx-auto bg-zinc-950/90 rounded-full p-1.5 pl-4 sm:pl-6 flex items-center shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_15px_rgba(212,175,55,0.15)] border border-[#D4AF37]/30 backdrop-blur-md">
               <div className="flex-1 flex items-center min-w-0 pr-2">
