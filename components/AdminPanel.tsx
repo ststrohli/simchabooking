@@ -779,11 +779,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         }
       }
 
+      const parsedDownPayment = formData.priceStart !== '' ? Number(formData.priceStart) : undefined;
       const newVendor: Vendor = {
         ...formData,
         id: vendorId, 
         image: imageUrl, 
-        priceStart: Number(formData.priceStart),
+        priceStart: parsedDownPayment ?? 0,
+        downPayment: parsedDownPayment,
         rating: editingVendor ? editingVendor.rating : 5.0, 
         password: formData.password || '123', 
         unavailableDates: editingVendor ? editingVendor.unavailableDates : [], 
@@ -834,12 +836,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleEditVendor = (vendor: Vendor) => {
     setEditingVendor(vendor);
+    const downPaymentVal = vendor.downPayment ?? (vendor.priceStart > 0 ? vendor.priceStart : undefined);
     setFormData({
       name: vendor.name,
       category: vendor.category,
       subCategories: vendor.subCategories || [],
       description: vendor.description,
-      priceStart: vendor.priceStart.toString(),
+      priceStart: downPaymentVal !== undefined ? downPaymentVal.toString() : '',
       location: vendor.location,
       image: vendor.image,
       isKosher: vendor.isKosher || false,
@@ -1434,11 +1437,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-2">The percentage of each sale that goes to the platform.</p>
                             </div>
                             <div>
-                                <label className={labelClass}>Starting Fee ($)</label>
+                                <label className={labelClass}>Down Payment ($) <span className="text-zinc-400 font-normal lowercase">(optional)</span></label>
                                 <div className="relative">
                                     <DollarSign className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" />
-                                    <input required type="number" className={inputClass + " pl-10"} value={formData.priceStart} onChange={(e) => setFormData({...formData, priceStart: e.target.value})} />
+                                    <input type="number" min="0" placeholder="Optional down payment (vendors set prices via packages)" className={inputClass + " pl-10"} value={formData.priceStart} onChange={(e) => setFormData({...formData, priceStart: e.target.value})} />
                                 </div>
+                                <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-2">Optional deposit required if the vendor requests a down payment.</p>
                             </div>
                         </div>
                     </div>
@@ -1707,7 +1711,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Professional</th>
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Classification</th>
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Location</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Starting Price</th>
+                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Down Payment</th>
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Contact Email</th>
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Stripe Status</th>
                                 <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10 text-right">Actions</th>
@@ -1747,7 +1751,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             {v.location}
                                         </td>
                                         <td className="p-4 text-[#D4AF37] font-bold font-mono">
-                                            ${v.priceStart.toLocaleString()}
+                                            {(v.downPayment ?? v.priceStart) > 0 ? `$${(v.downPayment ?? v.priceStart).toLocaleString()}` : <span className="text-zinc-500 font-sans text-[10px] uppercase tracking-wider">Optional / Package</span>}
                                         </td>
                                         <td className="p-4 text-zinc-400 font-mono text-[11px]">
                                             {v.contactEmail || 'N/A'}

@@ -10,6 +10,7 @@
         "category": { "type": "string" },
         "description": { "type": "string" },
         "priceStart": { "type": "number" },
+        "downPayment": { "type": "number", "description": "Optional down payment required by the vendor" },
         "rating": { "type": "number" },
         "image": { "type": "string" },
         "location": { "type": "string" },
@@ -19,7 +20,7 @@
         "commissionRate": { "type": "number", "description": "Percentage of sales taken as platform fee" },
         "stripeAccountId": { "type": "string", "description": "Stripe Connect account ID" }
       },
-      "required": ["id", "name", "category", "description", "priceStart", "location", "commissionRate"]
+      "required": ["id", "name", "category", "description", "location", "commissionRate"]
     },
     "Post": {
       "title": "Post",

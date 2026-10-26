@@ -36,9 +36,12 @@ export const VENDORS: Vendor[] = [
       { id: 'r2', author: 'David K.', rating: 4, text: 'Great service, though parking was a bit tight.', date: '2023-11-02' }
     ],
     services: [
-      { id: 's1', name: 'Standard Hall Rental (6 Hours)', price: 5000 },
-      { id: 's2', name: 'Premium Full-Day Rental', price: 8500 },
-      { id: 's3', name: 'Chuppah Setup & Ceremony', price: 1200 }
+      { id: 's1_loc1', name: 'Main Grand Ballroom (Brooklyn)', price: 5000, categoryType: 'location' },
+      { id: 's1_loc2', name: 'Rooftop Garden Terrace', price: 4200, categoryType: 'location' },
+      { id: 's1', name: '6 Hours Event Access', price: 1500, categoryType: 'hours' },
+      { id: 's2', name: 'Full-Day Access (10 Hours)', price: 3000, categoryType: 'hours' },
+      { id: 's3', name: 'Chuppah Setup & Custom Lighting', price: 1200, categoryType: 'amenities' },
+      { id: 's3_am2', name: 'Valet Parking & Coat Check', price: 800, categoryType: 'amenities' }
     ],
     paymentMethods: ['Credit Card', 'Stripe', 'PayPal', 'Check', 'Bank Transfer', 'Zelle'],
     commissionRate: 10,
@@ -86,9 +89,13 @@ export const VENDORS: Vendor[] = [
       { id: 'r3', author: 'Sarah L.', rating: 5, text: 'The brisket lived up to the hype! Everyone raved about the food.', date: '2023-09-20' }
     ],
     services: [
-      { id: 's4', name: 'Standard Buffet Package (Per Guest)', price: 120 },
-      { id: 's5', name: 'Premium Plated Dinner (Per Guest)', price: 180 },
-      { id: 's6', name: 'Viennese Table Add-on', price: 25 }
+      { id: 's4_loc1', name: 'NYC & Five Boroughs Delivery', price: 250, categoryType: 'location' },
+      { id: 's4_loc2', name: 'Long Island / Westchester / NJ', price: 500, categoryType: 'location' },
+      { id: 's4_hr1', name: '4 Hours Full Waitstaff Service', price: 800, categoryType: 'hours' },
+      { id: 's4_hr2', name: '6 Hours Full Waitstaff Service', price: 1200, categoryType: 'hours' },
+      { id: 's4', name: 'Standard Buffet Menu (Per Guest)', price: 120, unit: 'person', allowQuantity: true, categoryType: 'amenities' },
+      { id: 's5', name: 'Premium Plated Dinner (Per Guest)', price: 180, unit: 'person', allowQuantity: true, categoryType: 'amenities' },
+      { id: 's6', name: 'Viennese Dessert Table Add-on', price: 950, categoryType: 'amenities' }
     ],
     paymentMethods: ['Credit Card', 'Check', 'Cash'],
     commissionRate: 10
@@ -113,9 +120,16 @@ export const VENDORS: Vendor[] = [
     username: 'simcha',
     password: '123',
     services: [
-      { id: 's7', name: '3-Piece Band (4 Hours)', price: 2500 },
-      { id: 's8', name: 'Full 8-Piece Orchestra', price: 6000 },
-      { id: 's9', name: 'Ceremony String Quartet', price: 1200 }
+      { id: 's7_loc1', name: 'Brooklyn / Queens / NYC', price: 0, categoryType: 'location' },
+      { id: 's7_loc2', name: 'Lakewood / Monsey', price: 350, categoryType: 'location' },
+      { id: 's7_loc3', name: 'Five Towns / Long Island', price: 250, categoryType: 'location' },
+      { id: 's7_loc4', name: 'Out of State Travel', price: 1200, categoryType: 'location' },
+      { id: 's7', name: '3 Hours Performance', price: 2200, categoryType: 'hours' },
+      { id: 's8', name: '4 Hours Performance', price: 2800, categoryType: 'hours' },
+      { id: 's8_hr3', name: '5 Hours Performance', price: 3400, categoryType: 'hours' },
+      { id: 's9', name: 'Stage & Uplighting Package', price: 450, categoryType: 'amenities' },
+      { id: 's9_am2', name: 'Extra Speakers & Subwoofers', price: 300, categoryType: 'amenities' },
+      { id: 's9_am3', name: 'Extra Wireless Mics', price: 150, categoryType: 'amenities' }
     ],
     paymentMethods: ['Venmo', 'PayPal', 'Cash'],
     commissionRate: 10
@@ -145,9 +159,12 @@ export const VENDORS: Vendor[] = [
     username: 'photo',
     password: '123',
     services: [
-      { id: 's10', name: 'Essential Package (6 Hours)', price: 3000 },
-      { id: 's11', name: 'Full Day Coverage + 2nd Shooter', price: 4500 },
-      { id: 's12', name: 'Engagement Session', price: 500 }
+      { id: 's10_loc1', name: 'Local Metro Area', price: 0, categoryType: 'location' },
+      { id: 's10_loc2', name: 'Regional Travel (Up to 100 mi)', price: 300, categoryType: 'location' },
+      { id: 's10', name: '6 Hours Coverage', price: 3000, categoryType: 'hours' },
+      { id: 's11', name: 'Full Day Coverage (10 Hours)', price: 4200, categoryType: 'hours' },
+      { id: 's12', name: 'Second Photographer Add-on', price: 750, categoryType: 'amenities' },
+      { id: 's12_am2', name: 'Luxury Fine-Art Album', price: 650, categoryType: 'amenities' }
     ],
     paymentMethods: ['Credit Card', 'PayPal'],
     commissionRate: 10
@@ -166,9 +183,9 @@ export const VENDORS: Vendor[] = [
     username: 'kippah',
     password: '123',
     services: [
-      { id: 's13', name: '100 Custom Suede Kippahs', price: 500 },
-      { id: 's14', name: '100 Custom Satin Kippahs', price: 400 },
-      { id: 's15', name: 'Benchers with Gold Stamping (100 qty)', price: 350 }
+      { id: 's13', name: '100 Custom Suede Kippahs', price: 500, categoryType: 'amenities' },
+      { id: 's14', name: '100 Custom Satin Kippahs', price: 400, categoryType: 'amenities' },
+      { id: 's15', name: 'Benchers with Gold Stamping (100 qty)', price: 350, categoryType: 'amenities' }
     ],
     paymentMethods: ['Credit Card', 'PayPal'],
     commissionRate: 10
@@ -191,9 +208,11 @@ export const VENDORS: Vendor[] = [
     username: 'rabbi',
     password: '123',
     services: [
-      { id: 's16', name: 'Wedding Ceremony', price: 1200 },
-      { id: 's17', name: 'Bar Mitzvah Service', price: 800 },
-      { id: 's18', name: 'Counseling Session', price: 150 }
+      { id: 's16_loc1', name: 'South Florida / Miami', price: 0, categoryType: 'location' },
+      { id: 's16_loc2', name: 'Destination / Out of Area', price: 450, categoryType: 'location' },
+      { id: 's16', name: 'Wedding Ceremony (2 Hours)', price: 1200, categoryType: 'hours' },
+      { id: 's17', name: 'Bar Mitzvah Service (3 Hours)', price: 800, categoryType: 'hours' },
+      { id: 's18', name: 'Pre-Wedding Counseling Session', price: 150, categoryType: 'amenities' }
     ],
     paymentMethods: ['Check', 'Zelle', 'Cash'],
     commissionRate: 10

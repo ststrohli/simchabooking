@@ -13,7 +13,7 @@ import { uploadFileRobustly } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import { trackFunnelStep } from '../services/analyticsService';
 import { EmbeddedCheckoutModal } from './EmbeddedCheckoutModal';
-import { ThemeModeSwitch, ThemeStyleSwitch } from './ThemeModeSwitch';
+import { ThemeModeSwitch } from './ThemeModeSwitch';
 import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 
 interface ClientPortalProps {
@@ -36,12 +36,10 @@ interface ClientPortalProps {
   initialTab?: string;
   themeMode?: 'dark' | 'light';
   onToggleThemeMode?: (mode: 'dark' | 'light') => void;
-  styleMode?: 'regular' | 'outline';
-  onToggleStyleMode?: (mode: 'regular' | 'outline') => void;
 }
 
 const ClientPortal: React.FC<ClientPortalProps> = ({ 
-  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode, styleMode = 'regular', onToggleStyleMode
+  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile'>(initialTab as any || 'overview');
   
@@ -763,7 +761,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           </div>
         )}
         {activeTab === 'profile' && (
-          <div className="max-w-2xl animate-in fade-in duration-500">
+          <div className="max-w-2xl mx-auto animate-in fade-in duration-500">
             <div className="bg-[#111] rounded-3xl border border-white/5 p-8 shadow-2xl space-y-8">
               <div className="flex flex-col items-center text-center space-y-6">
                 <div className="relative group">
@@ -814,22 +812,14 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
               </div>
 
               <div className="space-y-6">
-                {(onToggleThemeMode || onToggleStyleMode) && (
-                  <div className="flex flex-col items-center justify-center gap-2.5 py-1 text-center">
-                    <span className="text-xs font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.2em]">App Preference</span>
-                    <div className="flex items-center justify-center gap-3">
-                      {onToggleStyleMode && (
-                        <ThemeStyleSwitch
-                          styleMode={styleMode}
-                          onToggleStyleMode={onToggleStyleMode}
-                        />
-                      )}
-                      {onToggleThemeMode && (
-                        <ThemeModeSwitch
-                          themeMode={themeMode}
-                          onToggleThemeMode={onToggleThemeMode}
-                        />
-                      )}
+                {onToggleThemeMode && (
+                  <div className="flex flex-col items-center justify-center gap-2.5 py-1 text-center w-full">
+                    <span className="text-xs font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.2em] text-center">App Preference</span>
+                    <div className="flex items-center justify-center w-full">
+                      <ThemeModeSwitch
+                        themeMode={themeMode}
+                        onToggleThemeMode={onToggleThemeMode}
+                      />
                     </div>
                   </div>
                 )}

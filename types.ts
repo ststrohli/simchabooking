@@ -35,6 +35,8 @@ export interface Review {
   date: string;
 }
 
+export type ServiceCategoryType = 'location' | 'hours' | 'amenities';
+
 export interface VendorService {
   id: string;
   name: string;
@@ -42,6 +44,7 @@ export interface VendorService {
   unit?: string; // e.g., "person", "violin", "hour", "event"
   allowQuantity?: boolean;
   image?: string;
+  categoryType?: ServiceCategoryType;
 }
 
 export interface SelectedService {
@@ -50,6 +53,7 @@ export interface SelectedService {
   price: number;
   quantity: number;
   unit?: string;
+  categoryType?: ServiceCategoryType;
 }
 
 export interface Vendor {
@@ -59,6 +63,7 @@ export interface Vendor {
   subCategories?: string[]; 
   description: string;
   priceStart: number;
+  downPayment?: number;
   rating: number;
   image: string;
   gallery?: string[];

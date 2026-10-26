@@ -5,7 +5,7 @@ import {
   ImageIcon, Menu, X, Plus, Tag, CreditCard, ArrowRight, Video, Film, ShieldCheck, MapPin, Eye, Upload, Mail, AlertTriangle, 
   ChevronLeft, ChevronRight, ChevronDown, RefreshCw, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, Volume2, Camera, FileText, Download, Search, ArrowLeft, Paperclip, Mic, StopCircle
 } from 'lucide-react';
-import { Vendor, Booking, Message, SelectedService, VendorService } from '../types';
+import { Vendor, Booking, Message, SelectedService, VendorService, ServiceCategoryType } from '../types';
 import { db, storage, auth } from '../services/firebase';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { markChatAsRead, deleteMessage } from '../services/messagingService';
@@ -14,7 +14,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import LocationAutocomplete from './LocationAutocomplete';
-import { ThemeModeSwitch, ThemeStyleSwitch } from './ThemeModeSwitch';
+import { ThemeModeSwitch } from './ThemeModeSwitch';
 
 interface VendorPortalProps {
   vendor: Vendor;
@@ -31,8 +31,6 @@ interface VendorPortalProps {
   initialTab?: string;
   themeMode?: 'dark' | 'light';
   onToggleThemeMode?: (mode: 'dark' | 'light') => void;
-  styleMode?: 'regular' | 'outline';
-  onToggleStyleMode?: (mode: 'regular' | 'outline') => void;
 }
 
 const isVideo = (url?: string | null) => {
@@ -53,7 +51,7 @@ const renderMedia = (url: string | undefined | null, className: string, defaultC
   return <img src={url} className={className} alt="" />;
 };
 
-const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode, styleMode = 'regular', onToggleStyleMode }) => {
+const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'history' | 'calendar' | 'profile' | 'messages'>(initialTab as any || 'overview');
   
   const onTabChangeRef = useRef(onTabChange);
@@ -375,7 +373,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   // New Service Form State
   const [newServiceName, setNewServiceName] = useState('');
   const [newServicePrice, setNewServicePrice] = useState('');
-  const [newServiceUnit, setNewServiceUnit] = useState('event');
+  const [newServiceUnit, setNewServiceUnit] = useState('location');
+  const [newServiceCategoryType, setNewServiceCategoryType] = useState<ServiceCategoryType>('location');
   const [newServiceAllowQty, setNewServiceAllowQty] = useState(false);
   const [newServiceImageUrl, setNewServiceImageUrl] = useState('');
   const [isUploadingNewServiceImage, setIsUploadingNewServiceImage] = useState(false);
@@ -1228,6 +1227,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       name: newServiceName.trim(),
       price: parseFloat(newServicePrice),
       unit: newServiceUnit,
+      categoryType: newServiceCategoryType,
       allowQuantity: newServiceAllowQty,
       image: newServiceImageUrl || undefined
     };
@@ -1239,7 +1239,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
     setNewServiceName('');
     setNewServicePrice('');
-    setNewServiceUnit('event');
+    setNewServiceUnit(newServiceCategoryType === 'location' ? 'location' : newServiceCategoryType === 'hours' ? 'session' : 'item');
     setNewServiceAllowQty(false);
     setNewServiceImageUrl('');
     setShowAddForm(false);
@@ -3197,22 +3197,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
           {activeTab === 'profile' && (
             <div className="animate-in fade-in duration-500 max-w-4xl mx-auto pb-20 space-y-10">
-               {(onToggleThemeMode || onToggleStyleMode) && (
-                 <div className="flex flex-col items-center justify-center gap-2.5 py-1 text-center">
-                   <span className="text-xs font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.2em]">App Preference</span>
-                   <div className="flex items-center justify-center gap-3">
-                     {onToggleStyleMode && (
-                       <ThemeStyleSwitch
-                         styleMode={styleMode}
-                         onToggleStyleMode={onToggleStyleMode}
-                       />
-                     )}
-                     {onToggleThemeMode && (
-                       <ThemeModeSwitch
-                         themeMode={themeMode}
-                         onToggleThemeMode={onToggleThemeMode}
-                       />
-                     )}
+               {onToggleThemeMode && (
+                 <div className="flex flex-col items-center justify-center gap-2.5 py-1 text-center w-full">
+                   <span className="text-xs font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.2em] text-center">App Preference</span>
+                   <div className="flex items-center justify-center w-full">
+                     <ThemeModeSwitch
+                       themeMode={themeMode}
+                       onToggleThemeMode={onToggleThemeMode}
+                     />
                    </div>
                  </div>
                )}
@@ -3429,28 +3421,79 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     </div>
                   </div>
                   
-                  {!collapsedSections['services'] && (
-                    <div className="p-8 space-y-10 animate-in slide-in-from-top-2 duration-300">
+                   {!collapsedSections['services'] && (
+                    <div className="p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
                     {/* Add Service Form */}
                     {showAddForm && (
                       <div className="bg-[#D4AF37]/5 p-6 rounded-3xl border border-[#D4AF37]/20 space-y-6 animate-in slide-in-from-top-2 duration-300">
                         <div className="flex items-center gap-3 mb-2">
                            <div className="bg-[#D4AF37] p-2 rounded-lg text-black"><Package className="w-4 h-4" /></div>
-                           <h4 className="text-[#D4AF37] font-black uppercase text-xs tracking-widest">New Service Configuration</h4>
+                           <h4 className="text-[#D4AF37] font-black uppercase text-xs tracking-widest">New Pricing Option Configuration</h4>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
+                        {/* Package Category Selector */}
+                        <div className="space-y-2 text-left">
+                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">1. Select Option Type</label>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {([
+                              { id: 'location' as ServiceCategoryType, label: 'Location Rate', desc: 'Lakewood, Brooklyn, Monsey, etc.', defaultUnit: 'location', icon: MapPin },
+                              { id: 'hours' as ServiceCategoryType, label: 'Hours / Duration', desc: '3 Hours, 4 Hours, 5 Hours, etc.', defaultUnit: 'session', icon: Clock },
+                              { id: 'amenities' as ServiceCategoryType, label: 'Amenities / Extras', desc: 'Lighting, Extra Speakers, Mics, etc.', defaultUnit: 'item', icon: Layers }
+                            ]).map(opt => {
+                              const IconComp = opt.icon;
+                              const isActive = newServiceCategoryType === opt.id;
+                              return (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setNewServiceCategoryType(opt.id);
+                                    setNewServiceUnit(opt.defaultUnit);
+                                  }}
+                                  className={`p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                                    isActive
+                                      ? 'bg-[#D4AF37]/15 border-[#D4AF37] shadow-[0_0_15px_rgba(212,175,55,0.15)]'
+                                      : 'bg-black/60 border-white/10 hover:border-[#D4AF37]/40'
+                                  }`}
+                                >
+                                  <div className={`p-2 rounded-xl shrink-0 ${isActive ? 'bg-[#D4AF37] text-black' : 'bg-white/5 text-[#D4AF37]'}`}>
+                                    <IconComp className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-black uppercase tracking-wider text-white">{opt.label}</div>
+                                    <div className="text-[9px] text-zinc-400 mt-0.5 leading-snug">{opt.desc}</div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-left">
                           <div className="space-y-2">
-                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Service/Package Title</label>
+                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">
+                              {newServiceCategoryType === 'location'
+                                ? 'Location Name'
+                                : newServiceCategoryType === 'hours'
+                                ? 'Hours / Duration Label'
+                                : 'Amenity / Add-On Name'}
+                            </label>
                             <input 
                               type="text" 
                               className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white" 
-                              placeholder="e.g. Kosher Menu, Solo Violin..."
+                              placeholder={
+                                newServiceCategoryType === 'location'
+                                  ? 'e.g. Lakewood, Brooklyn, Monsey...'
+                                  : newServiceCategoryType === 'hours'
+                                  ? 'e.g. 3 Hours, 4 Hours, 5 Hours...'
+                                  : 'e.g. Extra Speakers, Custom Lighting, Extra Mics...'
+                              }
                               value={newServiceName}
                               onChange={e => setNewServiceName(e.target.value)}
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Unit Price ($)</label>
+                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Price ($)</label>
                             <div className="relative">
                                <DollarSign className="absolute left-3 top-3.5 w-4 h-4 text-[#D4AF37]" />
                                <input 
@@ -3464,19 +3507,19 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           </div>
                         </div>
                         
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-left">
                           <div className="space-y-2">
                             <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Pricing Unit (per...)</label>
                             <div className="flex gap-2">
                                 <input 
                                   type="text" 
                                   className="flex-1 bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white"
-                                  placeholder="e.g. person, hour, violin"
+                                  placeholder="e.g. location, session, hour, item"
                                   value={newServiceUnit}
                                   onChange={e => setNewServiceUnit(e.target.value)}
                                 />
                                 <div className="flex items-center gap-2 bg-black/40 px-3 rounded-xl border border-white/5 text-[8px] text-zinc-400 font-bold uppercase">
-                                   <Info className="w-3 h-3" /> Custom Unit
+                                   <Info className="w-3 h-3" /> Unit
                                 </div>
                             </div>
                           </div>
@@ -3492,52 +3535,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               </span>
                               <HelpCircle className="w-3.5 h-3.5 opacity-40" />
                             </button>
-                            <p className="text-[8px] text-zinc-400 mt-2 ml-1 italic">Allow clients to pick multiple units of this service.</p>
-                          </div>
-                        </div>
-
-                        {/* Package Photo Upload */}
-                        <div className="space-y-2 border-t border-white/5 pt-4">
-                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Package Photo (Optional)</label>
-                          <div className="flex items-center gap-4">
-                            {newServiceImageUrl ? (
-                              <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-[#D4AF37]/30 bg-black group">
-                                <img src={newServiceImageUrl} alt="Preview" className="w-full h-full object-cover" />
-                                
-                                {typeof uploadProgresses['newService'] === 'number' && (
-                                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
-                                    <div className="w-6 h-6 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_10px_rgba(212,175,55,0.3)]"></div>
-                                    <div className="text-[#D4AF37] font-bold text-[8px] mt-2 tracking-widest">{Math.round(uploadProgresses['newService'])}%</div>
-                                  </div>
-                                )}
-                                
-                                {typeof uploadProgresses['newService'] !== 'number' && (
-                                  <button 
-                                    type="button" 
-                                    onClick={() => setNewServiceImageUrl('')}
-                                    className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-zinc-400 hover:bg-black hover:text-zinc-400"
-                                  >
-                                    <X className="w-3 h-3" />
-                                  </button>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="w-20 h-20 rounded-xl border border-dashed border-white/10 flex flex-col items-center justify-center bg-black text-zinc-400">
-                                <ImageIcon className="w-5 h-5 opacity-40" />
-                                <span className="text-[8px] font-bold uppercase mt-1">No Image</span>
-                              </div>
-                            )}
-                            <label className="cursor-pointer bg-black hover:bg-[#D4AF37]/10 border border-[#D4AF37]/30 hover:border-[#D4AF37] text-[#D4AF37] px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-bold transition-all">
-                              <Camera className="w-4 h-4" />
-                              {isUploadingNewServiceImage ? 'Uploading...' : 'Upload Package Photo'}
-                              <input 
-                                type="file" 
-                                accept="image/*,video/*" 
-                                className="hidden" 
-                                disabled={isUploadingNewServiceImage}
-                                onChange={handleNewServiceImageUpload} 
-                              />
-                            </label>
+                            <p className="text-[8px] text-zinc-400 mt-2 ml-1 italic">Allow clients to pick multiple units of this option.</p>
                           </div>
                         </div>
 
@@ -3552,125 +3550,204 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             onClick={handleAddService}
                             className="flex-[2] bg-[#D4AF37] hover:bg-[#E5C76B] text-black py-3.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-[#D4AF37]/10 transition-all flex items-center justify-center gap-2"
                            >
-                            <Plus className="w-4 h-4" /> Finalize & Add Package
+                            <Plus className="w-4 h-4" /> Save Option to {newServiceCategoryType === 'location' ? 'Locations' : newServiceCategoryType === 'hours' ? 'Hours' : 'Amenities'} Box
                            </button>
                         </div>
                       </div>
                     )}
 
-                    {/* Service List */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
-                      {editForm.services && editForm.services.length > 0 ? (
-                        editForm.services.map((service) => (
-                          <div key={service.id} className="relative bg-black/40 border border-white/5 rounded-3xl group hover:border-[#D4AF37]/40 transition-all flex flex-col overflow-hidden">
-                            
-                            {/* Top Image Section */}
-                            <div className="relative h-48 bg-[#111] group-hover:bg-[#151515] transition-colors border-b border-white/5 flex items-center justify-center">
-                              {(previewUrls[service.id] || service.image) ? (
-                                <>{renderMedia(previewUrls[service.id] || service.image, "absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity")}</>
-                              ) : (
-                                <div className="flex flex-col items-center justify-center text-zinc-400 gap-2">
-                                  <ImageIcon className="w-8 h-8 opacity-50" />
-                                  <span className="text-[9px] font-bold uppercase tracking-widest">No Image</span>
-                                </div>
-                              )}
-                              
-                              {/* Upload Button overlay */}
-                              {typeof uploadProgresses[service.id] === 'number' ? (
-                                <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
-                                  <div className="w-10 h-10 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_15px_rgba(212,175,55,0.3)]"></div>
-                                  <div className="text-[#D4AF37] font-bold text-[10px] mt-2 tracking-widest">{Math.round(uploadProgresses[service.id])}%</div>
-                                </div>
-                              ) : (
-                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
-                                  <label className="cursor-pointer bg-black/60 hover:bg-[#D4AF37]/20 border border-white/10 hover:border-[#D4AF37]/50 text-white hover:text-[#D4AF37] px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-all shadow-xl backdrop-blur-md">
-                                    <Camera className="w-4 h-4" />
-                                    {service.image ? 'Change Photo' : 'Upload Photo'}
-                                    <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => handleServiceImageUpload(service.id, e)} />
-                                  </label>
-                                </div>
-                              )}
-                            </div>
+                    {/* Grouped Selection Boxes (Locations, Hours, Amenities) */}
+                    {editForm.services && editForm.services.length > 0 ? (() => {
+                      const inferCat = (s: VendorService): ServiceCategoryType => {
+                        if (s.categoryType) return s.categoryType;
+                        const text = `${s.name} ${s.unit || ''}`.toLowerCase();
+                        if (/\b(location|lakewood|brooklyn|monsey|boro park|williamsburg|five towns|queens|manhattan|staten island|new jersey|ny|nj|travel|destination|area|local|out of town)\b/.test(text)) {
+                          return 'location';
+                        }
+                        if (/\b(hour|hours|hr|hrs|time|day|half day|full day|overtime|minute|minutes)\b/.test(text)) {
+                          return 'hours';
+                        }
+                        return 'amenities';
+                      };
 
-                            {/* Content Section */}
-                            <div className="p-6 flex-1 flex flex-col gap-5">
-                              
-                              <div className="space-y-1.5">
-                                <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Package Identity</label>
-                                <div className="relative">
-                                  <Package className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/40" />
-                                  <input 
-                                    type="text"
-                                    className="w-full bg-black/60 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-zinc-100 transition-all"
-                                    value={service.name}
-                                    onChange={e => handleUpdateService(service.id, { name: e.target.value })}
-                                    placeholder="Package Name"
-                                  />
-                                </div>
-                              </div>
-                              
-                              <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                  <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Base Rate ($)</label>
-                                  <div className="relative">
-                                    <DollarSign className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/40" />
-                                    <input 
-                                      type="number"
-                                      className="w-full bg-black/60 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm font-bold focus:border-[#D4AF37] outline-none text-[#D4AF37] transition-all"
-                                      value={service.price}
-                                      onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
+                      const boxes: {
+                        type: ServiceCategoryType;
+                        title: string;
+                        subtitle: string;
+                        icon: any;
+                        items: VendorService[];
+                      }[] = [
+                        {
+                          type: 'location',
+                          title: 'Locations Box',
+                          subtitle: 'All vendor locations & travel prices in one checkpoint box',
+                          icon: MapPin,
+                          items: editForm.services.filter(s => inferCat(s) === 'location')
+                        },
+                        {
+                          type: 'hours',
+                          title: 'Hours Box',
+                          subtitle: '3 hours, 4 hours, 5 hours & duration checkpoints',
+                          icon: Clock,
+                          items: editForm.services.filter(s => inferCat(s) === 'hours')
+                        },
+                        {
+                          type: 'amenities',
+                          title: 'Amenities & Extras Box',
+                          subtitle: 'Lighting, extra speakers, extra mics & custom add-ons',
+                          icon: Layers,
+                          items: editForm.services.filter(s => inferCat(s) === 'amenities')
+                        }
+                      ];
+
+                      return (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                          {boxes.map((box) => {
+                            const BoxIcon = box.icon;
+                            return (
+                              <div
+                                key={box.type}
+                                className="relative overflow-hidden rounded-3xl border border-[#D4AF37]/25 bg-black/60 p-5 flex flex-col justify-between gap-4"
+                              >
+                                {/* Very light subtle background image with mode-aware fader */}
+                                {editForm.image && (
+                                  <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                                    <img
+                                      src={editForm.image}
+                                      alt=""
+                                      className="w-full h-full object-cover object-center opacity-15"
                                     />
+                                    <div className="absolute inset-0 simcha-package-fader" />
                                   </div>
-                                </div>
-                                <div className="space-y-1.5">
-                                  <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Model (per...)</label>
-                                  <input 
-                                    type="text"
-                                    className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-zinc-100 transition-all text-center"
-                                    value={service.unit}
-                                    onChange={e => handleUpdateService(service.id, { unit: e.target.value })}
-                                    placeholder="e.g. event"
-                                  />
+                                )}
+
+                                <div className="relative z-10 space-y-4">
+                                  <div className="flex items-center justify-between border-b border-[#D4AF37]/15 pb-3">
+                                    <div className="flex items-center gap-2.5 text-left">
+                                      <div className="w-8 h-8 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37] shrink-0">
+                                        <BoxIcon className="w-4 h-4" />
+                                      </div>
+                                      <div>
+                                        <h4 className="text-xs font-black uppercase tracking-widest text-[#D4AF37] font-[Cinzel]">
+                                          {box.title}
+                                        </h4>
+                                        <p className="text-[9px] text-zinc-400">{box.subtitle}</p>
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setNewServiceCategoryType(box.type);
+                                        setNewServiceUnit(box.type === 'location' ? 'location' : box.type === 'hours' ? 'session' : 'item');
+                                        setShowAddForm(true);
+                                      }}
+                                      className="p-2 rounded-full bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/30 transition-all shrink-0 cursor-pointer"
+                                      title={`Add to ${box.title}`}
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+
+                                  {box.items.length > 0 ? (
+                                    <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                                      {box.items.map((service) => (
+                                        <div
+                                          key={service.id}
+                                          className="bg-black/70 border border-white/10 hover:border-[#D4AF37]/40 rounded-2xl p-3 space-y-2.5 transition-all"
+                                        >
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-4 h-4 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37] flex items-center justify-center shrink-0">
+                                              <Check className="w-2.5 h-2.5 text-[#D4AF37]" />
+                                            </div>
+                                            <input
+                                              type="text"
+                                              className="flex-1 min-w-0 bg-transparent border-b border-transparent focus:border-[#D4AF37] text-xs font-bold text-zinc-100 outline-none px-1 py-0.5"
+                                              value={service.name}
+                                              onChange={e => handleUpdateService(service.id, { name: e.target.value })}
+                                              placeholder="Option Name"
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveService(service.id)}
+                                              className="p-1.5 text-zinc-400 hover:text-red-400 rounded-full transition-colors shrink-0"
+                                              title="Delete Option"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+
+                                          <div className="grid grid-cols-3 gap-2 items-center">
+                                            <div className="relative">
+                                              <DollarSign className="absolute left-2 top-2 w-3 h-3 text-[#D4AF37]" />
+                                              <input
+                                                type="number"
+                                                className="w-full bg-black/60 border border-white/10 rounded-lg pl-6 pr-2 py-1 text-xs font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
+                                                value={service.price}
+                                                onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
+                                              />
+                                            </div>
+                                            <select
+                                              aria-label="Option Category Type"
+                                              value={inferCat(service)}
+                                              onChange={e => handleUpdateService(service.id, { categoryType: e.target.value as ServiceCategoryType })}
+                                              className="w-full bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-bold text-zinc-300 focus:border-[#D4AF37] outline-none"
+                                            >
+                                              <option value="location">Location</option>
+                                              <option value="hours">Hours</option>
+                                              <option value="amenities">Amenities</option>
+                                            </select>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity })}
+                                              className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all truncate ${
+                                                service.allowQuantity
+                                                  ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/10'
+                                                  : 'text-zinc-400 border-white/10 hover:text-zinc-200'
+                                              }`}
+                                            >
+                                              {service.allowQuantity ? 'Qty: On' : 'Fixed'}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="py-8 text-center border border-dashed border-white/10 rounded-2xl">
+                                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">No {box.type} options yet</p>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setNewServiceCategoryType(box.type);
+                                          setNewServiceUnit(box.type === 'location' ? 'location' : box.type === 'hours' ? 'session' : 'item');
+                                          setShowAddForm(true);
+                                        }}
+                                        className="mt-2 text-[10px] font-black text-[#D4AF37] uppercase tracking-widest hover:underline cursor-pointer"
+                                      >
+                                        + Add {box.type} option
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-
-                              <div className="mt-auto flex items-center gap-3 pt-2">
-                                <button 
-                                  onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity })}
-                                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all border ${service.allowQuantity ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/10 shadow-[0_0_10px_rgba(212,175,55,0.1)]' : 'text-zinc-400 border-white/5 hover:bg-white/5 hover:text-zinc-300'}`}
-                                >
-                                  {service.allowQuantity ? <Hash className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
-                                  {service.allowQuantity ? 'Quantities On' : 'Fixed Package'}
-                                </button>
-                                <button 
-                                  onClick={() => handleRemoveService(service.id)}
-                                  className="p-2.5 text-zinc-400 bg-white/5 hover:text-zinc-400 hover:bg-zinc-400/10 rounded-full transition-all border border-transparent hover:border-zinc-400/20"
-                                  title="Delete Package"
-                                  aria-label="Delete Package"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-[2.5rem] bg-black/20">
-                           <div className="bg-white/5 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                              <Tag className="w-8 h-8 text-zinc-400" />
-                           </div>
-                           <h4 className="text-zinc-400 font-bold uppercase tracking-widest text-sm">Catalog is Empty</h4>
-                           <p className="text-[10px] text-zinc-400 mt-2 max-w-xs mx-auto leading-relaxed">Defining specific services allows clients to build custom quotes and helps you automate your booking flow.</p>
-                           <button 
-                             onClick={() => setShowAddForm(true)}
-                             className="mt-6 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all"
-                           >
-                             Add My First Service
-                           </button>
+                            );
+                          })}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })() : (
+                      <div className="py-16 text-center border-2 border-dashed border-white/5 rounded-[2.5rem] bg-black/20">
+                         <div className="bg-white/5 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Tag className="w-8 h-8 text-zinc-400" />
+                         </div>
+                         <h4 className="text-zinc-400 font-bold uppercase tracking-widest text-sm">No Pricing Options Configured</h4>
+                         <p className="text-[10px] text-zinc-400 mt-2 max-w-xs mx-auto leading-relaxed">Add your Locations, Hours, and Amenities so clients can select checkpoints directly in one compact view.</p>
+                         <button 
+                           onClick={() => setShowAddForm(true)}
+                           className="mt-6 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all"
+                         >
+                           Add First Option
+                         </button>
+                      </div>
+                    )}
                   </div>
                 )}
                </div>

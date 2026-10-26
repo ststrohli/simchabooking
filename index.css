@@ -464,14 +464,88 @@ body.light-mode,
   ) !important;
 }
 
+/* Package box subtle image fader - Dark Mode & Light Mode */
+.simcha-package-fader {
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.86) 0%,
+    rgba(0, 0, 0, 0.92) 50%,
+    rgba(0, 0, 0, 0.96) 100%
+  );
+}
+
+.light-mode .simcha-package-fader {
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(255, 255, 255, 0.94) 50%,
+    rgba(255, 255, 255, 0.98) 100%
+  ) !important;
+}
+
+/* Shiny Gold Date Check Limit Box & Metallic Gold Attempts Badge */
+.simcha-date-limit-box {
+  border: 2px solid #FFE885 !important;
+  box-shadow:
+    0 0 22px rgba(212, 175, 55, 0.45),
+    0 0 42px rgba(255, 232, 133, 0.18),
+    inset 0 1px 2px rgba(255, 248, 209, 0.45),
+    inset 0 0 18px rgba(212, 175, 55, 0.15) !important;
+}
+
+.light-mode .simcha-date-limit-box {
+  background: linear-gradient(180deg, #ffffff 0%, #fffdf7 100%) !important;
+  border: 2px solid #D4AF37 !important;
+  box-shadow:
+    0 0 24px rgba(212, 175, 55, 0.5),
+    0 6px 20px rgba(184, 134, 11, 0.22),
+    inset 0 1px 2px rgba(255, 248, 209, 0.9),
+    inset 0 0 16px rgba(212, 175, 55, 0.14) !important;
+}
+
+.simcha-gold-attempts-pill {
+  background: linear-gradient(135deg, #FFF3B0 0%, #FFE885 25%, #D4AF37 60%, #A37B0D 100%) !important;
+  color: #09090b !important;
+  border: 1.5px solid #FFF8D1 !important;
+  box-shadow:
+    0 2px 12px rgba(212, 175, 55, 0.55),
+    0 0 18px rgba(255, 232, 133, 0.35),
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.9) !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45) !important;
+}
+
 /* Generic Tailwind black gradient stop reversals for any other faders/bars */
 .light-mode .from-black {
-  --tw-gradient-from: rgba(255, 255, 255, 0.55) !important;
+  --tw-gradient-from: rgba(255, 255, 255, 0.85) !important;
 }
 
 .light-mode .from-black\/95,
 .light-mode .from-zinc-900\/95 {
-  --tw-gradient-from: rgba(255, 255, 255, 0.5) !important;
+  --tw-gradient-from: rgba(255, 255, 255, 0.85) !important;
+}
+
+.light-mode .from-black\/90 {
+  --tw-gradient-from: rgba(255, 255, 255, 0.85) !important;
+}
+
+.light-mode .from-black\/80 {
+  --tw-gradient-from: rgba(255, 255, 255, 0.88) !important;
+}
+
+.light-mode .from-black\/70 {
+  --tw-gradient-from: rgba(255, 255, 255, 0.8) !important;
+}
+
+.light-mode .from-black\/60 {
+  --tw-gradient-from: rgba(255, 255, 255, 0.72) !important;
+}
+
+.light-mode .from-black\/50 {
+  --tw-gradient-from: rgba(255, 255, 255, 0.6) !important;
+}
+
+.light-mode .from-black\/40 {
+  --tw-gradient-from: rgba(255, 255, 255, 0.48) !important;
 }
 
 .light-mode .via-black,
@@ -521,258 +595,6 @@ body.light-mode,
 .light-mode .drop-shadow-md {
   filter: none !important;
   text-shadow: none !important;
-}
-
-/* ==========================================================================
-   OUTLINE MODE THEME OVERRIDES (Works in both Dark Mode & Light Mode)
-   - Keeps all Hero, Category, Subcategory, Vendor, and Post images & faders
-   - Outlines all cards, pills, inputs, buttons, and navigation in Gold (#D4AF37)
-   - Active pills/buttons use surface fill (White in Light, Black in Dark)
-     with Gold outline border and contrasting text (Black in Light, White in Dark)
-   - Inactive navigation icons/labels and secondary controls are Gold
-   ========================================================================== */
-
-/* 1. Universal Gold Outlines for Borders in Outline Mode */
-.outline-mode .border-white\/5,
-.outline-mode .border-white\/10,
-.outline-mode .border-white\/20,
-.outline-mode .border-zinc-800,
-.outline-mode .border-zinc-700,
-.outline-mode .border-zinc-400\/20,
-.outline-mode .border-\[\#D4AF37\]\/10,
-.outline-mode .border-\[\#D4AF37\]\/20,
-.outline-mode .border-\[\#D4AF37\]\/25,
-.outline-mode .border-\[\#D4AF37\]\/30,
-.outline-mode .border-\[\#D4AF37\]\/40,
-.outline-mode .border-\[\#D4AF37\]\/45,
-.outline-mode .border-\[\#D4AF37\]\/50 {
-  border-color: #D4AF37 !important;
-}
-
-/* Category & Subcategory image cards: crisp gold outline + subtle gold glow while keeping images */
-.outline-mode .group.border-2 {
-  border-color: #D4AF37 !important;
-  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.22) !important;
-}
-
-.outline-mode .group.border-2:hover {
-  border-color: #D4AF37 !important;
-  box-shadow: 0 8px 26px rgba(212, 175, 55, 0.38) !important;
-}
-
-/* Search bar & Switch tracks: rich metallic New Gold outline in Outline Mode */
-.light-mode.outline-mode .simcha-search-bar,
-.light-mode.outline-mode .simcha-switch-track {
-  background:
-    linear-gradient(#ffffff, #ffffff) padding-box,
-    linear-gradient(135deg, #FFE885 0%, #C59B27 48%, #7B5800 100%) border-box !important;
-  border: 1.5px solid transparent !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08), 0 0 14px rgba(163, 123, 13, 0.32) !important;
-}
-
-.outline-mode:not(.light-mode) .simcha-search-bar,
-.outline-mode:not(.light-mode) .simcha-switch-track {
-  background:
-    linear-gradient(#09090b, #09090b) padding-box,
-    linear-gradient(135deg, #FFE885 0%, #C59B27 48%, #7B5800 100%) border-box !important;
-  border: 1.5px solid transparent !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.85), 0 0 14px rgba(197, 155, 39, 0.38) !important;
-}
-
-.outline-mode .simcha-search-bar svg,
-.outline-mode .simcha-search-icon {
-  color: #C59B27 !important;
-}
-
-/* 2. Active Sliding Pills (.simcha-gold-pill) -> New Gold Metallic Outlined Capsules
-      Standard Gold Buttons (.bg-[#D4AF37]) -> Old Gold (#D4AF37) Outlined Capsules */
-.outline-mode .simcha-pill-gloss {
-  display: none !important;
-}
-
-/* Light + Outline: Active Sliding Pills & Search Button in New Gold */
-.light-mode.outline-mode .simcha-gold-pill {
-  background:
-    linear-gradient(#ffffff, #ffffff) padding-box,
-    linear-gradient(135deg, #FFE885 0%, #C59B27 45%, #7B5800 100%) border-box !important;
-  border: 2px solid transparent !important;
-  color: #09090b !important;
-  box-shadow: 0 3px 12px rgba(163, 123, 13, 0.35), inset 0 1px 1px rgba(197, 155, 39, 0.25) !important;
-}
-
-.light-mode.outline-mode .simcha-gold-pill:hover {
-  background:
-    linear-gradient(#fdfaf0, #fdfaf0) padding-box,
-    linear-gradient(135deg, #FFE885 0%, #C59B27 45%, #7B5800 100%) border-box !important;
-  border: 2px solid transparent !important;
-  color: #09090b !important;
-}
-
-/* Light + Outline: Standard Gold Buttons in Old Gold (#D4AF37) */
-.light-mode.outline-mode .bg-\[\#D4AF37\],
-.light-mode.outline-mode .bg-white.text-black {
-  background-image: none !important;
-  background-color: #ffffff !important;
-  border: 1.5px solid #D4AF37 !important;
-  color: #09090b !important;
-  box-shadow: 0 3px 12px rgba(212, 175, 55, 0.28) !important;
-}
-
-.light-mode.outline-mode .bg-\[\#D4AF37\]:hover,
-.light-mode.outline-mode .bg-white.text-black:hover {
-  background-color: #fdfaf0 !important;
-  border-color: #D4AF37 !important;
-  color: #09090b !important;
-}
-
-/* Dark + Outline: Active Sliding Pills & Search Button in New Gold */
-.outline-mode:not(.light-mode) .simcha-gold-pill {
-  background:
-    linear-gradient(#09090b, #09090b) padding-box,
-    linear-gradient(135deg, #FFE885 0%, #C59B27 45%, #7B5800 100%) border-box !important;
-  border: 2px solid transparent !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(197, 155, 39, 0.45), inset 0 1px 1px rgba(197, 155, 39, 0.3) !important;
-}
-
-.outline-mode:not(.light-mode) .simcha-gold-pill:hover {
-  background:
-    linear-gradient(#18181b, #18181b) padding-box,
-    linear-gradient(135deg, #FFE885 0%, #C59B27 45%, #7B5800 100%) border-box !important;
-  border: 2px solid transparent !important;
-  color: #ffffff !important;
-}
-
-/* Dark + Outline: Standard Gold Buttons in Old Gold (#D4AF37) */
-.outline-mode:not(.light-mode) .bg-\[\#D4AF37\],
-.outline-mode:not(.light-mode) .bg-white.text-black {
-  background-image: none !important;
-  background-color: #09090b !important;
-  border: 1.5px solid #D4AF37 !important;
-  color: #ffffff !important;
-  box-shadow: 0 3px 14px rgba(212, 175, 55, 0.35) !important;
-}
-
-.outline-mode:not(.light-mode) .bg-\[\#D4AF37\]:hover,
-.outline-mode:not(.light-mode) .bg-white.text-black:hover {
-  background-color: #18181b !important;
-  border-color: #D4AF37 !important;
-  color: #ffffff !important;
-}
-
-/* Active vs Inactive Button Labels/Icons inside Sliding Switches */
-.light-mode.outline-mode .simcha-switch-btn-active {
-  color: #09090b !important;
-}
-
-.outline-mode:not(.light-mode) .simcha-switch-btn-active {
-  color: #ffffff !important;
-}
-
-.outline-mode .simcha-switch-btn-inactive {
-  color: #C59B27 !important;
-}
-
-.outline-mode .simcha-switch-btn-inactive span {
-  background: linear-gradient(135deg, #FFE885 0%, #C59B27 50%, #9A7209 100%) !important;
-  -webkit-background-clip: text !important;
-  background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-}
-
-/* 3. Bottom Navigation Bar in Outline Mode -> New Gold */
-.light-mode.outline-mode .simcha-bottom-nav {
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.97), rgba(255, 255, 255, 0.97)) padding-box,
-    linear-gradient(135deg, #FFE885 0%, #C59B27 48%, #7B5800 100%) border-box !important;
-  border: 1.5px solid transparent !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1), 0 0 18px rgba(163, 123, 13, 0.3) !important;
-}
-
-.outline-mode:not(.light-mode) .simcha-bottom-nav {
-  background:
-    linear-gradient(rgba(9, 9, 11, 0.97), rgba(9, 9, 11, 0.97)) padding-box,
-    linear-gradient(135deg, #FFE885 0%, #C59B27 48%, #7B5800 100%) border-box !important;
-  border: 1.5px solid transparent !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), 0 0 20px rgba(197, 155, 39, 0.35) !important;
-}
-
-/* Active BottomNav Icon & Label: Black in Light Mode, White in Dark Mode */
-.light-mode.outline-mode .simcha-nav-icon-active {
-  color: #09090b !important;
-  fill: #09090b !important;
-  filter: none !important;
-}
-
-.light-mode.outline-mode .simcha-nav-label-active {
-  color: #09090b !important;
-}
-
-.outline-mode:not(.light-mode) .simcha-nav-icon-active {
-  color: #ffffff !important;
-  fill: #ffffff !important;
-  filter: none !important;
-}
-
-.outline-mode:not(.light-mode) .simcha-nav-label-active {
-  color: #ffffff !important;
-}
-
-/* Inactive BottomNav Icons & Labels: Rich New Gold in Outline Mode */
-.outline-mode .simcha-nav-icon-inactive {
-  color: #C59B27 !important;
-}
-
-.outline-mode .simcha-nav-label-inactive {
-  background: linear-gradient(135deg, #FFE885 0%, #C59B27 50%, #9A7209 100%) !important;
-  -webkit-background-clip: text !important;
-  background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-  color: #C59B27 !important;
-  font-weight: 700 !important;
-}
-
-/* Header Action Icons (Shield, LogOut) -> Gold (#D4AF37) in Outline Mode */
-.outline-mode header button.text-zinc-300 {
-  color: #D4AF37 !important;
-  border: 1px solid rgba(212, 175, 55, 0.45) !important;
-}
-
-/* 4. Hero Title in Outline Mode (Both Dark & Light):
-   - No background element or drop-shadow behind the title
-   - "Celebrate Your" & "Book Perfection." outlined in #D4AF37 gold
-   - "Simcha." in regular solid #D4AF37 gold */
-.outline-mode #hero-title {
-  filter: none !important;
-  text-shadow: none !important;
-}
-
-.outline-mode .simcha-hero-title-main {
-  color: transparent !important;
-  -webkit-text-stroke: 1.5px #D4AF37 !important;
-  filter: none !important;
-  text-shadow: none !important;
-  opacity: 1 !important;
-}
-
-.outline-mode .simcha-hero-title-gold {
-  color: #D4AF37 !important;
-  -webkit-text-stroke: 0px transparent !important;
-  filter: none !important;
-  text-shadow: none !important;
-}
-
-/* 5. Simcha Booking Logo (SB Icon & Brand Title) Outlined in Gold in Outline Mode */
-.outline-mode .simcha-logo-text {
-  fill: transparent !important;
-  stroke: #D4AF37 !important;
-  stroke-width: 3.5px !important;
-  paint-order: stroke fill;
-}
-
-.outline-mode .simcha-brand-title {
-  color: transparent !important;
-  -webkit-text-stroke: 1.25px #D4AF37 !important;
 }
 
 /* ==========================================================================

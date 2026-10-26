@@ -34,7 +34,7 @@ import ChatModal from './components/ChatModal';
 import SuggestionModal from './components/SuggestionModal';
 import ClientPortal from './components/ClientPortal';
 import PaymentSuccess from './components/PaymentSuccess';
-import { ThemeModeSwitch, ThemeStyleSwitch } from './components/ThemeModeSwitch';
+import { ThemeModeSwitch } from './components/ThemeModeSwitch';
 import { VENDORS as INITIAL_VENDORS, MOCK_BOOKINGS } from './services/mockData';
 import { Vendor, VendorCategory, CartItem, Booking, Review, Post, Message, UserAccount, SelectedService } from './types';
 
@@ -491,8 +491,6 @@ interface AuthSignUpModalProps {
   onPhotoChange: (file: File | null) => void;
   themeMode: 'dark' | 'light';
   onThemeModeChange: (mode: 'dark' | 'light') => void;
-  styleMode: 'regular' | 'outline';
-  onStyleModeChange: (mode: 'regular' | 'outline') => void;
   error: string;
   onRegister: (e: React.FormEvent) => void;
   onGoogleSignIn: () => void;
@@ -514,8 +512,6 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
   onPhotoChange,
   themeMode,
   onThemeModeChange,
-  styleMode,
-  onStyleModeChange,
   error,
   onRegister,
   onGoogleSignIn,
@@ -648,16 +644,10 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest ml-1">App Appearance</label>
-              <div className="grid grid-cols-2 gap-2.5">
-                <ThemeStyleSwitch
-                  fullWidth
-                  styleMode={styleMode}
-                  onToggleStyleMode={onStyleModeChange}
-                />
+            <div className="flex flex-col items-center justify-center space-y-2 py-1 text-center w-full">
+              <label className="block text-[10px] font-black text-zinc-300 uppercase tracking-widest text-center">App Appearance</label>
+              <div className="flex items-center justify-center w-full">
                 <ThemeModeSwitch
-                  fullWidth
                   themeMode={themeMode}
                   onToggleThemeMode={onThemeModeChange}
                 />
@@ -736,8 +726,6 @@ interface AuthSignInModalProps {
   onPhotoChange: (file: File | null) => void;
   themeMode: 'dark' | 'light';
   onThemeModeChange: (mode: 'dark' | 'light') => void;
-  styleMode: 'regular' | 'outline';
-  onStyleModeChange: (mode: 'regular' | 'outline') => void;
   error: string;
   onLogin: (e: React.FormEvent) => void;
   onRegister: (e: React.FormEvent) => void;
@@ -766,8 +754,6 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
   onPhotoChange,
   themeMode,
   onThemeModeChange,
-  styleMode,
-  onStyleModeChange,
   error,
   onLogin,
   onRegister,
@@ -1012,8 +998,6 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
             onPhotoChange={onPhotoChange}
             themeMode={themeMode}
             onThemeModeChange={onThemeModeChange}
-            styleMode={styleMode}
-            onStyleModeChange={onStyleModeChange}
             error={error}
             onRegister={onRegister}
             onGoogleSignIn={onGoogleSignIn}
@@ -1462,36 +1446,18 @@ function App() {
     return 'dark';
   });
 
-  const [styleMode, setStyleMode] = useState<'regular' | 'outline'>(() => {
-    try {
-      const activeUid = localStorage.getItem('simcha_active_uid');
-      const saved = (activeUid && localStorage.getItem(`simcha_style_mode_${activeUid}`)) || localStorage.getItem('simcha_style_mode');
-      if (saved === 'regular' || saved === 'outline') return saved;
-    } catch (e) {}
-    return 'regular';
-  });
-
   const applyThemeDomClasses = useCallback((mode: 'dark' | 'light') => {
     const isLight = mode === 'light';
     document.documentElement.classList.toggle('light-mode', isLight);
     document.body.classList.toggle('light-mode', isLight);
+    document.documentElement.classList.remove('outline-mode');
+    document.body.classList.remove('outline-mode');
     document.documentElement.setAttribute('data-theme', mode);
-  }, []);
-
-  const applyStyleDomClasses = useCallback((style: 'regular' | 'outline') => {
-    const isOutline = style === 'outline';
-    document.documentElement.classList.toggle('outline-mode', isOutline);
-    document.body.classList.toggle('outline-mode', isOutline);
-    document.documentElement.setAttribute('data-style', style);
   }, []);
 
   useEffect(() => {
     applyThemeDomClasses(themeMode);
   }, [themeMode, applyThemeDomClasses]);
-
-  useEffect(() => {
-    applyStyleDomClasses(styleMode);
-  }, [styleMode, applyStyleDomClasses]);
 
   // Preload hero background image while on sign-in screen so it renders immediately on login
   useEffect(() => {
@@ -1522,28 +1488,7 @@ function App() {
     }
   }, [fbUser, applyThemeDomClasses]);
 
-  const handleToggleStyleMode = useCallback((nextStyle: 'regular' | 'outline') => {
-    applyStyleDomClasses(nextStyle);
-    setStyleMode(nextStyle);
-    try {
-      localStorage.setItem('simcha_style_mode', nextStyle);
-    } catch (e) {}
-    setUserDocData((prev: any) => (prev ? { ...prev, styleMode: nextStyle } : prev));
-    if (fbUser) {
-      try {
-        localStorage.setItem('simcha_active_uid', fbUser.uid);
-        localStorage.setItem(`simcha_style_mode_${fbUser.uid}`, nextStyle);
-      } catch (e) {}
-      setDoc(doc(db, 'users', fbUser.uid), {
-        styleMode: nextStyle,
-        updatedAt: new Date().toISOString(),
-      }, { merge: true }).catch(err => {
-        console.warn('Error updating style mode in user profile:', err);
-      });
-    }
-  }, [fbUser, applyStyleDomClasses]);
-
-  const syncUserProfile = async (user: FirebaseUser, additionalData: { fullName?: string, photoURL?: string, photoStoragePath?: string, themeMode?: 'dark' | 'light', styleMode?: 'regular' | 'outline' } = {}) => {
+  const syncUserProfile = async (user: FirebaseUser, additionalData: { fullName?: string, photoURL?: string, photoStoragePath?: string, themeMode?: 'dark' | 'light' } = {}) => {
     try {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDocSafe(userDocRef);
@@ -1564,24 +1509,16 @@ function App() {
         userData.themeMode = additionalData.themeMode;
       }
 
-      if (additionalData.styleMode !== undefined) {
-        userData.styleMode = additionalData.styleMode;
-      }
-
       if (!userDoc.exists()) {
         await setDoc(userDocRef, {
           ...userData,
           themeMode: userData.themeMode || 'dark',
-          styleMode: userData.styleMode || 'regular',
           createdAt: new Date().toISOString()
         });
       } else {
         const existingData = userDoc.data();
         if (existingData?.themeMode === undefined && userData.themeMode === undefined) {
           userData.themeMode = 'dark';
-        }
-        if (existingData?.styleMode === undefined && userData.styleMode === undefined) {
-          userData.styleMode = 'regular';
         }
         await updateDoc(userDocRef, userData);
       }
@@ -1916,29 +1853,19 @@ function App() {
         const data = docSnap.data();
         setUserDocData(data);
         let cachedTheme: string | null = null;
-        let cachedStyle: string | null = null;
         try {
           cachedTheme = localStorage.getItem(`simcha_theme_mode_${fbUser.uid}`) || localStorage.getItem('simcha_theme_mode');
-          cachedStyle = localStorage.getItem(`simcha_style_mode_${fbUser.uid}`) || localStorage.getItem('simcha_style_mode');
         } catch (e) {}
         const resolvedTheme: 'dark' | 'light' =
           data.themeMode === 'light' || data.themeMode === 'dark'
             ? data.themeMode
             : (cachedTheme === 'light' ? 'light' : 'dark');
-        const resolvedStyle: 'regular' | 'outline' =
-          data.styleMode === 'regular' || data.styleMode === 'outline'
-            ? data.styleMode
-            : (cachedStyle === 'outline' ? 'outline' : 'regular');
         applyThemeDomClasses(resolvedTheme);
         setThemeMode(resolvedTheme);
-        applyStyleDomClasses(resolvedStyle);
-        setStyleMode(resolvedStyle);
         try {
           localStorage.setItem('simcha_active_uid', fbUser.uid);
           localStorage.setItem('simcha_theme_mode', resolvedTheme);
-          localStorage.setItem('simcha_style_mode', resolvedStyle);
           localStorage.setItem(`simcha_theme_mode_${fbUser.uid}`, resolvedTheme);
-          localStorage.setItem(`simcha_style_mode_${fbUser.uid}`, resolvedStyle);
         } catch (e) {}
         const userEmail = fbUser.email ? fbUser.email.trim().toLowerCase() : '';
         if (isWhitelistedAdminEmail(userEmail)) {
@@ -1982,7 +1909,7 @@ function App() {
       unsubUserDoc();
       unsubUsers();
     };
-  }, [fbUser, userRole, currentUserVendorId, isAdmin, isSignInFlipping, applyThemeDomClasses, applyStyleDomClasses]);
+  }, [fbUser, userRole, currentUserVendorId, isAdmin, isSignInFlipping, applyThemeDomClasses]);
 
   // Clean Layer Slide-Up Sign-In Transition Effect (1.25s Modal Speed)
   useEffect(() => {
@@ -2052,18 +1979,13 @@ function App() {
 
     const syncSavedThemePreference = () => {
       let savedTheme: 'dark' | 'light' = 'dark';
-      let savedStyle: 'regular' | 'outline' = 'regular';
       try {
         const activeUid = localStorage.getItem('simcha_active_uid');
         const rawTheme = (activeUid && localStorage.getItem(`simcha_theme_mode_${activeUid}`)) || localStorage.getItem('simcha_theme_mode');
-        const rawStyle = (activeUid && localStorage.getItem(`simcha_style_mode_${activeUid}`)) || localStorage.getItem('simcha_style_mode');
         if (rawTheme === 'light' || rawTheme === 'dark') savedTheme = rawTheme;
-        if (rawStyle === 'regular' || rawStyle === 'outline') savedStyle = rawStyle;
       } catch (e) {}
       applyThemeDomClasses(savedTheme);
-      applyStyleDomClasses(savedStyle);
       setThemeMode(savedTheme);
-      setStyleMode(savedStyle);
     };
 
     const unsubscribe = onAuthStateChanged(auth, async (rawUser) => {
@@ -2172,14 +2094,11 @@ function App() {
         }
 
         let cachedUidTheme: string | null = null;
-        let cachedUidStyle: string | null = null;
         try {
           cachedUidTheme = localStorage.getItem(`simcha_theme_mode_${user.uid}`) || localStorage.getItem('simcha_theme_mode');
-          cachedUidStyle = localStorage.getItem(`simcha_style_mode_${user.uid}`) || localStorage.getItem('simcha_style_mode');
         } catch (e) {}
 
         let resolvedTheme: 'dark' | 'light' = cachedUidTheme === 'light' ? 'light' : 'dark';
-        let resolvedStyle: 'regular' | 'outline' = cachedUidStyle === 'outline' ? 'outline' : 'regular';
 
         let resolvedUserDocData: any = {
           role: finalRole,
@@ -2187,7 +2106,6 @@ function App() {
           isVendor: finalRole === 'vendor',
           email: userEmail,
           themeMode: resolvedTheme,
-          styleMode: resolvedStyle
         };
         let resolvedVendorId: string | null = null;
 
@@ -2196,13 +2114,9 @@ function App() {
           if (data.themeMode === 'light' || data.themeMode === 'dark') {
             resolvedTheme = data.themeMode;
           }
-          if (data.styleMode === 'regular' || data.styleMode === 'outline') {
-            resolvedStyle = data.styleMode;
-          }
           resolvedUserDocData = {
             ...data,
             themeMode: resolvedTheme,
-            styleMode: resolvedStyle
           };
           if (isWhitelistedAdminEmail(userEmail)) {
             finalRole = 'admin';
@@ -2217,14 +2131,10 @@ function App() {
 
         applyThemeDomClasses(resolvedTheme);
         setThemeMode(resolvedTheme);
-        applyStyleDomClasses(resolvedStyle);
-        setStyleMode(resolvedStyle);
         try {
           localStorage.setItem('simcha_active_uid', user.uid);
           localStorage.setItem('simcha_theme_mode', resolvedTheme);
-          localStorage.setItem('simcha_style_mode', resolvedStyle);
           localStorage.setItem(`simcha_theme_mode_${user.uid}`, resolvedTheme);
-          localStorage.setItem(`simcha_style_mode_${user.uid}`, resolvedStyle);
         } catch (e) {}
 
         await waitMinReloadTime();
@@ -2242,27 +2152,21 @@ function App() {
           console.error("Error fetching user document:", err);
         }
         let fallbackTheme: 'dark' | 'light' = 'dark';
-        let fallbackStyle: 'regular' | 'outline' = 'regular';
         try {
           const t = localStorage.getItem(`simcha_theme_mode_${user.uid}`) || localStorage.getItem('simcha_theme_mode');
-          const s = localStorage.getItem(`simcha_style_mode_${user.uid}`) || localStorage.getItem('simcha_style_mode');
           if (t === 'light') fallbackTheme = 'light';
-          if (s === 'outline') fallbackStyle = 'outline';
           localStorage.setItem('simcha_active_uid', user.uid);
           localStorage.setItem('simcha_theme_mode', fallbackTheme);
-          localStorage.setItem('simcha_style_mode', fallbackStyle);
         } catch (e) {}
         applyThemeDomClasses(fallbackTheme);
         setThemeMode(fallbackTheme);
-        applyStyleDomClasses(fallbackStyle);
-        setStyleMode(fallbackStyle);
         await waitMinReloadTime();
         if (isWhitelistedAdminEmail(userEmail)) {
           setUserRole('admin');
-          setUserDocData({ role: 'admin', isAdmin: true, isVendor: false, email: userEmail, themeMode: fallbackTheme, styleMode: fallbackStyle });
+          setUserDocData({ role: 'admin', isAdmin: true, isVendor: false, email: userEmail, themeMode: fallbackTheme });
         } else {
           setUserRole('client');
-          setUserDocData({ role: 'client', isAdmin: false, isVendor: false, email: user.email || '', themeMode: fallbackTheme, styleMode: fallbackStyle });
+          setUserDocData({ role: 'client', isAdmin: false, isVendor: false, email: user.email || '', themeMode: fallbackTheme });
         }
         setFbUser(user);
       } finally {
@@ -2271,7 +2175,7 @@ function App() {
       }
     });
     return () => unsubscribe();
-  }, [applyThemeDomClasses, applyStyleDomClasses, startSignInPageFlip]);
+  }, [applyThemeDomClasses, startSignInPageFlip]);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const lastSyncedCartJsonRef = useRef<string>('');
@@ -3352,11 +3256,9 @@ function App() {
 
     // Resolve initial role and appearance synchronously so the slide-up begins immediately while the Sign In button stays loading
     let cachedUidTheme: string | null = null;
-    let cachedUidStyle: string | null = null;
     let cachedRole: string | null = null;
     try {
       cachedUidTheme = localStorage.getItem(`simcha_theme_mode_${user.uid}`) || localStorage.getItem('simcha_theme_mode');
-      cachedUidStyle = localStorage.getItem(`simcha_style_mode_${user.uid}`) || localStorage.getItem('simcha_style_mode');
       if (localStorage.getItem('simcha_active_uid') === user.uid) {
         cachedRole = localStorage.getItem('simcha_user_role');
       }
@@ -3374,19 +3276,14 @@ function App() {
     }
 
     let resolvedTheme: 'dark' | 'light' = cachedUidTheme === 'light' ? 'light' : 'dark';
-    let resolvedStyle: 'regular' | 'outline' = cachedUidStyle === 'outline' ? 'outline' : 'regular';
     let resolvedVendorId: string | null = matchedVendor?.id || null;
 
     applyThemeDomClasses(resolvedTheme);
     setThemeMode(resolvedTheme);
-    applyStyleDomClasses(resolvedStyle);
-    setStyleMode(resolvedStyle);
     try {
       localStorage.setItem('simcha_active_uid', user.uid);
       localStorage.setItem('simcha_theme_mode', resolvedTheme);
-      localStorage.setItem('simcha_style_mode', resolvedStyle);
       localStorage.setItem(`simcha_theme_mode_${user.uid}`, resolvedTheme);
-      localStorage.setItem(`simcha_style_mode_${user.uid}`, resolvedStyle);
       localStorage.setItem('simcha_user_role', initialRole);
     } catch (e) {}
 
@@ -3398,7 +3295,6 @@ function App() {
       isVendor: initialRole === 'vendor',
       email: lowerEmail,
       themeMode: resolvedTheme,
-      styleMode: resolvedStyle,
     });
     setCurrentUserVendorId(resolvedVendorId);
     setUserRole(initialRole);
@@ -3432,16 +3328,12 @@ function App() {
         }
 
         let updatedTheme = resolvedTheme;
-        let updatedStyle = resolvedStyle;
         let updatedVendorId = matchedVendor?.id || resolvedVendorId;
 
         if (initialUserDoc && initialUserDoc.exists()) {
           const data = initialUserDoc.data();
           if (data.themeMode === 'light' || data.themeMode === 'dark') {
             updatedTheme = data.themeMode;
-          }
-          if (data.styleMode === 'regular' || data.styleMode === 'outline') {
-            updatedStyle = data.styleMode;
           }
           if (isKnownAdmin) {
             finalRole = 'admin';
@@ -3457,17 +3349,12 @@ function App() {
             isAdmin: finalRole === 'admin',
             isVendor: finalRole === 'vendor',
             themeMode: updatedTheme,
-            styleMode: updatedStyle,
           });
         }
 
         if (updatedTheme !== resolvedTheme) {
           applyThemeDomClasses(updatedTheme);
           setThemeMode(updatedTheme);
-        }
-        if (updatedStyle !== resolvedStyle) {
-          applyStyleDomClasses(updatedStyle);
-          setStyleMode(updatedStyle);
         }
         if (updatedVendorId !== resolvedVendorId) {
           setCurrentUserVendorId(updatedVendorId);
@@ -3478,9 +3365,7 @@ function App() {
 
         try {
           localStorage.setItem('simcha_theme_mode', updatedTheme);
-          localStorage.setItem('simcha_style_mode', updatedStyle);
           localStorage.setItem(`simcha_theme_mode_${user.uid}`, updatedTheme);
-          localStorage.setItem(`simcha_style_mode_${user.uid}`, updatedStyle);
           localStorage.setItem('simcha_user_role', finalRole);
         } catch (e) {}
 
@@ -3558,15 +3443,12 @@ function App() {
       }
 
       const chosenThemeMode = themeMode;
-      const chosenStyleMode = styleMode;
       try {
         localStorage.setItem('simcha_active_uid', user.uid);
         localStorage.setItem('simcha_theme_mode', chosenThemeMode);
-        localStorage.setItem('simcha_style_mode', chosenStyleMode);
         localStorage.setItem(`simcha_theme_mode_${user.uid}`, chosenThemeMode);
-        localStorage.setItem(`simcha_style_mode_${user.uid}`, chosenStyleMode);
       } catch (e) {}
-      await syncUserProfile(user, { fullName: authFullName, photoURL, photoStoragePath, themeMode: chosenThemeMode, styleMode: chosenStyleMode });
+      await syncUserProfile(user, { fullName: authFullName, photoURL, photoStoragePath, themeMode: chosenThemeMode });
 
       try {
         await sendEmailVerification(user);
@@ -3783,8 +3665,6 @@ function App() {
             onPhotoChange={setAuthPhoto}
             themeMode={themeMode}
             onThemeModeChange={handleToggleThemeMode}
-            styleMode={styleMode}
-            onStyleModeChange={handleToggleStyleMode}
             error={authError}
             onLogin={handleAuthLogin}
             onRegister={handleAuthRegister}
@@ -4002,8 +3882,6 @@ function App() {
                   onTabChange={tab => setPortalInitialTab(tab)}
                   themeMode={themeMode}
                   onToggleThemeMode={handleToggleThemeMode}
-                  styleMode={styleMode}
-                  onToggleStyleMode={handleToggleStyleMode}
                 />
               </div>
             </motion.div>
@@ -4042,8 +3920,6 @@ function App() {
               onTabChange={tab => setPortalInitialTab(tab)}
               themeMode={themeMode}
               onToggleThemeMode={handleToggleThemeMode}
-              styleMode={styleMode}
-              onToggleStyleMode={handleToggleStyleMode}
             />
           </div>
         </motion.div>

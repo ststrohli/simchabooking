@@ -16,17 +16,12 @@
       try {
         var activeUid = localStorage.getItem('simcha_active_uid');
         var savedTheme = (activeUid && localStorage.getItem('simcha_theme_mode_' + activeUid)) || localStorage.getItem('simcha_theme_mode') || 'dark';
-        var savedStyle = (activeUid && localStorage.getItem('simcha_style_mode_' + activeUid)) || localStorage.getItem('simcha_style_mode') || 'regular';
         if (savedTheme === 'light') {
           document.documentElement.classList.add('light-mode');
         } else {
           document.documentElement.classList.remove('light-mode');
         }
-        if (savedStyle === 'outline') {
-          document.documentElement.classList.add('outline-mode');
-        } else {
-          document.documentElement.classList.remove('outline-mode');
-        }
+        document.documentElement.classList.remove('outline-mode');
       } catch (e) {}
     </script>
     <script type="module">

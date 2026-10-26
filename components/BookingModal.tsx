@@ -1,9 +1,21 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { X, Star, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, CheckCircle, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
-import { Vendor, SelectedService, VendorCategory } from '../types';
+import { X, Star, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, CheckCircle, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { Vendor, SelectedService, VendorCategory, VendorService, ServiceCategoryType } from '../types';
 import LocationAutocomplete from './LocationAutocomplete';
 import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
+
+const inferServiceCategory = (service: VendorService): ServiceCategoryType => {
+  if (service.categoryType) return service.categoryType;
+  const text = `${service.name} ${service.unit || ''}`.toLowerCase();
+  if (/\b(location|lakewood|brooklyn|monsey|boro park|williamsburg|five towns|queens|manhattan|staten island|new jersey|ny|nj|travel|destination|area|local|out of town)\b/.test(text)) {
+    return 'location';
+  }
+  if (/\b(hour|hours|hr|hrs|time|day|half day|full day|overtime|minute|minutes)\b/.test(text)) {
+    return 'hours';
+  }
+  return 'amenities';
+};
 
 const MODAL_TRANSITION = { duration: 1, ease: [0.25, 1, 0.5, 1] as const };
 
@@ -476,9 +488,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
       }, 0) || 0;
     }
     
-    // If no services are selected, we show the priceStart as the base. 
-    // Otherwise, we calculate based on the selected options.
-    return servicesTotal || vendor.priceStart;
+    return servicesTotal || vendor.downPayment || vendor.priceStart || 0;
   }, [selectedServiceIds, quantities, vendor]);
 
   const toggleService = useCallback((serviceId: string) => {
@@ -981,12 +991,24 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
           ref={formScrollRef}
           className={`flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y p-6 space-y-6 ${isSubmitting ? 'pointer-events-none' : ''}`}
         >
-          <div className="bg-black/60 border border-[#D4AF37]/20 rounded-xl p-3.5 text-center mb-4 space-y-1">
-            <p className="text-zinc-200 text-xs font-semibold">
-              Date Check Limit: <span className="text-[#D4AF37] font-bold">{getRemainingAttempts()} of {vendor.maxDateChecks ?? 5} attempts remaining</span> (resets every {vendor.dateCheckResetHours ?? 24} hours)
-            </p>
+          <div className="simcha-date-limit-box relative overflow-hidden bg-black/90 rounded-3xl p-5 sm:p-6 text-center mb-5 space-y-2.5 transition-all">
+            <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 w-3/4 h-24 bg-gradient-to-b from-[#FFE885]/25 to-transparent blur-xl" />
+            <div className="relative z-10 flex flex-col items-center justify-center gap-2">
+              <span className="text-[11px] sm:text-xs font-black uppercase tracking-[0.22em] text-[#D4AF37]">
+                Date Check Limit
+              </span>
+              <div className="flex flex-wrap items-center justify-center gap-2 text-sm sm:text-base font-bold text-zinc-100">
+                <span className="simcha-gold-attempts-pill inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs sm:text-sm font-black uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5 shrink-0 text-black" />
+                  {getRemainingAttempts()} of {vendor.maxDateChecks ?? 5} attempts remaining
+                </span>
+              </div>
+              <p className="text-zinc-300 text-xs sm:text-sm font-semibold">
+                Resets every <span className="text-[#D4AF37] font-black">{vendor.dateCheckResetHours ?? 24} hours</span> — please select only the dates you need
+              </p>
+            </div>
             {privacyBlocked && (
-              <p className="text-red-400 text-xs leading-relaxed">
+              <p className="relative z-10 text-red-400 text-xs sm:text-sm font-bold leading-relaxed pt-1">
                 Date check limit reached for this vendor. Previously checked dates can still be selected, but other dates are locked until reset.
               </p>
             )}
@@ -1017,60 +1039,162 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
             )}
           </div>
 
-          {vendor.services && vendor.services.length > 0 && (
-            <fieldset id="packages-section" className={`space-y-3 p-3 rounded-xl transition-all duration-300 ${highlightedField === 'packages-section' ? 'border-2 border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border border-transparent'}`}>
-              <div className="flex justify-between items-center flex-wrap gap-2">
-                <legend className={labelClass}>Select Packages</legend>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {vendor.services.map((service) => (
-                  <div key={service.id} className={`flex flex-col overflow-hidden rounded-xl border transition-all ${selectedServiceIds.includes(service.id) ? 'bg-[#D4AF37]/5 border-[#D4AF37] shadow-[0_0_15px_rgba(212,175,55,0.15)]' : 'bg-black border-[#D4AF37]/20 hover:border-[#D4AF37]/50'}`}>
-                    <label className="cursor-pointer flex-1 flex flex-col group relative">
-                        {service.image ? (
-                          <div className="h-32 w-full relative overflow-hidden bg-[#111]">
-                            <img src={service.image} alt={service.name} className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all group-hover:scale-105" />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-                          </div>
-                        ) : (
-                          <div className="h-32 w-full bg-[#111] border-b border-white/5 flex items-center justify-center">
-                            <ImageIcon className="w-6 h-6 text-zinc-400" />
+          {vendor.services && vendor.services.length > 0 && (() => {
+            const groupedServices: {
+              type: ServiceCategoryType;
+              title: string;
+              subtitle: string;
+              icon: any;
+              items: VendorService[];
+            }[] = [
+              {
+                type: 'location',
+                title: 'Locations',
+                subtitle: 'Select location rate',
+                icon: MapPin,
+                items: vendor.services.filter(s => inferServiceCategory(s) === 'location')
+              },
+              {
+                type: 'hours',
+                title: 'Hours',
+                subtitle: 'Select duration & time',
+                icon: Clock,
+                items: vendor.services.filter(s => inferServiceCategory(s) === 'hours')
+              },
+              {
+                type: 'amenities',
+                title: 'Amenities & Options',
+                subtitle: 'Select add-ons & extras',
+                icon: Sparkles,
+                items: vendor.services.filter(s => inferServiceCategory(s) === 'amenities')
+              }
+            ].filter(group => group.items.length > 0);
+
+            return (
+              <fieldset id="packages-section" className={`space-y-3 p-3 rounded-2xl transition-all duration-300 ${highlightedField === 'packages-section' ? 'border-2 border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border border-transparent'}`}>
+                <div className="flex justify-between items-center flex-wrap gap-2">
+                  <legend className={labelClass}>Select Your Options</legend>
+                  {(vendor.downPayment ?? 0) > 0 && (
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-2.5 py-1 rounded-full">
+                      Optional Down Payment: ${vendor.downPayment?.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 gap-3.5">
+                  {groupedServices.map((group) => {
+                    const GroupIcon = group.icon;
+                    const bgImage = group.items.find(i => i.image)?.image || vendor.image;
+                    const hasSelectedInGroup = group.items.some(i => selectedServiceIds.includes(i.id));
+
+                    return (
+                      <div
+                        key={group.type}
+                        className={`relative overflow-hidden rounded-2xl border transition-all p-4 ${
+                          hasSelectedInGroup
+                            ? 'border-[#D4AF37] shadow-[0_0_18px_rgba(212,175,55,0.16)] bg-black'
+                            : 'border-[#D4AF37]/25 hover:border-[#D4AF37]/50 bg-black'
+                        }`}
+                      >
+                        {/* Very light, non-cut-off subtle background image with mode-aware fader */}
+                        {bgImage && (
+                          <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                            <img
+                              src={bgImage}
+                              alt=""
+                              className="w-full h-full object-cover object-center opacity-15 scale-105"
+                            />
+                            <div className="absolute inset-0 simcha-package-fader" />
                           </div>
                         )}
-                        <div className={`absolute top-3 left-3 w-5 h-5 rounded-full border-2 flex items-center justify-center backdrop-blur-md ${selectedServiceIds.includes(service.id) ? 'bg-[#D4AF37] border-[#D4AF37]' : 'bg-black/50 border-white/40 group-hover:border-[#D4AF37]'}`}>
-                           {selectedServiceIds.includes(service.id) && <Check className="w-3 h-3 text-black" />}
-                        </div>
-                        <div className="p-4 flex flex-col flex-1 relative z-10 -mt-8">
-                            <span className="text-sm font-bold text-white drop-shadow-md leading-tight">{service.name}</span>
-                            <span className="text-[10px] text-[#D4AF37] font-black uppercase tracking-widest mt-1">
-                                ${service.price.toLocaleString()} {service.unit ? `per ${service.unit}` : ''}
-                            </span>
-                        </div>
-                        <input type="checkbox" className="sr-only" checked={selectedServiceIds.includes(service.id)} onChange={() => toggleService(service.id)} />
-                    </label>
-                    
-                    {selectedServiceIds.includes(service.id) && service.allowQuantity && (
-                        <div className="px-4 pb-4 pt-1 flex flex-col gap-2 animate-in slide-in-from-top-2 duration-300 border-t border-white/5">
-                            <div className="relative">
-                                <Hash className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[#D4AF37]/50" />
-                                <input 
-                                    type="number" 
-                                    min="1"
-                                    className="w-full bg-black/50 border border-[#D4AF37]/20 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white focus:border-[#D4AF37] outline-none" 
-                                    placeholder={`Enter number of ${service.unit || 'units'}...`}
-                                    value={quantities[service.id] || 1}
-                                    onChange={(e) => handleQuantityChange(service.id, e.target.value)}
-                                />
+
+                        <div className="relative z-10 space-y-2.5">
+                          <div className="flex items-center justify-between border-b border-[#D4AF37]/15 pb-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37]">
+                                <GroupIcon className="w-3.5 h-3.5" />
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-black uppercase tracking-widest text-[#D4AF37] font-[Cinzel] leading-none">
+                                  {group.title}
+                                </h4>
+                                <p className="text-[9px] text-zinc-400 font-semibold mt-0.5">{group.subtitle}</p>
+                              </div>
                             </div>
-                            <span className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest text-right">
-                                Total: ${(service.price * (quantities[service.id] || 1)).toLocaleString()}
+                            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                              {group.items.filter(i => selectedServiceIds.includes(i.id)).length}/{group.items.length} Selected
                             </span>
+                          </div>
+
+                          {/* Compact Checkpoints Grid inside the single box */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-0.5">
+                            {group.items.map((service) => {
+                              const isSelected = selectedServiceIds.includes(service.id);
+                              return (
+                                <div
+                                  key={service.id}
+                                  className={`rounded-xl border transition-all ${
+                                    isSelected
+                                      ? 'bg-[#D4AF37]/12 border-[#D4AF37] shadow-[0_0_10px_rgba(212,175,55,0.12)]'
+                                      : 'bg-black/60 border-[#D4AF37]/15 hover:border-[#D4AF37]/45'
+                                  }`}
+                                >
+                                  <label className="cursor-pointer flex items-center justify-between gap-2.5 px-3 py-2.5 select-none">
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div
+                                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                                          isSelected
+                                            ? 'bg-[#D4AF37] border-[#D4AF37]'
+                                            : 'bg-black/50 border-zinc-500'
+                                        }`}
+                                      >
+                                        {isSelected && <Check className="w-2.5 h-2.5 text-black stroke-[3]" />}
+                                      </div>
+                                      <span className="text-xs font-bold text-white truncate">
+                                        {service.name}
+                                      </span>
+                                    </div>
+                                    <span className="text-[11px] font-black text-[#D4AF37] shrink-0 tracking-wide">
+                                      ${service.price.toLocaleString()}
+                                      {service.unit && service.unit !== 'event' ? `/${service.unit}` : ''}
+                                    </span>
+                                    <input
+                                      type="checkbox"
+                                      className="sr-only"
+                                      checked={isSelected}
+                                      onChange={() => toggleService(service.id)}
+                                    />
+                                  </label>
+
+                                  {isSelected && service.allowQuantity && (
+                                    <div className="px-3 pb-2.5 pt-1 flex items-center justify-between gap-2 border-t border-[#D4AF37]/15">
+                                      <div className="relative flex-1">
+                                        <Hash className="absolute left-2.5 top-2 w-3 h-3 text-[#D4AF37]/60" />
+                                        <input
+                                          type="number"
+                                          min="1"
+                                          className="w-full bg-black/60 border border-[#D4AF37]/25 rounded-lg pl-7 pr-2 py-1 text-[11px] text-white focus:border-[#D4AF37] outline-none"
+                                          placeholder={`Qty (${service.unit || 'units'})`}
+                                          value={quantities[service.id] || 1}
+                                          onChange={(e) => handleQuantityChange(service.id, e.target.value)}
+                                        />
+                                      </div>
+                                      <span className="text-[9px] font-black text-[#D4AF37] uppercase tracking-wider shrink-0">
+                                        =${(service.price * (quantities[service.id] || 1)).toLocaleString()}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </fieldset>
-          )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            );
+          })()}
 
           <div className="space-y-4">
             <FloatingInput 
