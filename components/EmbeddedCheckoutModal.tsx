@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { X, ShieldCheck, Lock, Loader2 } from 'lucide-react';
+import { motion } from 'motion/react';
+import { X, Loader2 } from 'lucide-react';
 import { loadStripe, Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
+import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
+
+const MODAL_TRANSITION = { duration: 1, ease: [0.25, 1, 0.5, 1] as const };
 
 // Get publishable key from environment, fallback to server fetch if needed
 const envPublishableKey = 
@@ -21,7 +25,6 @@ interface EmbeddedCheckoutModalProps {
 export const EmbeddedCheckoutModal: React.FC<EmbeddedCheckoutModalProps> = ({
   clientSecret,
   onClose,
-  bookingId,
   amount,
   vendorName
 }) => {
@@ -35,6 +38,13 @@ export const EmbeddedCheckoutModal: React.FC<EmbeddedCheckoutModalProps> = ({
   const [isLoadingKey, setIsLoadingKey] = useState(!envPublishableKey);
 
   useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
+  useEffect(() => {
     if (!envPublishableKey) {
       fetch('/api/stripe/config')
         .then(res => res.json())
@@ -42,7 +52,6 @@ export const EmbeddedCheckoutModal: React.FC<EmbeddedCheckoutModalProps> = ({
           if (data.publishableKey) {
             setStripePromise(loadStripe(data.publishableKey));
           } else {
-            // Fallback key
             setStripePromise(loadStripe('pk_test_51PxyzSamplePublishableKey'));
           }
         })
@@ -56,73 +65,79 @@ export const EmbeddedCheckoutModal: React.FC<EmbeddedCheckoutModalProps> = ({
     }
   }, []);
 
+  const { backdropOpacity, isDismissing, dragModalProps, dragHandleProps, dismissWithSlideOut } = useModalDragDismiss(
+    onClose,
+    true
+  );
+
   return (
-    <div 
+    <motion.div 
+      style={{ opacity: backdropOpacity }}
+      transition={MODAL_TRANSITION}
       role="dialog" 
       aria-modal="true" 
       aria-labelledby="embedded-checkout-title" 
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+      className={`fixed inset-0 z-[160] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
     >
-      <div className="bg-[#0f0f0f] w-full max-w-3xl max-h-[92vh] rounded-3xl border border-[#D4AF37]/30 shadow-[0_0_50px_rgba(212,175,55,0.15)] flex flex-col overflow-hidden relative">
-        
-        {/* Modal Header */}
-        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-zinc-800/80 bg-zinc-950/90 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-[#D4AF37]/10 rounded-2xl border border-[#D4AF37]/30 text-[#D4AF37]">
-              <ShieldCheck className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 id="embedded-checkout-title" className="text-sm sm:text-base font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-wider">
-                  Secure Embedded Paywall
-                </h3>
-                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
-                  <Lock className="w-3 h-3" /> PCI Compliant
-                </span>
-              </div>
-              <p className="text-[11px] text-zinc-400 mt-0.5">
-                {vendorName ? `${vendorName} • ` : ''}
-                {bookingId ? `Booking #${bookingId.slice(0, 8)}` : 'Simcha Service Payment'}
-                {amount ? ` • $${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : ''}
-              </p>
-            </div>
+      <motion.div
+        {...dragModalProps}
+        transition={MODAL_TRANSITION}
+        className={`bg-[#0a0a0a] w-full sm:w-full sm:max-w-xl h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-[0_0_50px_rgba(212,175,55,0.18)] overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+      >
+        {/* Top bar drag indicator positioned across the top edge, leaving top-right corner clear for X button */}
+        <div 
+          {...dragHandleProps}
+          data-drag-handle="true"
+          className="absolute top-0 left-0 right-14 z-30 pt-1.5 pb-4 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+        >
+          <div className="pl-14">
+            <ModalDragIndicator />
           </div>
-
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer outline-none"
-            aria-label="Close Checkout"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-2 sm:p-4 bg-white rounded-b-3xl text-black min-h-[450px]">
-          {isLoadingKey || !stripePromise ? (
-            <div className="flex flex-col items-center justify-center h-80 gap-3 text-zinc-400">
-              <Loader2 className="w-8 h-8 animate-spin text-[#D4AF37]" />
-              <p className="text-xs font-semibold uppercase tracking-wider">Loading Secure Checkout...</p>
-            </div>
-          ) : (
-            <EmbeddedCheckoutProvider stripe={stripePromise} options={{ clientSecret }}>
-              <EmbeddedCheckout />
-            </EmbeddedCheckoutProvider>
+        {/* Floating close button rendered at root z-[120] top-4 right-4 - identical to BookingModal */}
+        <button 
+          type="button"
+          onClick={dismissWithSlideOut} 
+          className="absolute top-4 right-4 z-[120] w-8 h-8 flex items-center justify-center bg-[#1a1a1a] hover:bg-[#262626] border border-[#D4AF37]/40 rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] shadow-xl cursor-pointer" 
+          aria-label="Close Checkout"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Brand-Themed Header */}
+        <div 
+          {...dragHandleProps}
+          data-drag-handle="true"
+          className="pt-7 pb-4 px-5 sm:px-6 border-b border-[#D4AF37]/20 bg-[#0a0a0a] shrink-0 text-center cursor-grab active:cursor-grabbing select-none"
+        >
+          <h3 id="embedded-checkout-title" className="text-base sm:text-lg font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-widest">
+            {vendorName || 'Complete Booking Payment'}
+          </h3>
+          {typeof amount === 'number' && amount > 0 && (
+            <p className="text-xs text-zinc-300 font-bold tracking-widest uppercase mt-1">
+              Total Due: <span className="text-[#D4AF37] font-[Cinzel] text-sm">${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+            </p>
           )}
         </div>
 
-        {/* Modal Footer Banner */}
-        <div className="p-3 bg-zinc-950 border-t border-zinc-800/80 text-center text-[10px] text-zinc-400 flex items-center justify-between px-6 shrink-0">
-          <span className="flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-[#D4AF37]" /> Powered by Stripe Connect Split Payments
-          </span>
-          <span className="text-zinc-400 font-mono">
-            Cards & ACH Direct Debit Enabled
-          </span>
+        {/* Full-Width Stripe Checkout Body */}
+        <div className="flex-1 overflow-y-auto w-full bg-[#0a0a0a] p-0 sm:p-3 custom-scrollbar">
+          <div className="w-full min-h-[460px] bg-white sm:rounded-2xl overflow-hidden border border-[#D4AF37]/20">
+            {isLoadingKey || !stripePromise ? (
+              <div className="flex flex-col items-center justify-center h-96 gap-3 bg-[#0a0a0a] text-zinc-300">
+                <Loader2 className="w-8 h-8 animate-spin text-[#D4AF37]" />
+                <p className="text-[11px] font-black uppercase tracking-widest text-[#D4AF37]">Preparing Checkout...</p>
+              </div>
+            ) : (
+              <EmbeddedCheckoutProvider stripe={stripePromise} options={{ clientSecret }}>
+                <EmbeddedCheckout className="w-full" />
+              </EmbeddedCheckoutProvider>
+            )}
+          </div>
         </div>
-
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 

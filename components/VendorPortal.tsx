@@ -9,12 +9,13 @@ import { Vendor, Booking, Message, SelectedService, VendorService, ServiceCatego
 import { db, storage, auth } from '../services/firebase';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { markChatAsRead, deleteMessage } from '../services/messagingService';
-import { doc, updateDoc, writeBatch, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc, writeBatch, onSnapshot, collection } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import LocationAutocomplete from './LocationAutocomplete';
 import { ThemeModeSwitch } from './ThemeModeSwitch';
+import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
 
 interface VendorPortalProps {
   vendor: Vendor;
@@ -49,6 +50,325 @@ const renderMedia = (url: string | undefined | null, className: string, defaultC
     return <video controls autoPlay muted loop playsInline src={url} className={className} />;
   }
   return <img src={url} className={className} alt="" />;
+};
+
+const EVENT_MODAL_TRANSITION = { duration: 1, ease: [0.25, 1, 0.5, 1] as const };
+
+const VendorEventScopeModal: React.FC<{
+  selectedCalendarEvent: {
+    type: 'google' | 'simcha';
+    id: string;
+    title: string;
+    start: string;
+    end: string;
+    location?: string;
+    notes?: string;
+    badge: 'Google Calendar Event' | 'Simcha Booking/event';
+    clientName?: string;
+    contactEmail?: string;
+    amount?: number;
+    selectedServices?: SelectedService[];
+    status?: string;
+    bookingId?: string;
+  };
+  onClose: () => void;
+  openDrawerSections: Record<string, boolean>;
+  toggleDrawerSection: (section: string) => void;
+  AccordionSection: React.FC<{
+    title: string;
+    icon: any;
+    isOpen: boolean;
+    onToggle: () => void;
+    children: React.ReactNode;
+  }>;
+  onUpdateBookingStatus: (bookingId: string, status: 'confirmed' | 'cancelled') => void;
+  showNotification: (message: string, type?: 'success' | 'info') => void;
+}> = ({
+  selectedCalendarEvent,
+  onClose,
+  openDrawerSections,
+  toggleDrawerSection,
+  AccordionSection,
+  onUpdateBookingStatus,
+  showNotification
+}) => {
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
+  const { backdropOpacity, isDismissing, dragModalProps, dragHandleProps, dismissWithSlideOut } = useModalDragDismiss(
+    onClose,
+    true
+  );
+
+  return (
+    <motion.div
+      style={{ opacity: backdropOpacity }}
+      transition={EVENT_MODAL_TRANSITION}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="calendar-event-modal-title"
+      className={`fixed inset-0 z-[110] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) dismissWithSlideOut();
+      }}
+    >
+      <motion.div
+        {...dragModalProps}
+        transition={EVENT_MODAL_TRANSITION}
+        className={`bg-[#0a0a0a] w-full sm:w-full sm:max-w-xl h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-[2.5rem] border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-[0_0_50px_rgba(212,175,55,0.18)] overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+      >
+        {/* Top bar drag indicator positioned across the top edge, leaving top-right corner clear for X button */}
+        <div
+          {...dragHandleProps}
+          data-drag-handle="true"
+          className="absolute top-0 left-0 right-14 z-30 pt-1.5 pb-4 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+        >
+          <div className="pl-14">
+            <ModalDragIndicator />
+          </div>
+        </div>
+
+        {/* Floating X Close Button matching BookingModal & QuickViewModal */}
+        <button
+          type="button"
+          onClick={() => dismissWithSlideOut()}
+          aria-label="Close"
+          className="absolute top-4 right-4 z-[120] w-8 h-8 flex items-center justify-center bg-[#1a1a1a] hover:bg-[#262626] border border-[#D4AF37]/40 rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] shadow-xl cursor-pointer"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Header */}
+        <div
+          {...dragHandleProps}
+          data-drag-handle="true"
+          className="px-6 pt-7 pb-4 border-b border-white/10 flex justify-between items-center bg-black/50 pr-14 cursor-grab active:cursor-grabbing select-none"
+        >
+          <div className="flex flex-col gap-1.5 min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedCalendarEvent.type === 'simcha' ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span>
+                  {selectedCalendarEvent.clientName || 'Simcha Request'}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#D4AF37]/15 text-zinc-400 border border-zinc-400/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Google Calendar Event
+                </span>
+              )}
+              {selectedCalendarEvent.notes?.includes('OFFERED PRICE:') && (
+                <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest bg-[#D4AF37] text-black">
+                  Client Offer
+                </span>
+              )}
+            </div>
+            <h2 id="calendar-event-modal-title" className="text-lg sm:text-xl font-bold font-[Cinzel] text-[#D4AF37] leading-tight truncate">
+              {selectedCalendarEvent.title}
+            </h2>
+          </div>
+        </div>
+
+        {/* Scrollable Body */}
+        <div data-modal-scroll className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 custom-scrollbar">
+          {/* Logistics Accordion */}
+          <AccordionSection
+            title="Logistics & Scheduling"
+            icon={Clock}
+            isOpen={openDrawerSections.logistics}
+            onToggle={() => toggleDrawerSection('logistics')}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+              {/* Start Date & Time */}
+              <div className="bg-black/30 p-3.5 rounded-2xl border border-white/5 flex items-start gap-3 hover:border-white/10 transition-colors">
+                <Clock className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">Start Logistics</p>
+                  <p className="text-white font-bold text-xs sm:text-sm leading-tight">{selectedCalendarEvent.start}</p>
+                </div>
+              </div>
+
+              {/* End Date & Time */}
+              <div className="bg-black/30 p-3.5 rounded-2xl border border-white/5 flex items-start gap-3 hover:border-white/10 transition-colors">
+                <Clock className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">End Logistics</p>
+                  <p className="text-white font-bold text-xs sm:text-sm leading-tight">{selectedCalendarEvent.end}</p>
+                </div>
+              </div>
+
+              {/* Location */}
+              <div className="bg-black/30 p-3.5 rounded-2xl border border-white/5 flex items-start gap-3 col-span-1 md:col-span-2 hover:border-white/10 transition-colors">
+                <MapPin className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">Event Location</p>
+                  <p className="text-white font-bold text-xs sm:text-sm leading-tight break-words">{selectedCalendarEvent.location || 'Not specified'}</p>
+                </div>
+                {selectedCalendarEvent.location && selectedCalendarEvent.location !== 'Venue address pending' && selectedCalendarEvent.location !== 'Not specified' && (
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(selectedCalendarEvent.location)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-3.5 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all shrink-0 self-center cursor-pointer"
+                  >
+                    Navigate
+                  </a>
+                )}
+              </div>
+            </div>
+          </AccordionSection>
+
+          {/* Event Context: Google Event Description */}
+          {selectedCalendarEvent.type === 'google' && (
+            <AccordionSection
+              title="Calendar Description"
+              icon={FileText}
+              isOpen={openDrawerSections.notes}
+              onToggle={() => toggleDrawerSection('notes')}
+            >
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 text-zinc-300 text-xs leading-relaxed whitespace-pre-wrap mt-2">
+                {selectedCalendarEvent.notes || 'No description provided for this Google event.'}
+              </div>
+            </AccordionSection>
+          )}
+
+          {/* Event Context: Simcha Booking/event Details */}
+          {selectedCalendarEvent.type === 'simcha' && (
+            <>
+              {/* Client Info */}
+              <AccordionSection
+                title="Client Information"
+                icon={User}
+                isOpen={openDrawerSections.client}
+                onToggle={() => toggleDrawerSection('client')}
+              >
+                <div className="bg-black/40 p-4 rounded-2xl border border-white/5 grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">Client Name</p>
+                    <p className="text-white font-bold text-sm">{selectedCalendarEvent.clientName || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">Contact Email</p>
+                    <p className="text-white font-bold text-sm break-all">{selectedCalendarEvent.contactEmail || 'N/A'}</p>
+                  </div>
+                </div>
+              </AccordionSection>
+
+              {/* Packages / Services */}
+              <AccordionSection
+                title="Requested Locations & Add-ons"
+                icon={ClipboardList}
+                isOpen={openDrawerSections.services}
+                onToggle={() => toggleDrawerSection('services')}
+              >
+                <div className="bg-black/40 rounded-2xl border border-white/5 overflow-hidden mt-2">
+                  {selectedCalendarEvent.selectedServices && selectedCalendarEvent.selectedServices.length > 0 ? (
+                    <div className="divide-y divide-white/5">
+                      {selectedCalendarEvent.selectedServices.map((s: SelectedService) => (
+                        <div key={s.id} className="p-3.5 flex justify-between items-center hover:bg-white/5 transition-colors">
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-zinc-200">{s.name}</span>
+                            <span className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">
+                              {s.hours ? `${s.hours} hrs` : `Qty: ${s.quantity}`} {s.unit && s.unit !== 'location' ? `• ${s.unit}` : ''}
+                            </span>
+                          </div>
+                          <span className="text-xs font-black text-[#D4AF37]">
+                            ${((s.price * (s.quantity || 1)) + (s.hours && s.defaultHours && s.hourlyRate ? Math.max(0, s.hours - s.defaultHours) * s.hourlyRate : 0)).toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 text-center">
+                      <p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Base Package Requested</p>
+                    </div>
+                  )}
+                  <div className="p-3.5 bg-[#D4AF37]/10 border-t border-[#D4AF37]/20 flex justify-between items-center">
+                    <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest">
+                      {selectedCalendarEvent.notes?.includes('OFFERED PRICE:') ? 'Offered Price' : 'Total Value'}
+                    </span>
+                    <span className="text-lg font-black text-[#D4AF37] font-[Cinzel]">${(selectedCalendarEvent.amount || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              </AccordionSection>
+
+              {/* Message / Notes */}
+              <AccordionSection
+                title="Message from Client"
+                icon={MessageSquare}
+                isOpen={openDrawerSections.notes}
+                onToggle={() => toggleDrawerSection('notes')}
+              >
+                <div className="bg-black/40 p-4 rounded-2xl border border-white/5 italic text-zinc-300 text-xs leading-relaxed whitespace-pre-wrap mt-2">
+                  {selectedCalendarEvent.notes ? `"${selectedCalendarEvent.notes}"` : "No additional notes provided by client."}
+                </div>
+              </AccordionSection>
+            </>
+          )}
+        </div>
+
+        {/* Slimmed-Down Pill Action Buttons (Same Height, Normal Red & Normal Solid Green) */}
+        <div className="px-5 py-3.5 bg-black border-t border-white/10">
+          {selectedCalendarEvent.type === 'simcha' && selectedCalendarEvent.status === 'pending' ? (
+            <div className="flex items-center justify-between gap-2.5 sm:gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  onUpdateBookingStatus(selectedCalendarEvent.id, 'cancelled');
+                  dismissWithSlideOut();
+                }}
+                className="flex-1 h-9 px-3 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-full font-black text-[9px] sm:text-[10px] uppercase tracking-widest border border-red-600 transition-all flex items-center justify-center cursor-pointer shadow-sm"
+              >
+                Decline
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const amount = prompt("Enter counter-offer amount ($):", (selectedCalendarEvent.amount || 0).toString());
+                  if (amount && !isNaN(Number(amount))) {
+                    const newNotes = `OFFERED PRICE: $${amount}. ${selectedCalendarEvent.notes || ''}`;
+                    updateDoc(doc(db, 'bookings', selectedCalendarEvent.id), {
+                      amount: Number(amount),
+                      notes: newNotes
+                    }).then(() => {
+                      showNotification("Counter-offer sent!");
+                      dismissWithSlideOut();
+                    });
+                  }
+                }}
+                className="flex-1 h-9 px-3 mx-1 sm:mx-2 bg-zinc-900 hover:bg-zinc-800 active:scale-95 text-[#D4AF37] rounded-full font-black text-[9px] sm:text-[10px] uppercase tracking-widest border border-[#D4AF37]/40 transition-all flex items-center justify-center cursor-pointer shadow-sm"
+              >
+                Make Offer
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onUpdateBookingStatus(selectedCalendarEvent.id, 'confirmed');
+                  dismissWithSlideOut();
+                }}
+                className="flex-[1.35] h-9 px-4 bg-green-600 hover:bg-green-700 active:scale-95 text-white rounded-full font-black text-[9px] sm:text-[10px] uppercase tracking-widest border border-green-600 transition-all flex items-center justify-center cursor-pointer shadow-sm"
+              >
+                Confirm & Accept
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => dismissWithSlideOut()}
+              className="w-full h-9 bg-white/5 hover:bg-white/10 active:scale-95 text-zinc-300 rounded-full font-black text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center cursor-pointer"
+            >
+              Close
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
 };
 
 const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode }) => {
@@ -98,6 +418,45 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       ...prev,
       [section]: !prev[section]
     }));
+  };
+
+  // Client profile photo lookup map so Request pills can show client profile photos or initials
+  const [clientPhotosMap, setClientPhotosMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'users'),
+      (snap) => {
+        const map: Record<string, string> = {};
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          if (data?.photoURL) {
+            map[d.id] = data.photoURL;
+            if (data.email) {
+              map[String(data.email).toLowerCase()] = data.photoURL;
+            }
+          }
+        });
+        setClientPhotosMap(map);
+      },
+      () => {}
+    );
+    return () => unsub();
+  }, []);
+
+  const getClientPhoto = (b: Booking): string | undefined => {
+    if (b.clientPhotoURL) return b.clientPhotoURL;
+    if (b.userId && clientPhotosMap[b.userId]) return clientPhotosMap[b.userId];
+    if (b.contactEmail && clientPhotosMap[b.contactEmail.toLowerCase()]) {
+      return clientPhotosMap[b.contactEmail.toLowerCase()];
+    }
+    return undefined;
+  };
+
+  const getClientInitials = (name?: string): string => {
+    if (!name || !name.trim()) return 'C';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
   useEffect(() => {
@@ -324,9 +683,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     return { points, linePath, areaPath, padding, chartW, chartH, maxRevenue };
   }, [monthlyData, chartSize]);
 
-  // Sorted bookings newest first by createdAt/request timestamp with reliable fallback
+  // Sorted bookings newest first by createdAt/request timestamp with strict single-booking deduplication
   const sortedBookings = useMemo(() => {
-    return [...bookings].sort((a, b) => {
+    const sorted = [...bookings].sort((a, b) => {
       const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       if (timeA !== timeB) {
@@ -334,6 +693,19 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       }
       return b.id.localeCompare(a.id);
     });
+
+    const seen = new Set<string>();
+    const deduped: Booking[] = [];
+    for (const b of sorted) {
+      const clientKey = (b.userId || b.clientId || b.contactEmail || b.clientName || '').toLowerCase();
+      const compositeKey = `${b.vendorId}_${b.date}_${clientKey}`;
+      if (!seen.has(b.id) && !seen.has(compositeKey)) {
+        seen.add(b.id);
+        seen.add(compositeKey);
+        deduped.push(b);
+      }
+    }
+    return deduped;
   }, [bookings]);
 
   // Dynamic Filtering logic
@@ -430,10 +802,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   // New Service Form State
   const [newServiceName, setNewServiceName] = useState('');
   const [newServicePrice, setNewServicePrice] = useState('');
-  const [newServiceUnit, setNewServiceUnit] = useState('location');
+  const [newServiceUnit, setNewServiceUnit] = useState('');
   const [newServiceCategoryType, setNewServiceCategoryType] = useState<ServiceCategoryType>('location');
   const [newServiceAllowQty, setNewServiceAllowQty] = useState(false);
-  const [newServiceDefaultHours, setNewServiceDefaultHours] = useState('4');
+  const [newServiceDefaultHours, setNewServiceDefaultHours] = useState('3');
   const [newServiceHourlyRate, setNewServiceHourlyRate] = useState('100');
   const [newServiceImageUrl, setNewServiceImageUrl] = useState('');
   const [isUploadingNewServiceImage, setIsUploadingNewServiceImage] = useState(false);
@@ -755,9 +1127,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
   useEffect(() => {
     if (onActiveChatChangeRef.current) {
-      onActiveChatChangeRef.current(!!selectedThreadEmail && activeTab === 'messages');
+      onActiveChatChangeRef.current((!!selectedThreadEmail && activeTab === 'messages') || !!selectedCalendarEvent);
     }
-  }, [selectedThreadEmail, activeTab]);
+  }, [selectedThreadEmail, activeTab, selectedCalendarEvent]);
 
   const handleSendTestEmail = async () => {
     if (!testEmail || !testEmail.includes('@')) {
@@ -1288,10 +1660,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       id: Math.random().toString(36).substr(2, 9),
       name: newServiceName.trim(),
       price: parseFloat(newServicePrice),
-      unit: isLoc ? 'location' : newServiceUnit,
+      unit: isLoc ? 'location' : newServiceUnit.trim().slice(0, 28),
       categoryType: newServiceCategoryType,
       allowQuantity: newServiceCategoryType === 'amenities' ? newServiceAllowQty : false,
-      defaultHours: isLoc ? Math.max(1, parseInt(newServiceDefaultHours) || 4) : undefined,
+      defaultHours: isLoc ? Math.max(1, parseInt(newServiceDefaultHours) || 3) : undefined,
       hourlyRate: isLoc ? Math.max(0, parseFloat(newServiceHourlyRate) || 0) : undefined,
       image: newServiceImageUrl || undefined
     };
@@ -1303,9 +1675,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
     setNewServiceName('');
     setNewServicePrice('');
-    setNewServiceUnit(newServiceCategoryType === 'location' ? 'location' : 'item');
+    setNewServiceUnit('');
     setNewServiceAllowQty(false);
-    setNewServiceDefaultHours('4');
+    setNewServiceDefaultHours('3');
     setNewServiceHourlyRate('100');
     setNewServiceImageUrl('');
     setShowAddForm(false);
@@ -2131,7 +2503,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   };
 
   return (
-    <div className="h-[calc(100dvh-5rem)] bg-black text-zinc-100 flex flex-col md:flex-row overflow-hidden relative">
+    <div className="min-h-[calc(100dvh-72px)] sm:min-h-[calc(100dvh-5rem)] flex-1 bg-[#050505] text-zinc-100 flex flex-col md:flex-row relative">
       {/* New Booking Alert Toast */}
       {newBookingAlert && (
         <aside aria-label="New Booking Alert" role="status" className="fixed top-20 right-4 z-[100] w-full max-w-sm animate-in slide-in-from-right duration-500">
@@ -2154,319 +2526,26 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         </aside>
       )}
 
-      {/* Unified Sleek Calendar Event Modal with Close Animations */}
-      <AnimatePresence>
-        {selectedCalendarEvent && (
-          <div 
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="calendar-event-modal-title"
-            className="fixed inset-0 z-[110] flex items-center justify-center p-4"
-          >
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.25 }}
-              onClick={() => setSelectedCalendarEvent(null)}
-              className="absolute inset-0 bg-black/95 backdrop-blur-md"
-            />
-            
-            {/* Modal Box */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              transition={{ type: "spring", duration: 0.45, bounce: 0.15 }}
-              className="bg-[#111] w-full max-w-2xl rounded-3xl border border-[#D4AF37]/30 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] z-10"
-            >
-              {/* Header */}
-              <div className="p-6 border-b border-white/10 flex justify-between items-center bg-black/50">
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2.5">
-                    {selectedCalendarEvent.type === 'simcha' ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Simcha Booking/event
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#D4AF37]/15 text-zinc-400 border border-zinc-400/30">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></span> Google Calendar Event
-                      </span>
-                    )}
-                  </div>
-                  <h2 id="calendar-event-modal-title" className="text-xl md:text-2xl font-bold font-[Cinzel] text-[#D4AF37] leading-tight">
-                    {selectedCalendarEvent.title}
-                  </h2>
-                  {selectedCalendarEvent.bookingId && (
-                    <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">
-                      Booking ID: {selectedCalendarEvent.bookingId}
-                    </p>
-                  )}
-                </div>
-                <button 
-                  onClick={() => setSelectedCalendarEvent(null)} 
-                  className="text-zinc-400 hover:text-white p-2.5 bg-white/5 hover:bg-white/10 rounded-full transition-all duration-300"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              
-              {/* Scrollable Body */}
-              <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-4">
-                
-                {/* Logistics Accordion */}
-                <AccordionSection
-                  title="Logistics & Scheduling"
-                  icon={Clock}
-                  isOpen={openDrawerSections.logistics}
-                  onToggle={() => toggleDrawerSection('logistics')}
-                >
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                    {/* Start Date & Time */}
-                    <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 hover:border-white/10 transition-colors">
-                      <Clock className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">Start Logistics</p>
-                        <p className="text-white font-bold text-sm leading-tight">{selectedCalendarEvent.start}</p>
-                      </div>
-                    </div>
-
-                    {/* End Date & Time */}
-                    <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 hover:border-white/10 transition-colors">
-                      <Clock className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">End Logistics</p>
-                        <p className="text-white font-bold text-sm leading-tight">{selectedCalendarEvent.end}</p>
-                      </div>
-                    </div>
-
-                    {/* Location */}
-                    <div className="bg-black/30 p-4 rounded-2xl border border-white/5 flex items-start gap-3 col-span-1 md:col-span-2 hover:border-white/10 transition-colors">
-                      <MapPin className="w-4 h-4 text-zinc-400/50 shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">Event Location</p>
-                        <p className="text-white font-bold text-sm leading-tight truncate">{selectedCalendarEvent.location || 'Not specified'}</p>
-                      </div>
-                      {selectedCalendarEvent.location && selectedCalendarEvent.location !== 'Venue address pending' && selectedCalendarEvent.location !== 'Not specified' && (
-                        <a
-                          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(selectedCalendarEvent.location)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-3.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all shrink-0 self-center cursor-pointer"
-                        >
-                          Navigate
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </AccordionSection>
-
-                {/* Event Context: Google Event Description */}
-                {selectedCalendarEvent.type === 'google' && (
-                  <AccordionSection
-                    title="Calendar Description"
-                    icon={FileText}
-                    isOpen={openDrawerSections.notes}
-                    onToggle={() => toggleDrawerSection('notes')}
-                  >
-                    <div className="bg-black/40 p-5 rounded-2xl border border-white/5 text-zinc-300 text-xs leading-relaxed whitespace-pre-wrap mt-2">
-                      {selectedCalendarEvent.notes || 'No description provided for this Google event.'}
-                    </div>
-                  </AccordionSection>
-                )}
-
-                {/* Event Context: Simcha Booking/event Details */}
-                {selectedCalendarEvent.type === 'simcha' && (
-                  <>
-                    {/* Client Info */}
-                    <AccordionSection
-                      title="Client Information"
-                      icon={User}
-                      isOpen={openDrawerSections.client}
-                      onToggle={() => toggleDrawerSection('client')}
-                    >
-                      <div className="bg-black/40 p-5 rounded-2xl border border-white/5 grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                        <div>
-                          <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">Client Name</p>
-                          <p className="text-white font-bold text-sm">{selectedCalendarEvent.clientName || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest mb-1">Contact Email</p>
-                          <p className="text-white font-bold text-sm truncate">{selectedCalendarEvent.contactEmail || 'N/A'}</p>
-                        </div>
-                      </div>
-                    </AccordionSection>
-
-                    {/* Packages / Services */}
-                    <AccordionSection
-                      title="Requested Packages & Services"
-                      icon={ClipboardList}
-                      isOpen={openDrawerSections.services}
-                      onToggle={() => toggleDrawerSection('services')}
-                    >
-                      <div className="bg-black/40 rounded-2xl border border-white/5 overflow-hidden mt-2">
-                        {selectedCalendarEvent.selectedServices && selectedCalendarEvent.selectedServices.length > 0 ? (
-                          <div className="divide-y divide-white/5">
-                            {selectedCalendarEvent.selectedServices.map((s: SelectedService) => (
-                              <div key={s.id} className="p-4 flex justify-between items-center hover:bg-white/5 transition-colors">
-                                <div className="flex flex-col">
-                                  <span className="text-xs font-bold text-zinc-200">{s.name}</span>
-                                  <span className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">Qty: {s.quantity} {s.unit ? `per ${s.unit}` : ''}</span>
-                                </div>
-                                <span className="text-xs font-black text-[#D4AF37]">${(s.price * s.quantity).toLocaleString()}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="p-5 text-center">
-                            <p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Base Starting Package Requested</p>
-                          </div>
-                        )}
-                        <div className="p-4 bg-[#D4AF37]/10 border-t border-[#D4AF37]/20 flex justify-between items-center">
-                          <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest">
-                            {selectedCalendarEvent.notes?.includes('OFFERED PRICE:') ? 'Offered Price (Counter-Offer)' : 'Total Booking/event Value'}
-                          </span>
-                          <span className="text-lg font-black text-[#D4AF37]">${(selectedCalendarEvent.amount || 0).toLocaleString()}</span>
-                        </div>
-                      </div>
-                    </AccordionSection>
-
-                    {/* Message / Notes */}
-                    <AccordionSection
-                      title="Message from Client"
-                      icon={MessageSquare}
-                      isOpen={openDrawerSections.notes}
-                      onToggle={() => toggleDrawerSection('notes')}
-                    >
-                      <div className="bg-black/40 p-5 rounded-2xl border border-white/5 italic text-zinc-300 text-xs leading-relaxed whitespace-pre-wrap mt-2">
-                        {selectedCalendarEvent.notes ? `"${selectedCalendarEvent.notes}"` : "No additional notes provided by client."}
-                      </div>
-                    </AccordionSection>
-                  </>
-                )}
-              </div>
-              
-              {/* Footer / Interactive Actions */}
-              <div className="p-6 bg-black border-t border-white/10 flex flex-wrap gap-3">
-                {selectedCalendarEvent.type === 'simcha' && selectedCalendarEvent.status === 'pending' ? (
-                  <>
-                    <motion.button 
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => { 
-                        onUpdateBookingStatus(selectedCalendarEvent.id, 'cancelled'); 
-                        setSelectedCalendarEvent(null); 
-                      }}
-                      className="flex-1 py-3.5 bg-red-950/20 hover:bg-red-900/30 text-red-500 rounded-full font-black text-[10px] uppercase tracking-[0.2em] border border-red-500/30 transition-all cursor-pointer"
-                    >
-                      Decline
-                    </motion.button>
-                    <motion.button 
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => {
-                        const amount = prompt("Enter counter-offer amount ($):", (selectedCalendarEvent.amount || 0).toString());
-                        if (amount && !isNaN(Number(amount))) {
-                          const newNotes = `OFFERED PRICE: $${amount}. ${selectedCalendarEvent.notes || ''}`;
-                          updateDoc(doc(db, 'bookings', selectedCalendarEvent.id), { 
-                            amount: Number(amount),
-                            notes: newNotes
-                          }).then(() => {
-                             showNotification("Counter-offer sent!");
-                             setSelectedCalendarEvent(null);
-                          });
-                        }
-                      }}
-                      className="flex-1 py-3.5 bg-zinc-800 hover:bg-zinc-700 text-[#D4AF37] rounded-full font-black text-[10px] uppercase tracking-[0.2em] border border-zinc-400/20 transition-all cursor-pointer"
-                    >
-                      Make Offer
-                    </motion.button>
-                    <motion.button 
-                      initial={{ backgroundColor: '#16a34a' }}
-                      whileHover={{ scale: 1.02, backgroundColor: '#15803d' }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => { 
-                        onUpdateBookingStatus(selectedCalendarEvent.id, 'confirmed'); 
-                        setSelectedCalendarEvent(null); 
-                      }}
-                      className="relative overflow-hidden flex-[2] py-3.5 bg-green-600 text-white rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-green-500/10 transition-all border border-green-500 cursor-pointer"
-                    >
-                      {/* Signature Shine Sweep Element */}
-                      <motion.div 
-                        initial={{ left: '-100%' }}
-                        animate={{ left: '150%' }}
-                        transition={{ 
-                          repeat: Infinity, 
-                          repeatType: "loop", 
-                          duration: 2.2, 
-                          ease: "linear",
-                          repeatDelay: 1.5 
-                        }}
-                        className="absolute top-0 bottom-0 w-12 bg-gradient-to-r from-transparent via-white/80 to-transparent -skew-x-12 pointer-events-none"
-                      />
-                      <span className="relative z-10">Confirm & Accept</span>
-                    </motion.button>
-                  </>
-                ) : (
-                  <motion.button 
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    onClick={() => setSelectedCalendarEvent(null)}
-                    className="w-full py-3.5 bg-white/5 hover:bg-white/10 text-zinc-400 rounded-full font-black text-[10px] uppercase tracking-[0.2em] transition-all cursor-pointer"
-                  >
-                    Close Record
-                  </motion.button>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Mobile Toggle */}
-      {!isSidebarOpen && (
-      <header className="md:hidden bg-[#0a0a0a] border-b border-[#D4AF37]/10 p-4 flex justify-between items-center z-30 sticky top-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-[#D4AF37] rounded-lg flex items-center justify-center text-black font-bold font-[Cinzel] shrink-0">V</div>
-          <h2 className="text-[#D4AF37] font-bold font-[Cinzel] tracking-widest uppercase text-sm whitespace-nowrap">V Portal</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          {!isSidebarOpen && (
-            <button 
-              onClick={() => setIsSidebarOpen(true)} 
-              className="text-[#D4AF37] p-2 bg-white/5 rounded-full transition-all hover:bg-white/10"
-              aria-label="Toggle navigation menu"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-          )}
-        </div>
-      </header>
-      )}
-
-      {/* Sidebar Overlay */}
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-300"
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsSidebarOpen(false); }}
+      {/* Unified Sleek Calendar & Request Scope Modal — Exact Same Animation & Swipe-Down as BookingModal & QuickViewModal */}
+      {selectedCalendarEvent && (
+        <VendorEventScopeModal
+          selectedCalendarEvent={selectedCalendarEvent}
+          onClose={() => setSelectedCalendarEvent(null)}
+          openDrawerSections={openDrawerSections}
+          toggleDrawerSection={toggleDrawerSection}
+          AccordionSection={AccordionSection}
+          onUpdateBookingStatus={onUpdateBookingStatus}
+          showNotification={showNotification}
         />
       )}
 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#0a0a0a] border-r border-[#D4AF37]/10 flex flex-col transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0 shadow-2xl'} md:relative shadow-2xl`}>
+      {/* Desktop Sidebar (BottomNav handles mobile navigation) */}
+      <aside className="hidden md:flex md:w-72 bg-[#0a0a0a] border-r border-[#D4AF37]/10 flex-col md:sticky md:top-20 md:h-[calc(100dvh-5rem)] shadow-2xl">
         <div className="p-6 md:p-8 flex items-center justify-between border-b border-white/5">
           <div>
             <h2 className="text-xl md:text-2xl font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-tighter">Simcha Portal</h2>
             <p className="text-[9px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-[0.3em] mt-1">Vendor Station</p>
           </div>
-          <button 
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsSidebarOpen(false); }} 
-            className="md:hidden z-[9999] p-3 cursor-pointer relative pointer-events-auto rounded-full hover:bg-white/10"
-            aria-label="Close sidebar"
-          >
-            <X className="text-zinc-400 hover:text-white w-5 h-5" />
-          </button>
         </div>
         <nav aria-label="Vendor Portal Navigation" className="flex-1 p-4 space-y-1.5 overflow-y-auto">
           <NavItem id="overview" icon={LayoutDashboard} label="Dashboard" />
@@ -2481,22 +2560,20 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       </aside>
 
       {/* Main Container */}
-      <main className="flex-1 h-full overflow-y-auto bg-[#050505] relative pb-36 md:pb-0">
-        <div className="sticky top-0 z-30 bg-[#050505]/95 backdrop-blur-md px-4 md:px-10 py-5 md:py-6 border-b border-white/5">
-          <div className="flex flex-col gap-4">
-            <div className="flex justify-between items-start">
-              <div>
-                <h1 className="text-xl md:text-3xl font-bold font-[Cinzel] text-white capitalize tracking-tight leading-none">{activeTab}</h1>
-                <p className="text-[#D4AF37]/60 text-[9px] font-black uppercase tracking-[0.4em] mt-2">{vendor.name}</p>
-              </div>
-              <div className="flex items-center gap-4 pt-1">
-                 {pendingRequests > 0 && (
-                   <div className="hidden sm:flex items-center gap-2 bg-zinc-800 border border-zinc-400/30 px-3 py-1.5 rounded-full animate-pulse">
-                     <Bell className="w-3.5 h-3.5 text-zinc-400" />
-                     <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">{pendingRequests} Pending</span>
-                   </div>
-                 )}
-              </div>
+      <main className="flex-1 bg-[#050505] relative pb-36 md:pb-10">
+        <div className="sticky top-[72px] sm:top-20 z-30 bg-[#050505]/95 backdrop-blur-md px-4 md:px-10 py-3.5 md:py-5 border-b border-white/5">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-lg md:text-2xl font-bold font-[Cinzel] text-white capitalize tracking-tight leading-none">{activeTab}</h1>
+              <p className="text-[#D4AF37]/60 text-[9px] font-black uppercase tracking-[0.4em] mt-1">{vendor.name}</p>
+            </div>
+            <div className="flex items-center gap-4">
+               {pendingRequests > 0 && (
+                 <div className="hidden sm:flex items-center gap-2 bg-zinc-800 border border-zinc-400/30 px-3 py-1.5 rounded-full animate-pulse">
+                   <Bell className="w-3.5 h-3.5 text-zinc-400" />
+                   <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">{pendingRequests} Pending</span>
+                 </div>
+               )}
             </div>
           </div>
         </div>
@@ -2899,98 +2976,116 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     </div>
                   </div>
 
-                  {/* Bookings Table Block */}
-                  <div className="bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden">
-                    <div className="p-6 border-b border-white/5 bg-black/20 flex justify-between items-center">
-                      <h3 className="font-bold text-[#D4AF37] font-[Cinzel] uppercase text-sm tracking-widest">Incoming Reservations</h3>
-                      <div className="bg-white/5 px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black uppercase tracking-widest text-zinc-300">
-                        Showing: {filteredBookings.length} of {bookings.length}
+                  {/* Simplified Full-Width Pill-Shaped Requests List */}
+                  <div className="space-y-3">
+                    {filteredBookings.length === 0 ? (
+                      <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No matching requests found</p>
                       </div>
-                    </div>
-                    <div className="overflow-x-auto whitespace-nowrap scrollbar-thin">
-                      <table className="w-full text-left">
-                        <thead className="bg-black/40 border-b border-white/10">
-                          <tr>
-                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">Client</th>
-                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">Details</th>
-                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">Status</th>
-                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-[#D4AF37] text-right">Review Details</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                          {filteredBookings.length === 0 ? (
-                            <tr>
-                              <td colSpan={4} className="px-6 py-24 text-center">
-                                <div className="flex flex-col items-center gap-4 opacity-30">
-                                  <Info className="w-10 h-10 text-[#D4AF37]" />
-                                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No matching requests found</p>
-                                </div>
-                              </td>
-                            </tr>
-                          ) : filteredBookings.map((b, idx) => (
-                            <tr key={b.id} className={`transition-colors group ${idx === 0 ? 'bg-[#D4AF37]/10 border-l-4 border-l-[#D4AF37]' : idx % 2 === 0 ? 'bg-black/90 hover:bg-[#D4AF37]/5' : 'bg-[#151515] hover:bg-[#D4AF37]/5'}`}>
-                              <td className="px-6 py-5">
-                                <div className="flex items-center gap-2">
-                                  <p className="font-bold text-white group-hover:text-[#D4AF37] transition-colors">{b.clientName}</p>
-                                  {idx === 0 && (
-                                    <span className="bg-[#D4AF37] text-black text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse">
-                                      Newest Request
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <p className="text-[10px] text-zinc-300 uppercase tracking-widest truncate max-w-[120px]">{b.contactEmail}</p>
-                                  {b.notes?.includes('OFFERED PRICE:') && (
-                                    <span className="bg-[#D4AF37]/20 text-[#D4AF37] text-[7px] font-black px-1.5 py-0.5 rounded border border-[#D4AF37]/30 uppercase tracking-tighter">Offer</span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-6 py-5">
-                                <p className="text-xs text-zinc-300 font-bold mb-1">{b.eventName}</p>
-                                <div className="flex items-center gap-3">
-                                  <span className="text-[9px] text-zinc-300 font-black uppercase tracking-widest flex items-center gap-1.5 bg-black px-2 py-0.5 rounded border border-white/5">
-                                    <Calendar className="w-2.5 h-2.5" /> {b.date}
-                                  </span>
-                                  <span className="text-[9px] text-zinc-300 font-black uppercase tracking-widest flex items-center gap-1.5 bg-black px-2 py-0.5 rounded border border-white/5">
-                                    <DollarSign className="w-2.5 h-2.5" /> {b.amount}
+                    ) : (
+                      filteredBookings.map((b, idx) => {
+                        const clientPhoto = getClientPhoto(b);
+                        const initials = getClientInitials(b.clientName);
+                        const isOffer = Boolean(b.isOffer || b.notes?.includes('OFFERED PRICE:'));
+
+                        return (
+                          <div
+                            key={b.id}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => handleSimchaBookingClick(b)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleSimchaBookingClick(b);
+                              }
+                            }}
+                            className={`simcha-event-card relative w-full overflow-hidden rounded-full border transition-all duration-300 cursor-pointer group flex items-center justify-between gap-3 px-5 sm:px-7 py-3.5 sm:py-4 min-h-[68px] sm:min-h-[74px] shadow-xl active:scale-[0.99] ${
+                              idx === 0
+                                ? 'border-[#D4AF37] shadow-[0_0_24px_rgba(212,175,55,0.18)]'
+                                : 'border-[#D4AF37]/35 hover:border-[#D4AF37]/80'
+                            }`}
+                          >
+                            {/* Full Background: Client Profile Image OR Client Initials Pattern */}
+                            <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                              {clientPhoto ? (
+                                <>
+                                  <img
+                                    src={clientPhoto}
+                                    alt={b.clientName}
+                                    className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                                  />
+                                  <div className="absolute inset-0 simcha-event-card-overlay" />
+                                </>
+                              ) : (
+                                <div className="w-full h-full bg-gradient-to-r from-[#0c0c0c] via-[#151208] to-[#0c0c0c] flex items-center justify-center relative">
+                                  <span className="font-[Cinzel] font-black text-5xl sm:text-6xl tracking-[0.25em] text-[#D4AF37]/15 select-none">
+                                    {initials}
                                   </span>
                                 </div>
-                              </td>
-                              <td className="px-6 py-5">
-                                <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.15em] border ${
-                                  b.status === 'confirmed' ? 'bg-green-500/10 text-green-500 border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.05)]' : 
-                                  b.status === 'pending' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/30 shadow-[0_0_10px_rgba(212,175,55,0.05)]' :
-                                  'bg-red-500/10 text-red-500 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.05)]'
-                                }`}>
-                                  {b.status}
+                              )}
+                            </div>
+
+                            {/* Left Side: Initials Badge (when no photo) + Client Name + Essential Badges */}
+                            <div className="relative z-10 flex items-center gap-3 min-w-0 flex-1">
+                              {!clientPhoto && (
+                                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs sm:text-sm shadow-inner">
+                                  {initials}
+                                </div>
+                              )}
+                              <div className="min-w-0 flex flex-wrap items-center gap-2">
+                                <span className="font-bold text-sm sm:text-base text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
+                                  {b.clientName}
                                 </span>
-                              </td>
-                              <td className="px-6 py-5 text-right">
-                                <div className="flex justify-end items-center gap-2">
-                                  {b.status === 'confirmed' && (b.eventAddress || b.eventLocation) && (
-                                    <a
-                                      href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(b.eventAddress || b.eventLocation || '')}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1.5 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-3.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all cursor-pointer"
-                                    >
-                                      Go to Event
-                                    </a>
-                                  )}
-                                  <button 
-                                    type="button"
-                                    onClick={() => handleSimchaBookingClick(b)}
-                                    className="inline-flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all shadow-lg shadow-[#D4AF37]/0 hover:shadow-[#D4AF37]/20 cursor-pointer"
-                                  >
-                                    <Eye className="w-3.5 h-3.5" /> Full Scope
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                                {idx === 0 && (
+                                  <span className="bg-[#D4AF37] text-black text-[8px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest shrink-0 shadow-sm">
+                                    New
+                                  </span>
+                                )}
+                                {isOffer && (
+                                  <span className="simcha-event-pill text-[#D4AF37] text-[8px] font-black px-2.5 py-0.5 rounded-full border border-[#D4AF37]/50 uppercase tracking-widest shrink-0">
+                                    Offer • ${b.amount.toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Right Side: Date + Status + Go to Event (if confirmed) */}
+                            <div className="relative z-10 flex items-center gap-2 sm:gap-2.5 shrink-0">
+                              <span className="simcha-event-pill px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-bold text-zinc-100 border border-white/15 flex items-center gap-1.5">
+                                <Calendar className="w-3 h-3 text-[#D4AF37] shrink-0" />
+                                <span>{b.date}</span>
+                              </span>
+
+                              <span
+                                className={`px-3 py-1 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-widest border ${
+                                  b.status === 'confirmed'
+                                    ? 'bg-green-500/25 text-green-300 border-green-500/45'
+                                    : b.status === 'pending'
+                                    ? 'simcha-event-pill text-[#D4AF37] border-[#D4AF37]/45'
+                                    : 'bg-red-500/25 text-red-300 border-red-500/45'
+                                }`}
+                              >
+                                {b.status}
+                              </span>
+
+                              {b.status === 'confirmed' && (b.eventAddress || b.eventLocation) && (
+                                <a
+                                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(b.eventAddress || b.eventLocation || '')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="simcha-event-btn inline-flex items-center gap-1 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-3 py-1 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/50 transition-all cursor-pointer"
+                                >
+                                  <MapPin className="w-2.5 h-2.5" />
+                                  <span className="hidden sm:inline">Go to Event</span>
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -3499,17 +3594,17 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                 )}
                </div>
 
-               {/* Services & Packaging */}
+                {/* Services & Packaging */}
                <div className="bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden">
                   <div 
                     onClick={() => toggleSection('services')}
-                    className="p-8 border-b border-white/5 bg-black/40 flex justify-between items-center cursor-pointer group"
+                    className="px-5 py-6 sm:p-8 border-b border-white/5 bg-black/40 flex justify-between items-center cursor-pointer group"
                   >
                     <div className="text-left">
-                      <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Services & Pricing Packages</h3>
+                      <h3 className="text-lg sm:text-xl font-bold font-[Cinzel] text-[#D4AF37]">Services & Pricing Packages</h3>
                       <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Define specific offerings for clients to select</p>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
                        <button 
                          onClick={(e) => {
                            e.stopPropagation();
@@ -3517,7 +3612,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                            setShowAddForm(!showAddForm);
                          }}
                          aria-label="Toggle add service form"
-                         className={`p-3 rounded-full transition-all border ${showAddForm ? 'bg-zinc-400/10 text-zinc-400 border-zinc-400/20' : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20 hover:bg-[#D4AF37] hover:text-black'}`}
+                         className={`p-2.5 sm:p-3 rounded-full transition-all border ${showAddForm ? 'bg-zinc-400/10 text-zinc-400 border-zinc-400/20' : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20 hover:bg-[#D4AF37] hover:text-black'}`}
                        >
                          {showAddForm ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                        </button>
@@ -3526,8 +3621,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                   </div>
                   
                    {!collapsedSections['services'] && (
-                    <div className="p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
-                    {/* Grouped Selection Boxes (Locations & Amenities) with Inline Pop-Down Add Form */}
+                    <div className="p-3.5 sm:p-6 md:p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
+                    {/* Wide, Uncompressed Selection Sections (Locations & Add-ons) with Inline Pop-Down Add Form */}
                     {(() => {
                       const allServices = editForm.services || [];
                       const inferCat = (s: VendorService): ServiceCategoryType => {
@@ -3551,7 +3646,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       }[] = [
                         {
                           type: 'location',
-                          title: 'Locations Box',
+                          title: 'Locations',
                           subtitle: 'Locations, default hours & extra hourly rate (Client selects 1)',
                           defaultUnit: 'location',
                           icon: MapPin,
@@ -3559,275 +3654,262 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         },
                         {
                           type: 'amenities',
-                          title: 'Amenities & Extras Box',
-                          subtitle: 'Lighting, extra speakers, extra mics & custom add-ons',
-                          defaultUnit: 'item',
+                          title: 'Add-ons & Extras',
+                          subtitle: 'Lighting, percussion, extra speakers, mics & custom add-ons',
+                          defaultUnit: '',
                           icon: Layers,
                           items: allServices.filter(s => inferCat(s) === 'amenities')
                         }
                       ];
 
                       return (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+                        <div className="space-y-8 w-full">
                           {boxes.map((box) => {
                             const BoxIcon = box.icon;
                             const isAddingHere = showAddForm && newServiceCategoryType === box.type;
                             return (
                               <div
                                 key={box.type}
-                                className={`relative overflow-hidden rounded-3xl border transition-all bg-black/60 p-5 flex flex-col justify-between gap-4 ${
-                                  isAddingHere
-                                    ? 'border-[#D4AF37] shadow-[0_0_25px_rgba(212,175,55,0.18)]'
-                                    : 'border-[#D4AF37]/25'
-                                }`}
+                                className="w-full space-y-4"
                               >
-                                {/* Very light subtle background image with mode-aware fader */}
-                                {editForm.image && (
-                                  <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                                    <img
-                                      src={editForm.image}
-                                      alt=""
-                                      className="w-full h-full object-cover object-center opacity-15"
-                                    />
-                                    <div className="absolute inset-0 simcha-package-fader" />
+                                <div className="flex items-center justify-between border-b border-[#D4AF37]/20 pb-3">
+                                  <div className="flex items-center gap-3 text-left">
+                                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37] shrink-0">
+                                      <BoxIcon className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <h4 className="text-xs sm:text-sm font-black uppercase tracking-widest text-[#D4AF37] font-[Cinzel]">
+                                        {box.title}
+                                      </h4>
+                                      <p className="text-[10px] text-zinc-400">{box.subtitle}</p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (isAddingHere) {
+                                        setShowAddForm(false);
+                                      } else {
+                                        setNewServiceCategoryType(box.type);
+                                        setNewServiceUnit('');
+                                        setNewServiceName('');
+                                        setNewServicePrice('');
+                                        setNewServiceAllowQty(false);
+                                        setNewServiceDefaultHours('3');
+                                        setNewServiceHourlyRate('100');
+                                        setShowAddForm(true);
+                                      }
+                                    }}
+                                    className={`px-3.5 py-2 rounded-full border transition-all shrink-0 cursor-pointer flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest ${
+                                      isAddingHere
+                                        ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                                        : 'bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border-[#D4AF37]/30'
+                                    }`}
+                                    title={isAddingHere ? 'Close Form' : `Add to ${box.title}`}
+                                  >
+                                    {isAddingHere ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                                    <span>{isAddingHere ? 'Close' : 'Add'}</span>
+                                  </button>
+                                </div>
+
+                                {/* Inline Pop-Down Add Form right below the header */}
+                                {isAddingHere && (
+                                  <div className="bg-black/90 p-4 sm:p-5 rounded-3xl border border-[#D4AF37]/40 space-y-4 text-left shadow-xl animate-in slide-in-from-top-2 duration-200">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] flex items-center gap-1.5">
+                                        <Plus className="w-3.5 h-3.5" />
+                                        Add {box.type === 'location' ? 'Location' : 'Add-on / Extra'}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowAddForm(false)}
+                                        className="text-zinc-400 hover:text-white p-1 rounded-full transition-colors"
+                                        aria-label="Cancel adding option"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                      <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block pl-2">
+                                        {box.type === 'location' ? 'Location Name' : 'Add-on / Extra Name'}
+                                      </label>
+                                      <input
+                                        type="text"
+                                        autoFocus
+                                        className="w-full bg-black border border-white/15 rounded-full px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white"
+                                        placeholder={
+                                          box.type === 'location'
+                                            ? 'e.g. Lakewood, Brooklyn, Monsey...'
+                                            : 'e.g. Live Percussionist, Extra Speakers, Lighting...'
+                                        }
+                                        value={newServiceName}
+                                        onChange={e => setNewServiceName(e.target.value)}
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            handleAddService();
+                                          }
+                                        }}
+                                      />
+                                    </div>
+
+                                    {box.type === 'location' ? (
+                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div className="space-y-1.5">
+                                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block pl-2">Base Price ($)</label>
+                                          <div className="relative">
+                                            <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                                            <input
+                                              type="number"
+                                              className="w-full bg-black border border-white/15 rounded-full pl-9 pr-4 py-3 text-sm font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
+                                              placeholder="1500"
+                                              value={newServicePrice}
+                                              onChange={e => setNewServicePrice(e.target.value)}
+                                              onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                  e.preventDefault();
+                                                  handleAddService();
+                                                }
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block pl-2">Default Hours</label>
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            className="w-full bg-black border border-white/15 rounded-full px-4 py-3 text-sm font-bold text-white focus:border-[#D4AF37] outline-none"
+                                            placeholder="3"
+                                            value={newServiceDefaultHours}
+                                            onChange={e => setNewServiceDefaultHours(e.target.value)}
+                                            onKeyDown={e => {
+                                              if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleAddService();
+                                              }
+                                            }}
+                                          />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block pl-2">+$/Extra Hr</label>
+                                          <div className="relative">
+                                            <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              className="w-full bg-black border border-white/15 rounded-full pl-9 pr-4 py-3 text-sm font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
+                                              placeholder="100"
+                                              value={newServiceHourlyRate}
+                                              onChange={e => setNewServiceHourlyRate(e.target.value)}
+                                              onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                  e.preventDefault();
+                                                  handleAddService();
+                                                }
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block pl-2">Price ($)</label>
+                                          <div className="relative">
+                                            <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                                            <input
+                                              type="number"
+                                              className="w-full bg-black border border-white/15 rounded-full pl-9 pr-4 py-3 text-sm font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
+                                              placeholder="500"
+                                              value={newServicePrice}
+                                              onChange={e => setNewServicePrice(e.target.value)}
+                                              onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                  e.preventDefault();
+                                                  handleAddService();
+                                                }
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block pl-2">Short Note / Info (Compact)</label>
+                                          <input
+                                            type="text"
+                                            maxLength={28}
+                                            className="w-full bg-black border border-white/15 rounded-full px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white"
+                                            placeholder="e.g. Plays & sings, 2 mics..."
+                                            value={newServiceUnit}
+                                            onChange={e => setNewServiceUnit(e.target.value)}
+                                            onKeyDown={e => {
+                                              if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleAddService();
+                                              }
+                                            }}
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {box.type === 'amenities' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setNewServiceAllowQty(!newServiceAllowQty)}
+                                        className={`flex items-center justify-between w-full px-4 py-3 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all cursor-pointer ${
+                                          newServiceAllowQty
+                                            ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                                            : 'bg-black text-zinc-400 border-white/10 hover:border-[#D4AF37]/50'
+                                        }`}
+                                      >
+                                        <span className="flex items-center gap-2">
+                                          {newServiceAllowQty ? <CheckCircle className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
+                                          Enable Quantity (+ / -) Selection
+                                        </span>
+                                        <span>{newServiceAllowQty ? 'ON' : 'OFF'}</span>
+                                      </button>
+                                    )}
+
+                                    <div className="flex gap-3 pt-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowAddForm(false)}
+                                        className="flex-1 bg-white/5 hover:bg-white/10 text-zinc-400 py-3 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all cursor-pointer"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={handleAddService}
+                                        className="flex-[2] bg-[#D4AF37] hover:bg-[#E5C76B] text-black py-3 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-[#D4AF37]/10 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                      >
+                                        <Plus className="w-4 h-4" /> Save Option
+                                      </button>
+                                    </div>
                                   </div>
                                 )}
 
-                                <div className="relative z-10 space-y-4">
-                                  <div className="flex items-center justify-between border-b border-[#D4AF37]/15 pb-3">
-                                    <div className="flex items-center gap-2.5 text-left">
-                                      <div className="w-8 h-8 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37] shrink-0">
-                                        <BoxIcon className="w-4 h-4" />
-                                      </div>
-                                      <div>
-                                        <h4 className="text-xs font-black uppercase tracking-widest text-[#D4AF37] font-[Cinzel]">
-                                          {box.title}
-                                        </h4>
-                                        <p className="text-[9px] text-zinc-400">{box.subtitle}</p>
-                                      </div>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (isAddingHere) {
-                                          setShowAddForm(false);
-                                        } else {
-                                          setNewServiceCategoryType(box.type);
-                                          setNewServiceUnit(box.defaultUnit);
-                                          setNewServiceName('');
-                                          setNewServicePrice('');
-                                          setNewServiceAllowQty(false);
-                                          setNewServiceDefaultHours('4');
-                                          setNewServiceHourlyRate('100');
-                                          setShowAddForm(true);
-                                        }
-                                      }}
-                                      className={`p-2 rounded-full border transition-all shrink-0 cursor-pointer ${
-                                        isAddingHere
-                                          ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
-                                          : 'bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border-[#D4AF37]/30'
-                                      }`}
-                                      title={isAddingHere ? 'Close Form' : `Add to ${box.title}`}
-                                    >
-                                      {isAddingHere ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                                    </button>
-                                  </div>
-
-                                  {/* Inline Pop-Down Add Form right below the box header */}
-                                  {isAddingHere && (
-                                    <div className="bg-black/90 p-4 rounded-2xl border border-[#D4AF37]/50 space-y-3.5 text-left shadow-xl animate-in slide-in-from-top-2 duration-200">
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] flex items-center gap-1.5">
-                                          <Plus className="w-3 h-3" />
-                                          Add {box.type === 'location' ? 'Location' : 'Amenity / Extra'}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          onClick={() => setShowAddForm(false)}
-                                          className="text-zinc-400 hover:text-white p-1 rounded-lg transition-colors"
-                                          aria-label="Cancel adding option"
-                                        >
-                                          <X className="w-3.5 h-3.5" />
-                                        </button>
-                                      </div>
-
-                                      <div className="space-y-1.5">
-                                        <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">
-                                          {box.type === 'location' ? 'Location Name' : 'Amenity / Add-On Name'}
-                                        </label>
-                                        <input
-                                          type="text"
-                                          autoFocus
-                                          className="w-full bg-black border border-white/15 rounded-xl px-3 py-2.5 text-xs focus:border-[#D4AF37] outline-none text-white"
-                                          placeholder={
-                                            box.type === 'location'
-                                              ? 'e.g. Lakewood, Brooklyn, Monsey...'
-                                              : 'e.g. Extra Speakers, Lighting, Extra Mics...'
-                                          }
-                                          value={newServiceName}
-                                          onChange={e => setNewServiceName(e.target.value)}
-                                          onKeyDown={e => {
-                                            if (e.key === 'Enter') {
-                                              e.preventDefault();
-                                              handleAddService();
-                                            }
-                                          }}
-                                        />
-                                      </div>
-
-                                      {box.type === 'location' ? (
-                                        <div className="grid grid-cols-3 gap-2">
-                                          <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Base Price ($)</label>
-                                            <div className="relative">
-                                              <DollarSign className="absolute left-2 top-2.5 w-3 h-3 text-[#D4AF37]" />
-                                              <input
-                                                type="number"
-                                                className="w-full bg-black border border-white/15 rounded-xl pl-6 pr-2 py-2 text-xs focus:border-[#D4AF37] outline-none text-white"
-                                                placeholder="1500"
-                                                value={newServicePrice}
-                                                onChange={e => setNewServicePrice(e.target.value)}
-                                                onKeyDown={e => {
-                                                  if (e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    handleAddService();
-                                                  }
-                                                }}
-                                              />
-                                            </div>
-                                          </div>
-
-                                          <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Default Hours</label>
-                                            <input
-                                              type="number"
-                                              min="1"
-                                              className="w-full bg-black border border-white/15 rounded-xl px-2.5 py-2 text-xs focus:border-[#D4AF37] outline-none text-white"
-                                              placeholder="4"
-                                              value={newServiceDefaultHours}
-                                              onChange={e => setNewServiceDefaultHours(e.target.value)}
-                                              onKeyDown={e => {
-                                                if (e.key === 'Enter') {
-                                                  e.preventDefault();
-                                                  handleAddService();
-                                                }
-                                              }}
-                                            />
-                                          </div>
-
-                                          <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">+$/Extra Hr</label>
-                                            <div className="relative">
-                                              <DollarSign className="absolute left-2 top-2.5 w-3 h-3 text-[#D4AF37]" />
-                                              <input
-                                                type="number"
-                                                min="0"
-                                                className="w-full bg-black border border-white/15 rounded-xl pl-6 pr-2 py-2 text-xs focus:border-[#D4AF37] outline-none text-white"
-                                                placeholder="100"
-                                                value={newServiceHourlyRate}
-                                                onChange={e => setNewServiceHourlyRate(e.target.value)}
-                                                onKeyDown={e => {
-                                                  if (e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    handleAddService();
-                                                  }
-                                                }}
-                                              />
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div className="grid grid-cols-2 gap-2.5">
-                                          <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Price ($)</label>
-                                            <div className="relative">
-                                              <DollarSign className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-[#D4AF37]" />
-                                              <input
-                                                type="number"
-                                                className="w-full bg-black border border-white/15 rounded-xl pl-7 pr-3 py-2 text-xs focus:border-[#D4AF37] outline-none text-white"
-                                                placeholder="0.00"
-                                                value={newServicePrice}
-                                                onChange={e => setNewServicePrice(e.target.value)}
-                                                onKeyDown={e => {
-                                                  if (e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    handleAddService();
-                                                  }
-                                                }}
-                                              />
-                                            </div>
-                                          </div>
-
-                                          <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Unit (per...)</label>
-                                            <input
-                                              type="text"
-                                              className="w-full bg-black border border-white/15 rounded-xl px-3 py-2 text-xs focus:border-[#D4AF37] outline-none text-white"
-                                              placeholder={box.defaultUnit}
-                                              value={newServiceUnit}
-                                              onChange={e => setNewServiceUnit(e.target.value)}
-                                              onKeyDown={e => {
-                                                if (e.key === 'Enter') {
-                                                  e.preventDefault();
-                                                  handleAddService();
-                                                }
-                                              }}
-                                            />
-                                          </div>
-                                        </div>
-                                      )}
-
-                                      {box.type === 'amenities' && (
-                                        <button
-                                          type="button"
-                                          onClick={() => setNewServiceAllowQty(!newServiceAllowQty)}
-                                          className={`flex items-center justify-between w-full px-3.5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${
-                                            newServiceAllowQty
-                                              ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
-                                              : 'bg-black text-zinc-400 border-white/10 hover:border-[#D4AF37]/50'
-                                          }`}
-                                        >
-                                          <span className="flex items-center gap-2">
-                                            {newServiceAllowQty ? <CheckCircle className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
-                                            Enable Quantity Selection
-                                          </span>
-                                          <span>{newServiceAllowQty ? 'ON' : 'OFF'}</span>
-                                        </button>
-                                      )}
-
-                                      <div className="flex gap-2 pt-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => setShowAddForm(false)}
-                                          className="flex-1 bg-white/5 hover:bg-white/10 text-zinc-400 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border border-white/10 transition-all cursor-pointer"
-                                        >
-                                          Cancel
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={handleAddService}
-                                          className="flex-[2] bg-[#D4AF37] hover:bg-[#E5C76B] text-black py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-[#D4AF37]/10 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                                        >
-                                          <Plus className="w-3.5 h-3.5" /> Save Option
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {box.items.length > 0 ? (
-                                    <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                                      {box.items.map((service) => (
+                                {box.items.length > 0 ? (
+                                  <div className="space-y-3.5 w-full">
+                                    {box.items.map((service) => {
+                                      const cleanNote = (service.unit && !['item', 'location', 'hour', 'hours'].includes(service.unit.toLowerCase())) ? service.unit : '';
+                                      return (
                                         <div
                                           key={service.id}
-                                          className="bg-black/70 border border-white/10 hover:border-[#D4AF37]/40 rounded-2xl p-3 space-y-2.5 transition-all"
+                                          className="w-full bg-black/80 border border-white/10 hover:border-[#D4AF37]/40 rounded-3xl p-4 sm:p-5 space-y-3.5 transition-all"
                                         >
-                                          <div className="flex items-center gap-2">
-                                            <div className="w-4 h-4 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37] flex items-center justify-center shrink-0">
-                                              <Check className="w-2.5 h-2.5 text-[#D4AF37]" />
+                                          <div className="flex items-center gap-3 w-full">
+                                            <div className="w-6 h-6 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37] flex items-center justify-center shrink-0">
+                                              <Check className="w-3.5 h-3.5 text-[#D4AF37]" />
                                             </div>
                                             <input
                                               type="text"
-                                              className="flex-1 min-w-0 bg-transparent border-b border-transparent focus:border-[#D4AF37] text-xs font-bold text-zinc-100 outline-none px-1 py-0.5"
+                                              className="flex-1 min-w-0 bg-black border border-white/15 focus:border-[#D4AF37] rounded-full text-sm font-bold text-zinc-100 outline-none px-4 py-2.5"
                                               value={service.name}
                                               onChange={e => handleUpdateService(service.id, { name: e.target.value })}
                                               onBlur={flushAutoSave}
@@ -3836,22 +3918,22 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                             <button
                                               type="button"
                                               onClick={() => handleRemoveService(service.id)}
-                                              className="p-1.5 text-zinc-400 hover:text-red-400 rounded-full transition-colors shrink-0"
+                                              className="p-2.5 text-zinc-400 hover:text-red-400 bg-black border border-white/15 hover:border-red-500/40 rounded-full transition-colors shrink-0 cursor-pointer"
                                               title="Delete Option"
                                             >
-                                              <Trash2 className="w-3.5 h-3.5" />
+                                              <Trash2 className="w-4 h-4" />
                                             </button>
                                           </div>
 
                                           {box.type === 'location' ? (
-                                            <div className="grid grid-cols-3 gap-2 items-center">
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
                                               <div>
-                                                <span className="text-[8px] font-black uppercase tracking-wider text-zinc-400 block mb-0.5">Base Price</span>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block mb-1.5 pl-3">Base Price ($)</span>
                                                 <div className="relative">
-                                                  <DollarSign className="absolute left-2 top-2 w-3 h-3 text-[#D4AF37]" />
+                                                  <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
                                                   <input
                                                     type="number"
-                                                    className="w-full bg-black/60 border border-white/10 rounded-lg pl-6 pr-2 py-1 text-xs font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
+                                                    className="w-full bg-black border border-white/15 rounded-full pl-9 pr-4 py-2.5 text-sm font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none tabular-nums"
                                                     value={service.price}
                                                     onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
                                                     onBlur={flushAutoSave}
@@ -3859,24 +3941,24 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                                 </div>
                                               </div>
                                               <div>
-                                                <span className="text-[8px] font-black uppercase tracking-wider text-zinc-400 block mb-0.5">Default Hrs</span>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block mb-1.5 pl-3">Default Hours</span>
                                                 <input
                                                   type="number"
                                                   min="1"
-                                                  className="w-full bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-xs font-bold text-zinc-100 focus:border-[#D4AF37] outline-none text-center"
-                                                  value={service.defaultHours ?? 4}
+                                                  className="w-full bg-black border border-white/15 rounded-full px-4 py-2.5 text-sm font-bold text-zinc-100 focus:border-[#D4AF37] outline-none text-center tabular-nums"
+                                                  value={service.defaultHours ?? 3}
                                                   onChange={e => handleUpdateService(service.id, { defaultHours: Math.max(1, parseInt(e.target.value) || 1) })}
                                                   onBlur={flushAutoSave}
                                                 />
                                               </div>
                                               <div>
-                                                <span className="text-[8px] font-black uppercase tracking-wider text-zinc-400 block mb-0.5">+$/Extra Hr</span>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block mb-1.5 pl-3">+$/Extra Hr</span>
                                                 <div className="relative">
-                                                  <DollarSign className="absolute left-2 top-2 w-3 h-3 text-[#D4AF37]" />
+                                                  <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
                                                   <input
                                                     type="number"
                                                     min="0"
-                                                    className="w-full bg-black/60 border border-white/10 rounded-lg pl-6 pr-2 py-1 text-xs font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
+                                                    className="w-full bg-black border border-white/15 rounded-full pl-9 pr-4 py-2.5 text-sm font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none tabular-nums"
                                                     value={service.hourlyRate ?? 100}
                                                     onChange={e => handleUpdateService(service.id, { hourlyRate: Math.max(0, parseFloat(e.target.value) || 0) })}
                                                     onBlur={flushAutoSave}
@@ -3885,64 +3967,73 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                               </div>
                                             </div>
                                           ) : (
-                                            <div className="grid grid-cols-3 gap-2 items-center">
-                                              <div className="relative">
-                                                <DollarSign className="absolute left-2 top-2 w-3 h-3 text-[#D4AF37]" />
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+                                              <div>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block mb-1.5 pl-3">Price ($)</span>
+                                                <div className="relative">
+                                                  <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                                                  <input
+                                                    type="number"
+                                                    className="w-full bg-black border border-white/15 rounded-full pl-9 pr-4 py-2.5 text-sm font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none tabular-nums"
+                                                    value={service.price}
+                                                    onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
+                                                    onBlur={flushAutoSave}
+                                                  />
+                                                </div>
+                                              </div>
+                                              <div>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block mb-1.5 pl-3">Short Note / Info</span>
                                                 <input
-                                                  type="number"
-                                                  className="w-full bg-black/60 border border-white/10 rounded-lg pl-6 pr-2 py-1 text-xs font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
-                                                  value={service.price}
-                                                  onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
+                                                  type="text"
+                                                  maxLength={28}
+                                                  placeholder="e.g. Plays & sings"
+                                                  className="w-full bg-black border border-white/15 rounded-full px-4 py-2.5 text-sm font-semibold text-zinc-200 focus:border-[#D4AF37] outline-none"
+                                                  value={cleanNote}
+                                                  onChange={e => handleUpdateService(service.id, { unit: e.target.value.slice(0, 28) })}
                                                   onBlur={flushAutoSave}
                                                 />
                                               </div>
-                                              <select
-                                                aria-label="Option Category Type"
-                                                value={inferCat(service)}
-                                                onChange={e => handleUpdateService(service.id, { categoryType: e.target.value as ServiceCategoryType }, true)}
-                                                className="w-full bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-bold text-zinc-300 focus:border-[#D4AF37] outline-none"
-                                              >
-                                                <option value="location">Location</option>
-                                                <option value="amenities">Amenities</option>
-                                              </select>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity }, true)}
-                                                className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all truncate ${
-                                                  service.allowQuantity
-                                                    ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/10'
-                                                    : 'text-zinc-400 border-white/10 hover:text-zinc-200'
-                                                }`}
-                                              >
-                                                {service.allowQuantity ? 'Qty: On' : 'Fixed'}
-                                              </button>
+                                              <div>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block mb-1.5 pl-3">Multiple (+ / -)</span>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity }, true)}
+                                                  className={`w-full px-4 py-2.5 rounded-full text-xs font-black uppercase tracking-wider border transition-all truncate cursor-pointer ${
+                                                    service.allowQuantity
+                                                      ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/10'
+                                                      : 'text-zinc-400 border-white/15 hover:text-zinc-200'
+                                                  }`}
+                                                >
+                                                  {service.allowQuantity ? 'Qty: On' : 'Single'}
+                                                </button>
+                                              </div>
                                             </div>
                                           )}
                                         </div>
-                                      ))}
-                                    </div>
-                                  ) : !isAddingHere ? (
-                                    <div className="py-8 text-center border border-dashed border-white/10 rounded-2xl">
-                                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">No {box.type} options yet</p>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setNewServiceCategoryType(box.type);
-                                          setNewServiceUnit(box.defaultUnit);
-                                          setNewServiceName('');
-                                          setNewServicePrice('');
-                                          setNewServiceAllowQty(false);
-                                          setNewServiceDefaultHours('4');
-                                          setNewServiceHourlyRate('100');
-                                          setShowAddForm(true);
-                                        }}
-                                        className="mt-2 text-[10px] font-black text-[#D4AF37] uppercase tracking-widest hover:underline cursor-pointer"
-                                      >
-                                        + Add {box.type} option
-                                      </button>
-                                    </div>
-                                  ) : null}
-                                </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : !isAddingHere ? (
+                                  <div className="py-8 text-center border border-dashed border-white/10 rounded-3xl">
+                                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">No {box.type === 'location' ? 'location' : 'add-on'} options yet</p>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setNewServiceCategoryType(box.type);
+                                        setNewServiceUnit('');
+                                        setNewServiceName('');
+                                        setNewServicePrice('');
+                                        setNewServiceAllowQty(false);
+                                        setNewServiceDefaultHours('3');
+                                        setNewServiceHourlyRate('100');
+                                        setShowAddForm(true);
+                                      }}
+                                      className="mt-2 px-4 py-2 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[10px] font-black text-[#D4AF37] uppercase tracking-widest hover:bg-[#D4AF37] hover:text-black transition-all cursor-pointer"
+                                    >
+                                      + Add {box.type === 'location' ? 'location' : 'add-on'} option
+                                    </button>
+                                  </div>
+                                ) : null}
                               </div>
                             );
                           })}

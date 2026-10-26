@@ -21,10 +21,11 @@ interface QuickViewModalProps {
   onAddToPlan?: (vendor: Vendor) => void;
   isInPlan?: boolean;
   onGoToPlan?: () => void;
+  onGoToEvents?: () => void;
 }
 
 const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({ 
-  vendor, onClose, onBook, onAddReview, bookingVendor, onCloseBooking, onConfirmBooking, onBookingDone, onAddToPlan, onGoToPlan 
+  vendor, onClose, onBook, onAddReview, bookingVendor, onCloseBooking, onConfirmBooking, onBookingDone, onAddToPlan, onGoToPlan, onGoToEvents 
 }) => {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -186,6 +187,12 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
     onClose();
     if (onGoToPlan) onGoToPlan();
   }, [onCloseBooking, onClose, onGoToPlan]);
+
+  const handleNestedGoToEvents = useCallback(() => {
+    if (onCloseBooking) onCloseBooking();
+    onClose();
+    if (onGoToEvents) onGoToEvents();
+  }, [onCloseBooking, onClose, onGoToEvents]);
 
   const handleNestedBookingDismissStart = useCallback(() => {
     setIsNestedBookingDismissing(true);
@@ -465,6 +472,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
             onDone={handleNestedBookingDone}
             onConfirm={handleNestedBookingConfirm}
             onGoToPlan={handleNestedGoToPlan}
+            onGoToEvents={handleNestedGoToEvents}
             initialDetails={EMPTY_INITIAL_DETAILS}
           />
         )}

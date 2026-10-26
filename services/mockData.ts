@@ -36,8 +36,8 @@ export const VENDORS: Vendor[] = [
       { id: 'r2', author: 'David K.', rating: 4, text: 'Great service, though parking was a bit tight.', date: '2023-11-02' }
     ],
     services: [
-      { id: 's1_loc1', name: 'Main Grand Ballroom (Brooklyn)', price: 5000, defaultHours: 6, hourlyRate: 250, categoryType: 'location' },
-      { id: 's1_loc2', name: 'Rooftop Garden Terrace', price: 4200, defaultHours: 6, hourlyRate: 200, categoryType: 'location' },
+      { id: 's1_loc1', name: 'Main Grand Ballroom (Brooklyn)', price: 5000, defaultHours: 3, hourlyRate: 250, categoryType: 'location' },
+      { id: 's1_loc2', name: 'Rooftop Garden Terrace', price: 4200, defaultHours: 3, hourlyRate: 200, categoryType: 'location' },
       { id: 's3', name: 'Chuppah Setup & Custom Lighting', price: 1200, categoryType: 'amenities' },
       { id: 's3_am2', name: 'Valet Parking & Coat Check', price: 800, categoryType: 'amenities' }
     ],
@@ -87,8 +87,8 @@ export const VENDORS: Vendor[] = [
       { id: 'r3', author: 'Sarah L.', rating: 5, text: 'The brisket lived up to the hype! Everyone raved about the food.', date: '2023-09-20' }
     ],
     services: [
-      { id: 's4_loc1', name: 'NYC & Five Boroughs', price: 850, defaultHours: 4, hourlyRate: 100, categoryType: 'location' },
-      { id: 's4_loc2', name: 'Long Island / Westchester / NJ', price: 1100, defaultHours: 4, hourlyRate: 125, categoryType: 'location' },
+      { id: 's4_loc1', name: 'NYC & Five Boroughs', price: 850, defaultHours: 3, hourlyRate: 100, categoryType: 'location' },
+      { id: 's4_loc2', name: 'Long Island / Westchester / NJ', price: 1100, defaultHours: 3, hourlyRate: 125, categoryType: 'location' },
       { id: 's4', name: 'Standard Buffet Menu (Per Guest)', price: 120, unit: 'person', allowQuantity: true, categoryType: 'amenities' },
       { id: 's5', name: 'Premium Plated Dinner (Per Guest)', price: 180, unit: 'person', allowQuantity: true, categoryType: 'amenities' },
       { id: 's6', name: 'Viennese Dessert Table Add-on', price: 950, categoryType: 'amenities' }
@@ -116,13 +116,14 @@ export const VENDORS: Vendor[] = [
     username: 'simcha',
     password: '123',
     services: [
-      { id: 's7_loc1', name: 'Brooklyn / Queens / NYC', price: 2200, defaultHours: 4, hourlyRate: 100, categoryType: 'location' },
-      { id: 's7_loc2', name: 'Monsey', price: 2500, defaultHours: 4, hourlyRate: 75, categoryType: 'location' },
-      { id: 's7_loc3', name: 'Lakewood', price: 2550, defaultHours: 4, hourlyRate: 100, categoryType: 'location' },
-      { id: 's7_loc4', name: 'Five Towns / Long Island', price: 2450, defaultHours: 4, hourlyRate: 100, categoryType: 'location' },
-      { id: 's9', name: 'Stage & Uplighting Package', price: 450, categoryType: 'amenities' },
-      { id: 's9_am2', name: 'Extra Speakers & Subwoofers', price: 300, allowQuantity: true, categoryType: 'amenities' },
-      { id: 's9_am3', name: 'Extra Wireless Mics', price: 150, allowQuantity: true, categoryType: 'amenities' }
+      { id: 's7_loc1', name: 'Brooklyn / Queens / NYC', price: 2200, defaultHours: 3, hourlyRate: 100, categoryType: 'location' },
+      { id: 's7_loc2', name: 'Monsey', price: 2500, defaultHours: 3, hourlyRate: 75, categoryType: 'location' },
+      { id: 's7_loc3', name: 'Lakewood', price: 2550, defaultHours: 3, hourlyRate: 100, categoryType: 'location' },
+      { id: 's7_loc4', name: 'Five Towns / Long Island', price: 2450, defaultHours: 3, hourlyRate: 100, categoryType: 'location' },
+      { id: 's9_am1', name: 'Live Percussionist', price: 500, unit: 'Plays & sings', allowQuantity: true, categoryType: 'amenities' },
+      { id: 's9', name: 'Stage & Uplighting', price: 450, unit: 'Full room glow', categoryType: 'amenities' },
+      { id: 's9_am2', name: 'Extra Speakers', price: 300, unit: 'Subwoofers incl.', allowQuantity: true, categoryType: 'amenities' },
+      { id: 's9_am3', name: 'Extra Wireless Mics', price: 150, unit: 'Pro handheld', allowQuantity: true, categoryType: 'amenities' }
     ],
     paymentMethods: ['Venmo', 'PayPal', 'Cash'],
     commissionRate: 10
@@ -152,8 +153,8 @@ export const VENDORS: Vendor[] = [
     username: 'photo',
     password: '123',
     services: [
-      { id: 's10_loc1', name: 'Local Metro Area', price: 3000, defaultHours: 6, hourlyRate: 150, categoryType: 'location' },
-      { id: 's10_loc2', name: 'Regional Travel (Up to 100 mi)', price: 3300, defaultHours: 6, hourlyRate: 150, categoryType: 'location' },
+      { id: 's10_loc1', name: 'Local Metro Area', price: 3000, defaultHours: 3, hourlyRate: 150, categoryType: 'location' },
+      { id: 's10_loc2', name: 'Regional Travel (Up to 100 mi)', price: 3300, defaultHours: 3, hourlyRate: 150, categoryType: 'location' },
       { id: 's12', name: 'Second Photographer Add-on', price: 750, categoryType: 'amenities' },
       { id: 's12_am2', name: 'Luxury Fine-Art Album', price: 650, allowQuantity: true, categoryType: 'amenities' }
     ],

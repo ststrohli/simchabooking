@@ -198,7 +198,7 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
   const inputComponent = (
     <div
       ref={containerRef}
-      className={`relative flex items-center bg-black/60 border rounded-xl transition-all duration-300 ${
+      className={`relative flex items-center bg-black/60 border rounded-full transition-all duration-300 ${
         highlighted
           ? 'border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
           : focused
@@ -208,7 +208,7 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
     >
       {Icon && (
         <Icon
-          className={`absolute left-3.5 w-4 h-4 transition-all duration-300 z-10 pointer-events-none ${
+          className={`absolute left-4 w-4 h-4 transition-all duration-300 z-10 pointer-events-none ${
             focused ? 'text-[#D4AF37] scale-110' : highlighted ? 'text-red-500 scale-110' : 'text-[#D4AF37]/40'
           }`}
         />
@@ -232,8 +232,8 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
         aria-expanded={isOpen}
         aria-autocomplete="list"
         aria-controls={`${id}-listbox`}
-        className={`w-full bg-transparent text-zinc-100 placeholder-transparent focus:outline-none pt-6 pb-2 pr-10 ${
-          Icon ? 'pl-10' : 'pl-4'
+        className={`w-full bg-transparent text-zinc-100 placeholder-transparent focus:outline-none pt-5 pb-2 pr-10 ${
+          Icon ? 'pl-11' : 'pl-5'
         }`}
         placeholder={placeholder || label}
         autoComplete="off"
@@ -242,11 +242,11 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
       <label
         htmlFor={id}
         className={`absolute pointer-events-none transition-all duration-300 leading-none ${
-          Icon ? 'left-10' : 'left-4'
+          Icon ? 'left-11' : 'left-5'
         } ${
           focused || isFilled
             ? 'top-2 text-[9px] text-[#D4AF37] font-black uppercase tracking-widest z-10'
-            : 'top-4 text-xs text-zinc-400 font-medium z-10'
+            : 'top-3.5 text-xs text-zinc-400 font-medium z-10'
         }`}
       >
         {label}

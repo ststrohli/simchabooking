@@ -164,8 +164,11 @@ export interface UserFile {
 export interface Booking {
   createdAt?: string;
   id: string;
+  userId?: string;
+  clientId?: string;
   vendorId: string;
   clientName: string;
+  clientPhotoURL?: string;
   eventName: string;
   eventLocation?: string;
   eventTime?: string;
@@ -178,4 +181,6 @@ export interface Booking {
   notes?: string;
   selectedServices?: SelectedService[];
   eventAddress?: string;
+  isOffer?: boolean;
+  offeredPrice?: number;
 }

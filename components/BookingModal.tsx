@@ -44,7 +44,7 @@ const FloatingInput: React.FC<{
     <div className="relative w-full">
       <div className="relative flex items-center">
         {Icon && (
-          <Icon className={`absolute left-3.5 w-4 h-4 transition-all duration-300 z-10 ${focused ? 'text-[#D4AF37] scale-110' : highlighted ? 'text-red-500 scale-110' : 'text-[#D4AF37]/40'}`} />
+          <Icon className={`absolute left-4 w-4 h-4 transition-all duration-300 z-10 ${focused ? 'text-[#D4AF37] scale-110' : highlighted ? 'text-red-500 scale-110' : 'text-[#D4AF37]/40'}`} />
         )}
         <input
           id={id}
@@ -54,15 +54,15 @@ const FloatingInput: React.FC<{
           onChange={onChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          className={`w-full bg-black/60 border rounded-xl text-zinc-100 placeholder-transparent focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all duration-300 pt-6 pb-2 pr-4 ${Icon ? 'pl-10' : 'pl-4'} ${highlighted ? 'border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-[#D4AF37]/20'} ${className}`}
+          className={`w-full bg-black/60 border rounded-full text-zinc-100 placeholder-transparent focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all duration-300 pt-5 pb-2 pr-5 ${Icon ? 'pl-11' : 'pl-5'} ${highlighted ? 'border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-[#D4AF37]/20'} ${className}`}
           placeholder={label}
         />
         <label
           htmlFor={id}
-          className={`absolute pointer-events-none transition-all duration-300 leading-none ${Icon ? 'left-10' : 'left-4'} 
+          className={`absolute pointer-events-none transition-all duration-300 leading-none ${Icon ? 'left-11' : 'left-5'} 
             ${(focused || isFilled) 
               ? 'top-2 text-[9px] text-[#D4AF37] font-black uppercase tracking-widest' 
-              : 'top-4 text-xs text-zinc-300 font-medium'
+              : 'top-3.5 text-xs text-zinc-300 font-medium'
             }`}
         >
           {label}
@@ -150,11 +150,12 @@ interface BookingModalProps {
   onDone?: (isPriority: boolean) => void;
   onSuccessStateChange?: (isSuccess: boolean) => void;
   onGoToPlan?: () => void;
+  onGoToEvents?: () => void;
   onDismissStart?: () => void;
 }
 
 const BookingModal: React.FC<BookingModalProps> = React.memo(({ 
-  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone, onSuccessStateChange, onGoToPlan, onDismissStart, isNested = false 
+  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone, onSuccessStateChange, onGoToPlan, onGoToEvents, onDismissStart, isNested = false 
 }) => {
   const [formData, setFormData] = useState({ eventName: '', clientName: '', contactEmail: '', eventLocation: '', eventTime: '', notes: '' });
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
@@ -167,6 +168,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
   const [offeredPrice, setOfferedPrice] = useState<string>('');
   const [highlightedField, setHighlightedField] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = React.useRef(false);
 
   const [localDate, setLocalDate] = useState('');
   const [isPriorityDate, setIsPriorityDate] = useState(false);
@@ -526,7 +528,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
       servicesTotal = vendor.services?.filter(s => selectedServiceIds.includes(s.id)).reduce((sum, s) => {
         const cat = inferServiceCategory(s);
         if (cat === 'location') {
-          const baseHours = s.defaultHours ?? 4;
+          const baseHours = s.defaultHours ?? 3;
           const rate = s.hourlyRate ?? 100;
           const currentHours = locationHours[s.id] ?? baseHours;
           const extraHours = Math.max(0, currentHours - baseHours);
@@ -645,7 +647,8 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
   const handleSubmit = useCallback(async (e: React.FormEvent | React.MouseEvent, explicitSubmitType?: 'add' | 'book') => {
     e.preventDefault();
     e.stopPropagation();
-    if (!vendor) return;
+    if (!vendor || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
 
     let failedFieldId: string | null = null;
@@ -669,6 +672,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     }
 
     if (failedFieldId) {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
       setHighlightedField(failedFieldId);
       setTimeout(() => {
@@ -690,7 +694,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
         .map(s => {
             const cat = inferServiceCategory(s);
             if (cat === 'location') {
-              const baseHours = s.defaultHours ?? 4;
+              const baseHours = s.defaultHours ?? 3;
               const rate = s.hourlyRate ?? 100;
               const currentHours = locationHours[s.id] ?? baseHours;
               const extraHours = Math.max(0, currentHours - baseHours);
@@ -739,6 +743,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     } catch (err) {
       console.error("Booking error:", err);
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   }, [vendor, localDate, hasSelectedPackage, formData, isVenue, isOfferMode, offeredPrice, selectedServiceIds, quantities, locationHours, submitType, onConfirm, totalAmount, isPriorityDate]);
@@ -920,16 +925,31 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     });
   }, [dismissWithSlideOut, onGoToPlan, onDone, isPriority, onClose]);
 
-  const handleDoneAction = useCallback(() => {
+  const handleGoToEventsAction = useCallback(() => {
     dismissWithSlideOut(() => {
       setIsSuccess(false);
-      if (onDone) {
+      if (onGoToEvents) {
+        onGoToEvents();
+      } else if (onDone) {
         onDone(isPriority);
       } else {
         onClose();
       }
     });
-  }, [dismissWithSlideOut, onDone, isPriority, onClose]);
+  }, [dismissWithSlideOut, onGoToEvents, onDone, isPriority, onClose]);
+
+  const handleDoneAction = useCallback(() => {
+    dismissWithSlideOut(() => {
+      setIsSuccess(false);
+      if (submitType === 'book' && !isPriority && onGoToEvents) {
+        onGoToEvents();
+      } else if (onDone) {
+        onDone(isPriority);
+      } else {
+        onClose();
+      }
+    });
+  }, [dismissWithSlideOut, submitType, isPriority, onGoToEvents, onDone, onClose]);
 
   useEffect(() => {
     if (isDismissing && !isNested) {
@@ -1013,24 +1033,31 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                 <button
                   type="button"
                   onClick={handleGoToPlanAction}
-                  className="flex-1 bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/30 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center"
+                  className="flex-1 bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-full text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/30 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center"
                 >
                   Go to Plan
                 </button>
                 <button
                   type="button"
                   onClick={handleDoneAction}
-                  className="px-5 py-3.5 rounded-xl border border-white/20 text-zinc-300 hover:text-white hover:border-white/40 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer text-center"
+                  className="px-5 py-3.5 rounded-full border border-white/20 text-zinc-300 hover:text-white hover:border-white/40 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer text-center"
                 >
                   Dismiss
                 </button>
               </div>
             ) : (
-              <div className="w-full max-w-[220px] mx-auto block">
+              <div className="w-full max-w-xs mx-auto flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={handleGoToEventsAction}
+                  className="flex-1 bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-full text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/30 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center"
+                >
+                  View in Events
+                </button>
                 <button
                   type="button"
                   onClick={handleDoneAction}
-                  className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 rounded-xl text-xs uppercase tracking-[0.2em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/30 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center mx-auto block"
+                  className="px-5 py-3.5 rounded-full border border-white/20 text-zinc-300 hover:text-white hover:border-white/40 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer text-center"
                 >
                   I'm Done
                 </button>
@@ -1113,12 +1140,12 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
           <div className="space-y-3">
             <label className={labelClass}>Event Date</label>
             
-            {/* Elegant luxury display of Selected Date as action picker */}
+            {/* Elegant luxury display of Selected Date as pill-shaped action picker */}
             <button
               type="button"
               id="date-section"
               onClick={handleToggleCalendar}
-              className={`w-full flex items-center gap-3 p-3 bg-black hover:bg-neutral-900 border rounded-xl transition-all outline-none focus:ring-1 focus:ring-[#D4AF37] text-left cursor-pointer ${highlightedField === 'date-section' ? 'border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-[#D4AF37]/30 hover:border-[#D4AF37]/60'}`}
+              className={`w-full flex items-center gap-3.5 px-5 py-3 bg-black hover:bg-neutral-900 border rounded-full transition-all outline-none focus:ring-1 focus:ring-[#D4AF37] text-left cursor-pointer ${highlightedField === 'date-section' ? 'border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-[#D4AF37]/30 hover:border-[#D4AF37]/60'}`}
             >
               <Calendar className="w-5 h-5 text-[#D4AF37] flex-shrink-0" />
               <div className="flex-1">
@@ -1154,7 +1181,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
               },
               {
                 type: 'amenities',
-                title: 'Amenities & Options',
+                title: 'Add-ons & Extras',
                 subtitle: 'Select add-ons & extras',
                 icon: Sparkles,
                 singleSelect: false,
@@ -1163,16 +1190,16 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
             ].filter(group => group.items.length > 0);
 
             return (
-              <fieldset id="packages-section" className={`space-y-3 p-3 rounded-2xl transition-all duration-300 ${highlightedField === 'packages-section' ? 'border-2 border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border border-transparent'}`}>
+              <div id="packages-section" role="group" aria-labelledby="packages-section-label" className={`w-full min-w-0 space-y-3 rounded-2xl transition-all duration-300 ${highlightedField === 'packages-section' ? 'ring-2 ring-red-500/80 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : ''}`}>
                 <div className="flex justify-between items-center flex-wrap gap-2">
-                  <legend className={labelClass}>Select Your Options</legend>
+                  <span id="packages-section-label" className={labelClass}>Select Your Options</span>
                   {(vendor.downPayment ?? 0) > 0 && (
                     <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-2.5 py-1 rounded-full">
                       Optional Down Payment: ${vendor.downPayment?.toLocaleString()}
                     </span>
                   )}
                 </div>
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-1 gap-3 w-full">
                   {groupedServices.map((group) => {
                     const GroupIcon = group.icon;
                     const bgImage = group.items.find(i => i.image)?.image || vendor.image;
@@ -1182,7 +1209,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                     return (
                       <div
                         key={group.type}
-                        className={`relative overflow-hidden rounded-2xl border transition-all p-3.5 ${
+                        className={`w-full relative overflow-hidden rounded-2xl border transition-all p-3.5 ${
                           hasSelectedInGroup
                             ? 'border-[#D4AF37] shadow-[0_0_18px_rgba(212,175,55,0.16)] bg-black'
                             : 'border-[#D4AF37]/25 hover:border-[#D4AF37]/50 bg-black'
@@ -1203,7 +1230,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                         <div className="relative z-10 space-y-2">
                           <div className="flex items-center justify-between border-b border-[#D4AF37]/15 pb-1.5">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37]">
+                              <div className="w-6 h-6 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37]">
                                 <GroupIcon className="w-3.5 h-3.5" />
                               </div>
                               <div>
@@ -1220,14 +1247,14 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                             </span>
                           </div>
 
-                          {/* Compact Checkpoints Grid inside the single box */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pt-3 -mt-2 pr-0.5">
+                          {/* Wide Pill-Shaped Checkpoints Stack inside the single box */}
+                          <div className="grid grid-cols-1 gap-2.5 max-h-56 overflow-y-auto pt-3.5 -mt-2 pr-0.5">
                             {group.items.map((service) => {
                               const isSelected = selectedServiceIds.includes(service.id);
                               const isLocationGroup = group.type === 'location';
                               const canMultiple = !group.singleSelect && !!service.allowQuantity;
                               const qty = quantities[service.id] || 1;
-                              const baseHours = service.defaultHours ?? 4;
+                              const baseHours = service.defaultHours ?? 3;
                               const hourlyRate = service.hourlyRate ?? 100;
                               const currentHours = locationHours[service.id] ?? baseHours;
                               const extraHours = Math.max(0, currentHours - baseHours);
@@ -1235,6 +1262,10 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                 ? service.price + (extraHours * hourlyRate)
                                 : service.price * (isSelected ? qty : 1);
                               const activePopup = hourPopups[service.id];
+                              const rawNote = (service.unit || '').trim();
+                              const shortNote = !isLocationGroup && rawNote && !['item', 'location', 'hour', 'hours', 'service', 'package'].includes(rawNote.toLowerCase())
+                                ? rawNote
+                                : '';
 
                               return (
                                 <div
@@ -1249,13 +1280,14 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                       toggleService(service.id);
                                     }
                                   }}
-                                  className={`relative h-10 rounded-xl border transition-all px-3 flex items-center justify-between gap-2 cursor-pointer select-none ${
+                                  className={`w-full relative h-11 rounded-full border transition-all px-4 flex items-center justify-between gap-3 cursor-pointer select-none ${
                                     isSelected
                                       ? 'bg-[#D4AF37]/12 border-[#D4AF37] shadow-[0_0_10px_rgba(212,175,55,0.12)]'
                                       : 'bg-black/60 border-[#D4AF37]/15 hover:border-[#D4AF37]/45'
                                   }`}
                                 >
-                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  {/* Left: Checkbox + Name + Optional Short Note */}
+                                  <div className={`flex items-center gap-2 min-w-0 ${(isLocationGroup || canMultiple) ? 'max-w-[42%] sm:max-w-[44%]' : 'flex-1 pr-2'}`}>
                                     <div
                                       className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
                                         isSelected
@@ -1265,20 +1297,26 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                     >
                                       {isSelected && <Check className="w-2.5 h-2.5 text-black stroke-[3]" />}
                                     </div>
-                                    <span className="text-xs font-bold text-white truncate">
+                                    <span className="text-xs sm:text-[13px] font-bold text-white truncate">
                                       {service.name}
                                     </span>
+                                    {shortNote && (
+                                      <span className="text-[9px] sm:text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-2 py-0.5 rounded-full shrink-0 truncate max-w-[90px] sm:max-w-[130px]">
+                                        {shortNote}
+                                      </span>
+                                    )}
                                   </div>
 
+                                  {/* Center: Exact Middle Plus/Minus Control */}
                                   {isLocationGroup && (
                                     <div
-                                      className="relative flex flex-col items-center justify-center shrink-0 leading-none"
+                                      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center justify-center shrink-0 leading-none"
                                       onClick={(e) => e.stopPropagation()}
                                     >
                                       {activePopup && (
                                         <span
                                           key={activePopup.id}
-                                          className="pointer-events-none absolute -top-3.5 left-1/2 -translate-x-1/2 z-30 bg-[#D4AF37] text-black text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-[0_0_10px_rgba(212,175,55,0.65)] whitespace-nowrap animate-in fade-in zoom-in-95 slide-in-from-bottom-1 duration-150"
+                                          className="simcha-price-popup-fade pointer-events-none absolute -top-4 left-1/2 z-30 bg-[#D4AF37] text-black text-[9px] font-black px-2 py-0.5 rounded-full shadow-[0_0_10px_rgba(212,175,55,0.65)] whitespace-nowrap"
                                         >
                                           {activePopup.text}
                                         </span>
@@ -1295,12 +1333,12 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                               const nextHours = currentHours - 1;
                                               setLocationHours(prev => ({ ...prev, [service.id]: nextHours }));
                                               if (hourlyRate > 0) {
-                                                triggerHourPopup(service.id, `-$${hourlyRate}`);
+                                                triggerHourPopup(service.id, `-$${hourlyRate.toLocaleString()}`);
                                               }
                                             }
                                           }}
                                           disabled={currentHours <= baseHours}
-                                          className="w-4 h-4 rounded bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] disabled:opacity-35 text-[#D4AF37] flex items-center justify-center text-[10px] font-black leading-none transition-colors cursor-pointer disabled:cursor-default"
+                                          className="w-5 h-5 rounded-full bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] disabled:opacity-35 text-[#D4AF37] flex items-center justify-center text-xs font-black leading-none transition-colors cursor-pointer disabled:cursor-default"
                                           aria-label={`Decrease ${service.name} hours`}
                                         >
                                           -
@@ -1330,9 +1368,9 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                             }
                                             const nextHours = currentHours + 1;
                                             setLocationHours(prev => ({ ...prev, [service.id]: nextHours }));
-                                            triggerHourPopup(service.id, `+$${hourlyRate}`);
+                                            triggerHourPopup(service.id, `+$${hourlyRate.toLocaleString()}`);
                                           }}
-                                          className="w-4 h-4 rounded bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] flex items-center justify-center text-[10px] font-black leading-none transition-colors cursor-pointer"
+                                          className="w-5 h-5 rounded-full bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] flex items-center justify-center text-xs font-black leading-none transition-colors cursor-pointer"
                                           aria-label={`Increase ${service.name} hours`}
                                         >
                                           +
@@ -1343,9 +1381,17 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
 
                                   {canMultiple && (
                                     <div
-                                      className="flex items-center gap-1 shrink-0"
+                                      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex items-center gap-1 shrink-0"
                                       onClick={(e) => e.stopPropagation()}
                                     >
+                                      {activePopup && (
+                                        <span
+                                          key={activePopup.id}
+                                          className="simcha-price-popup-fade pointer-events-none absolute -top-4 left-1/2 z-30 bg-[#D4AF37] text-black text-[9px] font-black px-2 py-0.5 rounded-full shadow-[0_0_10px_rgba(212,175,55,0.65)] whitespace-nowrap"
+                                        >
+                                          {activePopup.text}
+                                        </span>
+                                      )}
                                       <button
                                         type="button"
                                         onClick={(e) => {
@@ -1353,11 +1399,12 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                           if (!isSelected) return;
                                           if (qty > 1) {
                                             handleQuantityChange(service.id, String(qty - 1));
+                                            triggerHourPopup(service.id, `-$${service.price.toLocaleString()}`);
                                           } else {
                                             toggleService(service.id);
                                           }
                                         }}
-                                        className="w-5 h-5 rounded-md bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] flex items-center justify-center text-xs font-black leading-none transition-colors cursor-pointer"
+                                        className="w-5 h-5 rounded-full bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] flex items-center justify-center text-xs font-black leading-none transition-colors cursor-pointer"
                                         aria-label={`Decrease ${service.name} quantity`}
                                       >
                                         -
@@ -1375,8 +1422,9 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                           } else {
                                             handleQuantityChange(service.id, String(qty + 1));
                                           }
+                                          triggerHourPopup(service.id, `+$${service.price.toLocaleString()}`);
                                         }}
-                                        className="w-5 h-5 rounded-md bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] flex items-center justify-center text-xs font-black leading-none transition-colors cursor-pointer"
+                                        className="w-5 h-5 rounded-full bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] flex items-center justify-center text-xs font-black leading-none transition-colors cursor-pointer"
                                         aria-label={`Increase ${service.name} quantity`}
                                       >
                                         +
@@ -1384,7 +1432,8 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                     </div>
                                   )}
 
-                                  <span className="text-[11px] font-black text-[#D4AF37] shrink-0 tracking-wide whitespace-nowrap tabular-nums">
+                                  {/* Right: Price */}
+                                  <span className="ml-auto text-[11px] font-black text-[#D4AF37] shrink-0 tracking-wide whitespace-nowrap tabular-nums">
                                     ${displayPrice.toLocaleString()}
                                   </span>
                                 </div>
@@ -1396,11 +1445,11 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                     );
                   })}
                 </div>
-              </fieldset>
+              </div>
             );
           })()}
 
-          <div className="space-y-4">
+          <div className="space-y-5">
             <FloatingInput 
               id="event-name" 
               required 

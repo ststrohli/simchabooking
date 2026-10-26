@@ -697,3 +697,78 @@ body.light-mode,
   -webkit-backface-visibility: hidden;
   transform: translateZ(0);
 }
+
+@keyframes simchaPopupFade {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 4px) scale(0.92);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, 0px) scale(1);
+  }
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -2px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -5px) scale(0.96);
+  }
+}
+
+.simcha-price-popup-fade {
+  animation: simchaPopupFade 1.05s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.simcha-event-card-overlay {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.8) 0%,
+    rgba(0, 0, 0, 0.34) 50%,
+    rgba(0, 0, 0, 0.72) 100%
+  ) !important;
+}
+
+.simcha-event-pill {
+  background-color: rgba(0, 0, 0, 0.62) !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.simcha-event-btn {
+  background-color: rgba(0, 0, 0, 0.72) !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.simcha-event-btn:hover {
+  background-color: #D4AF37 !important;
+  color: #000000 !important;
+}
+
+.light-mode .simcha-event-card .text-white {
+  color: #ffffff !important;
+}
+
+.light-mode .simcha-event-card .text-zinc-100,
+.light-mode .simcha-event-card .text-zinc-200,
+.light-mode .simcha-event-card .text-zinc-300 {
+  color: #e4e4e7 !important;
+}
+
+.simcha-pill-fade-left {
+  background: linear-gradient(to right, #050505 0%, rgba(5, 5, 5, 0) 100%);
+}
+
+.simcha-pill-fade-right {
+  background: linear-gradient(to left, #050505 0%, rgba(5, 5, 5, 0) 100%);
+}
+
+.light-mode .simcha-pill-fade-left {
+  background: linear-gradient(to right, #ffffff 0%, rgba(255, 255, 255, 0) 100%) !important;
+}
+
+.light-mode .simcha-pill-fade-right {
+  background: linear-gradient(to left, #ffffff 0%, rgba(255, 255, 255, 0) 100%) !important;
+}

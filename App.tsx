@@ -1701,20 +1701,100 @@ function App() {
       showNotification(msg, type);
     };
 
-    // Bookings
-    let bookingsQuery;
+    // Bookings (Real-time sync for both client and vendor views with strict deduplication & newest-first order)
+    let unsubBookings = () => {};
     if (userRole === 'admin') {
-      bookingsQuery = collection(db, 'bookings');
-    } else if (userRole === 'vendor' && currentUserVendorId) {
-      bookingsQuery = query(collection(db, 'bookings'), where('vendorId', '==', currentUserVendorId));
+      unsubBookings = onSnapshot(
+        collection(db, 'bookings'),
+        (snapshot) => {
+          const bData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
+          bData.sort((a, b) => {
+            const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return tB - tA;
+          });
+          setBookings(bData);
+        },
+        (err) => handleFirestoreError(err, OperationType.LIST, 'bookings', notifyErr)
+      );
     } else {
-      bookingsQuery = query(collection(db, 'bookings'), where('clientId', '==', fbUser.uid));
-    }
+      const bookingBuckets = new Map<string, Booking[]>();
+      const rebuildMergedBookings = () => {
+        const byId = new Map<string, Booking>();
+        for (const list of bookingBuckets.values()) {
+          for (const item of list) {
+            const existing = byId.get(item.id);
+            if (!existing) {
+              byId.set(item.id, item);
+            } else {
+              const tNew = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+              const tOld = existing.createdAt ? new Date(existing.createdAt).getTime() : 0;
+              if (tNew >= tOld) byId.set(item.id, item);
+            }
+          }
+        }
+        const sorted = Array.from(byId.values()).sort((a, b) => {
+          const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tB - tA;
+        });
+        // Deduplicate by vendorId + date + client identifier so multiple identical bookings never appear
+        const seenKeys = new Set<string>();
+        const deduped: Booking[] = [];
+        for (const b of sorted) {
+          const clientKey = (b.userId || b.clientId || b.contactEmail || b.clientName || '').toLowerCase();
+          const compositeKey = `${b.vendorId}_${b.date}_${clientKey}`;
+          if (!seenKeys.has(compositeKey)) {
+            seenKeys.add(compositeKey);
+            deduped.push(b);
+          }
+        }
+        setBookings(deduped);
+      };
 
-    const unsubBookings = onSnapshot(bookingsQuery, (snapshot) => {
-      const bData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
-      setBookings(bData);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'bookings', notifyErr));
+      const unsubs: Array<() => void> = [];
+      const qByUserId = query(collection(db, 'bookings'), where('userId', '==', fbUser.uid));
+      unsubs.push(
+        onSnapshot(
+          qByUserId,
+          (snap) => {
+            bookingBuckets.set('userId', snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking)));
+            rebuildMergedBookings();
+          },
+          () => {}
+        )
+      );
+
+      const qByClientId = query(collection(db, 'bookings'), where('clientId', '==', fbUser.uid));
+      unsubs.push(
+        onSnapshot(
+          qByClientId,
+          (snap) => {
+            bookingBuckets.set('clientId', snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking)));
+            rebuildMergedBookings();
+          },
+          () => {}
+        )
+      );
+
+      if (currentUserVendorId) {
+        const qByVendorId = query(collection(db, 'bookings'), where('vendorId', '==', currentUserVendorId));
+        unsubs.push(
+          onSnapshot(
+            qByVendorId,
+            (snap) => {
+              bookingBuckets.set('vendorId', snap.docs.map(d => ({ id: d.id, ...d.data() } as Booking)));
+              rebuildMergedBookings();
+            },
+            (err) => handleFirestoreError(err, OperationType.LIST, 'bookings', notifyErr)
+          )
+        );
+      }
+
+      unsubBookings = () => {
+        unsubs.forEach(u => u());
+      };
+    }
 
     // Messages (Subcollection aggregation to keep existing UI fully intact without deep structural rewrite of all panels)
     let unsubMessages = () => {};
@@ -2523,112 +2603,165 @@ function App() {
     }
   };
 
-  const handleProcessCart = async () => {
-    if (!fbUser) return;
-    try {
-      const newBookings = cart.map(item => ({
-        userId: fbUser.uid,
-        vendorId: item.vendor.id,
-        clientName: item.clientName,
-        eventName: item.eventName,
-        date: item.date,
-        status: 'pending' as const,
-        paymentStatus: 'pending' as const,
-        amount: item.amount,
-        contactEmail: item.contactEmail,
-        selectedServices: item.selectedServices,
-        eventLocation: item.eventLocation,
-        eventTime: item.eventTime,
-        notes: item.notes,
-        createdAt: new Date().toISOString()
-      }));
+  const isBookingSubmitInFlightRef = useRef(false);
 
-      for (const b of newBookings) {
-        await addDoc(collection(db, 'bookings'), b);
-        await sendBookingConfirmation(b);
+  const handleProcessCart = async () => {
+    if (!fbUser || isBookingSubmitInFlightRef.current || cart.length === 0) return;
+    isBookingSubmitInFlightRef.current = true;
+    try {
+      const clientPhoto = currentAuthenticatedUser.photoURL || fbUser.photoURL || '';
+      const nowIso = new Date().toISOString();
+
+      // Deduplicate cart items by vendor.id + date so we never send multiple requests for the same event
+      const uniqueCartMap = new Map<string, CartItem>();
+      for (const item of cart) {
+        uniqueCartMap.set(`${item.vendor.id}_${item.date}`, item);
+      }
+      const uniqueCartItems = Array.from(uniqueCartMap.values());
+
+      const createdBookings: Booking[] = [];
+      for (let i = 0; i < uniqueCartItems.length; i++) {
+        const item = uniqueCartItems[i];
+        const safeDate = (item.date || new Date().toLocaleDateString('en-CA')).replace(/[^a-zA-Z0-9_-]/g, '-');
+        const deterministicId = `booking_${fbUser.uid}_${item.vendor.id}_${safeDate}`;
+        // Slight millisecond offset per item so newest order is deterministic
+        const itemCreatedAt = new Date(Date.now() + i).toISOString();
+        const bPayload = {
+          userId: fbUser.uid,
+          clientId: fbUser.uid,
+          vendorId: item.vendor.id,
+          clientName: item.clientName || currentAuthenticatedUser.name || '',
+          clientPhotoURL: clientPhoto,
+          eventName: item.eventName || 'Simcha Celebration',
+          date: item.date,
+          status: 'pending' as const,
+          paymentStatus: 'pending' as const,
+          amount: item.amount,
+          contactEmail: item.contactEmail || currentAuthenticatedUser.username || fbUser.email || '',
+          selectedServices: item.selectedServices || [],
+          eventLocation: item.eventLocation || '',
+          eventTime: item.eventTime || '',
+          notes: item.notes || '',
+          isOffer: !!item.isOffer || !!item.notes?.includes('OFFERED PRICE:'),
+          offeredPrice: item.offeredPrice,
+          createdAt: itemCreatedAt || nowIso
+        };
+
+        await setDoc(doc(db, 'bookings', deterministicId), clean(bPayload));
+        createdBookings.push({ id: deterministicId, ...bPayload });
+        await sendBookingConfirmation(bPayload);
       }
 
-      if (cart.length > 0) {
-        const totalAmt = cart.reduce((acc, curr) => acc + curr.amount, 0);
-        trackFunnelStep.submitBookingRequest(cart.length, totalAmt);
+      if (createdBookings.length > 0) {
+        setBookings(prev => {
+          const merged = [...createdBookings.reverse(), ...prev];
+          const seen = new Set<string>();
+          return merged.filter(b => {
+            const key = `${b.vendorId}_${b.date}_${(b.userId || b.clientId || b.contactEmail || '').toLowerCase()}`;
+            if (seen.has(b.id) || seen.has(key)) return false;
+            seen.add(b.id);
+            seen.add(key);
+            return true;
+          });
+        });
+        const totalAmt = uniqueCartItems.reduce((acc, curr) => acc + curr.amount, 0);
+        trackFunnelStep.submitBookingRequest(uniqueCartItems.length, totalAmt);
       }
 
       setCart([]);
-      await deleteDoc(doc(db, 'users', fbUser.uid, 'cart', 'current'));
+      await deleteDoc(doc(db, 'users', fbUser.uid, 'cart', 'current')).catch(() => {});
+      setPortalInitialTab('events');
+      setActiveBottomTab('events');
       setShowPriorityHoldPopup(true);
       showNotification('Requests sent!');
     } catch (err) {
       console.error("Error processing cart:", err);
+    } finally {
+      isBookingSubmitInFlightRef.current = false;
     }
   };
 
   const handleConfirmBooking = async (d: any) => {
-    if (!bookingVendor) return;
-    trackFunnelStep.addToPlan(bookingVendor.id, bookingVendor.name, bookingVendor.category, d.totalAmount);
-    
-    const bookingDate = d.date || eventDate || new Date().toLocaleDateString('en-CA');
-    const finalClientName = d.clientName || currentAuthenticatedUser.name || '';
-    const finalContactEmail = d.contactEmail || currentAuthenticatedUser.username || '';
+    if (!bookingVendor || isBookingSubmitInFlightRef.current) return;
+    isBookingSubmitInFlightRef.current = true;
 
-    if (d.isDirectBook) {
-      const newBooking = {
-        userId: fbUser?.uid || currentAuthenticatedUser.id || 'anonymous',
-        vendorId: bookingVendor.id,
-        clientName: finalClientName,
-        eventName: d.eventName,
-        date: bookingDate,
-        status: 'pending' as const,
-        paymentStatus: 'pending' as const,
-        amount: d.totalAmount,
-        contactEmail: finalContactEmail,
-        selectedServices: d.selectedServices || [],
-        eventLocation: d.eventLocation || '',
-        eventTime: d.eventTime || '',
-        notes: d.notes || '',
-        createdAt: new Date().toISOString()
-      };
+    try {
+      trackFunnelStep.addToPlan(bookingVendor.id, bookingVendor.name, bookingVendor.category, d.totalAmount);
 
-      try {
+      const bookingDate = d.date || eventDate || new Date().toLocaleDateString('en-CA');
+      const finalClientName = d.clientName || currentAuthenticatedUser.name || '';
+      const finalContactEmail = d.contactEmail || currentAuthenticatedUser.username || fbUser?.email || '';
+      const clientPhoto = currentAuthenticatedUser.photoURL || fbUser?.photoURL || '';
+      const clientUid = fbUser?.uid || currentAuthenticatedUser.id || 'anonymous';
+
+      if (d.isDirectBook) {
+        const safeDate = bookingDate.replace(/[^a-zA-Z0-9_-]/g, '-');
+        const deterministicBookingId = `booking_${clientUid}_${bookingVendor.id}_${safeDate}`;
+        const newBooking = {
+          userId: clientUid,
+          clientId: clientUid,
+          vendorId: bookingVendor.id,
+          clientName: finalClientName,
+          clientPhotoURL: clientPhoto,
+          eventName: d.eventName,
+          date: bookingDate,
+          status: 'pending' as const,
+          paymentStatus: 'pending' as const,
+          amount: d.totalAmount,
+          contactEmail: finalContactEmail,
+          selectedServices: d.selectedServices || [],
+          eventLocation: d.eventLocation || '',
+          eventTime: d.eventTime || '',
+          notes: d.isOffer && d.offeredPrice && !d.notes?.includes('OFFERED PRICE:')
+            ? `OFFERED PRICE: $${d.offeredPrice}. ${d.notes || ''}`.trim()
+            : (d.notes || ''),
+          isOffer: !!d.isOffer,
+          offeredPrice: d.offeredPrice,
+          createdAt: new Date().toISOString()
+        };
+
         try {
-          await addDoc(collection(db, 'bookings'), newBooking);
+          await setDoc(doc(db, 'bookings', deterministicBookingId), clean(newBooking));
         } catch (dbErr) {
           console.warn("Could not save booking to database (possibly offline), continuing flow:", dbErr);
         }
+
+        const savedBookingObj: Booking = { id: deterministicBookingId, ...newBooking };
+        // Immediately place at the very top of bookings state & deduplicate
+        setBookings(prev => {
+          const filtered = prev.filter(
+            b =>
+              b.id !== deterministicBookingId &&
+              !(
+                b.vendorId === bookingVendor.id &&
+                b.date === bookingDate &&
+                (b.userId === clientUid || b.clientId === clientUid || b.contactEmail?.toLowerCase() === finalContactEmail.toLowerCase())
+              )
+          );
+          return [savedBookingObj, ...filtered];
+        });
+
+        // IMPORTANT: Book Now must NEVER show up in Plan (cart). If this vendor+date was in Plan, remove it.
+        setCart(prev => prev.filter(item => !(item.vendor.id === bookingVendor.id && item.date === bookingDate)));
+
         await sendBookingConfirmation(newBooking);
 
-        setCart(prev => [...prev, {
-          vendor: bookingVendor,
-          date: bookingDate,
-          notes: d.notes,
-          clientName: finalClientName,
-          eventName: d.eventName,
-          eventLocation: d.eventLocation,
-          eventTime: d.eventTime,
-          contactEmail: finalContactEmail,
-          selectedServices: d.selectedServices,
-          amount: d.totalAmount
-        }]);
-        
         // Suggest other available vendors on the same date
         const availableOthers = vendors.filter(v => v.id !== bookingVendor.id && !v.unavailableDates?.includes(bookingDate) && cart.findIndex(c => c.vendor.id === v.id) === -1);
         setSuggestedVendors(availableOthers.sort((a,b) => b.rating - a.rating).slice(0, 4));
         setSourceVendorForSuggestions(bookingVendor);
         setIsPriorityLockForSuggestions(!!d.isPriorityDate || isPriorityFromSuggestions);
         setSuggestionsEventDate(bookingDate);
-        
+
         if (d.isPriorityDate || isPriorityFromSuggestions) {
           setPendingPrioritySuggestions(true);
         } else {
           setPendingPrioritySuggestions(false);
         }
         setShowSuggestions(false);
-      } catch (err) {
-        console.error("Error creating direct booking:", err);
-        showNotification("Error creating booking. Please try again.");
-      }
-    } else {
-      try {
-        setCart(prev => [...prev, {
+      } else {
+        // Add to Plan ONLY (vendor does not receive until client clicks "Send All Booking Requests" in Plan)
+        const newCartItem: CartItem = {
           vendor: bookingVendor,
           date: bookingDate,
           notes: d.notes,
@@ -2638,16 +2771,28 @@ function App() {
           eventTime: d.eventTime,
           contactEmail: finalContactEmail,
           selectedServices: d.selectedServices,
-          amount: d.totalAmount
-        }]);
-        
+          amount: d.totalAmount,
+          isOffer: !!d.isOffer,
+          offeredPrice: d.offeredPrice
+        };
+
+        setCart(prev => {
+          const existingIdx = prev.findIndex(item => item.vendor.id === bookingVendor.id && item.date === bookingDate);
+          if (existingIdx !== -1) {
+            const next = [...prev];
+            next[existingIdx] = newCartItem;
+            return next;
+          }
+          return [newCartItem, ...prev];
+        });
+
         // Suggest other available vendors on the same date
         const availableOthers = vendors.filter(v => v.id !== bookingVendor.id && !v.unavailableDates?.includes(bookingDate) && cart.findIndex(c => c.vendor.id === v.id) === -1);
         setSuggestedVendors(availableOthers.sort((a,b) => b.rating - a.rating).slice(0, 4));
         setSourceVendorForSuggestions(bookingVendor);
         setIsPriorityLockForSuggestions(!!d.isPriorityDate || isPriorityFromSuggestions);
         setSuggestionsEventDate(bookingDate);
-        
+
         if (d.isPriorityDate || isPriorityFromSuggestions) {
           setPendingPrioritySuggestions(true);
         } else {
@@ -2658,10 +2803,12 @@ function App() {
           show: true,
           vendorName: bookingVendor.name
         });
-      } catch (err) {
-        console.error("Error adding to plan:", err);
-        showNotification("Error adding to plan. Please try again.", "error");
       }
+    } catch (err) {
+      console.error("Error confirming booking/plan:", err);
+      showNotification("Error processing request. Please try again.", "error");
+    } finally {
+      isBookingSubmitInFlightRef.current = false;
     }
   };
 
@@ -2672,6 +2819,16 @@ function App() {
     setPortalTab('client');
     setPortalInitialTab('plan');
     setActiveBottomTab('plan');
+    setView('portal');
+  };
+
+  const handleGoToEvents = () => {
+    setPlanConfirmation(null);
+    setQuickViewVendor(null);
+    setBookingVendor(null);
+    setPortalTab('client');
+    setPortalInitialTab('events');
+    setActiveBottomTab('events');
     setView('portal');
   };
 
@@ -3856,7 +4013,7 @@ function App() {
     if (view === 'portal' && fbUser) {
       const isVendor = isActuallyVendor;
 
-            if (portalTab === 'vendor' && isVendor) {
+      if (portalTab === 'vendor' && isVendor) {
         const v = vendors.find(v => v.id === currentUserVendorId);
         if (v) {
           return (
@@ -3864,9 +4021,9 @@ function App() {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
               transition={APP_SLIDE_UP_TRANSITION}
-              className="min-h-screen bg-black flex flex-col"
+              className="flex-1 bg-[#050505] flex flex-col"
             >
-                            <div className="flex-grow flex flex-col">
+              <div className="flex-grow flex flex-col">
                 <VendorPortal 
                   vendor={v} 
                   initialTab={portalInitialTab}
@@ -3890,16 +4047,21 @@ function App() {
       }
 
       // Otherwise render client portal
-      const myBookings = bookings.filter(b => b.contactEmail === fbUser.email);
+      const myBookings = bookings.filter(
+        b =>
+          b.userId === fbUser.uid ||
+          b.clientId === fbUser.uid ||
+          (b.contactEmail && fbUser.email && b.contactEmail.toLowerCase() === fbUser.email.toLowerCase())
+      );
       const myMessages = messages.filter(m => m.clientEmail === fbUser.email);
       return (
         <motion.div 
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
           transition={APP_SLIDE_UP_TRANSITION}
-          className="min-h-screen bg-black flex flex-col"
+          className="flex-1 bg-[#050505] flex flex-col"
         >
-                    <div className="flex-grow flex flex-col">
+          <div className="flex-grow flex flex-col">
             <ClientPortal 
               user={currentAuthenticatedUser} 
               initialTab={portalInitialTab}
@@ -4351,7 +4513,7 @@ function App() {
           initial={isSignInFlipping ? false : { opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
           transition={APP_SLIDE_UP_TRANSITION}
-          className="min-h-screen bg-black text-zinc-100 flex flex-col relative pb-28"
+          className={`min-h-screen bg-black text-zinc-100 flex flex-col relative ${view === 'portal' ? '' : 'pb-28'}`}
         >
       <FixedGoldScrollbar />
       {permissionErrorBanner && (
@@ -4586,6 +4748,7 @@ function App() {
           }}
           onConfirm={handleConfirmBooking} 
           onGoToPlan={handleGoToPlan}
+          onGoToEvents={handleGoToEvents}
           initialDetails={initialBookingDetails || { clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} 
         />
       )}
@@ -4628,6 +4791,7 @@ function App() {
           isInPlan={quickViewVendor ? cart.some(c => c.vendor.id === quickViewVendor.id) : false}
           onAddToPlan={handleAddToPlan}
           onGoToPlan={handleGoToPlan}
+          onGoToEvents={handleGoToEvents}
           onBookingDone={(isPriority) => {
             setIsBookingModalSuccess(false);
             setQuickViewVendor(null);

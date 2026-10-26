@@ -191,7 +191,68 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     return { text: `${diffDays} Day${diffDays === 1 ? '' : 's'} to go!`, isToday: false };
   };
 
-  const clientBookings = bookings.filter(b => b.contactEmail === user.username || b.clientName === user.name);
+  const [selectedEventCategory, setSelectedEventCategory] = useState<string>('All');
+
+  const clientBookings = useMemo(() => {
+    const sorted = bookings
+      .filter(
+        b =>
+          (user.id && (b.userId === user.id || b.clientId === user.id)) ||
+          (b.contactEmail && user.username && b.contactEmail.toLowerCase() === user.username.toLowerCase()) ||
+          (b.clientName && user.name && b.clientName.toLowerCase() === user.name.toLowerCase())
+      )
+      .map((booking, idx) => ({ booking, idx }))
+      .sort((a, b) => {
+        const timeA = a.booking.createdAt ? new Date(a.booking.createdAt).getTime() : 0;
+        const timeB = b.booking.createdAt ? new Date(b.booking.createdAt).getTime() : 0;
+        if (timeA !== timeB) {
+          return timeB - timeA; // Latest booked event always on top
+        }
+        return b.idx - a.idx;
+      })
+      .map(item => item.booking);
+
+    // Strictly deduplicate so the same vendor + date never appears multiple times
+    const seen = new Set<string>();
+    const deduped: Booking[] = [];
+    for (const b of sorted) {
+      const key = `${b.vendorId}_${b.date}`;
+      if (!seen.has(b.id) && !seen.has(key)) {
+        seen.add(b.id);
+        seen.add(key);
+        deduped.push(b);
+      }
+    }
+    return deduped;
+  }, [bookings, user.id, user.username, user.name]);
+
+  const eventCategories = useMemo(() => {
+    const bookedCats = new Set<string>();
+    clientBookings.forEach(b => {
+      const v = vendors.find(vendor => vendor.id === b.vendorId);
+      if (v?.category) bookedCats.add(v.category);
+    });
+    const allVendorCats = new Set<string>();
+    vendors.forEach(v => {
+      if (v.category) allVendorCats.add(v.category);
+    });
+    const defaultCats = ['Music', 'Photography', 'Videography', 'Catering', 'Venue', 'Decor', 'Entertainment'];
+    const ordered = [
+      'All',
+      ...Array.from(bookedCats),
+      ...defaultCats.filter(c => !bookedCats.has(c)),
+      ...Array.from(allVendorCats).filter(c => !bookedCats.has(c) && !defaultCats.includes(c))
+    ];
+    return Array.from(new Set(ordered));
+  }, [clientBookings, vendors]);
+
+  const filteredClientBookings = useMemo(() => {
+    if (selectedEventCategory === 'All') return clientBookings;
+    return clientBookings.filter(b => {
+      const v = vendors.find(vendor => vendor.id === b.vendorId);
+      return v?.category?.toLowerCase() === selectedEventCategory.toLowerCase();
+    });
+  }, [clientBookings, vendors, selectedEventCategory]);
   
   // Group messages by vendor for the chat hub
   const chatThreads = useMemo(() => {
@@ -245,9 +306,9 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
   useEffect(() => {
     if (onActiveChatChangeRef.current) {
-      onActiveChatChangeRef.current(!!selectedThreadVendorId && activeTab === 'chats');
+      onActiveChatChangeRef.current((!!selectedThreadVendorId && activeTab === 'chats') || !!checkoutClientSecret);
     }
-  }, [selectedThreadVendorId, activeTab]);
+  }, [selectedThreadVendorId, activeTab, checkoutClientSecret]);
 
   // Automatically mark unread messages as read when viewing a thread
   useEffect(() => {
@@ -315,50 +376,14 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   );
 
   return (
-    <div className="h-[calc(100dvh-5rem)] bg-black text-zinc-100 flex flex-col md:flex-row overflow-hidden relative">
-      {/* Mobile Header Toggle */}
-      {!isSidebarOpen && (
-      <header className="md:hidden bg-[#0a0a0a] border-b border-[#D4AF37]/10 p-4 flex justify-between items-center z-30 sticky top-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-[#D4AF37] rounded-full flex items-center justify-center text-black font-bold font-[Cinzel]">P</div>
-          <h2 className="text-[#D4AF37] font-bold font-[Cinzel] tracking-widest uppercase text-sm">Planner</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          {!isSidebarOpen && (
-            <button 
-              onClick={() => setIsSidebarOpen(true)} 
-              className="text-[#D4AF37] p-2 bg-white/5 rounded-full transition-all hover:bg-white/10"
-              aria-label="Toggle navigation menu"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-          )}
-        </div>
-      </header>
-      )}
-
-      {/* Sidebar Overlay */}
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-300"
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsSidebarOpen(false); }}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#0a0a0a] border-r border-[#D4AF37]/10 flex flex-col transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 md:h-screen md:sticky md:top-0 shadow-2xl`}>
+    <div className="min-h-[calc(100dvh-72px)] sm:min-h-[calc(100dvh-5rem)] flex-1 bg-[#050505] text-zinc-100 flex flex-col md:flex-row relative">
+      {/* Desktop Sidebar (BottomNav handles mobile navigation) */}
+      <aside className="hidden md:flex md:w-72 bg-[#0a0a0a] border-r border-[#D4AF37]/10 flex-col md:h-[calc(100dvh-5rem)] md:sticky md:top-20 shadow-2xl">
         <div className="p-6 md:p-8 flex items-center justify-between border-b border-white/5">
           <div>
             <h2 className="text-xl md:text-2xl font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-tighter">Planner</h2>
             <p className="text-[9px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-[0.3em] mt-1">Client Station</p>
           </div>
-          <button 
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsSidebarOpen(false); }} 
-            className="md:hidden z-[9999] p-3 rounded-full hover:bg-white/10 cursor-pointer relative pointer-events-auto"
-            aria-label="Close sidebar"
-          >
-            <X className="text-zinc-400 hover:text-white w-5 h-5" />
-          </button>
         </div>
         
         <div className="p-6 flex items-center gap-4 bg-black/40 border-b border-white/5">
@@ -387,186 +412,278 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto bg-[#050505] p-6 pb-36 md:p-10 md:pb-10">
-        <div className="mb-10 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-          <div className="flex flex-col items-start gap-4">
-            <div>
-              <h1 className="text-3xl font-bold font-[Cinzel] text-white capitalize tracking-tight">{activeTab}</h1>
-              <p className="text-[#D4AF37]/60 text-[10px] font-black uppercase tracking-[0.4em] mt-1.5">Managing your celebrations</p>
-            </div>
-          </div>
+      <main className="flex-1 bg-[#050505] p-4 pb-36 md:p-8 md:pb-10">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h1 className="text-xl sm:text-2xl font-bold font-[Cinzel] text-white capitalize tracking-tight">{activeTab}</h1>
         </div>
 
         {activeTab === 'overview' && (
-          <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4">
-                <div className="bg-[#D4AF37]/10 p-3 w-fit rounded-2xl"><ShoppingBag className="w-6 h-6 text-[#D4AF37]" /></div>
-                <div><p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Items in Plan</p><h3 className="text-3xl font-bold text-white">{cart.length}</h3></div>
+          <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-[#111] p-5 rounded-3xl border border-white/5 shadow-2xl space-y-3">
+                <div className="bg-[#D4AF37]/10 p-2.5 w-fit rounded-2xl"><ShoppingBag className="w-5 h-5 text-[#D4AF37]" /></div>
+                <div><p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Items in Plan</p><h3 className="text-2xl font-bold text-white">{cart.length}</h3></div>
               </div>
-              <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4">
-                <div className="bg-[#D4AF37]/10 p-3 w-fit rounded-2xl"><CheckCircle className="w-6 h-6 text-[#D4AF37]" /></div>
-                <div><p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Confirmed Events</p><h3 className="text-3xl font-bold text-white">{clientBookings.filter(b => b.status === 'confirmed').length}</h3></div>
+              <div className="bg-[#111] p-5 rounded-3xl border border-white/5 shadow-2xl space-y-3">
+                <div className="bg-[#D4AF37]/10 p-2.5 w-fit rounded-2xl"><CheckCircle className="w-5 h-5 text-[#D4AF37]" /></div>
+                <div><p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Confirmed</p><h3 className="text-2xl font-bold text-white">{clientBookings.filter(b => b.status === 'confirmed').length}</h3></div>
               </div>
             </div>
           </div>
         )}
 
         {activeTab === 'plan' && (
-          <div className="max-w-5xl mx-auto w-full relative overflow-hidden rounded-3xl p-6 sm:p-10 border border-[#D4AF37]/20 shadow-2xl animate-in slide-in-from-bottom-5 duration-500">
-            {/* Tasteful background image / overlay treatment */}
-            <div className="absolute inset-0 z-0 opacity-15 pointer-events-none">
-              <img src="https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=1600" alt="" className="w-full h-full object-cover filter blur-xs" />
-              <div className="absolute inset-0 bg-gradient-to-br from-black via-black/95 to-zinc-950"></div>
-            </div>
-
-            <div className="relative z-10">
-              <div className="mb-8">
-                <h3 className="text-2xl font-bold font-[Cinzel] text-white">Your Event Booking Requests & Plan</h3>
-                <p className="text-xs text-zinc-300 mt-1">Review your selected services, event details, and submit booking requests to top professionals.</p>
+          <div className="max-w-4xl mx-auto w-full space-y-3 animate-in slide-in-from-bottom-5 duration-500">
+            {cart.length === 0 ? (
+              <div className="text-center py-14 bg-[#0a0a0a] rounded-3xl border border-dashed border-white/10">
+                <ShoppingBag className="w-12 h-12 mx-auto mb-3 text-[#D4AF37]" />
+                <p className="text-base font-[Cinzel] text-zinc-300">Your plan is empty.</p>
               </div>
+            ) : (
+              <div className="space-y-3">
+                {cart.map((item, index) => (
+                  <div
+                    key={`${item.vendor.id}-${index}`}
+                    className="simcha-event-card relative overflow-hidden rounded-[2rem] border border-[#D4AF37]/35 hover:border-[#D4AF37]/75 px-5 py-4 sm:px-6 sm:py-4.5 transition-all group flex items-center justify-between gap-4 shadow-xl min-h-[104px]"
+                  >
+                    {/* Full Background Musician / Vendor Profile Image */}
+                    <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                      <img
+                        src={item.vendor.image}
+                        alt={item.vendor.name}
+                        className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                      />
+                      <div className="absolute inset-0 simcha-event-card-overlay" />
+                    </div>
 
-              {cart.length === 0 ? (
-                <div className="text-center py-20 bg-black/40 rounded-2xl border border-dashed border-white/10">
-                  <ShoppingBag className="w-16 h-16 mx-auto mb-6 text-[#D4AF37]" />
-                  <p className="text-xl font-[Cinzel] text-zinc-300">Your plan is empty.</p>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {cart.map((item, index) => (
-                    <div key={`${item.vendor.id}-${index}`} className="flex flex-col sm:flex-row gap-5 p-6 bg-black/60 backdrop-blur-md rounded-2xl border border-[#D4AF37]/20 group transition-all items-center">
-                      <img src={item.vendor.image} alt="" className="w-24 h-24 rounded-xl object-cover border border-white/10 shrink-0" />
-                      <div className="flex-1 min-w-0 text-center sm:text-left">
-                        <h4 className="font-bold text-xl text-zinc-100 font-[Cinzel]">{item.vendor.name}</h4>
-                        <p className="text-[10px] text-[#D4AF37] font-black uppercase tracking-widest mt-1">{item.vendor.category}</p>
-                        
-                        <div className="mt-3 flex flex-wrap justify-center sm:justify-start gap-4 text-[10px] font-bold text-zinc-300 uppercase tracking-widest">
-                          <div className="flex items-center gap-2"><Calendar className="w-3.5 h-3.5 text-[#D4AF37]" />{item.date}</div>
-                          <div className="flex items-center gap-2 text-[#D4AF37]"><CreditCard className="w-3.5 h-3.5" />${item.amount.toLocaleString()}</div>
-                        </div>
-
-                        {/* Display full filled-out details for verification and editing */}
-                        <div className="mt-4 bg-zinc-950/80 p-4 rounded-xl border border-white/10 text-[11px] text-zinc-200 space-y-1.5 text-left max-w-lg">
-                          <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Event Name:</span> <span className="text-white font-medium">{item.eventName}</span></div>
-                          {item.eventTime && <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Event Time:</span> <span className="text-white font-medium">{item.eventTime}</span></div>}
-                          {item.eventLocation && <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Location:</span> <span className="text-white font-medium">{item.eventLocation}</span></div>}
-                          <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Client Name:</span> <span className="text-white font-medium">{item.clientName}</span></div>
-                          <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Client Email:</span> <span className="text-white font-medium">{item.contactEmail}</span></div>
-                          {item.notes && <div><span className="text-zinc-400 uppercase tracking-wider font-bold">Notes:</span> <span className="italic text-zinc-300">"{item.notes}"</span></div>}
-                          {item.selectedServices && item.selectedServices.length > 0 && (
-                            <div className="pt-2 border-t border-white/10 mt-2">
-                              <span className="text-[#D4AF37] uppercase tracking-wider font-bold text-[9px]">Selected Services:</span>
-                              <ul className="list-disc pl-4 mt-1 space-y-0.5 text-[10px] text-zinc-300">
-                                {item.selectedServices.map(s => (
-                                  <li key={s.id}>{s.name} x {s.quantity} (${(s.price * s.quantity).toLocaleString()})</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
+                    {/* Left Balanced Event & Musician Info (No broken-off text) */}
+                    <div className="relative z-10 min-w-0 flex-1 flex flex-col justify-center gap-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="simcha-event-pill px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest text-[#D4AF37] border border-[#D4AF37]/40">
+                          {item.vendor.category}
+                        </span>
+                        {item.selectedServices && item.selectedServices.length > 0 && (
+                          <span className="simcha-event-pill px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest text-[#D4AF37] border border-[#D4AF37]/30">
+                            {item.selectedServices.length} {item.selectedServices.length === 1 ? 'Add-on' : 'Add-ons'}
+                          </span>
+                        )}
                       </div>
-                      <div className="flex sm:flex-col gap-2">
-                        <button onClick={() => onEditCartItem(index)} className="p-3 bg-zinc-800 text-zinc-200 hover:bg-[#D4AF37] hover:text-black rounded-xl transition-all border border-zinc-700 hover:border-[#D4AF37]/50 cursor-pointer" title="Edit Request" aria-label="Edit Request">
-                          <Edit3 className="w-5 h-5" />
+
+                      <h4 className="font-bold text-base sm:text-lg text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors leading-snug break-words drop-shadow-sm">
+                        {item.vendor.name}
+                      </h4>
+
+                      <div className="text-zinc-200 text-[11px] flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-medium leading-snug">
+                        <span className="inline-flex items-center gap-1 shrink-0 text-white font-semibold">
+                          <Calendar className="w-3 h-3 text-[#D4AF37] shrink-0" />
+                          {item.date}
+                        </span>
+                        {item.eventName && (
+                          <>
+                            <span className="text-[#D4AF37]">•</span>
+                            <span className="text-zinc-100">{item.eventName}</span>
+                          </>
+                        )}
+                        {item.eventTime && (
+                          <>
+                            <span className="text-[#D4AF37]">•</span>
+                            <span className="text-zinc-200 shrink-0">{item.eventTime}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right Stepped Price & Pill Actions */}
+                    <div className="relative z-10 flex flex-col items-end justify-center gap-2 shrink-0">
+                      <p className="text-base sm:text-xl font-bold text-[#D4AF37] font-[Cinzel] leading-none drop-shadow-sm">
+                        ${item.amount.toLocaleString()}
+                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onEditCartItem(index)}
+                          className="simcha-event-btn p-2 text-zinc-100 hover:bg-[#D4AF37] hover:text-black rounded-full transition-all border border-[#D4AF37]/40 cursor-pointer shadow-md"
+                          title="Edit Request"
+                          aria-label="Edit Request"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => onRemoveFromCart(index)} className="p-3 bg-zinc-800 text-zinc-300 hover:bg-red-500 hover:text-white rounded-xl transition-all border border-zinc-700 cursor-pointer" title="Remove" aria-label="Remove item">
-                          <Trash2 className="w-5 h-5" />
+                        <button
+                          type="button"
+                          onClick={() => onRemoveFromCart(index)}
+                          className="simcha-event-btn p-2 text-zinc-200 hover:bg-red-500 hover:text-white rounded-full transition-all border border-white/20 hover:border-red-500 cursor-pointer shadow-md"
+                          title="Remove"
+                          aria-label="Remove item"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
-                  ))}
-                  <div className="pt-8 border-t border-[#D4AF37]/20 mt-10 bg-black/50 p-6 rounded-2xl border border-white/10">
-                    <div className="flex justify-between items-center mb-6">
-                      <span className="text-zinc-300 font-black uppercase tracking-[0.2em] text-xs">Plan Subtotal</span>
-                      <span className="text-3xl sm:text-4xl font-bold text-[#D4AF37] font-[Cinzel]">${subtotal.toLocaleString()}</span>
-                    </div>
-                    <button onClick={onProcessCart} className="w-full bg-[#D4AF37] text-black py-4 rounded-xl font-black text-xs sm:text-sm uppercase tracking-[0.3em] hover:bg-[#E5C76B] transition-all shadow-xl shadow-[#D4AF37]/20 cursor-pointer">
-                      Send All Booking Requests
-                    </button>
                   </div>
+                ))}
+
+                <div className="pt-4 mt-4 bg-[#0a0a0a] p-4 sm:p-5 rounded-3xl border border-[#D4AF37]/25 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-zinc-400 font-black uppercase tracking-[0.2em] text-[10px]">Plan Subtotal</span>
+                    <span className="text-xl sm:text-2xl font-bold text-[#D4AF37] font-[Cinzel]">${subtotal.toLocaleString()}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onProcessCart}
+                    className="w-full sm:w-auto px-7 bg-[#D4AF37] text-black py-3 rounded-full font-black text-[11px] uppercase tracking-[0.25em] hover:bg-[#E5C76B] transition-all shadow-xl shadow-[#D4AF37]/20 cursor-pointer"
+                  >
+                    Send All Booking Requests
+                  </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === 'events' && (
-          <div className="space-y-4 animate-in slide-in-from-bottom-5 duration-500 max-w-7xl mx-auto w-full">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-xl font-bold font-[Cinzel] text-white">Your Celebrations & Bookings</h3>
-                <p className="text-xs text-zinc-400 mt-1">Manage your active reservations, countdowns, and secure payments.</p>
+          <div className="space-y-3 animate-in slide-in-from-bottom-5 duration-500 max-w-4xl mx-auto w-full">
+            {/* Compact Horizontally Slidable Pill Category Filter with Edge Fades */}
+            <div className="relative w-full overflow-hidden">
+              <div className="simcha-pill-fade-left pointer-events-none absolute inset-y-0 left-0 w-7 z-10" />
+              <div className="simcha-pill-fade-right pointer-events-none absolute inset-y-0 right-0 w-7 z-10" />
+              <div
+                className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-2 touch-pan-x select-none"
+                role="tablist"
+                aria-label="Filter booked events by category"
+              >
+                {eventCategories.map((cat) => {
+                  const isActive = selectedEventCategory.toLowerCase() === cat.toLowerCase();
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setSelectedEventCategory(cat)}
+                      className={`shrink-0 px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer border ${
+                        isActive
+                          ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-[0_0_12px_rgba(212,175,55,0.35)]'
+                          : 'bg-black/70 text-zinc-300 border-[#D4AF37]/25 hover:border-[#D4AF37]/60 hover:text-white'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  );
+                })}
               </div>
-              <span className="text-xs text-[#D4AF37] font-black uppercase tracking-widest bg-[#D4AF37]/10 px-3 py-1 rounded-full border border-[#D4AF37]/20">
-                {clientBookings.length} Total
-              </span>
             </div>
-            {clientBookings.length === 0 ? (
-              <div className="py-20 text-center bg-[#0a0a0a] rounded-2xl border border-dashed border-white/10">
-                <Calendar className="w-16 h-16 mx-auto mb-6 text-[#D4AF37]" />
-                <p className="text-xl font-[Cinzel] text-zinc-300">No active reservations.</p>
+
+            {filteredClientBookings.length === 0 ? (
+              <div className="py-14 text-center bg-[#0a0a0a] rounded-3xl border border-dashed border-white/10">
+                <Calendar className="w-12 h-12 mx-auto mb-3 text-[#D4AF37]" />
+                <p className="text-base font-[Cinzel] text-zinc-300">
+                  {selectedEventCategory === 'All' ? 'No active reservations.' : `No ${selectedEventCategory} events found.`}
+                </p>
               </div>
-            ) : clientBookings.map((booking) => {
+            ) : filteredClientBookings.map((booking, index) => {
               const vendor = vendors.find(v => v.id === booking.vendorId);
               if (!vendor) return null;
               const countdown = getCountdown(booking.date);
+              const isLatestBooking = index === 0 && selectedEventCategory === 'All';
+
               return (
-                <div key={booking.id} className="relative overflow-hidden bg-[#0c0c0c] border border-white/10 hover:border-[#D4AF37]/40 rounded-2xl p-6 transition-all group flex flex-col lg:flex-row gap-6 items-center shadow-lg">
-                  {/* Subtle celebratory photo background overlay */}
-                  <div className="absolute inset-0 z-0 opacity-15 group-hover:opacity-25 transition-opacity pointer-events-none">
-                    <img src={vendor.image} alt="" className="w-full h-full object-cover filter blur-xs" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-black via-black/90 to-black/70"></div>
+                <div
+                  key={booking.id}
+                  className="simcha-event-card relative overflow-hidden rounded-[2rem] border border-[#D4AF37]/35 hover:border-[#D4AF37]/75 px-5 py-4 sm:px-6 sm:py-4.5 transition-all group flex items-center justify-between gap-4 shadow-xl min-h-[108px]"
+                >
+                  {/* Full Background Musician / Vendor Profile Image */}
+                  <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                    <img
+                      src={vendor.image}
+                      alt={vendor.name}
+                      className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                    />
+                    <div className="absolute inset-0 simcha-event-card-overlay" />
                   </div>
-                  
-                  <div className="relative z-10 flex items-center gap-5 w-full lg:w-auto">
-                    <img src={vendor.image} className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover border border-[#D4AF37]/30 shrink-0 shadow-md" alt="" />
-                    <div className="min-w-0 flex-1 lg:max-w-md">
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                          booking.status === 'confirmed' 
-                            ? 'bg-green-500/10 text-green-400 border-green-500/30' 
-                            : booking.status === 'cancelled'
-                            ? 'bg-red-500/10 text-red-400 border-red-500/30'
-                            : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/30'
-                        }`}>{booking.status}</span>
-                        {booking.paymentStatus === 'paid' && (
-                          <span className="bg-green-500/10 text-green-400 border border-green-500/30 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest">
-                            Paid
-                          </span>
-                        )}
-                        {countdown && (
-                          <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${countdown.isToday ? 'bg-[#D4AF37] text-black font-black border-[#D4AF37]' : 'text-[#D4AF37] border-[#D4AF37]/20 bg-[#D4AF37]/5'}`}>
-                            {countdown.text}
-                          </span>
-                        )}
-                      </div>
-                      <h3 className="font-bold text-lg sm:text-xl text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate">{vendor.name}</h3>
-                      <p className="text-zinc-300 text-xs mt-1 flex items-center gap-2 font-medium">
-                        <Calendar className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" /> {booking.date} <span className="text-zinc-500">·</span> <span className="text-zinc-200">{booking.eventName}</span>
-                      </p>
+
+                  {/* Left Balanced Event & Vendor Details (Never broken off) */}
+                  <div className="relative z-10 min-w-0 flex-1 flex flex-col justify-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {isLatestBooking && (
+                        <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest bg-[#D4AF37] text-black shadow-sm">
+                          Latest
+                        </span>
+                      )}
+                      <span className="simcha-event-pill px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest text-[#D4AF37] border border-[#D4AF37]/40">
+                        {vendor.category}
+                      </span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${
+                        booking.status === 'confirmed' 
+                          ? 'bg-green-500/25 text-green-300 border-green-500/45' 
+                          : booking.status === 'cancelled'
+                          ? 'bg-red-500/25 text-red-300 border-red-500/45'
+                          : 'simcha-event-pill text-[#D4AF37] border-[#D4AF37]/40'
+                      }`}>
+                        {booking.status}
+                      </span>
+                      {booking.paymentStatus === 'paid' && (
+                        <span className="bg-green-500/25 text-green-300 border border-green-500/45 px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest">
+                          Paid
+                        </span>
+                      )}
+                      {countdown && (
+                        <span className={`px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${
+                          countdown.isToday
+                            ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                            : 'simcha-event-pill text-[#D4AF37] border-[#D4AF37]/40'
+                        }`}>
+                          {countdown.text}
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="font-bold text-base sm:text-lg text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors leading-snug break-words drop-shadow-sm">
+                      {vendor.name}
+                    </h3>
+
+                    <div className="text-zinc-200 text-[11px] flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-medium leading-snug">
+                      <span className="inline-flex items-center gap-1 shrink-0 text-white font-semibold">
+                        <Calendar className="w-3 h-3 text-[#D4AF37] shrink-0" />
+                        {booking.date}
+                      </span>
+                      {booking.eventName && (
+                        <>
+                          <span className="text-[#D4AF37]">•</span>
+                          <span className="text-zinc-100">{booking.eventName}</span>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  <div className="relative z-10 lg:ml-auto flex flex-col sm:flex-row items-center gap-6 w-full lg:w-auto justify-between lg:justify-end border-t lg:border-t-0 border-white/5 pt-4 lg:pt-0">
-                    <div className="text-center sm:text-left lg:text-right">
-                      <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-0.5">Service Fee</p>
-                      <p className="text-2xl sm:text-3xl font-bold text-[#D4AF37] font-[Cinzel]">${booking.amount.toLocaleString()}</p>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
-                      <button onClick={() => onMessageVendor(vendor)} className="px-4 py-2.5 bg-white/5 hover:bg-[#D4AF37]/20 text-[#D4AF37] rounded-xl transition-all border border-[#D4AF37]/30 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest cursor-pointer">
-                        <MessageSquare className="w-3.5 h-3.5" /> Message
-                      </button>
+                  {/* Right Stepped / Staircase Layout: Top (Price + Pay), Bottom (Message) */}
+                  <div className="relative z-10 flex flex-col items-end justify-center gap-2 shrink-0">
+                    {/* Top Stair Step: Price next to Pay button */}
+                    <div className="flex items-center justify-end gap-2">
+                      <p className="text-base sm:text-xl font-bold text-[#D4AF37] font-[Cinzel] leading-none drop-shadow-sm">
+                        ${booking.amount.toLocaleString()}
+                      </p>
                       {booking.status === 'confirmed' && booking.paymentStatus === 'pending' && (
                         <button 
+                          type="button"
                           onClick={() => handlePay(booking.id, booking.vendorId, booking.amount)}
                           disabled={isProcessingPayment}
-                          className="bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-extrabold px-5 py-2.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all text-[10px] uppercase tracking-wider cursor-pointer hover:scale-[1.02]"
+                          className="bg-[#D4AF37] hover:bg-[#E5C76B] active:scale-95 text-black font-black px-4 py-1.5 rounded-full shadow-lg flex items-center justify-center gap-1.5 transition-all text-[10px] uppercase tracking-widest cursor-pointer"
                         >
-                          {isProcessingPayment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-                          Pay Securely
+                          {isProcessingPayment ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                          <span>Pay</span>
                         </button>
                       )}
                     </div>
+
+                    {/* Bottom Stair Step: Message button */}
+                    <button
+                      type="button"
+                      onClick={() => onMessageVendor(vendor)}
+                      className="simcha-event-btn px-4 py-1.5 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black active:scale-95 rounded-full transition-all border border-[#D4AF37]/50 flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-widest cursor-pointer shadow-md"
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                      <span>Message</span>
+                    </button>
                   </div>
                 </div>
               );
