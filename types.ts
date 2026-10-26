@@ -45,6 +45,8 @@ export interface VendorService {
   allowQuantity?: boolean;
   image?: string;
   categoryType?: ServiceCategoryType;
+  defaultHours?: number;
+  hourlyRate?: number;
 }
 
 export interface SelectedService {
@@ -54,6 +56,9 @@ export interface SelectedService {
   quantity: number;
   unit?: string;
   categoryType?: ServiceCategoryType;
+  selectedHours?: number;
+  defaultHours?: number;
+  hourlyRate?: number;
 }
 
 export interface Vendor {
@@ -89,6 +94,7 @@ export interface Vendor {
   stripeConnected?: boolean;
   allowOffers?: boolean;
   onboardingComplete?: boolean;
+  enableDateCheckLimit?: boolean;
   maxDateChecks?: number;
   dateCheckResetHours?: number;
 }

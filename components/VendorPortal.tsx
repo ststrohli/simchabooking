@@ -352,10 +352,67 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   // Profile & Media State
   const [editForm, setEditForm] = useState<Vendor>({
     ...vendor,
+    enableDateCheckLimit: vendor.enableDateCheckLimit !== false,
     maxDateChecks: vendor.maxDateChecks ?? 5,
     dateCheckResetHours: vendor.dateCheckResetHours ?? 24
   });
-  const [isSaving, setIsSaving] = useState(false);
+  const latestEditFormRef = useRef<Vendor>(editForm);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLocalEditRef = useRef<number>(0);
+  const prevVendorIdRef = useRef<string>(vendor.id);
+  const onUpdateVendorRef = useRef(onUpdateVendor);
+  useEffect(() => {
+    onUpdateVendorRef.current = onUpdateVendor;
+  }, [onUpdateVendor]);
+
+  const applyImmediateVendorUpdate = (updater: (prev: Vendor) => Vendor) => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    lastLocalEditRef.current = Date.now();
+    const updated = updater(latestEditFormRef.current);
+    latestEditFormRef.current = updated;
+    setEditForm(updated);
+    onUpdateVendorRef.current(updated);
+    return updated;
+  };
+
+  const applyAutoSaveVendorUpdate = (updater: (prev: Vendor) => Vendor) => {
+    lastLocalEditRef.current = Date.now();
+    const updated = updater(latestEditFormRef.current);
+    latestEditFormRef.current = updated;
+    setEditForm(updated);
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    autoSaveTimerRef.current = setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      lastLocalEditRef.current = Date.now();
+      onUpdateVendorRef.current(latestEditFormRef.current);
+    }, 500);
+    return updated;
+  };
+
+  const flushAutoSave = () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+      lastLocalEditRef.current = Date.now();
+      onUpdateVendorRef.current(latestEditFormRef.current);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+        onUpdateVendorRef.current(latestEditFormRef.current);
+      }
+    };
+  }, []);
+
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(false);
@@ -376,6 +433,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const [newServiceUnit, setNewServiceUnit] = useState('location');
   const [newServiceCategoryType, setNewServiceCategoryType] = useState<ServiceCategoryType>('location');
   const [newServiceAllowQty, setNewServiceAllowQty] = useState(false);
+  const [newServiceDefaultHours, setNewServiceDefaultHours] = useState('4');
+  const [newServiceHourlyRate, setNewServiceHourlyRate] = useState('100');
   const [newServiceImageUrl, setNewServiceImageUrl] = useState('');
   const [isUploadingNewServiceImage, setIsUploadingNewServiceImage] = useState(false);
   
@@ -641,11 +700,21 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
   // Sync edit form with vendor prop changes
   useEffect(() => {
-    setEditForm({
+    const normalizedVendor: Vendor = {
       ...vendor,
+      enableDateCheckLimit: vendor.enableDateCheckLimit !== false,
       maxDateChecks: vendor.maxDateChecks ?? 5,
       dateCheckResetHours: vendor.dateCheckResetHours ?? 24
-    });
+    };
+    const isSameVendor = prevVendorIdRef.current === vendor.id;
+    prevVendorIdRef.current = vendor.id;
+
+    if (isSameVendor && (autoSaveTimerRef.current || Date.now() - lastLocalEditRef.current < 1200)) {
+      return;
+    }
+
+    latestEditFormRef.current = normalizedVendor;
+    setEditForm(normalizedVendor);
   }, [vendor]);
 
   // Group messages by client email for the messaging tab
@@ -1037,14 +1106,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   };
 
   const handleToggleDate = (dateStr: string) => {
-    const currentUnavailable = vendor.unavailableDates || [];
+    const currentUnavailable = latestEditFormRef.current.unavailableDates || vendor.unavailableDates || [];
     let updated: string[];
     if (currentUnavailable.includes(dateStr)) {
       updated = currentUnavailable.filter(d => d !== dateStr);
     } else {
       updated = [...currentUnavailable, dateStr];
     }
-    onUpdateVendor({ ...vendor, unavailableDates: updated });
+    applyImmediateVendorUpdate(prev => ({ ...prev, unavailableDates: updated }));
   };
 
   const changeMonth = (offset: number) => {
@@ -1070,7 +1139,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         setUploadProgresses(prev => ({ ...prev, 'gallery': progress }));
       });
       
-      const newGallery = [...(vendor.gallery || []), downloadURL];
+      const newGallery = [...(latestEditFormRef.current.gallery || vendor.gallery || []), downloadURL];
 
       // Save directly to Firestore database document
       await updateDoc(doc(db, 'vendors', vendor.id), {
@@ -1078,14 +1147,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       });
 
       // Update local state and parent to stay in sync
-      setEditForm(prev => ({
+      applyImmediateVendorUpdate(prev => ({
         ...prev,
         gallery: newGallery
       }));
-      onUpdateVendor({
-        ...vendor,
-        gallery: newGallery
-      });
 
       showNotification('Media uploaded successfully!');
     } catch (err: any) {
@@ -1116,14 +1181,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       });
 
       // Update local state and parent to stay in sync
-      setEditForm(prev => ({
+      applyImmediateVendorUpdate(prev => ({
         ...prev,
         image: downloadURL
       }));
-      onUpdateVendor({
-        ...vendor,
-        image: downloadURL
-      });
 
       showNotification('Business image updated!');
     } catch (err: any) {
@@ -1150,11 +1211,11 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         setUploadProgresses(prev => ({ ...prev, [serviceId]: progress }));
       });
       
-      setEditForm(prev => ({
+      applyImmediateVendorUpdate(prev => ({
         ...prev,
         services: prev.services?.map(s => s.id === serviceId ? { ...s, image: downloadURL } : s) || []
       }));
-      showNotification('Package image uploaded! Make sure to save profile.');
+      showNotification('Package image uploaded!');
     } catch (err: any) {
       console.error("Service image upload error:", err);
       showNotification('Failed to upload image: ' + err.message, 'info');
@@ -1183,7 +1244,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       }
     }
 
-    setEditForm(prev => ({
+    applyImmediateVendorUpdate(prev => ({
       ...prev,
       gallery: prev.gallery?.filter((_, i) => i !== index)
     }));
@@ -1222,53 +1283,51 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const handleAddService = () => {
     if (!newServiceName.trim() || !newServicePrice) return;
     
+    const isLoc = newServiceCategoryType === 'location';
     const newService: VendorService = {
       id: Math.random().toString(36).substr(2, 9),
       name: newServiceName.trim(),
       price: parseFloat(newServicePrice),
-      unit: newServiceUnit,
+      unit: isLoc ? 'location' : newServiceUnit,
       categoryType: newServiceCategoryType,
-      allowQuantity: newServiceAllowQty,
+      allowQuantity: newServiceCategoryType === 'amenities' ? newServiceAllowQty : false,
+      defaultHours: isLoc ? Math.max(1, parseInt(newServiceDefaultHours) || 4) : undefined,
+      hourlyRate: isLoc ? Math.max(0, parseFloat(newServiceHourlyRate) || 0) : undefined,
       image: newServiceImageUrl || undefined
     };
 
-    setEditForm(prev => ({
+    applyImmediateVendorUpdate(prev => ({
       ...prev,
-      services: [...(prev.services || []), newService]
+      services: [newService, ...(prev.services || [])]
     }));
 
     setNewServiceName('');
     setNewServicePrice('');
-    setNewServiceUnit(newServiceCategoryType === 'location' ? 'location' : newServiceCategoryType === 'hours' ? 'session' : 'item');
+    setNewServiceUnit(newServiceCategoryType === 'location' ? 'location' : 'item');
     setNewServiceAllowQty(false);
+    setNewServiceDefaultHours('4');
+    setNewServiceHourlyRate('100');
     setNewServiceImageUrl('');
     setShowAddForm(false);
   };
 
-  const handleUpdateService = (serviceId: string, updates: Partial<VendorService>) => {
-    setEditForm(prev => ({
+  const handleUpdateService = (serviceId: string, updates: Partial<VendorService>, immediate = false) => {
+    const updater = (prev: Vendor) => ({
       ...prev,
       services: prev.services?.map(s => s.id === serviceId ? { ...s, ...updates } : s) || []
-    }));
-  };
-
-  const handleRemoveService = (serviceId: string) => {
-    if (window.confirm('Delete this package permanently?')) {
-        setEditForm(prev => ({
-        ...prev,
-        services: prev.services?.filter(s => s.id !== serviceId) || []
-        }));
+    });
+    if (immediate || 'categoryType' in updates || 'allowQuantity' in updates) {
+      applyImmediateVendorUpdate(updater);
+    } else {
+      applyAutoSaveVendorUpdate(updater);
     }
   };
 
-  const handleSaveProfile = () => {
-    setIsSaving(true);
-    // Simulate save delay
-    setTimeout(() => {
-      onUpdateVendor(editForm);
-      setIsSaving(false);
-      setActiveTab('overview');
-    }, 800);
+  const handleRemoveService = (serviceId: string) => {
+    applyImmediateVendorUpdate(prev => ({
+      ...prev,
+      services: prev.services?.filter(s => s.id !== serviceId) || []
+    }));
   };
 
   const handleSendReply = (e: React.FormEvent) => {
@@ -3235,7 +3294,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           </p>
                         </div>
                         <button 
-                          onClick={(e) => { e.stopPropagation(); setEditForm({ ...editForm, allowOffers: !editForm.allowOffers }); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            applyImmediateVendorUpdate(prev => ({ ...prev, allowOffers: !prev.allowOffers }));
+                          }}
                           className={`w-full md:w-auto px-10 py-4 rounded-full text-xs font-black uppercase tracking-[0.2em] transition-all border ${editForm.allowOffers ? 'bg-[#D4AF37] text-white border-[#D4AF37] shadow-xl shadow-[#D4AF37]/10' : 'bg-black text-zinc-300 border-white/10 hover:border-[#D4AF37]/40'}`}
                         >
                           {editForm.allowOffers ? (
@@ -3260,27 +3322,60 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       <p className="text-[10px] text-zinc-300 font-bold uppercase tracking-widest mt-1">Protect your availability calendar from competitor spying</p>
                     </div>
                     <div className="flex items-center gap-4">
-                       <Lock className={`w-8 h-8 transition-all text-[#D4AF37]`} />
+                       {editForm.enableDateCheckLimit !== false ? (
+                         <Lock className="w-8 h-8 transition-all text-[#D4AF37]" />
+                       ) : (
+                         <Unlock className="w-8 h-8 transition-all text-zinc-600" />
+                       )}
                        <ChevronRight className={`w-6 h-6 text-zinc-300 transition-transform ${collapsedSections['privacy'] ? 'rotate-90' : ''}`} />
                     </div>
                   </button>
                   
                   {!collapsedSections['privacy'] && (
                     <div className="p-8 space-y-6 animate-in slide-in-from-top-2 duration-300">
-                      <p className="text-xs text-zinc-300 leading-relaxed max-w-2xl text-left">
-                        Competitors or bad actors might try to map out your bookings by continuously checking dates in the booking form.
-                        Enable our smart anti-spying block to limit the number of availability checks per user session.
-                      </p>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="bg-black/40 rounded-2xl border border-white/5 p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                        <div className="space-y-1 max-w-md text-left">
+                          <h4 className="text-sm font-bold text-white">Date Check Limit</h4>
+                          <p className="text-xs text-zinc-300 leading-relaxed">
+                            When enabled, clients are limited to a set number of date availability checks before a cooldown reset. Turn this off to allow unlimited date checks on your booking calendar.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const nextEnabled = editForm.enableDateCheckLimit === false;
+                            applyImmediateVendorUpdate(prev => ({ ...prev, enableDateCheckLimit: nextEnabled }));
+                            showNotification(
+                              nextEnabled ? 'Date check limit enabled.' : 'Date check limit turned off.',
+                              'info'
+                            );
+                          }}
+                          className={`w-full md:w-auto px-10 py-4 rounded-full text-xs font-black uppercase tracking-[0.2em] transition-all border cursor-pointer ${
+                            editForm.enableDateCheckLimit !== false
+                              ? 'bg-[#D4AF37] text-white border-[#D4AF37] shadow-xl shadow-[#D4AF37]/10'
+                              : 'bg-black text-zinc-300 border-white/10 hover:border-[#D4AF37]/40'
+                          }`}
+                        >
+                          {editForm.enableDateCheckLimit !== false ? (
+                            <span className="flex items-center justify-center gap-2"><CheckCircle className="w-4 h-4" /> Date Check Active</span>
+                          ) : (
+                            <span className="flex items-center justify-center gap-2"><XCircle className="w-4 h-4" /> Date Check Off</span>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 transition-opacity duration-200 ${editForm.enableDateCheckLimit === false ? 'opacity-40 pointer-events-none select-none' : ''}`}>
                         <div className="space-y-3 text-left">
                           <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Max Date Checks Allowed</label>
                           <input 
                             type="number" 
+                            disabled={editForm.enableDateCheckLimit === false}
                             className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white transition-all" 
                             style={{appearance: 'textfield'}}
                             value={editForm.maxDateChecks ?? 5}
-                            onChange={e => setEditForm({...editForm, maxDateChecks: parseInt(e.target.value) || 0})}
+                            onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, maxDateChecks: parseInt(e.target.value) || 0 }))}
+                            onBlur={flushAutoSave}
                             placeholder="5"
                             min="1"
                           />
@@ -3291,10 +3386,12 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Reset Period (in hours)</label>
                           <input 
                             type="number" 
+                            disabled={editForm.enableDateCheckLimit === false}
                             className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white transition-all" 
                             style={{appearance: 'textfield'}}
                             value={editForm.dateCheckResetHours ?? 24}
-                            onChange={e => setEditForm({...editForm, dateCheckResetHours: parseInt(e.target.value) || 0})}
+                            onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, dateCheckResetHours: parseInt(e.target.value) || 0 }))}
+                            onBlur={flushAutoSave}
                             placeholder="24"
                             min="1"
                           />
@@ -3358,7 +3455,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               type="text" 
                               className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white transition-all" 
                               value={editForm.name}
-                              onChange={e => setEditForm({...editForm, name: e.target.value})}
+                              onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, name: e.target.value }))}
+                              onBlur={flushAutoSave}
                               placeholder="e.g. Classic Jewish Catering"
                             />
                           </div>
@@ -3368,7 +3466,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               type="email" 
                               className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white transition-all" 
                               value={editForm.contactEmail}
-                              onChange={e => setEditForm({...editForm, contactEmail: e.target.value})}
+                              onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, contactEmail: e.target.value }))}
+                              onBlur={flushAutoSave}
                               placeholder="hello@business.com"
                             />
                           </div>
@@ -3379,7 +3478,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               floating={false}
                               placeholder="e.g. Brooklyn, NY or 123 Main St..."
                               value={editForm.location || ''}
-                              onChange={(val) => setEditForm({...editForm, location: val})}
+                              onChange={(val) => applyAutoSaveVendorUpdate(prev => ({ ...prev, location: val }))}
                             />
                           </div>
                        </div>
@@ -3391,7 +3490,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         rows={4}
                         className="w-full bg-black border border-white/10 rounded-xl px-4 py-4 text-sm focus:border-[#D4AF37] outline-none resize-none text-zinc-300 leading-relaxed transition-all" 
                         value={editForm.description}
-                        onChange={e => setEditForm({...editForm, description: e.target.value})}
+                        onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, description: e.target.value }))}
+                        onBlur={flushAutoSave}
                         placeholder="Tell clients about your services and experience..."
                       />
                     </div>
@@ -3411,9 +3511,13 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     </div>
                     <div className="flex items-center gap-4">
                        <button 
-                         onClick={(e) => { e.stopPropagation(); setShowAddForm(!showAddForm); if (collapsedSections['services']) toggleSection('services'); }}
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           if (collapsedSections['services']) toggleSection('services');
+                           setShowAddForm(!showAddForm);
+                         }}
                          aria-label="Toggle add service form"
-                         className={`p-3 rounded-full transition-all border ${showAddForm ? 'bg-zinc-400/10 text-zinc-400 border-zinc-400/20' : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20 hover:bg-[#D4AF37]'}`}
+                         className={`p-3 rounded-full transition-all border ${showAddForm ? 'bg-zinc-400/10 text-zinc-400 border-zinc-400/20' : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20 hover:bg-[#D4AF37] hover:text-black'}`}
                        >
                          {showAddForm ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                        </button>
@@ -3423,149 +3527,16 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                   
                    {!collapsedSections['services'] && (
                     <div className="p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
-                    {/* Add Service Form */}
-                    {showAddForm && (
-                      <div className="bg-[#D4AF37]/5 p-6 rounded-3xl border border-[#D4AF37]/20 space-y-6 animate-in slide-in-from-top-2 duration-300">
-                        <div className="flex items-center gap-3 mb-2">
-                           <div className="bg-[#D4AF37] p-2 rounded-lg text-black"><Package className="w-4 h-4" /></div>
-                           <h4 className="text-[#D4AF37] font-black uppercase text-xs tracking-widest">New Pricing Option Configuration</h4>
-                        </div>
-
-                        {/* Package Category Selector */}
-                        <div className="space-y-2 text-left">
-                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">1. Select Option Type</label>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            {([
-                              { id: 'location' as ServiceCategoryType, label: 'Location Rate', desc: 'Lakewood, Brooklyn, Monsey, etc.', defaultUnit: 'location', icon: MapPin },
-                              { id: 'hours' as ServiceCategoryType, label: 'Hours / Duration', desc: '3 Hours, 4 Hours, 5 Hours, etc.', defaultUnit: 'session', icon: Clock },
-                              { id: 'amenities' as ServiceCategoryType, label: 'Amenities / Extras', desc: 'Lighting, Extra Speakers, Mics, etc.', defaultUnit: 'item', icon: Layers }
-                            ]).map(opt => {
-                              const IconComp = opt.icon;
-                              const isActive = newServiceCategoryType === opt.id;
-                              return (
-                                <button
-                                  key={opt.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setNewServiceCategoryType(opt.id);
-                                    setNewServiceUnit(opt.defaultUnit);
-                                  }}
-                                  className={`p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
-                                    isActive
-                                      ? 'bg-[#D4AF37]/15 border-[#D4AF37] shadow-[0_0_15px_rgba(212,175,55,0.15)]'
-                                      : 'bg-black/60 border-white/10 hover:border-[#D4AF37]/40'
-                                  }`}
-                                >
-                                  <div className={`p-2 rounded-xl shrink-0 ${isActive ? 'bg-[#D4AF37] text-black' : 'bg-white/5 text-[#D4AF37]'}`}>
-                                    <IconComp className="w-4 h-4" />
-                                  </div>
-                                  <div>
-                                    <div className="text-xs font-black uppercase tracking-wider text-white">{opt.label}</div>
-                                    <div className="text-[9px] text-zinc-400 mt-0.5 leading-snug">{opt.desc}</div>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-left">
-                          <div className="space-y-2">
-                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">
-                              {newServiceCategoryType === 'location'
-                                ? 'Location Name'
-                                : newServiceCategoryType === 'hours'
-                                ? 'Hours / Duration Label'
-                                : 'Amenity / Add-On Name'}
-                            </label>
-                            <input 
-                              type="text" 
-                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white" 
-                              placeholder={
-                                newServiceCategoryType === 'location'
-                                  ? 'e.g. Lakewood, Brooklyn, Monsey...'
-                                  : newServiceCategoryType === 'hours'
-                                  ? 'e.g. 3 Hours, 4 Hours, 5 Hours...'
-                                  : 'e.g. Extra Speakers, Custom Lighting, Extra Mics...'
-                              }
-                              value={newServiceName}
-                              onChange={e => setNewServiceName(e.target.value)}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Price ($)</label>
-                            <div className="relative">
-                               <DollarSign className="absolute left-3 top-3.5 w-4 h-4 text-[#D4AF37]" />
-                               <input 
-                                type="number" 
-                                className="w-full bg-black border border-white/10 rounded-xl pl-9 pr-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white" 
-                                placeholder="0.00"
-                                value={newServicePrice}
-                                onChange={e => setNewServicePrice(e.target.value)}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-left">
-                          <div className="space-y-2">
-                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Pricing Unit (per...)</label>
-                            <div className="flex gap-2">
-                                <input 
-                                  type="text" 
-                                  className="flex-1 bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white"
-                                  placeholder="e.g. location, session, hour, item"
-                                  value={newServiceUnit}
-                                  onChange={e => setNewServiceUnit(e.target.value)}
-                                />
-                                <div className="flex items-center gap-2 bg-black/40 px-3 rounded-xl border border-white/5 text-[8px] text-zinc-400 font-bold uppercase">
-                                   <Info className="w-3 h-3" /> Unit
-                                </div>
-                            </div>
-                          </div>
-                          <div className="flex flex-col justify-end">
-                            <button 
-                              type="button"
-                              onClick={() => setNewServiceAllowQty(!newServiceAllowQty)}
-                              className={`flex items-center justify-between w-full px-4 py-3 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${newServiceAllowQty ? 'bg-[#D4AF37] text-black border-[#D4AF37]' : 'bg-black text-zinc-400 border-white/10 hover:border-[#D4AF37]/50'}`}
-                            >
-                              <span className="flex items-center gap-2">
-                                {newServiceAllowQty ? <CheckCircle className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
-                                Enable Quantity Selection
-                              </span>
-                              <HelpCircle className="w-3.5 h-3.5 opacity-40" />
-                            </button>
-                            <p className="text-[8px] text-zinc-400 mt-2 ml-1 italic">Allow clients to pick multiple units of this option.</p>
-                          </div>
-                        </div>
-
-                        <div className="flex gap-3">
-                           <button 
-                              onClick={() => setShowAddForm(false)}
-                              className="flex-1 bg-white/5 hover:bg-white/10 text-zinc-400 py-3.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all"
-                            >
-                              Discard
-                           </button>
-                           <button 
-                            onClick={handleAddService}
-                            className="flex-[2] bg-[#D4AF37] hover:bg-[#E5C76B] text-black py-3.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-[#D4AF37]/10 transition-all flex items-center justify-center gap-2"
-                           >
-                            <Plus className="w-4 h-4" /> Save Option to {newServiceCategoryType === 'location' ? 'Locations' : newServiceCategoryType === 'hours' ? 'Hours' : 'Amenities'} Box
-                           </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Grouped Selection Boxes (Locations, Hours, Amenities) */}
-                    {editForm.services && editForm.services.length > 0 ? (() => {
+                    {/* Grouped Selection Boxes (Locations & Amenities) with Inline Pop-Down Add Form */}
+                    {(() => {
+                      const allServices = editForm.services || [];
                       const inferCat = (s: VendorService): ServiceCategoryType => {
-                        if (s.categoryType) return s.categoryType;
+                        if (s.categoryType === 'location') return 'location';
+                        if (s.categoryType === 'amenities') return 'amenities';
+                        if (s.categoryType === 'hours') return 'hours';
                         const text = `${s.name} ${s.unit || ''}`.toLowerCase();
-                        if (/\b(location|lakewood|brooklyn|monsey|boro park|williamsburg|five towns|queens|manhattan|staten island|new jersey|ny|nj|travel|destination|area|local|out of town)\b/.test(text)) {
+                        if (/\b(location|lakewood|brooklyn|monsey|boro park|williamsburg|five towns|queens|manhattan|staten island|new jersey|ny|nj|travel|destination|area|local|out of town|out of state|long island|westchester|miami|florida|ballroom|terrace|boroughs|metro)\b/.test(text)) {
                           return 'location';
-                        }
-                        if (/\b(hour|hours|hr|hrs|time|day|half day|full day|overtime|minute|minutes)\b/.test(text)) {
-                          return 'hours';
                         }
                         return 'amenities';
                       };
@@ -3574,40 +3545,41 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         type: ServiceCategoryType;
                         title: string;
                         subtitle: string;
+                        defaultUnit: string;
                         icon: any;
                         items: VendorService[];
                       }[] = [
                         {
                           type: 'location',
                           title: 'Locations Box',
-                          subtitle: 'All vendor locations & travel prices in one checkpoint box',
+                          subtitle: 'Locations, default hours & extra hourly rate (Client selects 1)',
+                          defaultUnit: 'location',
                           icon: MapPin,
-                          items: editForm.services.filter(s => inferCat(s) === 'location')
-                        },
-                        {
-                          type: 'hours',
-                          title: 'Hours Box',
-                          subtitle: '3 hours, 4 hours, 5 hours & duration checkpoints',
-                          icon: Clock,
-                          items: editForm.services.filter(s => inferCat(s) === 'hours')
+                          items: allServices.filter(s => inferCat(s) === 'location')
                         },
                         {
                           type: 'amenities',
                           title: 'Amenities & Extras Box',
                           subtitle: 'Lighting, extra speakers, extra mics & custom add-ons',
+                          defaultUnit: 'item',
                           icon: Layers,
-                          items: editForm.services.filter(s => inferCat(s) === 'amenities')
+                          items: allServices.filter(s => inferCat(s) === 'amenities')
                         }
                       ];
 
                       return (
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
                           {boxes.map((box) => {
                             const BoxIcon = box.icon;
+                            const isAddingHere = showAddForm && newServiceCategoryType === box.type;
                             return (
                               <div
                                 key={box.type}
-                                className="relative overflow-hidden rounded-3xl border border-[#D4AF37]/25 bg-black/60 p-5 flex flex-col justify-between gap-4"
+                                className={`relative overflow-hidden rounded-3xl border transition-all bg-black/60 p-5 flex flex-col justify-between gap-4 ${
+                                  isAddingHere
+                                    ? 'border-[#D4AF37] shadow-[0_0_25px_rgba(212,175,55,0.18)]'
+                                    : 'border-[#D4AF37]/25'
+                                }`}
                               >
                                 {/* Very light subtle background image with mode-aware fader */}
                                 {editForm.image && (
@@ -3637,16 +3609,210 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setNewServiceCategoryType(box.type);
-                                        setNewServiceUnit(box.type === 'location' ? 'location' : box.type === 'hours' ? 'session' : 'item');
-                                        setShowAddForm(true);
+                                        if (isAddingHere) {
+                                          setShowAddForm(false);
+                                        } else {
+                                          setNewServiceCategoryType(box.type);
+                                          setNewServiceUnit(box.defaultUnit);
+                                          setNewServiceName('');
+                                          setNewServicePrice('');
+                                          setNewServiceAllowQty(false);
+                                          setNewServiceDefaultHours('4');
+                                          setNewServiceHourlyRate('100');
+                                          setShowAddForm(true);
+                                        }
                                       }}
-                                      className="p-2 rounded-full bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/30 transition-all shrink-0 cursor-pointer"
-                                      title={`Add to ${box.title}`}
+                                      className={`p-2 rounded-full border transition-all shrink-0 cursor-pointer ${
+                                        isAddingHere
+                                          ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                                          : 'bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border-[#D4AF37]/30'
+                                      }`}
+                                      title={isAddingHere ? 'Close Form' : `Add to ${box.title}`}
                                     >
-                                      <Plus className="w-3.5 h-3.5" />
+                                      {isAddingHere ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
                                     </button>
                                   </div>
+
+                                  {/* Inline Pop-Down Add Form right below the box header */}
+                                  {isAddingHere && (
+                                    <div className="bg-black/90 p-4 rounded-2xl border border-[#D4AF37]/50 space-y-3.5 text-left shadow-xl animate-in slide-in-from-top-2 duration-200">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] flex items-center gap-1.5">
+                                          <Plus className="w-3 h-3" />
+                                          Add {box.type === 'location' ? 'Location' : 'Amenity / Extra'}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setShowAddForm(false)}
+                                          className="text-zinc-400 hover:text-white p-1 rounded-lg transition-colors"
+                                          aria-label="Cancel adding option"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+
+                                      <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">
+                                          {box.type === 'location' ? 'Location Name' : 'Amenity / Add-On Name'}
+                                        </label>
+                                        <input
+                                          type="text"
+                                          autoFocus
+                                          className="w-full bg-black border border-white/15 rounded-xl px-3 py-2.5 text-xs focus:border-[#D4AF37] outline-none text-white"
+                                          placeholder={
+                                            box.type === 'location'
+                                              ? 'e.g. Lakewood, Brooklyn, Monsey...'
+                                              : 'e.g. Extra Speakers, Lighting, Extra Mics...'
+                                          }
+                                          value={newServiceName}
+                                          onChange={e => setNewServiceName(e.target.value)}
+                                          onKeyDown={e => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              handleAddService();
+                                            }
+                                          }}
+                                        />
+                                      </div>
+
+                                      {box.type === 'location' ? (
+                                        <div className="grid grid-cols-3 gap-2">
+                                          <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Base Price ($)</label>
+                                            <div className="relative">
+                                              <DollarSign className="absolute left-2 top-2.5 w-3 h-3 text-[#D4AF37]" />
+                                              <input
+                                                type="number"
+                                                className="w-full bg-black border border-white/15 rounded-xl pl-6 pr-2 py-2 text-xs focus:border-[#D4AF37] outline-none text-white"
+                                                placeholder="1500"
+                                                value={newServicePrice}
+                                                onChange={e => setNewServicePrice(e.target.value)}
+                                                onKeyDown={e => {
+                                                  if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    handleAddService();
+                                                  }
+                                                }}
+                                              />
+                                            </div>
+                                          </div>
+
+                                          <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Default Hours</label>
+                                            <input
+                                              type="number"
+                                              min="1"
+                                              className="w-full bg-black border border-white/15 rounded-xl px-2.5 py-2 text-xs focus:border-[#D4AF37] outline-none text-white"
+                                              placeholder="4"
+                                              value={newServiceDefaultHours}
+                                              onChange={e => setNewServiceDefaultHours(e.target.value)}
+                                              onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                  e.preventDefault();
+                                                  handleAddService();
+                                                }
+                                              }}
+                                            />
+                                          </div>
+
+                                          <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">+$/Extra Hr</label>
+                                            <div className="relative">
+                                              <DollarSign className="absolute left-2 top-2.5 w-3 h-3 text-[#D4AF37]" />
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                className="w-full bg-black border border-white/15 rounded-xl pl-6 pr-2 py-2 text-xs focus:border-[#D4AF37] outline-none text-white"
+                                                placeholder="100"
+                                                value={newServiceHourlyRate}
+                                                onChange={e => setNewServiceHourlyRate(e.target.value)}
+                                                onKeyDown={e => {
+                                                  if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    handleAddService();
+                                                  }
+                                                }}
+                                              />
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="grid grid-cols-2 gap-2.5">
+                                          <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Price ($)</label>
+                                            <div className="relative">
+                                              <DollarSign className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-[#D4AF37]" />
+                                              <input
+                                                type="number"
+                                                className="w-full bg-black border border-white/15 rounded-xl pl-7 pr-3 py-2 text-xs focus:border-[#D4AF37] outline-none text-white"
+                                                placeholder="0.00"
+                                                value={newServicePrice}
+                                                onChange={e => setNewServicePrice(e.target.value)}
+                                                onKeyDown={e => {
+                                                  if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    handleAddService();
+                                                  }
+                                                }}
+                                              />
+                                            </div>
+                                          </div>
+
+                                          <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Unit (per...)</label>
+                                            <input
+                                              type="text"
+                                              className="w-full bg-black border border-white/15 rounded-xl px-3 py-2 text-xs focus:border-[#D4AF37] outline-none text-white"
+                                              placeholder={box.defaultUnit}
+                                              value={newServiceUnit}
+                                              onChange={e => setNewServiceUnit(e.target.value)}
+                                              onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                  e.preventDefault();
+                                                  handleAddService();
+                                                }
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {box.type === 'amenities' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setNewServiceAllowQty(!newServiceAllowQty)}
+                                          className={`flex items-center justify-between w-full px-3.5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${
+                                            newServiceAllowQty
+                                              ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                                              : 'bg-black text-zinc-400 border-white/10 hover:border-[#D4AF37]/50'
+                                          }`}
+                                        >
+                                          <span className="flex items-center gap-2">
+                                            {newServiceAllowQty ? <CheckCircle className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
+                                            Enable Quantity Selection
+                                          </span>
+                                          <span>{newServiceAllowQty ? 'ON' : 'OFF'}</span>
+                                        </button>
+                                      )}
+
+                                      <div className="flex gap-2 pt-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => setShowAddForm(false)}
+                                          className="flex-1 bg-white/5 hover:bg-white/10 text-zinc-400 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border border-white/10 transition-all cursor-pointer"
+                                        >
+                                          Cancel
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={handleAddService}
+                                          className="flex-[2] bg-[#D4AF37] hover:bg-[#E5C76B] text-black py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-[#D4AF37]/10 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                        >
+                                          <Plus className="w-3.5 h-3.5" /> Save Option
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
 
                                   {box.items.length > 0 ? (
                                     <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
@@ -3664,6 +3830,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                               className="flex-1 min-w-0 bg-transparent border-b border-transparent focus:border-[#D4AF37] text-xs font-bold text-zinc-100 outline-none px-1 py-0.5"
                                               value={service.name}
                                               onChange={e => handleUpdateService(service.id, { name: e.target.value })}
+                                              onBlur={flushAutoSave}
                                               placeholder="Option Name"
                                             />
                                             <button
@@ -3676,49 +3843,97 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                             </button>
                                           </div>
 
-                                          <div className="grid grid-cols-3 gap-2 items-center">
-                                            <div className="relative">
-                                              <DollarSign className="absolute left-2 top-2 w-3 h-3 text-[#D4AF37]" />
-                                              <input
-                                                type="number"
-                                                className="w-full bg-black/60 border border-white/10 rounded-lg pl-6 pr-2 py-1 text-xs font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
-                                                value={service.price}
-                                                onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
-                                              />
+                                          {box.type === 'location' ? (
+                                            <div className="grid grid-cols-3 gap-2 items-center">
+                                              <div>
+                                                <span className="text-[8px] font-black uppercase tracking-wider text-zinc-400 block mb-0.5">Base Price</span>
+                                                <div className="relative">
+                                                  <DollarSign className="absolute left-2 top-2 w-3 h-3 text-[#D4AF37]" />
+                                                  <input
+                                                    type="number"
+                                                    className="w-full bg-black/60 border border-white/10 rounded-lg pl-6 pr-2 py-1 text-xs font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
+                                                    value={service.price}
+                                                    onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
+                                                    onBlur={flushAutoSave}
+                                                  />
+                                                </div>
+                                              </div>
+                                              <div>
+                                                <span className="text-[8px] font-black uppercase tracking-wider text-zinc-400 block mb-0.5">Default Hrs</span>
+                                                <input
+                                                  type="number"
+                                                  min="1"
+                                                  className="w-full bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-xs font-bold text-zinc-100 focus:border-[#D4AF37] outline-none text-center"
+                                                  value={service.defaultHours ?? 4}
+                                                  onChange={e => handleUpdateService(service.id, { defaultHours: Math.max(1, parseInt(e.target.value) || 1) })}
+                                                  onBlur={flushAutoSave}
+                                                />
+                                              </div>
+                                              <div>
+                                                <span className="text-[8px] font-black uppercase tracking-wider text-zinc-400 block mb-0.5">+$/Extra Hr</span>
+                                                <div className="relative">
+                                                  <DollarSign className="absolute left-2 top-2 w-3 h-3 text-[#D4AF37]" />
+                                                  <input
+                                                    type="number"
+                                                    min="0"
+                                                    className="w-full bg-black/60 border border-white/10 rounded-lg pl-6 pr-2 py-1 text-xs font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
+                                                    value={service.hourlyRate ?? 100}
+                                                    onChange={e => handleUpdateService(service.id, { hourlyRate: Math.max(0, parseFloat(e.target.value) || 0) })}
+                                                    onBlur={flushAutoSave}
+                                                  />
+                                                </div>
+                                              </div>
                                             </div>
-                                            <select
-                                              aria-label="Option Category Type"
-                                              value={inferCat(service)}
-                                              onChange={e => handleUpdateService(service.id, { categoryType: e.target.value as ServiceCategoryType })}
-                                              className="w-full bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-bold text-zinc-300 focus:border-[#D4AF37] outline-none"
-                                            >
-                                              <option value="location">Location</option>
-                                              <option value="hours">Hours</option>
-                                              <option value="amenities">Amenities</option>
-                                            </select>
-                                            <button
-                                              type="button"
-                                              onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity })}
-                                              className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all truncate ${
-                                                service.allowQuantity
-                                                  ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/10'
-                                                  : 'text-zinc-400 border-white/10 hover:text-zinc-200'
-                                              }`}
-                                            >
-                                              {service.allowQuantity ? 'Qty: On' : 'Fixed'}
-                                            </button>
-                                          </div>
+                                          ) : (
+                                            <div className="grid grid-cols-3 gap-2 items-center">
+                                              <div className="relative">
+                                                <DollarSign className="absolute left-2 top-2 w-3 h-3 text-[#D4AF37]" />
+                                                <input
+                                                  type="number"
+                                                  className="w-full bg-black/60 border border-white/10 rounded-lg pl-6 pr-2 py-1 text-xs font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
+                                                  value={service.price}
+                                                  onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
+                                                  onBlur={flushAutoSave}
+                                                />
+                                              </div>
+                                              <select
+                                                aria-label="Option Category Type"
+                                                value={inferCat(service)}
+                                                onChange={e => handleUpdateService(service.id, { categoryType: e.target.value as ServiceCategoryType }, true)}
+                                                className="w-full bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-bold text-zinc-300 focus:border-[#D4AF37] outline-none"
+                                              >
+                                                <option value="location">Location</option>
+                                                <option value="amenities">Amenities</option>
+                                              </select>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity }, true)}
+                                                className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all truncate ${
+                                                  service.allowQuantity
+                                                    ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/10'
+                                                    : 'text-zinc-400 border-white/10 hover:text-zinc-200'
+                                                }`}
+                                              >
+                                                {service.allowQuantity ? 'Qty: On' : 'Fixed'}
+                                              </button>
+                                            </div>
+                                          )}
                                         </div>
                                       ))}
                                     </div>
-                                  ) : (
+                                  ) : !isAddingHere ? (
                                     <div className="py-8 text-center border border-dashed border-white/10 rounded-2xl">
                                       <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">No {box.type} options yet</p>
                                       <button
                                         type="button"
                                         onClick={() => {
                                           setNewServiceCategoryType(box.type);
-                                          setNewServiceUnit(box.type === 'location' ? 'location' : box.type === 'hours' ? 'session' : 'item');
+                                          setNewServiceUnit(box.defaultUnit);
+                                          setNewServiceName('');
+                                          setNewServicePrice('');
+                                          setNewServiceAllowQty(false);
+                                          setNewServiceDefaultHours('4');
+                                          setNewServiceHourlyRate('100');
                                           setShowAddForm(true);
                                         }}
                                         className="mt-2 text-[10px] font-black text-[#D4AF37] uppercase tracking-widest hover:underline cursor-pointer"
@@ -3726,28 +3941,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                         + Add {box.type} option
                                       </button>
                                     </div>
-                                  )}
+                                  ) : null}
                                 </div>
                               </div>
                             );
                           })}
                         </div>
                       );
-                    })() : (
-                      <div className="py-16 text-center border-2 border-dashed border-white/5 rounded-[2.5rem] bg-black/20">
-                         <div className="bg-white/5 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <Tag className="w-8 h-8 text-zinc-400" />
-                         </div>
-                         <h4 className="text-zinc-400 font-bold uppercase tracking-widest text-sm">No Pricing Options Configured</h4>
-                         <p className="text-[10px] text-zinc-400 mt-2 max-w-xs mx-auto leading-relaxed">Add your Locations, Hours, and Amenities so clients can select checkpoints directly in one compact view.</p>
-                         <button 
-                           onClick={() => setShowAddForm(true)}
-                           className="mt-6 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-[#D4AF37]/30 transition-all"
-                         >
-                           Add First Option
-                         </button>
-                      </div>
-                    )}
+                    })()}
                   </div>
                 )}
                </div>
@@ -3908,31 +4109,6 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     )}
                   </div>
                 )}
-               </div>
-
-               {/* Footer Action */}
-               <div className="bg-black/60 p-8 rounded-3xl border border-[#D4AF37]/20 flex flex-col sm:flex-row justify-between items-center gap-6">
-                 <div className="flex items-center gap-3 text-zinc-400 text-center sm:text-left">
-                    <AlertCircle className="w-5 h-5 text-[#D4AF37]/40 flex-shrink-0" />
-                    <p className="text-[9px] font-bold uppercase tracking-widest italic leading-relaxed">Profile edits are subject to verification <br className="hidden sm:block" /> and will reflect instantly upon committing.</p>
-                 </div>
-                 <button 
-                  onClick={handleSaveProfile}
-                  disabled={isSaving}
-                  className="w-full sm:w-auto min-w-[240px] bg-[#D4AF37] hover:bg-[#E5C76B] text-black px-10 py-5 rounded-full font-black text-xs uppercase tracking-[0.3em] shadow-2xl shadow-[#D4AF37]/20 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-                 >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> 
-                      Persisting...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" /> 
-                      Commit Changes
-                    </>
-                  )}
-                 </button>
                </div>
             </div>
           )}

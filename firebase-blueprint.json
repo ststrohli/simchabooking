@@ -18,7 +18,10 @@
         "username": { "type": "string" },
         "password": { "type": "string" },
         "commissionRate": { "type": "number", "description": "Percentage of sales taken as platform fee" },
-        "stripeAccountId": { "type": "string", "description": "Stripe Connect account ID" }
+        "stripeAccountId": { "type": "string", "description": "Stripe Connect account ID" },
+        "enableDateCheckLimit": { "type": "boolean", "description": "Whether the date check limit is enabled for this vendor" },
+        "maxDateChecks": { "type": "number", "description": "Maximum date check attempts allowed before reset" },
+        "dateCheckResetHours": { "type": "number", "description": "Hours before date check attempts reset" }
       },
       "required": ["id", "name", "category", "description", "location", "commissionRate"]
     },

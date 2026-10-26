@@ -8,10 +8,15 @@ import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
 const inferServiceCategory = (service: VendorService): ServiceCategoryType => {
   if (service.categoryType) return service.categoryType;
   const text = `${service.name} ${service.unit || ''}`.toLowerCase();
-  if (/\b(location|lakewood|brooklyn|monsey|boro park|williamsburg|five towns|queens|manhattan|staten island|new jersey|ny|nj|travel|destination|area|local|out of town)\b/.test(text)) {
+  if (/\b(location|lakewood|brooklyn|monsey|boro park|williamsburg|five towns|queens|manhattan|staten island|new jersey|ny|nj|travel|destination|area|local|out of town|out of state|long island|westchester|miami|florida|ballroom|terrace|boroughs|metro)\b/.test(text)) {
     return 'location';
   }
-  if (/\b(hour|hours|hr|hrs|time|day|half day|full day|overtime|minute|minutes)\b/.test(text)) {
+  const hasExplicitDuration = /\b(\d+\s*(hour|hours|hr|hrs)|half\s*day|full\s*day)\b/.test(text);
+  const hasAmenityKeyword = /\b(add-on|addon|extra|lighting|uplighting|speaker|speakers|mic|mics|microphone|subwoofer|album|valet|dessert|counseling|kippah|kippahs|bencher|benchers|booth|fog|sparkler|sparklers)\b/.test(text);
+  if (!hasExplicitDuration && hasAmenityKeyword) {
+    return 'amenities';
+  }
+  if (/\b(hour|hours|hr|hrs|time|day|half day|full day|overtime|minute|minutes|package|packages|tier|coverage|performance|ceremony|access)\b/.test(text)) {
     return 'hours';
   }
   return 'amenities';
@@ -154,6 +159,9 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
   const [formData, setFormData] = useState({ eventName: '', clientName: '', contactEmail: '', eventLocation: '', eventTime: '', notes: '' });
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [locationHours, setLocationHours] = useState<Record<string, number>>({});
+  const [hourPopups, setHourPopups] = useState<Record<string, { id: number; text: string }>>({});
+  const popupTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [isOfferMode, setIsOfferMode] = useState(false);
   const [submitType, setSubmitType] = useState<'book' | 'add'>('book');
   const [offeredPrice, setOfferedPrice] = useState<string>('');
@@ -229,7 +237,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
 
   // Check if blocked by privacy limit
   const checkPrivacyStatus = (): boolean => {
-    if (!vendor) return false;
+    if (!vendor || vendor.enableDateCheckLimit === false) return false;
     const now = Date.now();
     const resetPeriodMs = getResetPeriodMs();
     const maxChecks = getMaxChecks();
@@ -422,6 +430,8 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     if (isOpen) {
         setIsOfferMode(false);
         setOfferedPrice('');
+        setLocationHours({});
+        setHourPopups({});
         if (initialDetails) {
             setFormData({ 
               eventName: initialDetails.eventName || '', 
@@ -431,7 +441,22 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
               eventTime: initialDetails.eventTime || '', 
               notes: initialDetails.notes || '' 
             });
-            setSelectedServiceIds(initialDetails.selectedServiceIds || []);
+            const rawSelectedIds = initialDetails.selectedServiceIds || [];
+            const allVendorServices = vendor?.services || [];
+            let hasLocation = false;
+            const sanitizedIds = rawSelectedIds.filter(id => {
+              const svc = allVendorServices.find(s => s.id === id);
+              if (!svc) return true;
+              const cat = inferServiceCategory(svc);
+              if (cat === 'hours') return false;
+              if (cat === 'location') {
+                if (hasLocation) return false;
+                hasLocation = true;
+                return true;
+              }
+              return true;
+            });
+            setSelectedServiceIds(sanitizedIds);
             setQuantities(initialDetails.selectedServiceQuantities || {});
         } else {
             setFormData({ 
@@ -477,21 +502,50 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     };
   }, [isOpen, isNested]);
 
+  const triggerHourPopup = useCallback((serviceId: string, text: string) => {
+    if (popupTimersRef.current[serviceId]) {
+      clearTimeout(popupTimersRef.current[serviceId]);
+    }
+    const id = Date.now() + Math.random();
+    setHourPopups(prev => ({ ...prev, [serviceId]: { id, text } }));
+    popupTimersRef.current[serviceId] = setTimeout(() => {
+      setHourPopups(prev => {
+        const next = { ...prev };
+        delete next[serviceId];
+        return next;
+      });
+      delete popupTimersRef.current[serviceId];
+    }, 1100);
+  }, []);
+
   const totalAmount = useMemo(() => {
     if (!vendor) return 0;
     
     let servicesTotal = 0;
     if (selectedServiceIds.length > 0) {
       servicesTotal = vendor.services?.filter(s => selectedServiceIds.includes(s.id)).reduce((sum, s) => {
+        const cat = inferServiceCategory(s);
+        if (cat === 'location') {
+          const baseHours = s.defaultHours ?? 4;
+          const rate = s.hourlyRate ?? 100;
+          const currentHours = locationHours[s.id] ?? baseHours;
+          const extraHours = Math.max(0, currentHours - baseHours);
+          return sum + s.price + (extraHours * rate);
+        }
         const qty = quantities[s.id] || 1;
         return sum + (s.price * qty);
       }, 0) || 0;
     }
     
     return servicesTotal || vendor.downPayment || vendor.priceStart || 0;
-  }, [selectedServiceIds, quantities, vendor]);
+  }, [selectedServiceIds, quantities, locationHours, vendor]);
 
   const toggleService = useCallback((serviceId: string) => {
+    const allServices = vendor?.services || [];
+    const targetService = allServices.find(s => s.id === serviceId);
+    const targetCategory = targetService ? inferServiceCategory(targetService) : 'amenities';
+    const isSingleSelectCategory = targetCategory === 'location';
+
     setSelectedServiceIds(prev => {
       if (prev.includes(serviceId)) {
         setQuantities(qPrev => {
@@ -501,11 +555,29 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
         });
         return prev.filter(id => id !== serviceId);
       } else {
-        setQuantities(qPrev => ({ ...qPrev, [serviceId]: 1 }));
-        return [...prev, serviceId];
+        const conflictingIds = isSingleSelectCategory
+          ? allServices
+              .filter(s => s.id !== serviceId && inferServiceCategory(s) === targetCategory)
+              .map(s => s.id)
+          : [];
+
+        setQuantities(qPrev => {
+          const next = { ...qPrev };
+          conflictingIds.forEach(id => {
+            delete next[id];
+          });
+          next[serviceId] = 1;
+          return next;
+        });
+
+        const filteredPrev = isSingleSelectCategory
+          ? prev.filter(id => !conflictingIds.includes(id))
+          : prev;
+
+        return [...filteredPrev, serviceId];
       }
     });
-  }, []);
+  }, [vendor?.services]);
 
   const handleQuantityChange = useCallback((serviceId: string, val: string) => {
     const num = parseInt(val) || 0;
@@ -615,13 +687,35 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     
     const selectedServices = vendor.services
         ?.filter(s => selectedServiceIds.includes(s.id))
-        .map(s => ({ 
-            id: s.id, 
-            name: s.name, 
-            price: s.price, 
-            quantity: quantities[s.id] || 1,
-            unit: s.unit || null
-        })) || [];
+        .map(s => {
+            const cat = inferServiceCategory(s);
+            if (cat === 'location') {
+              const baseHours = s.defaultHours ?? 4;
+              const rate = s.hourlyRate ?? 100;
+              const currentHours = locationHours[s.id] ?? baseHours;
+              const extraHours = Math.max(0, currentHours - baseHours);
+              const computedPrice = s.price + (extraHours * rate);
+              return {
+                id: s.id,
+                name: `${s.name} (${currentHours} hrs)`,
+                price: computedPrice,
+                quantity: 1,
+                unit: 'location',
+                categoryType: 'location' as ServiceCategoryType,
+                selectedHours: currentHours,
+                defaultHours: baseHours,
+                hourlyRate: rate
+              };
+            }
+            return { 
+                id: s.id, 
+                name: s.name, 
+                price: s.price, 
+                quantity: quantities[s.id] || 1,
+                unit: s.unit || undefined,
+                categoryType: cat
+            };
+        }) || [];
         
     const finalLocation = isVenue ? vendor.location : formData.eventLocation;
     const currentSubmitType = explicitSubmitType || submitType;
@@ -647,7 +741,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     } finally {
       setIsSubmitting(false);
     }
-  }, [vendor, localDate, hasSelectedPackage, formData, isVenue, isOfferMode, offeredPrice, selectedServiceIds, quantities, submitType, onConfirm, totalAmount, isPriorityDate]);
+  }, [vendor, localDate, hasSelectedPackage, formData, isVenue, isOfferMode, offeredPrice, selectedServiceIds, quantities, locationHours, submitType, onConfirm, totalAmount, isPriorityDate]);
 
   const handleAddClick = useCallback((e: React.MouseEvent) => {
     setSubmitType('add');
@@ -991,28 +1085,30 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
           ref={formScrollRef}
           className={`flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y p-6 space-y-6 ${isSubmitting ? 'pointer-events-none' : ''}`}
         >
-          <div className="simcha-date-limit-box relative overflow-hidden bg-black/90 rounded-3xl p-5 sm:p-6 text-center mb-5 space-y-2.5 transition-all">
-            <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 w-3/4 h-24 bg-gradient-to-b from-[#FFE885]/25 to-transparent blur-xl" />
-            <div className="relative z-10 flex flex-col items-center justify-center gap-2">
-              <span className="text-[11px] sm:text-xs font-black uppercase tracking-[0.22em] text-[#D4AF37]">
-                Date Check Limit
-              </span>
-              <div className="flex flex-wrap items-center justify-center gap-2 text-sm sm:text-base font-bold text-zinc-100">
-                <span className="simcha-gold-attempts-pill inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs sm:text-sm font-black uppercase tracking-wider">
-                  <Sparkles className="w-3.5 h-3.5 shrink-0 text-black" />
-                  {getRemainingAttempts()} of {vendor.maxDateChecks ?? 5} attempts remaining
+          {vendor.enableDateCheckLimit !== false && (
+            <div className="simcha-date-limit-box relative overflow-hidden bg-black/90 rounded-3xl p-5 sm:p-6 text-center mb-5 space-y-2.5 transition-all">
+              <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 w-3/4 h-24 bg-gradient-to-b from-[#FFE885]/25 to-transparent blur-xl" />
+              <div className="relative z-10 flex flex-col items-center justify-center gap-2">
+                <span className="text-[11px] sm:text-xs font-black uppercase tracking-[0.22em] text-[#D4AF37]">
+                  Date Check Limit
                 </span>
+                <div className="flex flex-wrap items-center justify-center gap-2 text-sm sm:text-base font-bold text-zinc-100">
+                  <span className="simcha-gold-attempts-pill inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs sm:text-sm font-black uppercase tracking-wider">
+                    <Sparkles className="w-3.5 h-3.5 shrink-0 text-black" />
+                    {getRemainingAttempts()} of {vendor.maxDateChecks ?? 5} attempts remaining
+                  </span>
+                </div>
+                <p className="text-zinc-300 text-xs sm:text-sm font-semibold">
+                  Resets every <span className="text-[#D4AF37] font-black">{vendor.dateCheckResetHours ?? 24} hours</span> — please select only the dates you need
+                </p>
               </div>
-              <p className="text-zinc-300 text-xs sm:text-sm font-semibold">
-                Resets every <span className="text-[#D4AF37] font-black">{vendor.dateCheckResetHours ?? 24} hours</span> — please select only the dates you need
-              </p>
+              {privacyBlocked && (
+                <p className="relative z-10 text-red-400 text-xs sm:text-sm font-bold leading-relaxed pt-1">
+                  Date check limit reached for this vendor. Previously checked dates can still be selected, but other dates are locked until reset.
+                </p>
+              )}
             </div>
-            {privacyBlocked && (
-              <p className="relative z-10 text-red-400 text-xs sm:text-sm font-bold leading-relaxed pt-1">
-                Date check limit reached for this vendor. Previously checked dates can still be selected, but other dates are locked until reset.
-              </p>
-            )}
-          </div>
+          )}
 
           <div className="space-y-3">
             <label className={labelClass}>Event Date</label>
@@ -1045,27 +1141,23 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
               title: string;
               subtitle: string;
               icon: any;
+              singleSelect: boolean;
               items: VendorService[];
             }[] = [
               {
                 type: 'location',
                 title: 'Locations',
-                subtitle: 'Select location rate',
+                subtitle: 'Select one location & adjust hours',
                 icon: MapPin,
+                singleSelect: true,
                 items: vendor.services.filter(s => inferServiceCategory(s) === 'location')
-              },
-              {
-                type: 'hours',
-                title: 'Hours',
-                subtitle: 'Select duration & time',
-                icon: Clock,
-                items: vendor.services.filter(s => inferServiceCategory(s) === 'hours')
               },
               {
                 type: 'amenities',
                 title: 'Amenities & Options',
                 subtitle: 'Select add-ons & extras',
                 icon: Sparkles,
+                singleSelect: false,
                 items: vendor.services.filter(s => inferServiceCategory(s) === 'amenities')
               }
             ].filter(group => group.items.length > 0);
@@ -1080,16 +1172,17 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                     </span>
                   )}
                 </div>
-                <div className="grid grid-cols-1 gap-3.5">
+                <div className="grid grid-cols-1 gap-3">
                   {groupedServices.map((group) => {
                     const GroupIcon = group.icon;
                     const bgImage = group.items.find(i => i.image)?.image || vendor.image;
-                    const hasSelectedInGroup = group.items.some(i => selectedServiceIds.includes(i.id));
+                    const selectedInGroupCount = group.items.filter(i => selectedServiceIds.includes(i.id)).length;
+                    const hasSelectedInGroup = selectedInGroupCount > 0;
 
                     return (
                       <div
                         key={group.type}
-                        className={`relative overflow-hidden rounded-2xl border transition-all p-4 ${
+                        className={`relative overflow-hidden rounded-2xl border transition-all p-3.5 ${
                           hasSelectedInGroup
                             ? 'border-[#D4AF37] shadow-[0_0_18px_rgba(212,175,55,0.16)] bg-black'
                             : 'border-[#D4AF37]/25 hover:border-[#D4AF37]/50 bg-black'
@@ -1107,8 +1200,8 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                           </div>
                         )}
 
-                        <div className="relative z-10 space-y-2.5">
-                          <div className="flex items-center justify-between border-b border-[#D4AF37]/15 pb-2">
+                        <div className="relative z-10 space-y-2">
+                          <div className="flex items-center justify-between border-b border-[#D4AF37]/15 pb-1.5">
                             <div className="flex items-center gap-2">
                               <div className="w-6 h-6 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37]">
                                 <GroupIcon className="w-3.5 h-3.5" />
@@ -1121,68 +1214,179 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                               </div>
                             </div>
                             <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
-                              {group.items.filter(i => selectedServiceIds.includes(i.id)).length}/{group.items.length} Selected
+                              {group.singleSelect
+                                ? (hasSelectedInGroup ? '1 Selected' : 'Choose 1')
+                                : `${selectedInGroupCount}/${group.items.length} Selected`}
                             </span>
                           </div>
 
                           {/* Compact Checkpoints Grid inside the single box */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-0.5">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pt-3 -mt-2 pr-0.5">
                             {group.items.map((service) => {
                               const isSelected = selectedServiceIds.includes(service.id);
+                              const isLocationGroup = group.type === 'location';
+                              const canMultiple = !group.singleSelect && !!service.allowQuantity;
+                              const qty = quantities[service.id] || 1;
+                              const baseHours = service.defaultHours ?? 4;
+                              const hourlyRate = service.hourlyRate ?? 100;
+                              const currentHours = locationHours[service.id] ?? baseHours;
+                              const extraHours = Math.max(0, currentHours - baseHours);
+                              const displayPrice = isLocationGroup
+                                ? service.price + (extraHours * hourlyRate)
+                                : service.price * (isSelected ? qty : 1);
+                              const activePopup = hourPopups[service.id];
+
                               return (
                                 <div
                                   key={service.id}
-                                  className={`rounded-xl border transition-all ${
+                                  onClick={() => toggleService(service.id)}
+                                  role="checkbox"
+                                  aria-checked={isSelected}
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === ' ' || e.key === 'Enter') {
+                                      e.preventDefault();
+                                      toggleService(service.id);
+                                    }
+                                  }}
+                                  className={`relative h-10 rounded-xl border transition-all px-3 flex items-center justify-between gap-2 cursor-pointer select-none ${
                                     isSelected
                                       ? 'bg-[#D4AF37]/12 border-[#D4AF37] shadow-[0_0_10px_rgba(212,175,55,0.12)]'
                                       : 'bg-black/60 border-[#D4AF37]/15 hover:border-[#D4AF37]/45'
                                   }`}
                                 >
-                                  <label className="cursor-pointer flex items-center justify-between gap-2.5 px-3 py-2.5 select-none">
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                      <div
-                                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
-                                          isSelected
-                                            ? 'bg-[#D4AF37] border-[#D4AF37]'
-                                            : 'bg-black/50 border-zinc-500'
-                                        }`}
-                                      >
-                                        {isSelected && <Check className="w-2.5 h-2.5 text-black stroke-[3]" />}
-                                      </div>
-                                      <span className="text-xs font-bold text-white truncate">
-                                        {service.name}
-                                      </span>
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <div
+                                      className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                                        isSelected
+                                          ? 'bg-[#D4AF37] border-[#D4AF37]'
+                                          : 'bg-black/50 border-zinc-500'
+                                      }`}
+                                    >
+                                      {isSelected && <Check className="w-2.5 h-2.5 text-black stroke-[3]" />}
                                     </div>
-                                    <span className="text-[11px] font-black text-[#D4AF37] shrink-0 tracking-wide">
-                                      ${service.price.toLocaleString()}
-                                      {service.unit && service.unit !== 'event' ? `/${service.unit}` : ''}
+                                    <span className="text-xs font-bold text-white truncate">
+                                      {service.name}
                                     </span>
-                                    <input
-                                      type="checkbox"
-                                      className="sr-only"
-                                      checked={isSelected}
-                                      onChange={() => toggleService(service.id)}
-                                    />
-                                  </label>
+                                  </div>
 
-                                  {isSelected && service.allowQuantity && (
-                                    <div className="px-3 pb-2.5 pt-1 flex items-center justify-between gap-2 border-t border-[#D4AF37]/15">
-                                      <div className="relative flex-1">
-                                        <Hash className="absolute left-2.5 top-2 w-3 h-3 text-[#D4AF37]/60" />
-                                        <input
-                                          type="number"
-                                          min="1"
-                                          className="w-full bg-black/60 border border-[#D4AF37]/25 rounded-lg pl-7 pr-2 py-1 text-[11px] text-white focus:border-[#D4AF37] outline-none"
-                                          placeholder={`Qty (${service.unit || 'units'})`}
-                                          value={quantities[service.id] || 1}
-                                          onChange={(e) => handleQuantityChange(service.id, e.target.value)}
-                                        />
-                                      </div>
-                                      <span className="text-[9px] font-black text-[#D4AF37] uppercase tracking-wider shrink-0">
-                                        =${(service.price * (quantities[service.id] || 1)).toLocaleString()}
+                                  {isLocationGroup && (
+                                    <div
+                                      className="relative flex flex-col items-center justify-center shrink-0 leading-none"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {activePopup && (
+                                        <span
+                                          key={activePopup.id}
+                                          className="pointer-events-none absolute -top-3.5 left-1/2 -translate-x-1/2 z-30 bg-[#D4AF37] text-black text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-[0_0_10px_rgba(212,175,55,0.65)] whitespace-nowrap animate-in fade-in zoom-in-95 slide-in-from-bottom-1 duration-150"
+                                        >
+                                          {activePopup.text}
+                                        </span>
+                                      )}
+                                      <span className="text-[7px] font-black uppercase tracking-widest text-[#D4AF37] leading-none mb-0.5">
+                                        Hours
                                       </span>
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (currentHours > baseHours) {
+                                              const nextHours = currentHours - 1;
+                                              setLocationHours(prev => ({ ...prev, [service.id]: nextHours }));
+                                              if (hourlyRate > 0) {
+                                                triggerHourPopup(service.id, `-$${hourlyRate}`);
+                                              }
+                                            }
+                                          }}
+                                          disabled={currentHours <= baseHours}
+                                          className="w-4 h-4 rounded bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] disabled:opacity-35 text-[#D4AF37] flex items-center justify-center text-[10px] font-black leading-none transition-colors cursor-pointer disabled:cursor-default"
+                                          aria-label={`Decrease ${service.name} hours`}
+                                        >
+                                          -
+                                        </button>
+                                        <span className="text-[10px] font-black text-zinc-100 min-w-[14px] text-center tabular-nums">
+                                          {currentHours}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (!isSelected) {
+                                              const allServices = vendor.services || [];
+                                              const otherLocIds = allServices
+                                                .filter(s => s.id !== service.id && inferServiceCategory(s) === 'location')
+                                                .map(s => s.id);
+                                              setSelectedServiceIds(prev => [
+                                                ...prev.filter(id => !otherLocIds.includes(id)),
+                                                service.id
+                                              ]);
+                                              setQuantities(qPrev => {
+                                                const next = { ...qPrev };
+                                                otherLocIds.forEach(id => delete next[id]);
+                                                next[service.id] = 1;
+                                                return next;
+                                              });
+                                            }
+                                            const nextHours = currentHours + 1;
+                                            setLocationHours(prev => ({ ...prev, [service.id]: nextHours }));
+                                            triggerHourPopup(service.id, `+$${hourlyRate}`);
+                                          }}
+                                          className="w-4 h-4 rounded bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] flex items-center justify-center text-[10px] font-black leading-none transition-colors cursor-pointer"
+                                          aria-label={`Increase ${service.name} hours`}
+                                        >
+                                          +
+                                        </button>
+                                      </div>
                                     </div>
                                   )}
+
+                                  {canMultiple && (
+                                    <div
+                                      className="flex items-center gap-1 shrink-0"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (!isSelected) return;
+                                          if (qty > 1) {
+                                            handleQuantityChange(service.id, String(qty - 1));
+                                          } else {
+                                            toggleService(service.id);
+                                          }
+                                        }}
+                                        className="w-5 h-5 rounded-md bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] flex items-center justify-center text-xs font-black leading-none transition-colors cursor-pointer"
+                                        aria-label={`Decrease ${service.name} quantity`}
+                                      >
+                                        -
+                                      </button>
+                                      <span className="text-[10px] font-black text-zinc-200 min-w-[14px] text-center tabular-nums">
+                                        {qty}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (!isSelected) {
+                                            setSelectedServiceIds(prev => (prev.includes(service.id) ? prev : [...prev, service.id]));
+                                            setQuantities(prev => ({ ...prev, [service.id]: 2 }));
+                                          } else {
+                                            handleQuantityChange(service.id, String(qty + 1));
+                                          }
+                                        }}
+                                        className="w-5 h-5 rounded-md bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] flex items-center justify-center text-xs font-black leading-none transition-colors cursor-pointer"
+                                        aria-label={`Increase ${service.name} quantity`}
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  <span className="text-[11px] font-black text-[#D4AF37] shrink-0 tracking-wide whitespace-nowrap tabular-nums">
+                                    ${displayPrice.toLocaleString()}
+                                  </span>
                                 </div>
                               );
                             })}
