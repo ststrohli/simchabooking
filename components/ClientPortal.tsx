@@ -2,8 +2,9 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, ShoppingBag, Calendar, MessageSquare, LogOut, Trash2, 
-  ChevronRight, MapPin, Clock, CreditCard, CheckCircle, CheckCheck, Bell, X, Menu, Send,
-  FileText, Upload, Download, Loader2, Plus, Search, Edit3, ArrowLeft, ShieldCheck
+  ChevronRight, MapPin, Clock, CreditCard, Check, CheckCircle, CheckCheck, Bell, X, Menu, Send,
+  FileText, Upload, Download, Loader2, Plus, Search, Edit3, ArrowLeft, ShieldCheck,
+  Mic, Image as ImageIcon, Play
 } from 'lucide-react';
 import { CartItem, Booking, Message, Vendor, UserAccount } from '../types';
 import { storage, db } from '../services/firebase';
@@ -31,6 +32,7 @@ interface ClientPortalProps {
   onUpdateProfile: (data: { name: string, photoURL: string, photoStoragePath?: string }) => void;
   onDeleteAccount: () => void;
   onMessageVendor: (vendor: Vendor) => void;
+  onOpenAdminChat?: () => void;
   onActiveChatChange?: (isActive: boolean) => void;
   onTabChange?: (tab: string) => void;
   initialTab?: string;
@@ -39,7 +41,7 @@ interface ClientPortalProps {
 }
 
 const ClientPortal: React.FC<ClientPortalProps> = ({ 
-  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode
+  user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor, onOpenAdminChat, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile'>(initialTab as any || 'overview');
   
@@ -254,15 +256,26 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     });
   }, [clientBookings, vendors, selectedEventCategory]);
   
-  // Group messages by vendor for the chat hub
+  // Group messages by vendor/contact for the chat hub (strictly one thread per contact, newest on top)
   const chatThreads = useMemo(() => {
-    const groups: Record<string, { vendor: Vendor, messages: Message[], lastMessage: Message }> = {};
-    messages.forEach(m => {
-      const vendorId = m.senderId === user.id ? m.receiverId : m.senderId;
-      let vendor = vendors.find(v => v.id === vendorId);
-      
-      // If the chat is with the admin, create a mock vendor for the thread
-      if (vendorId === 'admin' || m.isAdminInquiry || m.receiverId === 'admin') {
+    const groups: Record<string, { vendor: Vendor; messages: Message[]; lastMessage: Message }> = {};
+    const seenMessageIds = new Set<string>();
+
+    messages.forEach((m) => {
+      if (!m) return;
+      if (m.id && seenMessageIds.has(m.id)) return;
+      if (m.id) seenMessageIds.add(m.id);
+
+      let vendor: Vendor | undefined;
+
+      // 1. Check if this message belongs to the Admin Support thread
+      if (
+        m.isAdminInquiry ||
+        m.senderId === 'admin' ||
+        m.receiverId === 'admin' ||
+        (m.participants && m.participants.includes('admin')) ||
+        (m.conversationId && m.conversationId.split('_').includes('admin'))
+      ) {
         vendor = {
           id: 'admin',
           name: 'Simcha Admin',
@@ -272,8 +285,21 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           location: 'System',
           image: '',
           rating: 5,
-          reviews: []
+          reviews: [],
         } as unknown as Vendor;
+      } else {
+        // 2. Resolve vendor by senderId, receiverId, participants, conversationId, or vendorEmail
+        const candidateOtherId = m.senderId === user.id ? m.receiverId : m.senderId;
+        vendor =
+          vendors.find((v) => v.id === candidateOtherId) ||
+          vendors.find(
+            (v) =>
+              v.id === m.senderId ||
+              v.id === m.receiverId ||
+              (m.participants && m.participants.includes(v.id)) ||
+              (m.conversationId && m.conversationId.split('_').includes(v.id)) ||
+              (m.vendorEmail && v.contactEmail && v.contactEmail.toLowerCase() === m.vendorEmail.toLowerCase())
+          );
       }
 
       if (vendor) {
@@ -282,22 +308,26 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           groups[actualVendorId] = { vendor, messages: [], lastMessage: m };
         }
         groups[actualVendorId].messages.push(m);
-        if (new Date(m.timestamp) > new Date(groups[actualVendorId].lastMessage.timestamp)) {
-          groups[actualVendorId].lastMessage = m;
-        }
       }
     });
-    return Object.entries(groups).sort((a, b) => 
-      new Date(b[1].lastMessage.timestamp).getTime() - new Date(a[1].lastMessage.timestamp).getTime()
-    );
-  }, [messages, vendors, user.id]);
 
-  // Auto-select the first thread (the one with the most recent message) when activeTab is chats and no thread is selected
-  useEffect(() => {
-    if (activeTab === 'chats' && !selectedThreadVendorId && chatThreads.length > 0 && window.innerWidth >= 1024) {
-      setSelectedThreadVendorId(chatThreads[0][0]);
-    }
-  }, [activeTab, selectedThreadVendorId, chatThreads]);
+    Object.values(groups).forEach((g) => {
+      g.messages.sort((a, b) => {
+        const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return tA - tB;
+      });
+      if (g.messages.length > 0) {
+        g.lastMessage = g.messages[g.messages.length - 1];
+      }
+    });
+
+    return Object.entries(groups).sort((a, b) => {
+      const timeA = a[1].lastMessage?.timestamp ? new Date(a[1].lastMessage.timestamp).getTime() : 0;
+      const timeB = b[1].lastMessage?.timestamp ? new Date(b[1].lastMessage.timestamp).getTime() : 0;
+      return timeB - timeA;
+    });
+  }, [messages, vendors, user.id]);
 
   const onActiveChatChangeRef = useRef(onActiveChatChange);
   useEffect(() => {
@@ -306,48 +336,16 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
   useEffect(() => {
     if (onActiveChatChangeRef.current) {
-      onActiveChatChangeRef.current((!!selectedThreadVendorId && activeTab === 'chats') || !!checkoutClientSecret);
+      onActiveChatChangeRef.current(!!checkoutClientSecret);
     }
-  }, [selectedThreadVendorId, activeTab, checkoutClientSecret]);
+  }, [checkoutClientSecret]);
 
-  // Automatically mark unread messages as read when viewing a thread
-  useEffect(() => {
-    if (selectedThreadVendorId && activeTab === 'chats') {
-      const thread = chatThreads.find(t => t[0] === selectedThreadVendorId);
-      if (thread) {
-        const firstMsg = thread[1].messages[0];
-        if (firstMsg) {
-          const conId = firstMsg.conversationId || [user.id, selectedThreadVendorId].sort().filter(Boolean).join('_');
-          markChatAsRead(conId, user.id).catch(err => {
-            console.error("Error setting thread as read:", err);
-          });
-        }
-      }
-    }
-  }, [selectedThreadVendorId, activeTab, chatThreads]);
-
-  const [otherIsTyping, setOtherIsTyping] = useState(false);
-
-  useEffect(() => {
-    if (!selectedThreadVendorId || !user.id || activeTab !== 'chats') {
-      setOtherIsTyping(false);
-      return;
-    }
-    const activeConversationId = [user.id, selectedThreadVendorId].sort().join('_');
-    const unsub = onSnapshot(doc(db, 'conversations', activeConversationId), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        const typing = data?.typing || {};
-        const otherTyping = typing[selectedThreadVendorId] || false;
-        setOtherIsTyping(otherTyping);
-      } else {
-        setOtherIsTyping(false);
-      }
-    }, (err) => {
-      console.warn("Error listening to conversation document:", err);
-    });
-    return () => unsub();
-  }, [selectedThreadVendorId, user.id, activeTab]);
+  const getVendorInitials = (name?: string): string => {
+    if (!name || !name.trim()) return 'V';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
 
   const subtotal = cart.reduce((sum, item) => sum + item.amount, 0);
 
@@ -692,28 +690,90 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         )}
 
         {activeTab === 'chats' && (
-          <div className="flex flex-col lg:flex-row bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden min-h-[500px] animate-in fade-in duration-500 relative">
-             {/* Thread List */}
-             <div className={`w-full lg:w-80 border-r border-white/5 bg-black/20 overflow-y-auto ${selectedThreadVendorId ? 'hidden lg:block' : 'block'}`}>
-                <div className="p-6 border-b border-white/5 bg-black/40">
-                  <h3 className="text-xs font-black text-[#D4AF37] uppercase tracking-widest">Conversations</h3>
-                </div>
-                {chatThreads.length === 0 ? (
-                  <div className="p-10 text-center opacity-20">
-                    <MessageSquare className="w-10 h-10 mx-auto mb-4" />
-                    <p className="text-[10px] font-black uppercase tracking-widest">No Active Chats</p>
-                  </div>
-                ) : chatThreads.map(([vendorId, data]) => {
-                  const unreadInThread = data.messages.filter(m => m.receiverId === user.id && !m.isRead).length;
-                  return (
-                    <button 
-                      key={vendorId}
-                      onClick={() => setSelectedThreadVendorId(vendorId)}
-                      className={`w-full p-6 text-left border-b border-white/5 transition-all hover:bg-white/5 ${selectedThreadVendorId === vendorId ? 'bg-[#D4AF37]/5 border-l-4 border-l-[#D4AF37]' : ''}`}
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <div className="flex items-center gap-1.5 truncate max-w-[70%]">
-                          <span className="font-bold text-white text-sm truncate">{data.vendor.name}</span>
+          <div className="space-y-3 animate-in fade-in duration-500">
+            {chatThreads.length === 0 ? (
+              <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No Active Chats</p>
+              </div>
+            ) : (
+              chatThreads.map(([vendorId, data], idx) => {
+                const unreadInThread = data.messages.filter(m => m.receiverId === user.id && !m.isRead).length;
+                const vendorPhoto = data.vendor.image;
+                const initials = getVendorInitials(data.vendor.name);
+                const lastMsg = data.lastMessage;
+                const isLastSentByMe = lastMsg.senderId === user.id || (lastMsg as any).sender_role === 'client';
+                const lastReadByMap = (lastMsg as any).read_by || {};
+                const isLastReadByOther = Boolean(
+                  lastMsg.isRead ||
+                  Object.keys(lastReadByMap).some(k => k !== lastMsg.senderId && k !== user.id)
+                );
+                const isVoice = lastMsg.type === 'voice' || !!lastMsg.audioUrl;
+                const isImg = lastMsg.type === 'image' || !!lastMsg.imageUrl;
+                const isVid = lastMsg.type === 'file' && lastMsg.fileType?.startsWith('video/');
+                const isDoc = lastMsg.type === 'file' && !lastMsg.fileType?.startsWith('video/');
+
+                const handleOpenThread = () => {
+                  const conId = lastMsg.conversationId || [user.id, vendorId].sort().filter(Boolean).join('_');
+                  if (conId && user.id) {
+                    markChatAsRead(conId, user.id).catch(() => {});
+                  }
+                  if (vendorId === 'admin' && onOpenAdminChat) {
+                    onOpenAdminChat();
+                  } else {
+                    onMessageVendor(data.vendor);
+                  }
+                };
+
+                return (
+                  <div
+                    key={vendorId}
+                    role="button"
+                    tabIndex={0}
+                    onClick={handleOpenThread}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleOpenThread();
+                      }
+                    }}
+                    className={`simcha-event-card relative w-full overflow-hidden rounded-full border transition-all duration-300 cursor-pointer group flex items-center justify-between gap-3 px-5 sm:px-7 py-3.5 sm:py-4 min-h-[68px] sm:min-h-[74px] shadow-xl active:scale-[0.99] ${
+                      unreadInThread > 0 || idx === 0
+                        ? 'border-[#D4AF37] shadow-[0_0_24px_rgba(212,175,55,0.18)]'
+                        : 'border-[#D4AF37]/35 hover:border-[#D4AF37]/80'
+                    }`}
+                  >
+                    {/* Full Background: Vendor Photo OR Initials Pattern */}
+                    <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                      {vendorPhoto ? (
+                        <>
+                          <img
+                            src={vendorPhoto}
+                            alt={data.vendor.name}
+                            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                          />
+                          <div className="absolute inset-0 simcha-event-card-overlay" />
+                        </>
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-r from-[#0c0c0c] via-[#151208] to-[#0c0c0c] flex items-center justify-center relative">
+                          <span className="font-[Cinzel] font-black text-5xl sm:text-6xl tracking-[0.25em] text-[#D4AF37]/15 select-none">
+                            {initials}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Left Side: Initials Badge (when no photo) + Vendor Name + Latest Message */}
+                    <div className="relative z-10 flex items-center gap-3 min-w-0 flex-1">
+                      {!vendorPhoto && (
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs sm:text-sm shadow-inner">
+                          {initials}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm sm:text-base text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
+                            {data.vendor.name}
+                          </span>
                           <AnimatePresence mode="popLayout">
                             {unreadInThread > 0 && (
                               <motion.span
@@ -722,159 +782,65 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                                 animate={{ scale: 1, opacity: 1 }}
                                 exit={{ scale: 0, opacity: 0 }}
                                 transition={{ type: "spring", stiffness: 500, damping: 25 }}
-                                className="bg-zinc-800 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0 animate-pulse"
+                                className="bg-[#D4AF37] text-black text-[9px] font-black px-2 py-0.5 rounded-full flex-shrink-0 shadow-sm"
                               >
                                 {unreadInThread}
                               </motion.span>
                             )}
                           </AnimatePresence>
                         </div>
-                        <span className="text-[8px] text-zinc-400">{new Date(data.lastMessage.timestamp).toLocaleDateString()}</span>
-                      </div>
-                      <p className="text-[10px] text-[#D4AF37] uppercase tracking-widest truncate mb-2">{data.vendor.category}</p>
-                      <p className="text-xs text-zinc-400 line-clamp-1 italic">"{data.lastMessage.text}"</p>
-                    </button>
-                  );
-                })}
-             </div>
-
-             {/* Chat Pane */}
-             <div className={`flex-1 flex-col bg-black/40 ${selectedThreadVendorId ? 'flex' : 'hidden lg:flex'}`}>
-                {selectedThreadVendorId ? (
-                  <>
-                    {(() => {
-                       const activeThread = chatThreads.find(t => t[0] === selectedThreadVendorId);
-                       const displayVendor = activeThread?.[1].vendor;
-                       return (
-                         <div className="p-6 border-b border-white/5 bg-black/40 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                               <button 
-                                 onClick={() => setSelectedThreadVendorId(null)} 
-                                 className="lg:hidden p-2 -ml-2 mr-1 text-zinc-400 hover:text-white rounded-full hover:bg-white/10"
-                               >
-                                 <ArrowLeft className="w-5 h-5" />
-                               </button>
-                               {displayVendor?.image ? (
-                                 <img src={displayVendor.image} className="w-10 h-10 rounded-full object-cover border border-[#D4AF37]/30 animate-in fade-in duration-300" alt="" />
-                               ) : (
-                                 <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center border border-[#D4AF37]/30 text-[#D4AF37] font-black text-xs animate-in fade-in duration-300">
-                                   {displayVendor?.name?.[0] || 'A'}
-                                 </div>
-                               )}
-                               <div>
-                                   <h4 className="font-bold text-white leading-tight">{displayVendor?.name || 'Simcha Admin'}</h4>
-                                   <p className="text-[10px] text-[#D4AF37] uppercase tracking-widest mt-0.5">{displayVendor?.category || 'Support'}</p>
-                               </div>
-                            </div>
-                         </div>
-                       );
-                    })()}
-
-                    <div className="flex-1 overflow-y-auto p-8 space-y-6" id="client-chat-scroll-container">
-                      {chatThreads.find(t => t[0] === selectedThreadVendorId)?.[1].messages.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map(m => {
-                        const isSent = m.senderId === user.id;
-                        return (
-                          <motion.div 
-                            key={m.id || m.tempId} 
-                            initial={{ opacity: 0, y: 15 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.25, ease: "easeOut" }}
-                            className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}
-                          >
-                            <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative ${
-                              isSent 
-                                ? 'bg-[#D4AF37] text-black shadow-md' 
-                                : 'bg-zinc-900 text-white border border-zinc-800 shadow-md'
-                            }`}>
-                               {m.type === 'image' || m.imageUrl ? (
-                                  <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: m.imageUrl || m.fileUrl || '', type: 'image'})}>
-                                    <img 
-                                      src={m.imageUrl || m.fileUrl} 
-                                      onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })} 
-                                      className="rounded-lg w-full max-h-60 object-cover border border-white/5 shadow-lg" 
-                                      alt="Sent" 
-                                    />
-                                    {m.text && m.text !== 'Sent an image' && <p className="text-sm">{m.text}</p>}
-                                  </div>
-                                ) : m.type === 'voice' || m.audioUrl ? (
-                                  <div className="space-y-1">
-                                    <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isSent ? 'text-black/60' : 'text-zinc-400'}`}>Voice Note</p>
-                                    <CustomAudioPlayer src={m.audioUrl || m.fileUrl || ''} theme={isSent ? 'sent' : 'received'} />
-                                  </div>
-                                ) : m.type === 'file' ? (
-                                  m.fileType?.startsWith('video/') ? (
-                                     <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: m.fileUrl || '', type: 'video'})}>
-                                       <video src={m.fileUrl} className="w-full aspect-video rounded-lg object-cover bg-black" />
-                                       {m.text && m.text !== 'Sent a video' && <p className="text-sm">{m.text}</p>}
-                                     </div>
-                                  ) : (
-                                  <a href={m.fileUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl transition-all text-sm ${isSent ? 'bg-black/10 hover:bg-black/20 text-black' : 'bg-black/30 hover:bg-black/40 text-white'}`}>
-                                    <FileText className="w-8 h-8 opacity-60 flex-shrink-0" />
-                                    <div className="flex-1 min-w-0">
-                                       <p className="truncate font-bold text-xs">{m.fileName || 'Document'}</p>
-                                       <p className="text-[10px] opacity-60">Click to download</p>
-                                    </div>
-                                    <Download className="w-4 h-4 opacity-60 flex-shrink-0" />
-                                  </a>
-                                  )
-                                ) : (
-                                  <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{m.text}</p>
-                                )}
-
-                               <div className="flex justify-end items-center gap-1 mt-2 select-none leading-none">
-                                 <span className={`text-[9px] font-medium opacity-65 ${isSent ? 'text-black/75' : 'text-zinc-400'}`}>
-                                   {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                 </span>
-                                 {isSent && (
-                                   <span className={`text-[10px] ${m.isRead ? 'text-[#D4AF37]' : 'text-black/40'}`}>
-                                     <CheckCircle className="w-3 h-3" />
-                                   </span>
-                                 )}
-                               </div>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                      {otherIsTyping && (
-                        <div className="flex justify-start px-2 py-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                          <div className="bg-zinc-900 border border-[#D4AF37]/10 text-[#D4AF37] px-4 py-2.5 rounded-[20px] text-[11px] flex items-center gap-3 shadow-lg">
-                            <span className="font-semibold">
-                              {(chatThreads.find(t => t[0] === selectedThreadVendorId)?.[1].vendor.name) || 'Professional'} is typing
-                            </span>
-                            <div className="flex items-center gap-1 mt-0.5" aria-hidden="true">
-                              <motion.span
-                                animate={{ opacity: [0.3, 1, 0.3] }}
-                                transition={{ repeat: Infinity, duration: 1.2, delay: 0 }}
-                                className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
-                              />
-                              <motion.span
-                                animate={{ opacity: [0.3, 1, 0.3] }}
-                                transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }}
-                                className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
-                              />
-                              <motion.span
-                                animate={{ opacity: [0.3, 1, 0.3] }}
-                                transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }}
-                                className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
-                              />
-                            </div>
-                          </div>
+                        <div className="flex items-center gap-1.5 text-xs text-zinc-200/90 truncate mt-0.5 drop-shadow-sm">
+                          {isLastSentByMe && (
+                            isLastReadByOther ? (
+                              <span title="Seen" className="inline-flex items-center shrink-0">
+                                <CheckCheck className="w-3.5 h-3.5 text-[#34B7F1] shrink-0" />
+                              </span>
+                            ) : (
+                              <span title="Sent" className="inline-flex items-center shrink-0">
+                                <Check className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                              </span>
+                            )
+                          )}
+                          {isVoice ? (
+                            <>
+                              <Mic className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                              <span className="truncate">Voice note</span>
+                            </>
+                          ) : isImg ? (
+                            <>
+                              <ImageIcon className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                              <span className="truncate">{lastMsg.text && lastMsg.text !== 'Sent an image' ? lastMsg.text : 'Photo'}</span>
+                            </>
+                          ) : isVid ? (
+                            <>
+                              <Play className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                              <span className="truncate">{lastMsg.text && lastMsg.text !== 'Sent a video' ? lastMsg.text : 'Video'}</span>
+                            </>
+                          ) : isDoc ? (
+                            <>
+                              <FileText className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                              <span className="truncate">{lastMsg.fileName || 'Document'}</span>
+                            </>
+                          ) : (
+                            <span className="truncate">{lastMsg.text || 'Tap to open chat'}</span>
+                          )}
                         </div>
-                      )}
-                      <div ref={messagesEndRef} />
+                      </div>
                     </div>
-                    
-                    <div className="p-6 bg-black/40 border-t border-white/5 italic text-[10px] text-zinc-400 text-center">
-                       Replying to vendors is currently available via the Vendor cards in the Marketplace.
+
+                    {/* Right Side: Date/Time + Chevron */}
+                    <div className="relative z-10 flex items-center gap-2 shrink-0">
+                      <span className="simcha-event-pill px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-bold text-zinc-100 border border-white/15">
+                        {new Date(lastMsg.timestamp).toLocaleDateString()}
+                      </span>
+                      <div className="w-7 h-7 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </div>
                     </div>
-                  </>
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center p-10 opacity-20">
-                    <MessageSquare className="w-16 h-16 mb-4" />
-                    <p className="text-sm font-[Cinzel] uppercase tracking-widest">Select a professional to view history</p>
                   </div>
-                )}
-             </div>
+                );
+              })
+            )}
           </div>
         )}
         {activeTab === 'profile' && (

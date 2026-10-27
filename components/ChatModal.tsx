@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { Vendor, Message, UserAccount } from '../types';
 import { auth, db, handleFirestoreError, OperationType } from '../services/firebase';
-import { markChatAsRead, subscribeToUserInbox, ensureAdminSupportConversation } from '../services/messagingService';
+import { markChatAsRead, subscribeToUserInbox, ensureAdminSupportConversation, deleteMessage } from '../services/messagingService';
 import { collection, query, orderBy, onSnapshot, doc, limit, startAfter, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
 import { uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
@@ -47,8 +47,28 @@ interface ChatModalProps {
   recipientUid?: string;
   recipientName?: string;
   recipientEmail?: string;
+  recipientImage?: string;
+  recipientCategory?: string;
+  conversationIdOverride?: string;
   isAdminReplying?: boolean;
+  isVendorReplying?: boolean;
   vendors?: Vendor[];
+  customConversations?: Array<{
+    id: string;
+    contactId: string;
+    name: string;
+    email?: string;
+    category?: string;
+    image?: string;
+    isAdmin?: boolean;
+    lastMessage: string;
+    lastMessageType?: string;
+    lastMessageTime: any;
+    lastMessageIsSent?: boolean;
+    lastMessageIsRead?: boolean;
+    unreadCount: number;
+    conversationId?: string;
+  }>;
 }
 
 interface ImageWithPlaceholderProps {
@@ -91,12 +111,18 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   onClose, 
   onSendMessage, 
   showNotification, 
+  messages: propMessages = [],
   user,
   recipientUid,
   recipientName,
   recipientEmail,
+  recipientImage,
+  recipientCategory,
+  conversationIdOverride,
   isAdminReplying,
-  vendors = []
+  isVendorReplying,
+  vendors = [],
+  customConversations
 }) => {
   // Active contact / conversation states
   const [currentContact, setCurrentContact] = useState<{
@@ -106,6 +132,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     image?: string;
     category?: string;
     isAdmin?: boolean;
+    conversationId?: string;
   } | null>(null);
 
   // Active view on mobile: 'chat' | 'list'
@@ -118,9 +145,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
   // Chat message & input states
   const [text, setText] = useState('');
-  const [clientName, setClientName] = useState(isAdminReplying ? (recipientName || '') : (user?.name || ''));
-  const [clientEmail, setClientEmail] = useState(isAdminReplying ? (recipientEmail || '') : (user?.username || ''));
-  const [isIdentityVerified, setIsIdentityVerified] = useState(isAdminReplying ? true : !!(user?.name && user?.username));
+  const [clientName, setClientName] = useState((isAdminReplying || isVendorReplying) ? (recipientName || '') : (user?.name || ''));
+  const [clientEmail, setClientEmail] = useState((isAdminReplying || isVendorReplying) ? (recipientEmail || '') : (user?.username || ''));
+  const [isIdentityVerified, setIsIdentityVerified] = useState((isAdminReplying || isVendorReplying) ? true : !!(user?.name && user?.username));
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);
@@ -152,6 +179,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [otherIsTyping, setOtherIsTyping] = useState(false);
+  const [otherLastReadAt, setOtherLastReadAt] = useState<string | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -165,20 +193,36 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const lastMessageCountRef = useRef(0);
+  const lastMarkedConvoRef = useRef<string>('');
 
   const myUid = isAdminReplying ? 'admin' : (user?.id || auth.currentUser?.uid || '');
   const targetUid = currentContact?.id || '';
+  const activeConversationId = currentContact?.conversationId || (myUid && targetUid ? [myUid, targetUid].sort().join('_') : '');
   const isSupportChat = currentContact?.isAdmin || targetUid === 'admin' || !!isAdminReplying;
 
-  // Initialize active contact when modal opens or initial props change
+  const lastInitKeyRef = useRef<string>('');
+
+  // Initialize active contact when modal opens or initial target contact changes
   useEffect(() => {
-    if (!isOpen) return;
-    if (isAdminReplying) {
+    if (!isOpen) {
+      lastInitKeyRef.current = '';
+      return;
+    }
+    const targetKey = `${Boolean(isAdminReplying)}_${Boolean(isVendorReplying)}_${recipientUid || ''}_${initialVendor?.id || ''}_${Boolean(initialIsAdminMode)}_${conversationIdOverride || ''}`;
+    if (lastInitKeyRef.current === targetKey) {
+      return;
+    }
+    lastInitKeyRef.current = targetKey;
+
+    if (isAdminReplying || isVendorReplying) {
       setCurrentContact({
-        id: recipientUid || 'client',
-        name: recipientName || 'User',
+        id: recipientUid || (isVendorReplying ? 'client_legacy' : 'client'),
+        name: recipientName || 'Client',
         email: recipientEmail,
-        isAdmin: false
+        image: recipientImage,
+        category: recipientCategory || (isVendorReplying ? 'Client' : 'User'),
+        isAdmin: false,
+        conversationId: conversationIdOverride
       });
       setMobileView('chat');
     } else if (initialVendor) {
@@ -188,7 +232,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         email: initialVendor.contactEmail,
         image: initialVendor.image,
         category: initialVendor.category,
-        isAdmin: false
+        isAdmin: false,
+        conversationId: conversationIdOverride
       });
       setMobileView('chat');
     } else if (initialIsAdminMode) {
@@ -196,7 +241,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         id: 'admin',
         name: 'Simcha Concierge',
         category: 'Support & Concierge',
-        isAdmin: true
+        isAdmin: true,
+        conversationId: conversationIdOverride
       });
       setMobileView('chat');
     } else {
@@ -209,7 +255,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       });
       setMobileView('list');
     }
-  }, [isOpen, initialVendor, initialIsAdminMode, isAdminReplying, recipientUid, recipientName, recipientEmail]);
+  }, [isOpen, initialVendor, initialIsAdminMode, isAdminReplying, isVendorReplying, recipientUid, recipientName, recipientEmail, recipientImage, recipientCategory, conversationIdOverride]);
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -224,16 +270,16 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   }, [isOpen]);
 
   useEffect(() => {
-    if (isAdminReplying) {
-      setClientEmail(recipientEmail || '');
-      setClientName(recipientName || 'User');
+    if (isAdminReplying || isVendorReplying) {
+      setClientEmail(currentContact?.email || recipientEmail || '');
+      setClientName(currentContact?.name || recipientName || 'Client');
       setIsIdentityVerified(true);
     } else if (user?.username) {
       setClientEmail(user.username);
       setClientName(user.name || user.username.split('@')[0] || 'Guest');
       setIsIdentityVerified(true);
     }
-  }, [user, isAdminReplying, recipientEmail, recipientName]);
+  }, [user, isAdminReplying, isVendorReplying, recipientEmail, recipientName, currentContact]);
 
   // Subscribe to user inbox threads for the WhatsApp conversation list
   useEffect(() => {
@@ -252,7 +298,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
   // Real-time onSnapshot listener querying the nested messages subcollection
   useEffect(() => {
-    if (!isOpen || !myUid || !targetUid) {
+    if (!isOpen || !activeConversationId) {
       setActiveMessages([]);
       setOptimisticMessages([]);
       setHistoricalMessages([]);
@@ -263,7 +309,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       return;
     }
 
-    const activeConversationId = [myUid, targetUid].sort().join('_');
     const q = query(
       collection(db, 'conversations', activeConversationId, 'messages'),
       orderBy('sent_at', 'desc'),
@@ -356,7 +401,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     });
 
     return () => unsubscribe();
-  }, [isOpen, myUid, targetUid]);
+  }, [isOpen, activeConversationId]);
 
   // Clean optimistic messages that are now confirmed in database
   useEffect(() => {
@@ -369,40 +414,55 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     }
   }, [activeMessages, optimisticMessages]);
 
-  // Typing status listener
+  // Typing status & read-receipt metadata listener on parent conversation doc
   useEffect(() => {
-    if (!isOpen || !myUid || !targetUid) {
+    if (!isOpen || !activeConversationId || !targetUid) {
       setOtherIsTyping(false);
+      setOtherLastReadAt(null);
       return;
     }
-    const activeConversationId = [myUid, targetUid].sort().join('_');
     const unsub = onSnapshot(doc(db, 'conversations', activeConversationId), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
         const typing = data?.typing || {};
         const otherTyping = typing[targetUid] || false;
         setOtherIsTyping(otherTyping);
+
+        const lastReadIsoMap = data?.last_read_at_iso || {};
+        const targetReadIso = lastReadIsoMap[targetUid] ||
+          Object.entries(lastReadIsoMap).find(([k]) => k !== myUid && k !== (auth.currentUser?.uid || ''))?.[1] ||
+          null;
+        setOtherLastReadAt(typeof targetReadIso === 'string' ? targetReadIso : null);
       } else {
         setOtherIsTyping(false);
+        setOtherLastReadAt(null);
       }
     }, (err) => {
       console.warn("Error listening to conversation document:", err);
     });
     return () => unsub();
-  }, [isOpen, myUid, targetUid]);
+  }, [isOpen, activeConversationId, targetUid, myUid]);
 
-  // Auto-mark as read
+  // Auto-mark as read when receiver opens the conversation or receives new messages while open
   useEffect(() => {
-    if (isOpen && activeMessages.length > 0 && myUid && targetUid) {
-      const activeConversationId = [myUid, targetUid].sort().join('_');
-      const incomingUnread = activeMessages.filter(m => m.senderId !== myUid && !m.isRead);
-      if (incomingUnread.length > 0) {
-        markChatAsRead(activeConversationId, myUid).catch(err => {
-          console.warn("markChatAsRead failed:", err);
-        });
-      }
+    if (!isOpen) {
+      lastMarkedConvoRef.current = '';
+      return;
     }
-  }, [isOpen, activeMessages, myUid, targetUid]);
+    if (!myUid || !activeConversationId) return;
+
+    const hasIncomingUnread = activeMessages.some(
+      m => m.senderId && m.senderId !== myUid && (!m.isRead || !(m as any).read_by?.[myUid])
+    );
+    const isFirstOpenOfConvo = lastMarkedConvoRef.current !== activeConversationId;
+
+    if (hasIncomingUnread || isFirstOpenOfConvo) {
+      lastMarkedConvoRef.current = activeConversationId;
+      markChatAsRead(activeConversationId, myUid).catch(err => {
+        console.warn("markChatAsRead failed:", err);
+      });
+    }
+  }, [isOpen, activeMessages, myUid, activeConversationId]);
 
   // Merged and deduplicated messages
   const chatMessages = useMemo(() => {
@@ -423,6 +483,33 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       }
     });
 
+    // Include matching propMessages as immediate fallback if not already in activeMessages
+    if (propMessages && propMessages.length > 0) {
+      propMessages.forEach(m => {
+        if (!m || (m.id && seenIds.has(m.id))) return;
+        const msgConvoId = m.conversationId || [m.senderId, m.receiverId].sort().join('_');
+        const matchesConvo = activeConversationId && msgConvoId === activeConversationId;
+        const matchesParticipants =
+          (m.senderId === myUid && m.receiverId === targetUid) ||
+          (m.senderId === targetUid && m.receiverId === myUid);
+        const matchesVendorClientEmail =
+          isVendorReplying &&
+          currentContact?.email &&
+          m.clientEmail?.toLowerCase() === currentContact.email.toLowerCase();
+
+        if (matchesConvo || matchesParticipants || matchesVendorClientEmail) {
+          if (m.id) seenIds.add(m.id);
+          uniqueMessages.push(m);
+        }
+      });
+    }
+
+    uniqueMessages.sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
+    });
+
     const dbTempIds = new Set(uniqueMessages.map(m => m.tempId).filter(Boolean));
     const resolvedDbMessages = uniqueMessages.map(m => {
       if (m.tempId) {
@@ -436,7 +523,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       .map(om => ({ ...om, isOptimistic: true, status: om.status || ('sending' as const) }));
 
     return [...resolvedDbMessages, ...pendingOptimistic];
-  }, [historicalMessages, activeMessages, optimisticMessages]);
+  }, [historicalMessages, activeMessages, optimisticMessages, propMessages, activeConversationId, myUid, targetUid, isVendorReplying, currentContact]);
 
   // In-chat search filter & jump
   useEffect(() => {
@@ -636,8 +723,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   };
 
   const handleTypingStatus = async (isTyping: boolean) => {
-    if (!myUid || !targetUid) return;
-    const activeConversationId = [myUid, targetUid].sort().join('_');
+    if (!myUid || !activeConversationId) return;
     try {
       await setDoc(doc(db, 'conversations', activeConversationId), {
         typing: {
@@ -661,12 +747,12 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       }
     }
 
-    const conversationId = [myUid, targetUid].sort().join('_');
+    const conversationId = activeConversationId || [myUid, targetUid].sort().join('_');
 
     sendOptimisticMessage({
       text,
-      clientName,
-      clientEmail,
+      clientName: (isAdminReplying || isVendorReplying) ? (currentContact?.name || clientName) : clientName,
+      clientEmail: (isAdminReplying || isVendorReplying) ? (currentContact?.email || clientEmail) : clientEmail,
       senderId: myUid,
       receiverId: targetUid,
       conversationId,
@@ -717,7 +803,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     setIsUploading(true);
 
     try {
-      const conversationId = [myUid, targetUid].sort().join('_');
+      const conversationId = activeConversationId || [myUid, targetUid].sort().join('_');
       const storagePath = `chats/${conversationId}/${Date.now()}_${file.name}`;
       const url = await uploadFileWithProgress(file, storagePath, (progress) => {
         setUploadProgress(progress);
@@ -725,8 +811,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
       sendOptimisticMessage({
         text: isImage ? 'Sent an image' : isVideo ? 'Sent a video' : `Sent a file: ${file.name}`,
-        clientName,
-        clientEmail,
+        clientName: (isAdminReplying || isVendorReplying) ? (currentContact?.name || clientName) : clientName,
+        clientEmail: (isAdminReplying || isVendorReplying) ? (currentContact?.email || clientEmail) : clientEmail,
         senderId: myUid,
         receiverId: targetUid,
         conversationId,
@@ -822,12 +908,12 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           const url = await uploadFileWithProgress(audioBlob, storagePath, (progress) => {
             setUploadProgress(progress);
           }, { contentType: mimeType });
-          const conversationId = [myUid, targetUid].sort().join('_');
+          const conversationId = activeConversationId || [myUid, targetUid].sort().join('_');
 
           sendOptimisticMessage({
             text: 'Voice note',
-            clientName,
-            clientEmail,
+            clientName: (isAdminReplying || isVendorReplying) ? (currentContact?.name || clientName) : clientName,
+            clientEmail: (isAdminReplying || isVendorReplying) ? (currentContact?.email || clientEmail) : clientEmail,
             senderId: myUid,
             receiverId: targetUid,
             conversationId,
@@ -916,8 +1002,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const handleUnsend = async (msg: Message) => {
     if (!msg.id || msg.isOptimistic) return;
     try {
-      const activeConversationId = [myUid, targetUid].sort().join('_');
-      await deleteDoc(doc(db, 'conversations', activeConversationId, 'messages', msg.id));
+      const convoId = msg.conversationId || activeConversationId || [myUid, targetUid].sort().join('_');
+      const remaining = chatMessages.filter(m => m.id !== msg.id && !m.isOptimistic);
+      const prevLast = remaining[remaining.length - 1];
+      const fallbackText = prevLast
+        ? (typeof prevLast.text === 'string' && prevLast.text ? prevLast.text : 'Attachment')
+        : 'No messages yet';
+
+      setActiveMessages(prev => prev.filter(m => m.id !== msg.id));
+      setHistoricalMessages(prev => prev.filter(m => m.id !== msg.id));
+
+      await deleteMessage(convoId, msg.id, fallbackText);
       showNotification("Message deleted", "success");
     } catch (err) {
       console.error("Failed to delete message:", err);
@@ -935,13 +1030,16 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const checkIfSent = (msg: Message) => {
     if (!msg) return false;
     if (isAdminReplying) {
-      return msg.senderId === 'admin';
+      return msg.senderId === 'admin' || (msg as any).sender_role === 'admin';
+    }
+    if (isVendorReplying) {
+      return msg.senderId === myUid || (msg as any).sender_role === 'vendor';
     }
     const loggedInUid = user?.id || auth.currentUser?.uid;
     if (loggedInUid && msg.senderId === loggedInUid) {
       return true;
     }
-    if (msg.senderId === 'client') {
+    if (msg.senderId === 'client' || (msg as any).sender_role === 'client') {
       return true;
     }
     return false;
@@ -1007,80 +1105,259 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
   };
 
-  // Build unified conversation list for the left WhatsApp pane
+  // Build unified conversation list for the left WhatsApp pane (strictly one contact entry per person, sorted newest first)
   const conversationList = useMemo(() => {
-    const list: Array<{
+    type ConvoItem = {
       id: string;
       contactId: string;
       name: string;
+      email?: string;
       category?: string;
       image?: string;
       isAdmin?: boolean;
       lastMessage: string;
+      lastMessageType?: string;
       lastMessageTime: any;
+      lastMessageIsSent?: boolean;
+      lastMessageIsRead?: boolean;
       unreadCount: number;
-    }> = [];
+      conversationId?: string;
+    };
 
-    const seenContactIds = new Set<string>();
+    const getTimeMs = (val: any): number => {
+      if (!val) return 0;
+      if (typeof val?.toDate === 'function') return val.toDate().getTime();
+      if (typeof val?.toMillis === 'function') return val.toMillis();
+      const t = new Date(val).getTime();
+      return isNaN(t) ? 0 : t;
+    };
 
-    // 1. Always include Simcha Concierge (Admin support)
-    const adminConvo = inboxThreads.find(c => c.type === 'admin_support' || (c.participant_ids || []).includes('admin'));
-    list.push({
-      id: adminConvo?.id || [myUid, 'admin'].sort().join('_'),
-      contactId: 'admin',
-      name: 'Simcha Concierge',
-      category: 'Support & Concierge',
-      isAdmin: true,
-      lastMessage: adminConvo?.last_message || 'Inquire with our expert event specialists',
-      lastMessageTime: adminConvo?.last_message_at,
-      unreadCount: adminConvo?.unread_count || 0
-    });
-    seenContactIds.add('admin');
+    const list: ConvoItem[] = [];
 
-    // 2. Add currently active contact if not admin
-    if (currentContact && currentContact.id !== 'admin' && !seenContactIds.has(currentContact.id)) {
-      list.push({
-        id: [myUid, currentContact.id].sort().join('_'),
-        contactId: currentContact.id,
-        name: currentContact.name,
-        category: currentContact.category,
-        image: currentContact.image,
-        isAdmin: false,
-        lastMessage: activeMessages[activeMessages.length - 1]?.text || 'Start conversation',
-        lastMessageTime: activeMessages[activeMessages.length - 1]?.timestamp || new Date(),
-        unreadCount: 0
+    // 0. If customConversations provided (e.g. VendorPortal or AdminPanel), deduplicate by contactId / email / conversationId
+    if (customConversations && customConversations.length > 0) {
+      customConversations.forEach(cc => {
+        const resolvedContactId = cc.contactId || cc.id;
+        const emailLower = (cc.email && cc.email.includes('@') ? cc.email : '').trim().toLowerCase();
+        const rawLast = cc.lastMessage as any;
+        const safeLastMessage =
+          typeof rawLast === 'string'
+            ? rawLast
+            : rawLast && typeof rawLast === 'object'
+            ? (typeof rawLast.text === 'string' ? rawLast.text : '')
+            : '';
+        const safeLastType =
+          cc.lastMessageType ||
+          (rawLast && typeof rawLast === 'object' ? rawLast.type : undefined);
+        const safeLastTime =
+          cc.lastMessageTime ||
+          (rawLast && typeof rawLast === 'object' ? (rawLast.timestamp || rawLast.sent_at) : undefined);
+
+        const existing = list.find(item => {
+          if (resolvedContactId && resolvedContactId !== 'client_legacy' && item.contactId === resolvedContactId) return true;
+          if (emailLower && item.email && item.email.toLowerCase() === emailLower) return true;
+          if (cc.conversationId && item.conversationId === cc.conversationId) return true;
+          return false;
+        });
+
+        if (!existing) {
+          list.push({
+            ...cc,
+            contactId: resolvedContactId,
+            lastMessage: safeLastMessage,
+            lastMessageType: safeLastType,
+            lastMessageTime: safeLastTime,
+            lastMessageIsSent: cc.lastMessageIsSent,
+            lastMessageIsRead: cc.lastMessageIsRead,
+          });
+        } else {
+          existing.unreadCount = (existing.unreadCount || 0) + (cc.unreadCount || 0);
+          if (getTimeMs(safeLastTime) > getTimeMs(existing.lastMessageTime)) {
+            existing.lastMessage = safeLastMessage;
+            existing.lastMessageType = safeLastType;
+            existing.lastMessageTime = safeLastTime;
+            existing.lastMessageIsSent = cc.lastMessageIsSent;
+            existing.lastMessageIsRead = cc.lastMessageIsRead;
+          }
+          if (!existing.image && cc.image) existing.image = cc.image;
+          if (!existing.email && cc.email) existing.email = cc.email;
+        }
       });
-      seenContactIds.add(currentContact.id);
+    } else {
+      const byContactId = new Map<string, ConvoItem>();
+
+      const upsertContact = (item: ConvoItem) => {
+        const key = item.isAdmin ? 'admin' : item.contactId;
+        if (!key) return;
+        const existing = byContactId.get(key);
+        if (!existing) {
+          byContactId.set(key, { ...item });
+        } else {
+          if (getTimeMs(item.lastMessageTime) >= getTimeMs(existing.lastMessageTime) && item.lastMessage) {
+            existing.lastMessage = item.lastMessage;
+            existing.lastMessageType = item.lastMessageType || existing.lastMessageType;
+            existing.lastMessageTime = item.lastMessageTime || existing.lastMessageTime;
+            if (item.lastMessageIsSent !== undefined) existing.lastMessageIsSent = item.lastMessageIsSent;
+            if (item.lastMessageIsRead !== undefined) existing.lastMessageIsRead = item.lastMessageIsRead;
+          }
+          if (item.unreadCount > existing.unreadCount) {
+            existing.unreadCount = item.unreadCount;
+          }
+          if (!existing.image && item.image) existing.image = item.image;
+          if (!existing.email && item.email) existing.email = item.email;
+          if (existing.name === 'Vendor Contact' && item.name && item.name !== 'Vendor Contact') {
+            existing.name = item.name;
+          }
+        }
+      };
+
+      // 1. Always include Simcha Concierge (Admin support) for clients
+      const adminConvo = inboxThreads.find(c => c.type === 'admin_support' || (c.participant_ids || []).includes('admin'));
+      const rawAdminLast = adminConvo?.last_message;
+      const safeAdminLast = typeof rawAdminLast === 'string'
+        ? rawAdminLast
+        : (rawAdminLast && typeof rawAdminLast === 'object' && typeof rawAdminLast.text === 'string' ? rawAdminLast.text : '');
+      upsertContact({
+        id: adminConvo?.id || [myUid, 'admin'].sort().join('_'),
+        contactId: 'admin',
+        name: 'Simcha Concierge',
+        category: 'Support & Concierge',
+        isAdmin: true,
+        lastMessage: safeAdminLast || 'Inquire with our expert event specialists',
+        lastMessageTime: adminConvo?.last_message_at || 0,
+        lastMessageIsSent: adminConvo?.last_message_sender_id ? adminConvo.last_message_sender_id === myUid : false,
+        lastMessageIsRead: Boolean(adminConvo?.last_message_read),
+        unreadCount: adminConvo?.unread_count || 0,
+        conversationId: adminConvo?.id || [myUid, 'admin'].sort().join('_')
+      });
+
+      // 2. Populate threads from inboxThreads
+      inboxThreads.forEach(t => {
+        const otherId = (t.participant_ids || []).find((p: string) => p !== myUid) || '';
+        if (!otherId || otherId === 'admin') return;
+
+        const vendorMatch = vendors.find(v => v.id === otherId);
+        const rawThreadLast = t.last_message;
+        const safeThreadLast = typeof rawThreadLast === 'string'
+          ? rawThreadLast
+          : (rawThreadLast && typeof rawThreadLast === 'object' && typeof rawThreadLast.text === 'string' ? rawThreadLast.text : '');
+        upsertContact({
+          id: t.id,
+          contactId: otherId,
+          name: vendorMatch?.name || t.client_name || 'Vendor Contact',
+          email: vendorMatch?.contactEmail || t.client_email,
+          category: vendorMatch?.category || 'Vendor',
+          image: vendorMatch?.image,
+          isAdmin: false,
+          lastMessage: safeThreadLast || '',
+          lastMessageTime: t.last_message_at,
+          lastMessageIsSent: t.last_message_sender_id ? t.last_message_sender_id === myUid : undefined,
+          lastMessageIsRead: t.last_message_read !== undefined ? Boolean(t.last_message_read) : undefined,
+          unreadCount: t.unread_count || 0,
+          conversationId: t.id
+        });
+      });
+
+      // 3. Also enrich from propMessages so all vendor chats appear in one unified contact list
+      if (propMessages && propMessages.length > 0) {
+        propMessages.forEach(m => {
+          if (!m) return;
+          const mIsSent = checkIfSent(m);
+          const mReadBy = (m as any).read_by || {};
+          const mIsRead = Boolean(m.isRead || Object.keys(mReadBy).some(k => k !== m.senderId && k !== myUid));
+          if (m.isAdminInquiry || m.senderId === 'admin' || m.receiverId === 'admin') {
+            const rawText = typeof m.text === 'string' ? m.text : '';
+            upsertContact({
+              id: [myUid, 'admin'].sort().join('_'),
+              contactId: 'admin',
+              name: 'Simcha Concierge',
+              category: 'Support & Concierge',
+              isAdmin: true,
+              lastMessage: rawText,
+              lastMessageType: m.type,
+              lastMessageTime: m.timestamp,
+              lastMessageIsSent: mIsSent,
+              lastMessageIsRead: mIsRead,
+              unreadCount: m.receiverId === myUid && !m.isRead ? 1 : 0,
+              conversationId: [myUid, 'admin'].sort().join('_')
+            });
+            return;
+          }
+          const otherId = m.senderId === myUid ? m.receiverId : m.senderId;
+          const vendorMatch = vendors.find(
+            v =>
+              v.id === otherId ||
+              v.id === m.senderId ||
+              v.id === m.receiverId ||
+              (m.vendorEmail && v.contactEmail?.toLowerCase() === m.vendorEmail.toLowerCase())
+          );
+          if (vendorMatch) {
+            const rawText = typeof m.text === 'string' ? m.text : '';
+            upsertContact({
+              id: [myUid, vendorMatch.id].sort().join('_'),
+              contactId: vendorMatch.id,
+              name: vendorMatch.name,
+              email: vendorMatch.contactEmail,
+              category: vendorMatch.category,
+              image: vendorMatch.image,
+              isAdmin: false,
+              lastMessage: rawText,
+              lastMessageType: m.type,
+              lastMessageTime: m.timestamp,
+              lastMessageIsSent: mIsSent,
+              lastMessageIsRead: mIsRead,
+              unreadCount: 0,
+              conversationId: [myUid, vendorMatch.id].sort().join('_')
+            });
+          }
+        });
+      }
+
+      // 4. Ensure currently active contact is included and reflects live chatMessages
+      if (currentContact && currentContact.id !== 'admin') {
+        const latestMsg = chatMessages[chatMessages.length - 1];
+        const safeLatestText = typeof latestMsg?.text === 'string'
+          ? latestMsg.text
+          : (latestMsg?.text && typeof latestMsg.text === 'object' && typeof (latestMsg.text as any).text === 'string' ? (latestMsg.text as any).text : '');
+        const latestIsSent = latestMsg ? checkIfSent(latestMsg) : false;
+        const latestReadBy = (latestMsg as any)?.read_by || {};
+        const latestIsRead = Boolean(
+          latestMsg?.isRead ||
+          Object.keys(latestReadBy).some(k => k !== latestMsg?.senderId && k !== myUid) ||
+          (otherLastReadAt && latestMsg?.timestamp && new Date(latestMsg.timestamp).getTime() <= new Date(otherLastReadAt).getTime() + 2000)
+        );
+        upsertContact({
+          id: currentContact.conversationId || [myUid, currentContact.id].sort().join('_'),
+          contactId: currentContact.id,
+          name: currentContact.name,
+          email: currentContact.email,
+          category: currentContact.category,
+          image: currentContact.image,
+          isAdmin: false,
+          lastMessage: safeLatestText || 'Start conversation',
+          lastMessageType: latestMsg?.type,
+          lastMessageTime: latestMsg?.timestamp || Date.now(),
+          lastMessageIsSent: latestIsSent,
+          lastMessageIsRead: latestIsRead,
+          unreadCount: 0,
+          conversationId: currentContact.conversationId || [myUid, currentContact.id].sort().join('_')
+        });
+      }
+
+      list.push(...Array.from(byContactId.values()));
     }
 
-    // 3. Populate other threads from inboxThreads
-    inboxThreads.forEach(t => {
-      const otherId = (t.participant_ids || []).find((p: string) => p !== myUid) || '';
-      if (!otherId || seenContactIds.has(otherId)) return;
-
-      const vendorMatch = vendors.find(v => v.id === otherId);
-      list.push({
-        id: t.id,
-        contactId: otherId,
-        name: vendorMatch?.name || t.client_name || 'Vendor Contact',
-        category: vendorMatch?.category || 'Vendor',
-        image: vendorMatch?.image,
-        isAdmin: otherId === 'admin',
-        lastMessage: t.last_message || '',
-        lastMessageTime: t.last_message_at,
-        unreadCount: t.unread_count || 0
-      });
-      seenContactIds.add(otherId);
-    });
+    // Sort all conversations by latest message timestamp descending so newest is always on top
+    list.sort((a, b) => getTimeMs(b.lastMessageTime) - getTimeMs(a.lastMessageTime));
 
     // Filter by search query if any
     let filtered = list;
     if (inboxSearchQuery.trim()) {
       const q = inboxSearchQuery.toLowerCase();
       filtered = filtered.filter(item => 
-        item.name.toLowerCase().includes(q) || 
+        (item.name || '').toLowerCase().includes(q) || 
         (item.category || '').toLowerCase().includes(q) ||
-        item.lastMessage.toLowerCase().includes(q)
+        (typeof item.lastMessage === 'string' ? item.lastMessage : '').toLowerCase().includes(q)
       );
     }
 
@@ -1089,19 +1366,32 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     }
 
     return filtered;
-  }, [inboxThreads, myUid, currentContact, activeMessages, vendors, inboxSearchQuery, inboxFilter]);
+  }, [customConversations, inboxThreads, propMessages, myUid, currentContact, chatMessages, vendors, inboxSearchQuery, inboxFilter, otherLastReadAt]);
 
   const handleSelectConversation = (item: typeof conversationList[0]) => {
+    const resolvedConvoId = item.conversationId || item.id || (myUid && item.contactId ? [myUid, item.contactId].sort().join('_') : '');
     setCurrentContact({
       id: item.contactId,
       name: item.name,
+      email: item.email,
       image: item.image,
       category: item.category,
-      isAdmin: item.isAdmin
+      isAdmin: item.isAdmin,
+      conversationId: resolvedConvoId
     });
+    if (resolvedConvoId && myUid) {
+      markChatAsRead(resolvedConvoId, myUid).catch(() => {});
+    }
     setMobileView('chat');
     setIsChatSearching(false);
     setChatSearchQuery('');
+  };
+
+  const getContactInitials = (name?: string) => {
+    if (!name || !name.trim()) return 'S';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
   if (!isOpen) return null;
@@ -1116,16 +1406,16 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       {/* Main WhatsApp Window Container */}
       <div className="fixed inset-0 z-50 w-full h-[100svh] bg-[#0b0b0b] rounded-none md:relative md:max-w-4xl lg:max-w-5xl md:h-[88vh] md:max-h-[820px] md:rounded-2xl md:border md:border-[#D4AF37]/30 md:shadow-[0_20px_60px_rgba(0,0,0,0.95)] flex overflow-hidden font-sans select-none">
         
-        {/* ================= LEFT COLUMN: CONVERSATION LIST ================= */}
+        {/* ================= LEFT COLUMN: CONVERSATION LIST (PILL STYLE) ================= */}
         <div 
-          className={`w-full md:w-[320px] lg:w-[350px] shrink-0 border-r border-[#D4AF37]/15 bg-[#101012] flex flex-col h-full transition-all duration-300 ${
+          className={`w-full md:w-[340px] lg:w-[370px] shrink-0 border-r border-[#D4AF37]/15 bg-[#0b0b0b] flex flex-col h-full transition-all duration-300 ${
             mobileView === 'chat' ? 'hidden md:flex' : 'flex'
           }`}
         >
           {/* Conversation List Top Header */}
-          <div className="bg-[#161619] px-3.5 py-3 border-b border-[#D4AF37]/15 flex items-center justify-between shrink-0">
+          <div className="bg-[#141416] px-4 py-3 border-b border-[#D4AF37]/15 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-9 h-9 rounded-full bg-[#201c0c] border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] font-bold text-xs shadow-inner">
+              <div className="w-9 h-9 rounded-full bg-[#201c0c] border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] font-bold text-xs shadow-inner overflow-hidden">
                 {user?.photoURL ? (
                   <img src={user.photoURL} alt="" className="w-full h-full rounded-full object-cover" />
                 ) : (
@@ -1134,29 +1424,30 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               </div>
               <div className="min-w-0">
                 <h2 className="text-sm font-bold text-zinc-100 font-[Cinzel] tracking-wide truncate">Simcha Chats</h2>
-                <p className="text-[10px] text-[#D4AF37] uppercase tracking-wider font-mono">WhatsApp Edition</p>
               </div>
             </div>
 
             <div className="flex items-center gap-1">
-              <button 
-                type="button"
-                onClick={() => {
-                  ensureAdminSupportConversation(myUid, 'admin').catch(console.error);
-                  setCurrentContact({
-                    id: 'admin',
-                    name: 'Simcha Concierge',
-                    category: 'Support & Concierge',
-                    isAdmin: true
-                  });
-                  setMobileView('chat');
-                }}
-                className="p-1.5 rounded-full text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 transition-colors"
-                title="Ask Concierge Support"
-                aria-label="Ask Concierge Support"
-              >
-                <Shield className="w-4 h-4 text-[#D4AF37]" />
-              </button>
+              {!isVendorReplying && !isAdminReplying && (
+                <button 
+                  type="button"
+                  onClick={() => {
+                    ensureAdminSupportConversation(myUid, 'admin').catch(console.error);
+                    setCurrentContact({
+                      id: 'admin',
+                      name: 'Simcha Concierge',
+                      category: 'Support & Concierge',
+                      isAdmin: true
+                    });
+                    setMobileView('chat');
+                  }}
+                  className="p-1.5 rounded-full text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 transition-colors"
+                  title="Ask Concierge Support"
+                  aria-label="Ask Concierge Support"
+                >
+                  <Shield className="w-4 h-4 text-[#D4AF37]" />
+                </button>
+              )}
               <button 
                 type="button"
                 onClick={onClose}
@@ -1170,14 +1461,14 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           </div>
 
           {/* Search Bar in Conversation List */}
-          <div className="p-2.5 bg-[#101012] border-b border-white/5">
-            <div className="bg-[#18181c] rounded-xl px-3 py-1.5 flex items-center gap-2 border border-white/5 focus-within:border-[#D4AF37]/40 transition-colors">
-              <Search className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+          <div className="p-3 bg-[#0b0b0b]">
+            <div className="bg-[#161619] rounded-full px-3.5 py-2 flex items-center gap-2 border border-[#D4AF37]/25 focus-within:border-[#D4AF37]/70 transition-colors">
+              <Search className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
               <input 
                 type="text"
                 value={inboxSearchQuery}
                 onChange={e => setInboxSearchQuery(e.target.value)}
-                placeholder="Search or start new chat"
+                placeholder="Search chats..."
                 className="bg-transparent text-xs text-zinc-100 placeholder:text-zinc-500 outline-none w-full"
               />
               {inboxSearchQuery && (
@@ -1186,95 +1477,117 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                 </button>
               )}
             </div>
-
-            {/* Quick Filter Tabs (All / Unread) */}
-            <div className="flex items-center gap-2 mt-2 px-1">
-              <button
-                type="button"
-                onClick={() => setInboxFilter('all')}
-                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full transition-colors ${
-                  inboxFilter === 'all' 
-                    ? 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40' 
-                    : 'text-zinc-400 hover:text-zinc-200 bg-white/5'
-                }`}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setInboxFilter('unread')}
-                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full transition-colors flex items-center gap-1 ${
-                  inboxFilter === 'unread' 
-                    ? 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40' 
-                    : 'text-zinc-400 hover:text-zinc-200 bg-white/5'
-                }`}
-              >
-                Unread
-              </button>
-            </div>
           </div>
 
-          {/* Conversation List Scroll Area */}
-          <div className="flex-1 overflow-y-auto divide-y divide-white/5">
+          {/* Pill-Shaped Conversation List Scroll Area */}
+          <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-2.5">
             {conversationList.length === 0 ? (
               <div className="p-8 text-center text-zinc-500 text-xs">
                 No conversations found.
               </div>
             ) : (
               conversationList.map((item) => {
-                const isSelected = currentContact?.id === item.contactId;
+                const isSelected = (currentContact?.conversationId && item.conversationId)
+                  ? currentContact.conversationId === item.conversationId
+                  : currentContact?.id === item.contactId;
+                const initials = getContactInitials(item.name);
+                const isVoice = item.lastMessageType === 'voice' || item.lastMessage === 'Voice note';
+                const isImage = item.lastMessageType === 'image' || item.lastMessage === 'Sent an image';
+                const isVideo = item.lastMessage === 'Sent a video';
+
                 return (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => handleSelectConversation(item)}
-                    className={`w-full p-3 text-left flex items-center gap-3 transition-colors cursor-pointer relative ${
+                    className={`simcha-event-card relative w-full overflow-hidden rounded-full border transition-all duration-300 cursor-pointer group flex items-center justify-between gap-2.5 px-4 py-3 min-h-[62px] shadow-lg active:scale-[0.99] text-left ${
                       isSelected 
-                        ? 'bg-[#1a1812] border-l-3 border-[#D4AF37]' 
-                        : 'hover:bg-white/[0.03]'
+                        ? 'border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.25)]' 
+                        : 'border-[#D4AF37]/35 hover:border-[#D4AF37]/80'
                     }`}
                   >
-                    {/* Avatar */}
-                    <div className="relative shrink-0">
-                      {item.isAdmin ? (
-                        <div className="w-11 h-11 rounded-full bg-[#201c0c] border border-[#D4AF37]/50 flex items-center justify-center shadow-inner">
-                          <Shield className="w-5 h-5 text-[#D4AF37]" />
-                        </div>
-                      ) : item.image ? (
-                        <img 
-                          src={item.image} 
-                          alt="" 
-                          className="w-11 h-11 rounded-full object-cover border border-[#D4AF37]/30" 
-                        />
+                    {/* Full Pill Background: Contact Photo OR Initials Pattern */}
+                    <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                      {item.image ? (
+                        <>
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                          />
+                          <div className="absolute inset-0 simcha-event-card-overlay" />
+                        </>
                       ) : (
-                        <div className="w-11 h-11 rounded-full bg-[#18181c] border border-white/10 flex items-center justify-center text-[#D4AF37] font-bold text-sm">
-                          {item.name?.[0] || 'S'}
+                        <div className="w-full h-full bg-gradient-to-r from-[#0c0c0c] via-[#151208] to-[#0c0c0c] flex items-center justify-center relative">
+                          <span className="font-[Cinzel] font-black text-4xl tracking-[0.25em] text-[#D4AF37]/15 select-none">
+                            {initials}
+                          </span>
                         </div>
                       )}
-                      <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#101012]" />
                     </div>
 
-                    {/* Metadata */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-baseline mb-0.5">
-                        <span className={`text-[13.5px] truncate font-semibold ${isSelected ? 'text-[#D4AF37]' : 'text-zinc-100'}`}>
-                          {item.name}
-                        </span>
-                        <span className="text-[10px] text-zinc-500 shrink-0 ml-1">
-                          {formatConversationTime(item.lastMessageTime)}
-                        </span>
-                      </div>
-                      
-                      <div className="flex justify-between items-center">
-                        <p className="text-[11.5px] text-zinc-400 truncate pr-2">
-                          {item.lastMessage || 'Open chat...'}
-                        </p>
-                        {item.unreadCount > 0 && (
-                          <span className="bg-[#D4AF37] text-black text-[9.5px] font-bold px-1.5 py-0.2 rounded-full shrink-0">
-                            {item.unreadCount}
-                          </span>
+                    {/* Left Side: Circular Avatar + Name + Latest Message */}
+                    <div className="relative z-10 flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="w-9 h-9 rounded-full overflow-hidden bg-[#1b170a] border border-[#D4AF37]/50 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs shadow-md">
+                        {item.isAdmin ? (
+                          <Shield className="w-4 h-4 text-[#D4AF37]" />
+                        ) : item.image ? (
+                          <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span>{initials}</span>
                         )}
                       </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs sm:text-sm font-bold font-[Cinzel] text-white group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
+                            {item.name}
+                          </span>
+                          {item.unreadCount > 0 && (
+                            <span className="bg-[#D4AF37] text-black text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 shadow-sm">
+                              {item.unreadCount}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 text-[11px] text-zinc-200 truncate mt-0.5 drop-shadow-sm">
+                          {item.lastMessageIsSent && (
+                            item.lastMessageIsRead ? (
+                              <span title="Seen" className="inline-flex items-center shrink-0">
+                                <CheckCheck className="w-3.5 h-3.5 text-[#34B7F1] shrink-0" />
+                              </span>
+                            ) : (
+                              <span title="Sent" className="inline-flex items-center shrink-0">
+                                <Check className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                              </span>
+                            )
+                          )}
+                          {isVoice ? (
+                            <>
+                              <Mic className="w-3 h-3 text-[#D4AF37] shrink-0" />
+                              <span className="truncate">Voice note</span>
+                            </>
+                          ) : isImage ? (
+                            <>
+                              <ImageIcon className="w-3 h-3 text-[#D4AF37] shrink-0" />
+                              <span className="truncate">Photo</span>
+                            </>
+                          ) : isVideo ? (
+                            <>
+                              <Play className="w-3 h-3 text-[#D4AF37] shrink-0" />
+                              <span className="truncate">Video</span>
+                            </>
+                          ) : (
+                            <span className="truncate">{item.lastMessage || 'Tap to chat'}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Side: Time */}
+                    <div className="relative z-10 flex flex-col items-end justify-center shrink-0">
+                      <span className="text-[9.5px] text-zinc-300 font-medium drop-shadow-sm">
+                        {formatConversationTime(item.lastMessageTime)}
+                      </span>
                     </div>
                   </button>
                 );
@@ -1292,13 +1605,19 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           {/* WhatsApp Chat Header */}
           <header className="bg-[#141416] px-3.5 py-2.5 border-b border-[#D4AF37]/20 flex items-center justify-between shrink-0 z-20 shadow-sm">
             <div className="flex items-center gap-2.5 min-w-0">
-              {/* Back to Conversation List Button (Mobile) */}
+              {/* Back Button (Mobile) */}
               <button 
                 type="button"
-                onClick={() => setMobileView('list')} 
+                onClick={() => {
+                  if (isVendorReplying || isAdminReplying || initialVendor || initialIsAdminMode) {
+                    onClose();
+                  } else {
+                    setMobileView('list');
+                  }
+                }} 
                 className="md:hidden flex items-center justify-center text-zinc-300 hover:text-[#D4AF37] p-1.5 -ml-1 rounded-full hover:bg-white/5 active:scale-95"
-                title="All Chats"
-                aria-label="All Chats"
+                title="Back"
+                aria-label="Back"
               >
                 <ArrowLeft className="w-5 h-5 stroke-[2.2]" />
               </button>
@@ -1557,15 +1876,37 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                       {isSupportChat ? "Ask our team anything about dates, custom packages, and bookings." : "Inquire directly about availability, quotes, and special requests."}
                     </p>
                   </div>
-                ) : (
-                  chatMessages.map((msg, index) => {
+                ) : (() => {
+                  let latestSentMsgId: string | undefined;
+                  for (let i = chatMessages.length - 1; i >= 0; i--) {
+                    if (checkIfSent(chatMessages[i])) {
+                      latestSentMsgId = chatMessages[i].id || chatMessages[i].tempId;
+                      break;
+                    }
+                  }
+
+                  return chatMessages.map((msg, index) => {
                     const isSent = checkIfSent(msg);
                     const currentDateGroup = getMessageDateGroup(msg.timestamp);
                     const prevDateGroup = index > 0 ? getMessageDateGroup(chatMessages[index - 1].timestamp) : null;
                     const showDateBadge = currentDateGroup !== prevDateGroup;
 
-                    const isReadByRecipient = msg.isRead || ((msg as any).read_by && Object.keys((msg as any).read_by || {}).some(k => k !== msg.senderId));
-                    const isMatchedInSearch = chatSearchQuery.trim() && (msg.text || '').toLowerCase().includes(chatSearchQuery.toLowerCase());
+                    const readByMap = (msg as any).read_by || {};
+                    const hasOtherReaderKey = Object.keys(readByMap).some(
+                      k => k !== msg.senderId && k !== myUid && k !== (auth.currentUser?.uid || '')
+                    );
+                    const readViaConvoTimestamp = Boolean(
+                      otherLastReadAt &&
+                      msg.timestamp &&
+                      new Date(msg.timestamp).getTime() <= new Date(otherLastReadAt).getTime() + 2000
+                    );
+                    const isReadByRecipient = Boolean(msg.isRead || hasOtherReaderKey || readViaConvoTimestamp);
+                    const isLatestSentMessage = isSent && Boolean(latestSentMsgId && (msg.id || msg.tempId) === latestSentMsgId);
+
+                    const msgTextStr = typeof msg.text === 'string'
+                      ? msg.text
+                      : (msg.text && typeof msg.text === 'object' && typeof (msg.text as any).text === 'string' ? (msg.text as any).text : '');
+                    const isMatchedInSearch = chatSearchQuery.trim() && msgTextStr.toLowerCase().includes(chatSearchQuery.toLowerCase());
 
                     return (
                       <React.Fragment key={msg.id || msg.tempId}>
@@ -1605,8 +1946,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                                   isSent={isSent}
                                   onLoadCompletes={() => scrollToBottomSmart(false)} 
                                 />
-                                {msg.text && msg.text !== 'Sent an image' && (
-                                  <p className="text-[14px] leading-relaxed px-1">{msg.text}</p>
+                                {msgTextStr && msgTextStr !== 'Sent an image' && (
+                                  <p className="text-[14px] leading-relaxed px-1">{msgTextStr}</p>
                                 )}
                               </div>
                             ) : msg.type === 'file' ? (
@@ -1623,8 +1964,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                                       </div>
                                     </div>
                                   </div>
-                                  {msg.text && msg.text !== 'Sent a video' && (
-                                    <p className="text-[14px] leading-relaxed px-1">{msg.text}</p>
+                                  {msgTextStr && msgTextStr !== 'Sent a video' && (
+                                    <p className="text-[14px] leading-relaxed px-1">{msgTextStr}</p>
                                   )}
                                 </div>
                               ) : (
@@ -1653,61 +1994,71 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                                 src={msg.audioUrl || msg.fileUrl || ''} 
                                 theme={isSent ? 'sent' : 'received'} 
                                 duration={msg.audioDuration}
-                                avatarUrl={isSent ? user?.photoURL : currentContact?.image}
+                                avatarUrl={isSent ? (user?.photoURL || (isVendorReplying ? initialVendor?.image : undefined)) : currentContact?.image}
+                                timestampFormatted={formatMsgTime(msg.timestamp)}
+                                status={msg.status}
+                                isRead={Boolean(isReadByRecipient)}
+                                showSeenLabel={isLatestSentMessage}
+                                onDelete={isSent && !msg.isOptimistic && msg.status !== 'sending' ? () => handleUnsend(msg) : undefined}
                               />
                             ) : (
                               /* Text Message */
                               <p className="text-[14px] leading-relaxed break-words whitespace-pre-wrap font-sans text-zinc-100 select-text px-1">
-                                {msg.text}
+                                {msgTextStr}
                               </p>
                             )}
 
-                            {/* WhatsApp Metadata Row: Timestamp + Read Receipts */}
-                            <div className="flex justify-end items-center gap-1 mt-1 pl-4 select-none leading-none">
-                              <span className="text-[10.5px] text-zinc-400 font-sans">
-                                {formatMsgTime(msg.timestamp)}
-                              </span>
+                            {/* WhatsApp Metadata Row: Timestamp + Read Receipts (for non-voice messages; voice notes integrate this directly under the waveform) */}
+                            {!(msg.type === 'voice' || msg.audioUrl) && (
+                              <div className="flex justify-end items-center gap-1 mt-1 pl-4 select-none leading-none">
+                                <span className="text-[10.5px] text-zinc-400 font-sans">
+                                  {formatMsgTime(msg.timestamp)}
+                                </span>
 
-                              {isSent && (
-                                msg.status === 'sending' ? (
-                                  <Clock className="w-3 h-3 text-zinc-500 animate-pulse ml-0.5" />
-                                ) : msg.status === 'error' ? (
-                                  <AlertCircle className="w-3.5 h-3.5 text-red-500 ml-0.5" />
-                                ) : isReadByRecipient ? (
-                                  <span title="Read" className="inline-flex">
-                                    <CheckCheck className="w-3.5 h-3.5 text-[#D4AF37] ml-0.5" />
-                                  </span>
-                                ) : (
-                                  <span title="Delivered" className="inline-flex">
-                                    <CheckCheck className="w-3.5 h-3.5 text-zinc-400 ml-0.5" />
-                                  </span>
-                                )
-                              )}
+                                {isSent && (
+                                  msg.status === 'sending' ? (
+                                    <Clock className="w-3 h-3 text-zinc-500 animate-pulse ml-0.5" />
+                                  ) : msg.status === 'error' ? (
+                                    <AlertCircle className="w-3.5 h-3.5 text-red-500 ml-0.5" />
+                                  ) : isReadByRecipient ? (
+                                    <span title="Seen" className="inline-flex items-center gap-0.5 text-[#34B7F1] ml-0.5">
+                                      <CheckCheck className="w-3.5 h-3.5 text-[#34B7F1] shrink-0" />
+                                      {isLatestSentMessage && (
+                                        <span className="text-[9.5px] font-medium text-[#34B7F1]/90 leading-none">Seen</span>
+                                      )}
+                                    </span>
+                                  ) : (
+                                    <span title="Sent" className="inline-flex items-center text-zinc-400 ml-0.5">
+                                      <Check className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                                    </span>
+                                  )
+                                )}
 
-                              {/* WhatsApp quick message actions on hover */}
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyText(msg.text)}
-                                  className="text-zinc-500 hover:text-zinc-200 p-0.5 rounded"
-                                  title="Copy text"
-                                  aria-label="Copy text"
-                                >
-                                  <Copy className="w-3 h-3" />
-                                </button>
-                                {isSent && !msg.isOptimistic && msg.status !== 'sending' && (
+                                {/* WhatsApp quick message actions on hover */}
+                                <div className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 flex items-center gap-1">
                                   <button
                                     type="button"
-                                    onClick={() => handleUnsend(msg)}
-                                    className="text-zinc-500 hover:text-red-400 p-0.5 rounded"
-                                    title="Delete message"
-                                    aria-label="Delete message"
+                                    onClick={() => handleCopyText(msgTextStr)}
+                                    className="text-zinc-500 hover:text-zinc-200 p-0.5 rounded"
+                                    title="Copy text"
+                                    aria-label="Copy text"
                                   >
-                                    <Trash2 className="w-3 h-3" />
+                                    <Copy className="w-3 h-3" />
                                   </button>
-                                )}
+                                  {isSent && !msg.isOptimistic && msg.status !== 'sending' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUnsend(msg)}
+                                      className="text-zinc-500 hover:text-red-400 p-0.5 rounded"
+                                      title="Delete message"
+                                      aria-label="Delete message"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                            </div>
+                            )}
 
                             {/* Failed Sending Retry Box */}
                             {isSent && msg.status === 'error' && (
@@ -1726,8 +2077,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                         </motion.div>
                       </React.Fragment>
                     );
-                  })
-                )}
+                  });
+                })()}
 
                 {/* Real-time Typing Bubble */}
                 {otherIsTyping && (
@@ -1963,50 +2314,49 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                   </>
                 ) : (
                   /* WhatsApp-Style Live Voice Recording Bar */
-                  <div className="flex-1 flex items-center justify-between bg-[#1c1c20] border border-[#D4AF37]/40 rounded-[22px] px-3 py-1.5 shadow-lg animate-in fade-in duration-200">
-                    {/* Blinking Red Dot & Duration Timer */}
-                    <div className="flex items-center gap-2.5">
+                  <div className="flex-1 flex items-center justify-between gap-2 bg-[#1c1c20] border border-[#D4AF37]/40 rounded-full px-3 py-1.5 shadow-lg animate-in fade-in duration-200">
+                    {/* Left: Cancel / Trash Icon */}
+                    <button
+                      type="button"
+                      onClick={cancelRecording}
+                      className="p-2 text-zinc-400 hover:text-red-400 hover:bg-white/5 rounded-full transition-colors shrink-0 cursor-pointer"
+                      title="Discard voice note"
+                      aria-label="Discard voice note"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+
+                    {/* Pulsing Red Mic & Duration Timer */}
+                    <div className="flex items-center gap-2 shrink-0">
                       <div className="relative flex items-center justify-center">
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping absolute" />
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 relative" />
+                        <Mic className="w-4 h-4 text-red-500 animate-pulse" />
                       </div>
-                      <span className="text-zinc-100 font-mono text-sm font-semibold tracking-wider">
+                      <span className="text-zinc-100 font-sans tabular-nums text-sm font-medium">
                         {formatDuration(recordingDuration)}
                       </span>
                     </div>
 
-                    {/* Real-time Voice Audio Visualizer Wave */}
-                    <div className="flex items-center gap-[3px] h-6 px-3">
+                    {/* Real-time WhatsApp Voice Audio Visualizer Wave */}
+                    <div className="flex-1 flex items-center justify-center gap-[2.5px] h-6 px-2 overflow-hidden">
                       {liveVolumeBars.map((height, i) => (
                         <div 
                           key={i} 
-                          className="w-[3px] bg-[#D4AF37] rounded-full transition-all duration-75"
-                          style={{ height: `${height}px` }}
+                          className="w-[2.5px] bg-zinc-300 rounded-full transition-all duration-75"
+                          style={{ height: `${Math.max(4, height)}px` }}
                         />
                       ))}
                     </div>
 
-                    {/* Cancel & Send Voice Recording Controls */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={cancelRecording}
-                        className="p-2 text-zinc-400 hover:text-red-400 hover:bg-white/5 rounded-full transition-colors"
-                        title="Cancel recording"
-                        aria-label="Cancel recording"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={stopRecording}
-                        className="w-9 h-9 rounded-full bg-[#D4AF37] text-black hover:bg-[#e0bb40] flex items-center justify-center shadow-md active:scale-95 transition-all cursor-pointer"
-                        title="Send voice note"
-                        aria-label="Send voice note"
-                      >
-                        <Send className="w-4 h-4 ml-0.5" />
-                      </button>
-                    </div>
+                    {/* Right: WhatsApp Circular Send Button */}
+                    <button
+                      type="button"
+                      onClick={stopRecording}
+                      className="w-9 h-9 rounded-full bg-[#D4AF37] text-black hover:bg-[#e0bb40] flex items-center justify-center shadow-md active:scale-95 transition-all shrink-0 cursor-pointer"
+                      title="Send voice note"
+                      aria-label="Send voice note"
+                    >
+                      <Send className="w-4 h-4 ml-0.5" />
+                    </button>
                   </div>
                 )}
               </div>

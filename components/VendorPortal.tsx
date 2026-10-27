@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, CalendarDays, Settings, LogOut, DollarSign, Users, User, TrendingUp, CheckCircle, XCircle, Clock, Save, Trash2, 
   ImageIcon, Menu, X, Plus, Tag, CreditCard, ArrowRight, Video, Film, ShieldCheck, MapPin, Eye, Upload, Mail, AlertTriangle, 
-  ChevronLeft, ChevronRight, ChevronDown, RefreshCw, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, Volume2, Camera, FileText, Download, Search, ArrowLeft, Paperclip, Mic, StopCircle
+  ChevronLeft, ChevronRight, ChevronDown, RefreshCw, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, CheckCheck, Volume2, Camera, FileText, Download, Search, ArrowLeft, Paperclip, Mic, StopCircle
 } from 'lucide-react';
 import { Vendor, Booking, Message, SelectedService, VendorService, ServiceCategoryType } from '../types';
 import { db, storage, auth } from '../services/firebase';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { markChatAsRead, deleteMessage } from '../services/messagingService';
+import { markChatAsRead, deleteMessage, sendNewMessage } from '../services/messagingService';
 import { doc, updateDoc, writeBatch, onSnapshot, collection } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
@@ -16,6 +16,7 @@ import { CustomAudioPlayer } from './CustomAudioPlayer';
 import LocationAutocomplete from './LocationAutocomplete';
 import { ThemeModeSwitch } from './ThemeModeSwitch';
 import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
+import ChatModal from './ChatModal';
 
 interface VendorPortalProps {
   vendor: Vendor;
@@ -420,23 +421,37 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     }));
   };
 
-  // Client profile photo lookup map so Request pills can show client profile photos or initials
+  // Client profile photo & directory lookup map so Request and Chat pills resolve client UID, email, name, and photo
   const [clientPhotosMap, setClientPhotosMap] = useState<Record<string, string>>({});
+  const [clientDirectoryMap, setClientDirectoryMap] = useState<Record<string, { uid: string; email: string; name: string; photoURL?: string }>>({});
   useEffect(() => {
     const unsub = onSnapshot(
       collection(db, 'users'),
       (snap) => {
-        const map: Record<string, string> = {};
+        const photoMap: Record<string, string> = {};
+        const dirMap: Record<string, { uid: string; email: string; name: string; photoURL?: string }> = {};
         snap.docs.forEach((d) => {
           const data = d.data();
+          const emailLower = data?.email ? String(data.email).trim().toLowerCase() : '';
+          const entry = {
+            uid: d.id,
+            email: data?.email ? String(data.email).trim() : '',
+            name: data?.name || (emailLower ? emailLower.split('@')[0] : 'Client'),
+            photoURL: data?.photoURL || undefined,
+          };
+          dirMap[d.id] = entry;
+          if (emailLower) {
+            dirMap[emailLower] = entry;
+          }
           if (data?.photoURL) {
-            map[d.id] = data.photoURL;
-            if (data.email) {
-              map[String(data.email).toLowerCase()] = data.photoURL;
+            photoMap[d.id] = data.photoURL;
+            if (emailLower) {
+              photoMap[emailLower] = data.photoURL;
             }
           }
         });
-        setClientPhotosMap(map);
+        setClientPhotosMap(photoMap);
+        setClientDirectoryMap(dirMap);
       },
       () => {}
     );
@@ -818,6 +833,13 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
   // Message State
   const [selectedThreadEmail, setSelectedThreadEmail] = useState<string | null>(null);
+  const [selectedThreadContext, setSelectedThreadContext] = useState<{
+    key: string;
+    clientUid: string;
+    email: string;
+    name: string;
+    conversationId: string;
+  } | null>(null);
   const [replyText, setReplyText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
@@ -1089,36 +1111,213 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     setEditForm(normalizedVendor);
   }, [vendor]);
 
-  // Group messages by client email for the messaging tab
+  // Group messages by unified client contact (merging UID, email, and conversationId so each client only ever has ONE pill box)
   const messageThreads = useMemo(() => {
-    const groups: Record<string, { name: string, messages: Message[], lastMessage: Message }> = {};
-    messages.forEach(m => {
-      const email = m.clientEmail || 'unknown';
-      const name = m.clientName || 'Client';
-      if (!groups[email]) {
-        groups[email] = { name, messages: [], lastMessage: m };
+    const uidToEmail: Record<string, string> = {};
+    const emailToUid: Record<string, string> = {};
+    const uidToName: Record<string, string> = {};
+    const emailToName: Record<string, string> = {};
+
+    // 1. Seed identity links from users directory
+    Object.values(clientDirectoryMap).forEach((entry) => {
+      const eLower = entry.email.toLowerCase();
+      if (entry.uid && eLower) {
+        uidToEmail[entry.uid] = entry.email;
+        emailToUid[eLower] = entry.uid;
       }
-      groups[email].messages.push(m);
-      const mTime = m.timestamp ? new Date(m.timestamp).getTime() : 0;
-      const lastTime = groups[email].lastMessage.timestamp ? new Date(groups[email].lastMessage.timestamp).getTime() : 0;
-      if (mTime > lastTime) {
-        groups[email].lastMessage = m;
+      if (entry.uid && entry.name && entry.name !== 'Client' && entry.name !== 'Guest') {
+        uidToName[entry.uid] = entry.name;
+      }
+      if (eLower && entry.name && entry.name !== 'Client' && entry.name !== 'Guest') {
+        emailToName[eLower] = entry.name;
       }
     });
-    // Sort threads by latest message
-    return Object.entries(groups).sort((a, b) => {
-      const timeA = a[1].lastMessage.timestamp ? new Date(a[1].lastMessage.timestamp).getTime() : 0;
-      const timeB = b[1].lastMessage.timestamp ? new Date(b[1].lastMessage.timestamp).getTime() : 0;
+
+    // 2. Seed identity links from bookings
+    bookings.forEach((b) => {
+      const bUid = b.userId || b.clientId || '';
+      const bEmail = (b.contactEmail || '').trim();
+      const bEmailLower = bEmail.toLowerCase();
+      if (bUid && bEmailLower) {
+        if (!uidToEmail[bUid]) uidToEmail[bUid] = bEmail;
+        if (!emailToUid[bEmailLower]) emailToUid[bEmailLower] = bUid;
+      }
+      if (b.clientName && b.clientName !== 'Client' && b.clientName !== 'Guest') {
+        if (bUid && !uidToName[bUid]) uidToName[bUid] = b.clientName;
+        if (bEmailLower && !emailToName[bEmailLower]) emailToName[bEmailLower] = b.clientName;
+      }
+    });
+
+    // 3. Deduplicate messages by ID and seed identity links from messages
+    const seenMessageIds = new Set<string>();
+    const uniqueMessages: Message[] = [];
+    messages.forEach((m) => {
+      if (!m) return;
+      if (m.id && seenMessageIds.has(m.id)) return;
+      if (m.id) seenMessageIds.add(m.id);
+      uniqueMessages.push(m);
+
+      const rawOther = m.senderId === vendor.id ? m.receiverId : m.senderId;
+      const validUid =
+        rawOther && rawOther !== 'client_legacy' && rawOther !== 'unknown' && !rawOther.includes('@')
+          ? rawOther
+          : '';
+      const validEmail =
+        m.clientEmail && m.clientEmail.includes('@')
+          ? m.clientEmail.trim()
+          : rawOther && rawOther.includes('@')
+          ? rawOther.trim()
+          : '';
+      const validEmailLower = validEmail.toLowerCase();
+
+      if (validUid && validEmailLower) {
+        if (!uidToEmail[validUid]) uidToEmail[validUid] = validEmail;
+        if (!emailToUid[validEmailLower]) emailToUid[validEmailLower] = validUid;
+      }
+      const candidateName =
+        m.senderId !== vendor.id && m.senderName
+          ? m.senderName
+          : m.clientName && m.clientName !== 'Client' && m.clientName !== 'Guest'
+          ? m.clientName
+          : '';
+      if (candidateName) {
+        if (validUid && !uidToName[validUid]) uidToName[validUid] = candidateName;
+        if (validEmailLower && !emailToName[validEmailLower]) emailToName[validEmailLower] = candidateName;
+      }
+    });
+
+    type ThreadGroup = {
+      key: string;
+      name: string;
+      email: string;
+      emailLower: string;
+      clientUid: string;
+      conversationId?: string;
+      messages: Message[];
+      lastMessage: Message;
+    };
+
+    const groupsList: ThreadGroup[] = [];
+
+    uniqueMessages.forEach((m) => {
+      const rawOther = m.senderId === vendor.id ? m.receiverId : m.senderId;
+      const directUid =
+        rawOther && rawOther !== 'client_legacy' && rawOther !== 'unknown' && !rawOther.includes('@')
+          ? rawOther
+          : '';
+      const directEmail =
+        m.clientEmail && m.clientEmail.includes('@')
+          ? m.clientEmail.trim()
+          : rawOther && rawOther.includes('@')
+          ? rawOther.trim()
+          : '';
+      const directEmailLower = directEmail.toLowerCase();
+
+      const resolvedUid = directUid || (directEmailLower ? emailToUid[directEmailLower] || '' : '');
+      const resolvedEmail = directEmail || (resolvedUid ? uidToEmail[resolvedUid] || '' : '');
+      const resolvedEmailLower = resolvedEmail.toLowerCase();
+
+      const rawName =
+        (m.senderId !== vendor.id && m.senderName ? m.senderName : '') ||
+        (m.clientName && m.clientName !== 'Client' && m.clientName !== 'Guest' ? m.clientName : '') ||
+        (resolvedUid ? uidToName[resolvedUid] : '') ||
+        (resolvedEmailLower ? emailToName[resolvedEmailLower] : '') ||
+        m.clientName ||
+        (resolvedEmail ? resolvedEmail.split('@')[0] : 'Client');
+
+      const canonicalConvoId =
+        resolvedUid
+          ? [vendor.id, resolvedUid].sort().join('_')
+          : m.conversationId;
+
+      // Find existing unified thread for this contact
+      let group = groupsList.find((g) => {
+        if (resolvedUid && g.clientUid && g.clientUid === resolvedUid) return true;
+        if (resolvedEmailLower && g.emailLower && g.emailLower === resolvedEmailLower) return true;
+        if (canonicalConvoId && g.conversationId && g.conversationId === canonicalConvoId) return true;
+        if (m.conversationId && g.conversationId && g.conversationId === m.conversationId) return true;
+        if (!resolvedUid && !resolvedEmailLower && rawName !== 'Client' && g.name.toLowerCase() === rawName.toLowerCase()) {
+          return true;
+        }
+        return false;
+      });
+
+      if (!group) {
+        const canonicalKey = resolvedUid || resolvedEmailLower || canonicalConvoId || rawOther || 'unknown';
+        group = {
+          key: canonicalKey,
+          name: rawName,
+          email: resolvedEmail,
+          emailLower: resolvedEmailLower,
+          clientUid: resolvedUid || rawOther || '',
+          conversationId: canonicalConvoId || m.conversationId,
+          messages: [],
+          lastMessage: m,
+        };
+        groupsList.push(group);
+      } else {
+        if ((!group.clientUid || group.clientUid === 'client_legacy') && resolvedUid) {
+          group.clientUid = resolvedUid;
+          group.key = resolvedUid;
+        }
+        if (!group.email && resolvedEmail) {
+          group.email = resolvedEmail;
+          group.emailLower = resolvedEmailLower;
+        }
+        if (canonicalConvoId && (!group.conversationId || group.conversationId.includes('client_legacy'))) {
+          group.conversationId = canonicalConvoId;
+        }
+        if ((group.name === 'Client' || group.name === 'Guest') && rawName !== 'Client' && rawName !== 'Guest') {
+          group.name = rawName;
+        }
+      }
+
+      group.messages.push(m);
+    });
+
+    // Sort messages inside each thread chronologically and set lastMessage to the latest one
+    groupsList.forEach((g) => {
+      g.messages.sort((a, b) => {
+        const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return tA - tB;
+      });
+      if (g.messages.length > 0) {
+        g.lastMessage = g.messages[g.messages.length - 1];
+      }
+    });
+
+    // Sort threads by latest message descending so the newest contact is always on top
+    groupsList.sort((a, b) => {
+      const timeA = a.lastMessage?.timestamp ? new Date(a.lastMessage.timestamp).getTime() : 0;
+      const timeB = b.lastMessage?.timestamp ? new Date(b.lastMessage.timestamp).getTime() : 0;
       return timeB - timeA;
     });
-  }, [messages]);
 
-  // Auto-select the first thread (the one with the most recent message) when activeTab is messages and no thread is selected
-  useEffect(() => {
-    if (activeTab === 'messages' && !selectedThreadEmail && messageThreads.length > 0 && window.innerWidth >= 1024) {
-      setSelectedThreadEmail(messageThreads[0][0]);
-    }
-  }, [activeTab, selectedThreadEmail, messageThreads]);
+    return groupsList.map((g) => [
+      g.key,
+      {
+        name: g.name,
+        email: g.email,
+        clientUid: g.clientUid,
+        conversationId: g.conversationId,
+        messages: g.messages,
+        lastMessage: g.lastMessage,
+      },
+    ] as [string, { name: string; email: string; clientUid: string; conversationId?: string; messages: Message[]; lastMessage: Message }]);
+  }, [messages, vendor.id, clientDirectoryMap, bookings]);
+
+  const getThreadClientPhoto = (email: string, clientUid?: string): string | undefined => {
+    if (clientUid && clientPhotosMap[clientUid]) return clientPhotosMap[clientUid];
+    if (email && clientPhotosMap[email.toLowerCase()]) return clientPhotosMap[email.toLowerCase()];
+    const matchingBooking = bookings.find(
+      b =>
+        (clientUid && (b.userId === clientUid || b.clientId === clientUid)) ||
+        (email && b.contactEmail && b.contactEmail.toLowerCase() === email.toLowerCase())
+    );
+    if (matchingBooking?.clientPhotoURL) return matchingBooking.clientPhotoURL;
+    return undefined;
+  };
 
   const onActiveChatChangeRef = useRef(onActiveChatChange);
   useEffect(() => {
@@ -3093,253 +3292,291 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           )}
 
           {activeTab === 'messages' && (
-            <div className="flex flex-col lg:flex-row bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden min-h-[600px] animate-in fade-in duration-500 relative">
-               {/* Thread List */}
-               <div className={`w-full lg:w-80 border-r border-white/5 bg-black/20 overflow-y-auto ${selectedThreadEmail ? 'hidden lg:block' : 'block'}`}>
-                  <div className="p-6 border-b border-white/5 bg-black/40">
-                    <h3 className="text-sm font-bold text-[#D4AF37] uppercase tracking-widest">Client Inquiries</h3>
-                  </div>
-                  {messageThreads.length === 0 ? (
-                    <div className="p-10 text-center opacity-20">
-                      <MessageSquare className="w-10 h-10 mx-auto mb-4" />
-                      <p className="text-[10px] font-black uppercase tracking-widest">No Active Inquiries</p>
-                    </div>
-                  ) : messageThreads.map(([email, data]) => {
-                    const unreadInThread = data.messages.filter(m => m.receiverId === vendor.id && !m.isRead).length;
-                    return (
-                      <button 
-                        key={email}
-                        onClick={() => setSelectedThreadEmail(email)}
-                        className={`w-full p-6 text-left border-b border-white/5 transition-all hover:bg-white/5 relative ${selectedThreadEmail === email ? 'bg-[#D4AF37]/5 border-l-4 border-l-[#D4AF37]' : ''}`}
-                      >
-                        <div className="flex justify-between items-start mb-1">
-                          <div className="flex items-center gap-1.5 truncate max-w-[70%]">
-                            <span className="font-bold text-white text-sm truncate">{data.name}</span>
+            <div className="space-y-3 animate-in fade-in duration-500">
+              {messageThreads.length === 0 ? (
+                <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No Active Chats</p>
+                </div>
+              ) : (
+                messageThreads.map(([threadKey, data], idx) => {
+                  const unreadInThread = data.messages.filter(m => m.receiverId === vendor.id && !m.isRead).length;
+                  const clientPhoto = getThreadClientPhoto(data.email || threadKey, data.clientUid);
+                  const initials = getClientInitials(data.name);
+                  const lastMsg = data.lastMessage;
+                  const isVoice = lastMsg.type === 'voice' || !!lastMsg.audioUrl;
+                  const isImg = lastMsg.type === 'image' || !!lastMsg.imageUrl;
+                  const isVid = lastMsg.type === 'file' && lastMsg.fileType?.startsWith('video/');
+                  const isDoc = lastMsg.type === 'file' && !lastMsg.fileType?.startsWith('video/');
+
+                  const handleOpenClientThread = () => {
+                    const conId = data.conversationId || lastMsg.conversationId || [vendor.id, data.clientUid].sort().filter(Boolean).join('_');
+                    if (conId && vendor.id) {
+                      markChatAsRead(conId, vendor.id).catch(() => {});
+                    }
+                    setSelectedThreadContext({
+                      key: threadKey,
+                      clientUid: data.clientUid || threadKey,
+                      email: data.email || '',
+                      name: data.name || 'Client',
+                      conversationId: conId,
+                    });
+                    setSelectedThreadEmail(threadKey);
+                  };
+
+                  return (
+                    <div
+                      key={threadKey}
+                      role="button"
+                      tabIndex={0}
+                      onClick={handleOpenClientThread}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleOpenClientThread();
+                        }
+                      }}
+                      className={`simcha-event-card relative w-full overflow-hidden rounded-full border transition-all duration-300 cursor-pointer group flex items-center justify-between gap-3 px-5 sm:px-7 py-3.5 sm:py-4 min-h-[68px] sm:min-h-[74px] shadow-xl active:scale-[0.99] ${
+                        unreadInThread > 0 || idx === 0
+                          ? 'border-[#D4AF37] shadow-[0_0_24px_rgba(212,175,55,0.18)]'
+                          : 'border-[#D4AF37]/35 hover:border-[#D4AF37]/80'
+                      }`}
+                    >
+                      {/* Full Background: Client Profile Image OR Client Initials Pattern */}
+                      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                        {clientPhoto ? (
+                          <>
+                            <img
+                              src={clientPhoto}
+                              alt={data.name}
+                              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                            />
+                            <div className="absolute inset-0 simcha-event-card-overlay" />
+                          </>
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-r from-[#0c0c0c] via-[#151208] to-[#0c0c0c] flex items-center justify-center relative">
+                            <span className="font-[Cinzel] font-black text-5xl sm:text-6xl tracking-[0.25em] text-[#D4AF37]/15 select-none">
+                              {initials}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Left Side: Initials Badge (when no photo) + Client Name + Latest Message */}
+                      <div className="relative z-10 flex items-center gap-3 min-w-0 flex-1">
+                        {!clientPhoto && (
+                          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs sm:text-sm shadow-inner">
+                            {initials}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm sm:text-base text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
+                              {data.name}
+                            </span>
                             <AnimatePresence mode="popLayout">
                               {unreadInThread > 0 && (
                                 <motion.span
-                                  key={`unread-${email}-${unreadInThread}`}
+                                  key={`unread-${threadKey}-${unreadInThread}`}
                                   initial={{ scale: 0, opacity: 0 }}
                                   animate={{ scale: 1, opacity: 1 }}
                                   exit={{ scale: 0, opacity: 0 }}
                                   transition={{ type: "spring", stiffness: 500, damping: 25 }}
-                                  className="bg-zinc-800 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
+                                  className="bg-[#D4AF37] text-black text-[9px] font-black px-2 py-0.5 rounded-full flex-shrink-0 shadow-sm"
                                 >
                                   {unreadInThread}
                                 </motion.span>
                               )}
                             </AnimatePresence>
                           </div>
-                          <span className="text-[8px] text-zinc-300 flex-shrink-0">{new Date(data.lastMessage.timestamp).toLocaleDateString()}</span>
+                          <div className="flex items-center gap-1.5 text-xs text-zinc-200/90 truncate mt-0.5 drop-shadow-sm">
+                            {(lastMsg.senderId === vendor.id || (lastMsg as any).sender_role === 'vendor') && (
+                              (lastMsg.isRead || Object.keys((lastMsg as any).read_by || {}).some(k => k !== lastMsg.senderId && k !== vendor.id)) ? (
+                                <span title="Seen" className="inline-flex items-center shrink-0">
+                                  <CheckCheck className="w-3.5 h-3.5 text-[#34B7F1] shrink-0" />
+                                </span>
+                              ) : (
+                                <span title="Sent" className="inline-flex items-center shrink-0">
+                                  <Check className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                                </span>
+                              )
+                            )}
+                            {isVoice ? (
+                              <>
+                                <Mic className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                                <span className="truncate">Voice note</span>
+                              </>
+                            ) : isImg ? (
+                              <>
+                                <ImageIcon className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                                <span className="truncate">{lastMsg.text && lastMsg.text !== 'Sent an image' ? lastMsg.text : 'Photo'}</span>
+                              </>
+                            ) : isVid ? (
+                              <>
+                                <Play className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                                <span className="truncate">{lastMsg.text && lastMsg.text !== 'Sent a video' ? lastMsg.text : 'Video'}</span>
+                              </>
+                            ) : isDoc ? (
+                              <>
+                                <FileText className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                                <span className="truncate">{lastMsg.fileName || 'Document'}</span>
+                              </>
+                            ) : (
+                              <span className="truncate">{lastMsg.text || 'Tap to open chat'}</span>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-[10px] text-zinc-300 truncate mb-2">{email}</p>
-                        <p className="text-xs text-zinc-400 line-clamp-1 italic">"{data.lastMessage.text}"</p>
-                      </button>
-                    );
-                  })}
-               </div>
-
-               {/* Chat Pane */}
-               <div className={`flex-1 flex-col bg-black/40 ${selectedThreadEmail ? 'flex' : 'hidden lg:flex'}`}>
-                  {selectedThreadEmail ? (
-                    <>
-                      <div className="p-6 border-b border-white/5 bg-black/40 flex items-center justify-between">
-                         <div className="flex items-center gap-3">
-                            <button 
-                              onClick={() => setSelectedThreadEmail(null)} 
-                              className="lg:hidden p-2 -ml-2 mr-1 text-zinc-400 hover:text-white rounded-full hover:bg-white/10"
-                            >
-                              <ArrowLeft className="w-5 h-5" />
-                            </button>
-                            <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] font-bold">
-                              {messageThreads.find(t => t[0] === selectedThreadEmail)?.[1].name[0]}
-                            </div>
-                            <div>
-                               <h4 className="font-bold text-white">{messageThreads.find(t => t[0] === selectedThreadEmail)?.[1].name}</h4>
-                               <p className="text-[10px] text-zinc-300 uppercase tracking-widest">{selectedThreadEmail}</p>
-                            </div>
-                         </div>
                       </div>
 
-                      <div className="flex-1 overflow-y-auto p-8 space-y-6">
-                        {messageThreads.find(t => t[0] === selectedThreadEmail)?.[1].messages.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map(m => {
-                          const isSent = m.senderId === vendor.id;
-                          return (
-                            <motion.div 
-                              key={m.id || m.tempId} 
-                              initial={{ opacity: 0, y: 15 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ duration: 0.25, ease: "easeOut" }}
-                              className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}
-                            >
-                              <div className={`max-w-[70%] p-4 rounded-[20px] transition-all duration-300 relative ${
-                                isSent 
-                                  ? 'bg-[#D4AF37] text-black shadow-md' 
-                                  : 'bg-zinc-900 text-white border border-zinc-800 shadow-md'
-                              }`}>
-                                {m.type === 'image' || m.imageUrl ? (
-                                    <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: m.imageUrl || m.fileUrl || '', type: 'image'})}>
-                                        <img 
-                                          src={m.imageUrl || m.fileUrl} 
-                                          onLoad={() => {
-                                            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-                                          }}
-                                          className="rounded-lg w-full max-h-60 object-cover border border-white/5 shadow-lg" 
-                                          alt="Sent" 
-                                        />
-                                        {m.text && m.text !== 'Sent an image' && <p className="text-sm leading-relaxed">{m.text}</p>}
-                                    </div>
-                                ) : m.type === 'voice' || m.audioUrl ? (
-                                    <div className="space-y-1">
-                                        <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isSent ? 'text-black/60' : 'text-zinc-400'}`}>Voice Note</p>
-                                        <CustomAudioPlayer src={m.audioUrl || m.fileUrl || ''} theme={isSent ? 'sent' : 'received'} />
-                                    </div>
-                                ) : m.type === 'file' ? (
-                                    m.fileType?.startsWith('video/') ? (
-                                       <div className="space-y-2 cursor-pointer" onClick={() => setFullscreenMedia({url: m.fileUrl || '', type: 'video'})}>
-                                           <video src={m.fileUrl} className="w-full aspect-video rounded-lg object-cover bg-black" />
-                                           {m.text && m.text !== 'Sent a video' && <p className="text-sm">{m.text}</p>}
-                                       </div>
-                                    ) : (
-                                    <a href={m.fileUrl} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 p-3 rounded-xl transition-all text-sm ${isSent ? 'bg-black/10 hover:bg-black/20 text-black' : 'bg-black/30 hover:bg-black/40 text-white'}`}>
-                                        <FileText className="w-8 h-8 opacity-60 flex-shrink-0" />
-                                        <div className="flex-1 min-w-0">
-                                           <p className="truncate font-bold text-xs">{m.fileName || 'Document'}</p>
-                                           <p className="text-[10px] opacity-60">Click to download</p>
-                                        </div>
-                                        <Download className="w-4 h-4 opacity-60 flex-shrink-0" />
-                                    </a>
-                                    )
-                                ) : (
-                                    <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{m.text}</p>
-                                )}
-
-                                 <div className="flex justify-end items-center gap-1 mt-2 select-none leading-none">
-                                   <span className={`text-[9px] font-medium opacity-65 ${isSent ? 'text-black/75' : 'text-zinc-400'}`}>
-                                     {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                   </span>
-                                   {isSent && (
-                                     <button 
-                                       type="button"
-                                       onClick={() => handleUnsend(m)}
-                                       className="ml-1 text-black/40 hover:text-black/85 transition-colors cursor-pointer p-0.5 rounded-full"
-                                       title="Unsend Message"
-                                       aria-label="Unsend Message"
-                                     >
-                                       <Trash2 className="w-3 h-3" />
-                                     </button>
-                                   )}
-                                   {isSent && (
-                                     <span className={`text-[10px] ${m.isRead ? 'text-[#D4AF37]' : 'text-black/40'}`}>
-                                       <CheckCircle className="w-3 h-3" />
-                                     </span>
-                                   )}
-                                 </div>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                        {otherIsTyping && (
-                          <div className="flex justify-start px-2 py-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <div className="bg-zinc-900 border border-[#D4AF37]/10 text-[#D4AF37] px-4 py-2.5 rounded-[20px] text-[11px] flex items-center gap-3 shadow-lg">
-                              <span className="font-semibold">
-                                {messageThreads.find(t => t[0] === selectedThreadEmail)?.[1].name || 'Client'} is typing
-                              </span>
-                              <div className="flex items-center gap-1 mt-0.5" aria-hidden="true">
-                                <motion.span
-                                  animate={{ opacity: [0.3, 1, 0.3] }}
-                                  transition={{ repeat: Infinity, duration: 1.2, delay: 0 }}
-                                  className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
-                                />
-                                <motion.span
-                                  animate={{ opacity: [0.3, 1, 0.3] }}
-                                  transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }}
-                                  className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
-                                />
-                                <motion.span
-                                  animate={{ opacity: [0.3, 1, 0.3] }}
-                                  transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }}
-                                  className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        <div ref={messagesEndRef} />
-                      </div>
-
-                      <form onSubmit={handleSendReply} className="p-4 bg-black/60 border-t border-white/5 space-y-3 sticky bottom-0">
-                        <input type="file" accept="image/*,video/*,.pdf,.doc,.docx" ref={chatFileInputRef} className="hidden" onChange={handleChatFileUpload} />
-                        {isChatRecording && (
-                          <div className="flex items-center justify-between p-3 bg-zinc-400/10 border border-zinc-400/20 rounded-xl animate-pulse">
-                             <div className="flex items-center gap-3 text-zinc-400">
-                               <Mic className="w-5 h-5 animate-bounce" />
-                               <span className="font-bold">Recording Voice Note...</span>
-                               <span className="font-mono">{Math.floor(chatRecordingDuration / 60)}:{(chatRecordingDuration % 60).toString().padStart(2, '0')}</span>
-                             </div>
-                             <div className="flex items-center gap-2">
-                               <button type="button" onClick={cancelChatRecording} className="p-2 bg-zinc-800 text-zinc-300 rounded-full hover:bg-zinc-700 transition-colors" title="Cancel recording" aria-label="Cancel recording">
-                                 <X className="w-5 h-5" />
-                               </button>
-                               <button type="button" onClick={stopChatRecording} className="p-2 bg-zinc-700 text-white rounded-full hover:bg-zinc-800 transition-colors" title="Stop recording" aria-label="Stop recording">
-                                 <StopCircle className="w-5 h-5" />
-                               </button>
-                             </div>
-                          </div>
-                        )}
-                        <div className="relative flex items-center gap-2">
-                          <button 
-                            type="button"
-                            onClick={() => chatFileInputRef.current?.click()}
-                            className="flex items-center justify-center h-12 w-12 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-full hover:bg-zinc-900"
-                            title="Attach file"
-                            aria-label="Attach file"
-                          >
-                            <Paperclip className="w-5 h-5" />
-                          </button>
-                          <button 
-                             type="button"
-                             onClick={startChatRecording}
-                             className="flex items-center justify-center h-12 w-12 text-zinc-400 hover:text-[#D4AF37] transition-all flex-shrink-0 rounded-full hover:bg-zinc-900"
-                             title="Record voice note"
-                             aria-label="Record voice note"
-                          >
-                             <Mic className="w-5 h-5" />
-                          </button>
-                          <input 
-                            type="text"
-                            value={replyText}
-                            onChange={e => {
-                              setReplyText(e.target.value);
-                              handleVendorTypingStatus(true);
-                              if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-                              typingTimeoutRef.current = setTimeout(() => {
-                                handleVendorTypingStatus(false);
-                              }, 2000);
-                            }}
-                            placeholder="Type your response..."
-                            className="flex-1 bg-[#050505] border border-white/10 rounded-2xl pl-4 pr-14 py-3.5 text-sm focus:border-[#D4AF37] outline-none transition-all"
-                            disabled={isChatUploading || isChatRecording}
-                          />
-                          <button 
-                            type="submit"
-                            disabled={!replyText.trim() || isChatUploading || isChatRecording}
-                            className="absolute right-2 p-2.5 bg-[#D4AF37] text-black rounded-full hover:bg-[#E5C76B] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                            aria-label="Send reply"
-                          >
-                            {isChatUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                          </button>
+                      {/* Right Side: Date/Time + Chevron */}
+                      <div className="relative z-10 flex items-center gap-2 shrink-0">
+                        <span className="simcha-event-pill px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-bold text-zinc-100 border border-white/15">
+                          {new Date(lastMsg.timestamp).toLocaleDateString()}
+                        </span>
+                        <div className="w-7 h-7 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                          <ChevronRight className="w-3.5 h-3.5" />
                         </div>
-                      </form>
-                    </>
-                  ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-center p-10 opacity-20">
-                      <MessageSquare className="w-20 h-20 mb-6" />
-                      <h3 className="text-2xl font-[Cinzel] mb-2 uppercase tracking-widest">Select a Thread</h3>
-                      <p className="max-w-xs mx-auto">Conversations with clients regarding bookings and inquiries will appear here.</p>
+                      </div>
                     </div>
-                  )}
-               </div>
+                  );
+                })
+              )}
+
+              {selectedThreadEmail && (() => {
+                const activeThread = messageThreads.find(([tKey, tData]) => {
+                  if (tKey === selectedThreadEmail) return true;
+                  if (selectedThreadContext?.clientUid && tData.clientUid === selectedThreadContext.clientUid) return true;
+                  if (selectedThreadContext?.email && tData.email && tData.email.toLowerCase() === selectedThreadContext.email.toLowerCase()) return true;
+                  return false;
+                });
+
+                const threadData = activeThread
+                  ? activeThread[1]
+                  : selectedThreadContext
+                  ? {
+                      name: selectedThreadContext.name,
+                      email: selectedThreadContext.email,
+                      clientUid: selectedThreadContext.clientUid,
+                      conversationId: selectedThreadContext.conversationId,
+                      messages: [] as Message[],
+                      lastMessage: { text: '', timestamp: new Date().toISOString() } as Message,
+                    }
+                  : null;
+
+                if (!threadData) return null;
+
+                const targetClientUid =
+                  threadData.clientUid ||
+                  threadData.messages.find(m => m.senderId !== vendor.id)?.senderId ||
+                  selectedThreadContext?.clientUid ||
+                  selectedThreadEmail;
+                const targetConversationId =
+                  threadData.conversationId ||
+                  threadData.lastMessage?.conversationId ||
+                  selectedThreadContext?.conversationId ||
+                  [vendor.id, targetClientUid].sort().filter(Boolean).join('_');
+                const cleanThreadEmail =
+                  (threadData.email && threadData.email.includes('@') ? threadData.email : '') ||
+                  (selectedThreadContext?.email && selectedThreadContext.email.includes('@') ? selectedThreadContext.email : '');
+                const clientPhoto = getThreadClientPhoto(cleanThreadEmail, targetClientUid);
+
+                return (
+                  <ChatModal
+                    isOpen={true}
+                    vendor={vendor}
+                    isVendorReplying={true}
+                    onClose={() => {
+                      setSelectedThreadEmail(null);
+                      setSelectedThreadContext(null);
+                    }}
+                    onSendMessage={async (payload) => {
+                      const senderId = vendor.id;
+                      const rawReceiver = payload.receiverId || targetClientUid;
+                      const receiverId =
+                        rawReceiver && rawReceiver !== 'client_legacy' && !rawReceiver.includes('@')
+                          ? rawReceiver
+                          : targetClientUid;
+                      const conversationId =
+                        payload.conversationId && !payload.conversationId.includes('client_legacy')
+                          ? payload.conversationId
+                          : [senderId, receiverId].sort().join('_');
+                      const finalClientEmail =
+                        (payload.clientEmail && payload.clientEmail.includes('@') ? payload.clientEmail : '') ||
+                        cleanThreadEmail ||
+                        (clientDirectoryMap[receiverId]?.email || '');
+                      const finalClientName =
+                        (payload.clientName && payload.clientName !== 'Client' && payload.clientName !== 'Guest' ? payload.clientName : '') ||
+                        threadData.name ||
+                        clientDirectoryMap[receiverId]?.name ||
+                        'Client';
+
+                      await sendNewMessage({
+                        senderId,
+                        receiverId,
+                        conversationId,
+                        participants: [senderId, receiverId],
+                        clientEmail: finalClientEmail,
+                        clientName: finalClientName,
+                        vendorEmail: vendor.contactEmail || '',
+                        text: payload.text || '',
+                        senderRole: 'vendor',
+                        type: payload.type || 'text',
+                        fileUrl: payload.fileUrl || payload.imageUrl,
+                        imageUrl: payload.imageUrl,
+                        audioUrl: payload.audioUrl,
+                        audioDuration: payload.audioDuration,
+                        fileName: payload.fileName,
+                        fileType: payload.fileType
+                      });
+                    }}
+                    showNotification={showNotification}
+                    messages={messages}
+                    user={{
+                      id: vendor.id,
+                      name: vendor.name,
+                      username: vendor.contactEmail || vendor.name
+                    }}
+                    recipientUid={targetClientUid}
+                    recipientName={threadData.name}
+                    recipientEmail={cleanThreadEmail}
+                    recipientImage={clientPhoto}
+                    recipientCategory="Client"
+                    conversationIdOverride={targetConversationId}
+                    customConversations={messageThreads.map(([tKey, tVal]) => {
+                      const cUid = tVal.clientUid || tVal.messages.find(m => m.senderId !== vendor.id)?.senderId || tKey;
+                      const cId = tVal.conversationId || tVal.lastMessage?.conversationId || [vendor.id, cUid].sort().filter(Boolean).join('_');
+                      const cEmail = tVal.email && tVal.email.includes('@') ? tVal.email : (clientDirectoryMap[cUid]?.email || '');
+                      const rawText = tVal.lastMessage?.text;
+                      const safeText = typeof rawText === 'string'
+                        ? rawText
+                        : (rawText && typeof rawText === 'object' && typeof (rawText as any).text === 'string' ? (rawText as any).text : '');
+                      const lastMsgSentByVendor = Boolean(
+                        tVal.lastMessage && (tVal.lastMessage.senderId === vendor.id || (tVal.lastMessage as any).sender_role === 'vendor')
+                      );
+                      const lastMsgReadByClient = Boolean(
+                        tVal.lastMessage && (
+                          tVal.lastMessage.isRead ||
+                          Object.keys((tVal.lastMessage as any).read_by || {}).some(k => k !== tVal.lastMessage.senderId && k !== vendor.id)
+                        )
+                      );
+                      return {
+                        id: cUid,
+                        contactId: cUid,
+                        name: tVal.name,
+                        category: 'Client',
+                        image: getThreadClientPhoto(cEmail || tKey, cUid),
+                        lastMessage: safeText,
+                        lastMessageType: tVal.lastMessage?.type,
+                        lastMessageTime: tVal.lastMessage?.timestamp,
+                        lastMessageIsSent: lastMsgSentByVendor,
+                        lastMessageIsRead: lastMsgReadByClient,
+                        unreadCount: tVal.messages.filter(m => m.receiverId === vendor.id && !m.isRead).length,
+                        conversationId: cId,
+                        email: cEmail
+                      };
+                    })}
+                  />
+                );
+              })()}
             </div>
           )}
 

@@ -1804,19 +1804,32 @@ function App() {
     if (userRole === 'admin') {
       convoQuery = collection(db, 'conversations');
     } else {
-      convoQuery = query(
-        collection(db, 'conversations'),
-        where('participant_ids', 'array-contains', fbUser.uid)
-      );
+      const participantTargets = Array.from(
+        new Set([fbUser.uid, currentUserVendorId, vendorProfileId].filter(Boolean))
+      ) as string[];
+      convoQuery = participantTargets.length > 1
+        ? query(
+            collection(db, 'conversations'),
+            where('participant_ids', 'array-contains-any', participantTargets)
+          )
+        : query(
+            collection(db, 'conversations'),
+            where('participant_ids', 'array-contains', fbUser.uid)
+          );
     }
 
     const activeListeners = new Map<string, () => void>();
     const allConvoMessages = new Map<string, Message[]>();
 
     const rebuildMergedMessages = () => {
+      const seenIds = new Set<string>();
       const merged: Message[] = [];
       for (const msgs of allConvoMessages.values()) {
-        merged.push(...msgs);
+        for (const m of msgs) {
+          if (m.id && seenIds.has(m.id)) continue;
+          if (m.id) seenIds.add(m.id);
+          merged.push(m);
+        }
       }
       // Chronological sort
       merged.sort((a, b) => {
@@ -1976,7 +1989,14 @@ function App() {
     let unsubUsers = () => {};
     if (isAdmin || userRole === 'admin') {
       unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
-        const uDataRaw = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserAccount));
+        const uDataRaw = snapshot.docs.map(docSnap => {
+          const d = docSnap.data();
+          return {
+            id: docSnap.id,
+            ...d,
+            username: d.email || d.username || '',
+          } as UserAccount;
+        });
         const uData = Array.from(new Map(uDataRaw.map(u => [u.id, u])).values());
         setUsers(uData);
       }, (err) => handleFirestoreError(err, OperationType.LIST, 'users', notifyErr));
@@ -2567,10 +2587,39 @@ function App() {
 
   const getClientUidSync = (email: string): string => {
     if (!email) return '';
-    const foundUser = users.find(u => u.username?.toLowerCase() === email.toLowerCase());
+    const cleanEmail = email.trim().toLowerCase();
+    const foundUser = users.find(
+      u => (u.username || (u as any).email || '').toLowerCase() === cleanEmail
+    );
     if (foundUser) return foundUser.id;
-    const msgFromClient = messages.find(m => m.clientEmail?.toLowerCase() === email.toLowerCase() && m.senderId && m.senderId !== 'admin');
+
+    const matchingBooking = bookings.find(
+      b => b.contactEmail?.toLowerCase() === cleanEmail && (b.userId || b.clientId)
+    );
+    if (matchingBooking) return (matchingBooking.userId || matchingBooking.clientId)!;
+
+    const vendorIds = new Set(vendors.map(v => v.id));
+    if (currentUserVendorId) vendorIds.add(currentUserVendorId);
+
+    const msgFromClient = messages.find(
+      m =>
+        m.clientEmail?.toLowerCase() === cleanEmail &&
+        m.senderId &&
+        m.senderId !== 'admin' &&
+        !vendorIds.has(m.senderId)
+    );
     if (msgFromClient) return msgFromClient.senderId;
+
+    const msgToClient = messages.find(
+      m =>
+        m.clientEmail?.toLowerCase() === cleanEmail &&
+        m.receiverId &&
+        m.receiverId !== 'admin' &&
+        m.receiverId !== 'client_legacy' &&
+        !vendorIds.has(m.receiverId)
+    );
+    if (msgToClient) return msgToClient.receiverId;
+
     return '';
   };
 
@@ -3253,47 +3302,53 @@ function App() {
   const handleSendMessage = async (payload: Partial<Message>) => {
     try {
       const currentUid = fbUser?.uid || '';
-      
-      let senderId = currentUid;
-      let receiverId = payload.receiverId || '';
+      const activeVendorId = currentUserVendorId || vendorProfileId || '';
 
-      // If sending from Admin panel
-      if (payload.senderId === 'admin' || userRole === 'admin') {
+      const isSendingFromAdminPanel =
+        payload.senderId === 'admin' ||
+        (view === 'admin' && payload.receiverId !== 'admin');
+
+      const isSendingFromVendorPortal =
+        !isSendingFromAdminPanel &&
+        ((view === 'portal' && portalTab === 'vendor' && !!activeVendorId) ||
+          (!!activeVendorId && payload.senderId === activeVendorId && payload.receiverId !== activeVendorId));
+
+      let senderId = payload.senderId || currentUid;
+      let receiverId = payload.receiverId || '';
+      let effectiveSenderRole: 'client' | 'vendor' | 'admin' = 'client';
+
+      if (isSendingFromAdminPanel) {
         senderId = 'admin';
-        // Resolve client's actual UID
-        if (payload.clientEmail) {
+        effectiveSenderRole = 'admin';
+        if (!receiverId && payload.clientEmail) {
           receiverId = getClientUidSync(payload.clientEmail) || 'client_legacy';
         }
-      }
-      
-      // If sending from Vendor portal
-      if (userRole === 'vendor' && currentUserVendorId) {
-        senderId = currentUserVendorId;
+      } else if (isSendingFromVendorPortal) {
+        senderId = activeVendorId;
+        effectiveSenderRole = 'vendor';
+        if ((!receiverId || receiverId === 'client_legacy') && payload.clientEmail) {
+          const resolvedUid = getClientUidSync(payload.clientEmail);
+          if (resolvedUid) receiverId = resolvedUid;
+        }
+      } else {
+        senderId = currentUid;
+        effectiveSenderRole = 'client';
       }
 
-      // Overwrite with payload sender/receiver if specifically provided and valid
-      if (payload.senderId) senderId = payload.senderId;
-      if (payload.receiverId) receiverId = payload.receiverId;
-
-      // Fix admin routing: Ensure that when a Client or Vendor initiates a chat with the Admin, 
-      // the system targets a specific, globally recognized Admin UID ('admin')—not the user's own UID.
       if (payload.isAdminInquiry || payload.receiverId === 'admin') {
         if (senderId !== 'admin') {
-          // Client or Vendor sending to Admin
           receiverId = 'admin';
-        } else {
-          // Admin replying to client; receiverId is resolved to the client
-          if (payload.clientEmail) {
-            receiverId = getClientUidSync(payload.clientEmail) || 'client_legacy';
-          }
+        } else if ((!receiverId || receiverId === 'admin' || receiverId === 'client_legacy') && payload.clientEmail) {
+          receiverId = getClientUidSync(payload.clientEmail) || receiverId || 'client_legacy';
         }
       }
 
       const conversationId = [senderId, receiverId].sort().join('_');
 
-      let resolvedVendorEmail = '';
-      if (userRole === 'vendor') {
-        resolvedVendorEmail = fbUser?.email || '';
+      let resolvedVendorEmail = payload.vendorEmail || '';
+      if (effectiveSenderRole === 'vendor') {
+        const myVendor = vendors.find(v => v.id === senderId);
+        resolvedVendorEmail = myVendor?.contactEmail || fbUser?.email || '';
       } else {
         const targetVendor = vendors.find(v => v.id === senderId || v.id === receiverId);
         if (targetVendor) {
@@ -3301,16 +3356,33 @@ function App() {
         }
       }
 
+      const cleanPayloadEmail =
+        payload.clientEmail && payload.clientEmail.includes('@')
+          ? payload.clientEmail.trim()
+          : '';
+      const resolvedClientEmail =
+        effectiveSenderRole === 'client'
+          ? (cleanPayloadEmail || fbUser?.email || currentAuthenticatedUser.username || '')
+          : (cleanPayloadEmail || '');
+
+      const cleanPayloadName = (payload.clientName || '').trim();
+      const resolvedClientName =
+        effectiveSenderRole === 'client'
+          ? (cleanPayloadName && cleanPayloadName !== 'Guest' && cleanPayloadName !== 'Client'
+              ? cleanPayloadName
+              : (currentAuthenticatedUser.name || fbUser?.displayName || fbUser?.email?.split('@')[0] || 'Client'))
+          : (cleanPayloadName || 'Client');
+
       const msgData = {
-        clientEmail: payload.clientEmail || fbUser?.email || '',
-        clientName: payload.clientName || fbUser?.displayName || fbUser?.email?.split('@')[0] || 'Guest',
         ...payload,
+        clientEmail: resolvedClientEmail,
+        clientName: resolvedClientName,
         senderId, // ensure locked
         receiverId, // ensure locked
         conversationId, // ensure locked
         participants: [senderId, receiverId],
         vendorEmail: resolvedVendorEmail,
-        senderRole: userRole || 'client',
+        senderRole: effectiveSenderRole,
       };
 
       await sendNewMessage(msgData);
@@ -4028,7 +4100,13 @@ function App() {
                   vendor={v} 
                   initialTab={portalInitialTab}
                   bookings={bookings.filter(b => b.vendorId === v.id)} 
-                  messages={messages.filter(m => m.receiverId === v.id || m.senderId === v.id)} 
+                  messages={messages.filter(
+                    m =>
+                      m.receiverId === v.id ||
+                      m.senderId === v.id ||
+                      (m.participants && m.participants.includes(v.id)) ||
+                      (m.conversationId && m.conversationId.split('_').includes(v.id))
+                  )} 
                   onUpdateVendor={handleUpdateVendor} 
                   onUpdateBookingStatus={handleUpdateBookingStatus} 
                   onReplyMessage={handleReplyMessage} 
@@ -4053,7 +4131,13 @@ function App() {
           b.clientId === fbUser.uid ||
           (b.contactEmail && fbUser.email && b.contactEmail.toLowerCase() === fbUser.email.toLowerCase())
       );
-      const myMessages = messages.filter(m => m.clientEmail === fbUser.email);
+      const myMessages = messages.filter(
+        m =>
+          m.senderId === fbUser.uid ||
+          m.receiverId === fbUser.uid ||
+          (m.participants && m.participants.includes(fbUser.uid)) ||
+          (m.clientEmail && fbUser.email && m.clientEmail.toLowerCase() === fbUser.email.toLowerCase())
+      );
       return (
         <motion.div 
           initial={{ opacity: 0, y: 30 }}
@@ -4078,6 +4162,7 @@ function App() {
               onUpdateProfile={handleUpdateProfile} 
               onDeleteAccount={handleDeleteAccount} 
               onMessageVendor={v => setChatVendor(v)}
+              onOpenAdminChat={() => setIsAdminChatOpen(true)}
               onActiveChatChange={setIsPortalChatActive}
               onTabChange={tab => setPortalInitialTab(tab)}
               themeMode={themeMode}

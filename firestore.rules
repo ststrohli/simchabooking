@@ -52,6 +52,7 @@ service cloud.firestore {
         conversationId == request.auth.uid ||
         conversationId.matches('^' + request.auth.uid + '_.*') ||
         conversationId.matches('.*_' + request.auth.uid + '$') ||
+        hasRole('vendor') ||
         (isAdmin() && (conversationId == 'admin' || conversationId.matches('^admin_.*') || conversationId.matches('.*_admin$')))
       );
     }

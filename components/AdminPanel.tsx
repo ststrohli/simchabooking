@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff, Filter, ArrowUpDown, ArrowUp, ArrowDown, UserPlus, UserCheck, Clock } from 'lucide-react';
+import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, Check, CheckCheck, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff, Filter, ArrowUpDown, ArrowUp, ArrowDown, UserPlus, UserCheck, Clock, Mic } from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType, firebaseConfig } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
 import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, addDoc, setDoc, where, getDocs, getDoc, deleteField } from 'firebase/firestore';
@@ -498,7 +498,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const getOtherUserDetails = (otherId: string, lastMsg: Message) => {
     // Try to find in vendors first if they are a vendor
-    const vendor = vendors.find(v => v.id === otherId || v.contactEmail === lastMsg.vendorEmail);
+    const vendor = vendors.find(
+      v => v.id === otherId || (lastMsg.vendorEmail && v.contactEmail?.toLowerCase() === lastMsg.vendorEmail.toLowerCase())
+    );
     if (vendor) {
       return {
         id: vendor.id,
@@ -510,12 +512,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     // Try to find in users
-    const user = users.find(u => u.id === otherId || u.username?.toLowerCase() === lastMsg.clientEmail?.toLowerCase());
+    const cleanClientEmail = (lastMsg.clientEmail || '').trim().toLowerCase();
+    const user = users.find(
+      u =>
+        u.id === otherId ||
+        (cleanClientEmail && ((u.username || (u as any).email || '').toLowerCase() === cleanClientEmail))
+    );
     if (user) {
+      const uEmail = user.username || (user as any).email || lastMsg.clientEmail || '';
       return {
         id: user.id,
-        name: user.name || user.username?.split('@')[0] || 'Client',
-        email: user.username || lastMsg.clientEmail || '',
+        name: user.name || uEmail.split('@')[0] || 'Client',
+        email: uEmail,
         role: 'client' as 'vendor' | 'client',
         avatar: user.photoURL || ''
       };
@@ -526,7 +534,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       id: otherId,
       name: lastMsg.clientName || 'User',
       email: lastMsg.clientEmail || '',
-      role: (lastMsg.vendorEmail ? 'vendor' : 'client') as 'vendor' | 'client',
+      role: (lastMsg.vendorEmail && !lastMsg.clientEmail ? 'vendor' : 'client') as 'vendor' | 'client',
       avatar: ''
     };
   };
@@ -534,7 +542,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const getConversationParticipants = (lastMsg: Message) => {
     const sId = lastMsg.senderId || '';
     const rId = lastMsg.receiverId || '';
-    
+    const cleanClientEmail = (lastMsg.clientEmail || '').trim().toLowerCase();
+
     // Find vendor in vendors list by either senderId, receiverId, or vendorEmail
     const vendor = vendors.find(v => 
       v.id === sId || 
@@ -546,13 +555,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const client = users.find(u => 
       u.id === sId || 
       u.id === rId || 
-      (lastMsg.clientEmail && u.username?.toLowerCase() === lastMsg.clientEmail.toLowerCase())
+      (cleanClientEmail && ((u.username || (u as any).email || '').toLowerCase() === cleanClientEmail))
     );
     
     const clientDetails = {
       id: client?.id || (sId === vendor?.id ? rId : sId),
       name: client?.name || lastMsg.clientName || 'Client',
-      email: client?.username || lastMsg.clientEmail || '',
+      email: client?.username || (client as any)?.email || lastMsg.clientEmail || '',
       avatar: client?.photoURL || ''
     };
 
@@ -2626,40 +2635,118 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         })()}
 
         {activeTab === 'messages' && (() => {
-            const lastMessagesByConversation: Record<string, Message> = {};
-            const allMessagesByConversation: Record<string, Message[]> = {};
+            type AdminThreadBucket = {
+                cid: string;
+                cids: Set<string>;
+                isAdminSupport: boolean;
+                vendorDetails: { id: string; name: string; email: string; avatar: string };
+                clientDetails: { id: string; name: string; email: string; avatar: string };
+                otherUser: { id: string; name: string; email: string; role: 'vendor' | 'client'; avatar: string };
+                messages: Message[];
+                msg: Message;
+            };
+
+            const buckets: AdminThreadBucket[] = [];
+            const seenMsgIds = new Set<string>();
+
             messages.forEach(m => {
                 if (!m) return;
-                const cid = m.conversationId || (m.senderId === 'admin' ? `admin_${m.receiverId || 'unknown'}` : `${m.senderId || 'unknown'}_admin`);
-                const mTime = m.timestamp ? new Date(m.timestamp).getTime() : 0;
-                const lastTime = (lastMessagesByConversation[cid] && lastMessagesByConversation[cid].timestamp) ? new Date(lastMessagesByConversation[cid].timestamp).getTime() : 0;
-                if (!lastMessagesByConversation[cid] || mTime > lastTime) {
-                    const msgCopy = { ...m, conversationId: cid };
-                    lastMessagesByConversation[cid] = msgCopy;
+                if (m.id && seenMsgIds.has(m.id)) return;
+                if (m.id) seenMsgIds.add(m.id);
+
+                const rawCid = m.conversationId || (m.senderId === 'admin' ? `admin_${m.receiverId || 'unknown'}` : `${m.senderId || 'unknown'}_admin`);
+                const isAdminSupport = Boolean(m.senderId === 'admin' || m.receiverId === 'admin' || m.participants?.includes('admin') || m.isAdminInquiry);
+                const { vendor: vendorDetails, client: clientDetails } = getConversationParticipants(m);
+                const otherId = getOtherUserId(m);
+                const otherUser = getOtherUserDetails(otherId, m);
+
+                const clientUidValid = clientDetails.id && clientDetails.id !== 'client_legacy' && clientDetails.id !== 'admin' && !clientDetails.id.includes('@') ? clientDetails.id : '';
+                const clientEmailLower = (clientDetails.email && clientDetails.email.includes('@') ? clientDetails.email : '').trim().toLowerCase();
+                const vendorIdValid = vendorDetails.id && vendorDetails.id !== 'admin' ? vendorDetails.id : '';
+
+                // Find if an existing bucket represents the exact same contact/conversation pair
+                let bucket = buckets.find(b => {
+                    if (b.isAdminSupport !== isAdminSupport) return false;
+                    if (isAdminSupport) {
+                        const bClientUid = b.clientDetails.id && b.clientDetails.id !== 'client_legacy' && !b.clientDetails.id.includes('@') ? b.clientDetails.id : '';
+                        const bEmailLower = (b.clientDetails.email || '').trim().toLowerCase();
+                        if (clientUidValid && bClientUid && clientUidValid === bClientUid) return true;
+                        if (clientEmailLower && bEmailLower && clientEmailLower === bEmailLower) return true;
+                        if (b.cids.has(rawCid)) return true;
+                        return false;
+                    } else {
+                        const bClientUid = b.clientDetails.id && b.clientDetails.id !== 'client_legacy' && !b.clientDetails.id.includes('@') ? b.clientDetails.id : '';
+                        const bEmailLower = (b.clientDetails.email || '').trim().toLowerCase();
+                        const sameVendor = vendorIdValid && b.vendorDetails.id === vendorIdValid;
+                        if (sameVendor && clientUidValid && bClientUid && clientUidValid === bClientUid) return true;
+                        if (sameVendor && clientEmailLower && bEmailLower && clientEmailLower === bEmailLower) return true;
+                        if (b.cids.has(rawCid)) return true;
+                        return false;
+                    }
+                });
+
+                const canonicalCid = isAdminSupport
+                    ? (clientUidValid ? ['admin', clientUidValid].sort().join('_') : rawCid)
+                    : (clientUidValid && vendorIdValid ? [vendorIdValid, clientUidValid].sort().join('_') : rawCid);
+
+                if (!bucket) {
+                    bucket = {
+                        cid: canonicalCid,
+                        cids: new Set([rawCid, canonicalCid]),
+                        isAdminSupport,
+                        vendorDetails,
+                        clientDetails,
+                        otherUser,
+                        messages: [],
+                        msg: { ...m, conversationId: canonicalCid }
+                    };
+                    buckets.push(bucket);
+                } else {
+                    bucket.cids.add(rawCid);
+                    bucket.cids.add(canonicalCid);
+                    if (bucket.cid.includes('client_legacy') && !canonicalCid.includes('client_legacy')) {
+                        bucket.cid = canonicalCid;
+                    }
+                    if ((!bucket.clientDetails.id || bucket.clientDetails.id === 'client_legacy') && clientUidValid) {
+                        bucket.clientDetails.id = clientUidValid;
+                    }
+                    if (!bucket.clientDetails.email && clientDetails.email) {
+                        bucket.clientDetails.email = clientDetails.email;
+                    }
+                    if ((bucket.clientDetails.name === 'Client' || bucket.clientDetails.name === 'User') && clientDetails.name !== 'Client') {
+                        bucket.clientDetails.name = clientDetails.name;
+                    }
+                    if (!bucket.clientDetails.avatar && clientDetails.avatar) {
+                        bucket.clientDetails.avatar = clientDetails.avatar;
+                    }
+                    if ((!bucket.otherUser.id || bucket.otherUser.id === 'client_legacy') && otherUser.id && otherUser.id !== 'client_legacy') {
+                        bucket.otherUser = otherUser;
+                    }
                 }
-                if (!allMessagesByConversation[cid]) {
-                    allMessagesByConversation[cid] = [];
-                }
-                allMessagesByConversation[cid].push(m);
+
+                bucket.messages.push(m);
             });
 
-            const processedList = Object.values(lastMessagesByConversation).map(msg => {
-                const cid = msg.conversationId || '';
-                const isAdminSupport = msg.senderId === 'admin' || msg.receiverId === 'admin' || msg.participants?.includes('admin') || msg.isAdminInquiry;
-                const hasUnread = (allMessagesByConversation[cid] || []).some(m => m.senderId !== 'admin' && !m.isRead);
-                
-                const { vendor: vendorDetails, client: clientDetails } = getConversationParticipants(msg);
-                const otherId = getOtherUserId(msg);
-                const otherUser = getOtherUserDetails(otherId, msg);
+            const processedList = buckets.map(bucket => {
+                bucket.messages.sort((a, b) => {
+                    const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+                    const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+                    return tA - tB;
+                });
+                const latest = bucket.messages[bucket.messages.length - 1] || bucket.msg;
+                const msg = { ...latest, conversationId: bucket.cid };
+                const hasUnread = bucket.messages.some(m => m.senderId !== 'admin' && !m.isRead);
 
                 return {
                     msg,
-                    cid,
-                    isAdminSupport,
+                    cid: bucket.cid,
+                    cids: bucket.cids,
+                    messages: bucket.messages,
+                    isAdminSupport: bucket.isAdminSupport,
                     hasUnread,
-                    vendorDetails,
-                    clientDetails,
-                    otherUser
+                    vendorDetails: bucket.vendorDetails,
+                    clientDetails: bucket.clientDetails,
+                    otherUser: bucket.otherUser
                 };
             });
 
@@ -2694,217 +2781,217 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 }
             });
 
+            const getInitials = (name?: string): string => {
+                if (!name || !name.trim()) return 'U';
+                const parts = name.trim().split(/\s+/);
+                if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+                return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+            };
+
             return (
-                <div className="space-y-6 animate-in slide-in-from-right-10 duration-500">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[600px]">
-                        {/* Inbox Sidebar */}
-                        <div className="bg-[#111] rounded-2xl border border-white/5 overflow-hidden flex flex-col">
-                            <div className="p-6 border-b border-white/5 bg-black/40">
-                                 <h3 className="font-bold text-[#D4AF37] font-[Cinzel] flex items-center gap-2">
-                                    <MessageSquare className="w-4 h-4" /> Message Inbox
-                                 </h3>
-                            </div>
-
-                            {/* Search and Filters panel */}
-                            <div className="p-4 border-b border-white/5 bg-zinc-950/40 space-y-3">
-                                {/* Search bar */}
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-400" />
-                                    <input
-                                        type="text"
-                                        value={convoSearchQuery}
-                                        onChange={(e) => setConvoSearchQuery(e.target.value)}
-                                        placeholder="Search clients, vendors, texts..."
-                                        className="w-full bg-black border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-[#D4AF37] transition-all"
-                                    />
-                                    {convoSearchQuery && (
-                                        <button 
-                                            onClick={() => setConvoSearchQuery('')}
-                                            className="absolute right-3 top-2.5 text-zinc-400 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    )}
-                                </div>
-
-                                {/* Filter Grid */}
-                                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                                    {/* Chat Type */}
-                                    <div className="space-y-1">
-                                        <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block">Chat Type</label>
-                                        <div className="relative">
-                                            <select
-                                                value={convoTypeFilter}
-                                                onChange={(e) => setConvoTypeFilter(e.target.value as any)}
-                                                className="w-full bg-black border border-white/10 rounded-lg px-2 py-1.5 text-zinc-300 focus:outline-none focus:border-[#D4AF37] appearance-none cursor-pointer"
-                                            >
-                                                <option value="all">All Chats</option>
-                                                <option value="admin">Support / Admin</option>
-                                                <option value="vendor_client">Vendor-Client</option>
-                                            </select>
-                                            <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 text-zinc-400 pointer-events-none" />
-                                        </div>
-                                    </div>
-
-                                    {/* Status */}
-                                    <div className="space-y-1">
-                                        <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block">Status</label>
-                                        <div className="relative">
-                                            <select
-                                                value={convoReadFilter}
-                                                onChange={(e) => setConvoReadFilter(e.target.value as any)}
-                                                className="w-full bg-black border border-white/10 rounded-lg px-2 py-1.5 text-zinc-300 focus:outline-none focus:border-[#D4AF37] appearance-none cursor-pointer"
-                                            >
-                                                <option value="all">All Status</option>
-                                                <option value="unread">Unread</option>
-                                                <option value="read">Read</option>
-                                            </select>
-                                            <ChevronDown className="absolute right-2 top-2.5 w-3 h-3 text-zinc-400 pointer-events-none" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Sort & Stats */}
-                                <div className="flex justify-between items-center text-[10px] pt-2 border-t border-white/5">
-                                    <div className="flex items-center gap-1.5">
-                                        <ArrowUpDown className="w-3.5 h-3.5 text-[#D4AF37]" />
-                                        <select
-                                            value={convoSortBy}
-                                            onChange={(e) => setConvoSortBy(e.target.value as any)}
-                                            className="bg-transparent text-zinc-300 focus:outline-none cursor-pointer font-medium"
-                                        >
-                                            <option value="recent">Newest First</option>
-                                            <option value="oldest">Oldest First</option>
-                                            <option value="alphabetical">Name A-Z</option>
-                                        </select>
-                                    </div>
-                                    <span className="text-zinc-400 font-bold uppercase tracking-wider text-[8px]">
-                                        Results: <span className="text-[#D4AF37]">{filteredList.length}</span>
-                                    </span>
-                                </div>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto">
-                                {filteredList.length === 0 ? (
-                                    <div className="p-12 text-center opacity-30 flex flex-col items-center justify-center">
-                                        <Bot className="w-12 h-12 mx-auto mb-2 text-[#D4AF37]" />
-                                        <p className="text-xs font-[Cinzel] font-bold text-[#D4AF37] uppercase tracking-wider">No chats found</p>
-                                        <p className="text-[10px] mt-1 text-zinc-400">Try adjusting your filters or search query.</p>
-                                    </div>
-                                ) : (
-                                    filteredList.map(({ msg, cid, isAdminSupport, hasUnread, vendorDetails, clientDetails, otherUser }, idx) => {
-                                        const isSelected = selectedConversationId === cid || selectedInquiryEmail === otherUser.email;
-                                        const itemBgClass = isSelected 
-                                            ? 'bg-[#D4AF37]/5 border-r-2 border-r-[#D4AF37]' 
-                                            : (hasUnread ? 'bg-white/[0.04] border-l-2 border-l-[#D4AF37]' : '');
-                                        
-                                        return (
-                                            <div 
-                                                key={cid ? `${cid}-${idx}` : `${otherUser.id}-${idx}`}
-                                                role="button"
-                                                tabIndex={0}
-                                                onClick={() => {
-                                                    setSelectedInquiryEmail(otherUser.email);
-                                                    setSelectedConversationId(cid);
-                                                    
-                                                    // Auto mark unread incoming messages as read when opening conversation
-                                                    if (cid && isAdminSupport) {
-                                                        markChatAsRead(cid, 'admin').catch(console.error);
-                                                    }
-                                                }}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' || e.key === ' ') {
-                                                        e.preventDefault();
-                                                        setSelectedInquiryEmail(otherUser.email);
-                                                        setSelectedConversationId(cid);
-                                                        
-                                                        // Auto mark unread incoming messages as read when opening conversation
-                                                        if (cid && isAdminSupport) {
-                                                            markChatAsRead(cid, 'admin').catch(console.error);
-                                                        }
-                                                    }
-                                                }}
-                                                className={`w-full p-6 text-left border-b border-white/5 transition-all hover:bg-white/5 flex flex-col gap-1.5 cursor-pointer outline-none focus-visible:bg-white/5 ${itemBgClass}`}
-                                            >
-                                                <div className="flex justify-between items-center w-full gap-2">
-                                                    <div className="flex items-center gap-2 min-w-0">
-                                                        {hasUnread && (
-                                                            <span className="w-2 h-2 rounded-full bg-[#D4AF37] animate-pulse shadow-[0_0_8px_rgba(212,175,55,0.6)] flex-shrink-0"></span>
-                                                        )}
-                                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isAdminSupport ? 'bg-green-400' : 'bg-[#D4AF37]'}`}></span>
-                                                        
-                                                        <h4 className={`text-white text-sm truncate max-w-[130px] ${hasUnread ? 'font-bold text-[#D4AF37]' : 'font-semibold'}`}>
-                                                            {isAdminSupport ? `Support: ${clientDetails.name}` : `${clientDetails.name}`}
-                                                        </h4>
-
-                                                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
-                                                            isAdminSupport 
-                                                                ? 'bg-green-500/10 text-green-400 border border-green-500/20' 
-                                                                : 'bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20'
-                                                        }`}>
-                                                            {isAdminSupport ? 'Support' : 'Client-Vendor'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                        <span className="text-[9px] text-zinc-400">
-                                                            {msg.timestamp ? new Date(msg.timestamp).toLocaleDateString() : ''}
-                                                        </span>
-                                                        {isAdminSupport && (
-                                                            <button
-                                                                onClick={(e) => toggleConversationReadStatus(cid, otherUser.email, hasUnread, e)}
-                                                                title={hasUnread ? "Mark as Read" : "Mark as Unread"}
-                                                                className="p-1 hover:bg-white/10 rounded-full transition-all"
-                                                            >
-                                                                {hasUnread ? (
-                                                                    <Mail className="w-3.5 h-3.5 text-[#D4AF37]" />
-                                                                ) : (
-                                                                    <MailOpen className="w-3.5 h-3.5 text-zinc-400 hover:text-white" />
-                                                                )}
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                
-                                                {/* Details subtext */}
-                                                {!isAdminSupport && (
-                                                    <p className="text-[9px] font-medium text-[#D4AF37]/75">
-                                                        ↔️ {vendorDetails.name} ({vendorDetails.email})
-                                                    </p>
-                                                )}
-                                                
-                                                <p className="text-[10px] text-zinc-400 truncate">
-                                                    {clientDetails.email}
-                                                </p>
-                                                <p className={`text-xs line-clamp-1 ${hasUnread ? 'text-white font-medium' : 'text-zinc-300 italic'}`}>
-                                                    {msg.text || 'Shared attachment'}
-                                                </p>
-                                            </div>
-                                        );
-                                    })
-                                )}
-                            </div>
+                <div className="space-y-4 animate-in fade-in duration-500">
+                    {/* Compact Search & Filter Bar */}
+                    <div className="bg-[#111] p-4 rounded-2xl border border-white/5 flex flex-col md:flex-row gap-3">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                            <input
+                                type="text"
+                                value={convoSearchQuery}
+                                onChange={(e) => setConvoSearchQuery(e.target.value)}
+                                placeholder="Search chats..."
+                                className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-8 py-2.5 text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-[#D4AF37] transition-all"
+                            />
+                            {convoSearchQuery && (
+                                <button 
+                                    onClick={() => setConvoSearchQuery('')}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10"
+                                >
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            )}
                         </div>
-
-                        {/* Chat Area - Rebuilt to use unified ChatModal */}
-                        <div className="lg:col-span-2 bg-[#111] rounded-2xl border border-white/5 overflow-hidden flex flex-col items-center justify-center p-12 text-center bg-gradient-to-br from-zinc-950 to-[#111]">
-                            <div className="w-16 h-16 rounded-full bg-[#D4AF37]/10 flex items-center justify-center border border-[#D4AF37]/20 text-[#D4AF37] mb-6 animate-pulse">
-                                <MessageSquare className="w-8 h-8" />
-                            </div>
-                            <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Secure Oversight Console</h3>
-                            <p className="text-zinc-400 text-xs max-w-sm mt-3 leading-relaxed">
-                                Choose an active inquiry or support thread from the sidebar. The secure real-time messaging channel will launch instantly in our premium client-support interface.
-                            </p>
+                        <div className="grid grid-cols-3 gap-2">
+                            <select
+                                value={convoTypeFilter}
+                                onChange={(e) => setConvoTypeFilter(e.target.value as any)}
+                                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
+                            >
+                                <option value="all">All Chats</option>
+                                <option value="admin">Support</option>
+                                <option value="vendor_client">Vendor-Client</option>
+                            </select>
+                            <select
+                                value={convoReadFilter}
+                                onChange={(e) => setConvoReadFilter(e.target.value as any)}
+                                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
+                            >
+                                <option value="all">All Status</option>
+                                <option value="unread">Unread</option>
+                                <option value="read">Read</option>
+                            </select>
+                            <select
+                                value={convoSortBy}
+                                onChange={(e) => setConvoSortBy(e.target.value as any)}
+                                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
+                            >
+                                <option value="recent">Newest First</option>
+                                <option value="oldest">Oldest First</option>
+                                <option value="alphabetical">Name A-Z</option>
+                            </select>
                         </div>
                     </div>
 
+                    {/* Pill-Shaped Photo-Background Conversation List */}
+                    <div className="space-y-3">
+                        {filteredList.length === 0 ? (
+                            <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
+                                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No Active Chats</p>
+                            </div>
+                        ) : (
+                            filteredList.map(({ msg, cid, isAdminSupport, hasUnread, vendorDetails, clientDetails, otherUser }, idx) => {
+                                const displayPhoto = otherUser.avatar || clientDetails.avatar || vendorDetails.avatar;
+                                const displayName = isAdminSupport
+                                    ? clientDetails.name
+                                    : `${clientDetails.name} • ${vendorDetails.name}`;
+                                const initials = getInitials(clientDetails.name || otherUser.name);
+                                const isVoice = msg.type === 'voice' || !!msg.audioUrl;
+                                const isImg = msg.type === 'image' || !!msg.imageUrl;
+                                const isVid = msg.type === 'file' && msg.fileType?.startsWith('video/');
+                                const isDoc = msg.type === 'file' && !msg.fileType?.startsWith('video/');
+
+                                const handleOpenAdminThread = () => {
+                                    setSelectedInquiryEmail(otherUser.email);
+                                    setSelectedConversationId(cid);
+                                    if (cid && isAdminSupport) {
+                                        markChatAsRead(cid, 'admin').catch(console.error);
+                                    }
+                                };
+
+                                return (
+                                    <div
+                                        key={cid ? `${cid}-${idx}` : `${otherUser.id}-${idx}`}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={handleOpenAdminThread}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                handleOpenAdminThread();
+                                            }
+                                        }}
+                                        className={`simcha-event-card relative w-full overflow-hidden rounded-full border transition-all duration-300 cursor-pointer group flex items-center justify-between gap-3 px-5 sm:px-7 py-3.5 sm:py-4 min-h-[68px] sm:min-h-[74px] shadow-xl active:scale-[0.99] ${
+                                            hasUnread || idx === 0
+                                                ? 'border-[#D4AF37] shadow-[0_0_24px_rgba(212,175,55,0.18)]'
+                                                : 'border-[#D4AF37]/35 hover:border-[#D4AF37]/80'
+                                        }`}
+                                    >
+                                        {/* Full Background: Contact Photo OR Initials Pattern */}
+                                        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                                            {displayPhoto ? (
+                                                <>
+                                                    <img
+                                                        src={displayPhoto}
+                                                        alt={displayName}
+                                                        className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                                                    />
+                                                    <div className="absolute inset-0 simcha-event-card-overlay" />
+                                                </>
+                                            ) : (
+                                                <div className="w-full h-full bg-gradient-to-r from-[#0c0c0c] via-[#151208] to-[#0c0c0c] flex items-center justify-center relative">
+                                                    <span className="font-[Cinzel] font-black text-5xl sm:text-6xl tracking-[0.25em] text-[#D4AF37]/15 select-none">
+                                                        {initials}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Left Side: Initials Badge (when no photo) + Name + Latest Message */}
+                                        <div className="relative z-10 flex items-center gap-3 min-w-0 flex-1">
+                                            {!displayPhoto && (
+                                                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs sm:text-sm shadow-inner">
+                                                    {initials}
+                                                </div>
+                                            )}
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-sm sm:text-base text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
+                                                        {displayName}
+                                                    </span>
+                                                    {hasUnread && (
+                                                        <span className="bg-[#D4AF37] text-black text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest shrink-0 shadow-sm">
+                                                            New
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1.5 text-xs text-zinc-200/90 truncate mt-0.5 drop-shadow-sm">
+                                                    {(msg.senderId === 'admin' || (msg as any).sender_role === 'admin') && (
+                                                        (msg.isRead || Object.keys((msg as any).read_by || {}).some(k => k !== 'admin' && k !== msg.senderId)) ? (
+                                                            <span title="Seen" className="inline-flex items-center shrink-0">
+                                                                <CheckCheck className="w-3.5 h-3.5 text-[#34B7F1] shrink-0" />
+                                                            </span>
+                                                        ) : (
+                                                            <span title="Sent" className="inline-flex items-center shrink-0">
+                                                                <Check className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                                                            </span>
+                                                        )
+                                                    )}
+                                                    {isVoice ? (
+                                                        <>
+                                                            <Mic className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                                                            <span className="truncate">Voice note</span>
+                                                        </>
+                                                    ) : isImg ? (
+                                                        <>
+                                                            <ImageIcon className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                                                            <span className="truncate">{msg.text && msg.text !== 'Sent an image' ? msg.text : 'Photo'}</span>
+                                                        </>
+                                                    ) : isVid ? (
+                                                        <>
+                                                            <Play className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                                                            <span className="truncate">{msg.text && msg.text !== 'Sent a video' ? msg.text : 'Video'}</span>
+                                                        </>
+                                                    ) : isDoc ? (
+                                                        <>
+                                                            <FileText className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                                                            <span className="truncate">{msg.fileName || 'Document'}</span>
+                                                        </>
+                                                    ) : (
+                                                        <span className="truncate">{msg.text || 'Tap to open chat'}</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Right Side: Date + Chevron */}
+                                        <div className="relative z-10 flex items-center gap-2 shrink-0">
+                                            {msg.timestamp && (
+                                                <span className="simcha-event-pill px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-bold text-zinc-100 border border-white/15">
+                                                    {new Date(msg.timestamp).toLocaleDateString()}
+                                                </span>
+                                            )}
+                                            <div className="w-7 h-7 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                                                <ChevronRight className="w-3.5 h-3.5" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
                     {selectedConversationId && (() => {
-                        const conversationMessages = messages.filter(m => 
-                            (selectedConversationId && (m.conversationId === selectedConversationId || [m.senderId, m.receiverId].sort().join('_') === selectedConversationId)) ||
-                            (!selectedConversationId && (m.clientEmail === selectedInquiryEmail || m.vendorEmail === selectedInquiryEmail))
+                        const matchedBucket = processedList.find(
+                            item => item.cid === selectedConversationId || item.cids?.has(selectedConversationId)
                         );
+                        const conversationMessages = matchedBucket
+                            ? matchedBucket.messages
+                            : messages.filter(m => 
+                                (selectedConversationId && (m.conversationId === selectedConversationId || [m.senderId, m.receiverId].sort().join('_') === selectedConversationId)) ||
+                                (!selectedConversationId && (m.clientEmail === selectedInquiryEmail || m.vendorEmail === selectedInquiryEmail))
+                            );
                         const lastMsg = conversationMessages[conversationMessages.length - 1];
-                        const otherId = lastMsg ? getOtherUserId(lastMsg) : '';
-                        const otherUser = lastMsg ? getOtherUserDetails(otherId, lastMsg) : { id: selectedInquiryEmail || '', name: 'User', email: selectedInquiryEmail || '', role: 'client' as const, avatar: '' };
+                        const otherId = matchedBucket?.otherUser.id || (lastMsg ? getOtherUserId(lastMsg) : '');
+                        const otherUser = matchedBucket?.otherUser || (lastMsg ? getOtherUserDetails(otherId, lastMsg) : { id: selectedInquiryEmail || '', name: 'User', email: selectedInquiryEmail || '', role: 'client' as const, avatar: '' });
 
                         return (
                             <ChatModal
@@ -2919,15 +3006,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     onSendMessage({
                                         ...payload,
                                         senderId: 'admin',
-                                        receiverId: otherUser.id || otherUser.email,
-                                        conversationId: selectedConversationId,
-                                        clientEmail: otherUser.role === 'client' ? otherUser.email : (lastMsg?.clientEmail || ''),
+                                        receiverId: payload.receiverId || otherUser.id || otherUser.email,
+                                        conversationId: payload.conversationId || matchedBucket?.cid || selectedConversationId,
+                                        clientEmail: payload.clientEmail || (otherUser.role === 'client' ? otherUser.email : (lastMsg?.clientEmail || '')),
                                         vendorEmail: otherUser.role === 'vendor' ? otherUser.email : (lastMsg?.vendorEmail || ''),
                                         isRead: false
                                     });
                                 }}
                                 showNotification={showNotification}
-                                messages={conversationMessages}
+                                messages={messages}
                                 user={{
                                     id: 'admin',
                                     name: 'Admin support',
@@ -2936,8 +3023,41 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 recipientUid={otherUser.id || otherUser.email}
                                 recipientName={otherUser.name || 'User'}
                                 recipientEmail={otherUser.email}
+                                recipientImage={otherUser.avatar}
+                                conversationIdOverride={selectedConversationId}
                                 isAdminReplying={true}
                                 vendors={vendors}
+                                customConversations={filteredList.map(item => {
+                                    const rawText = item.msg?.text;
+                                    const safeText = typeof rawText === 'string'
+                                        ? rawText
+                                        : (rawText && typeof rawText === 'object' && typeof (rawText as any).text === 'string' ? (rawText as any).text : '');
+                                    const lastMsgSentByAdmin = Boolean(
+                                        item.msg && (item.msg.senderId === 'admin' || (item.msg as any).sender_role === 'admin')
+                                    );
+                                    const lastMsgReadByOther = Boolean(
+                                        item.msg && (
+                                            item.msg.isRead ||
+                                            Object.keys((item.msg as any).read_by || {}).some(k => k !== 'admin' && k !== item.msg.senderId)
+                                        )
+                                    );
+                                    return {
+                                        id: item.cid,
+                                        contactId: item.otherUser.id || item.otherUser.email || item.cid,
+                                        name: item.otherUser.name || item.clientDetails.name || 'User',
+                                        email: item.otherUser.email || item.clientDetails.email,
+                                        category: item.isAdminSupport ? 'Support Inquiry' : `${item.clientDetails.name} ↔ ${item.vendorDetails.name}`,
+                                        image: item.otherUser.avatar || item.clientDetails.avatar || item.vendorDetails.avatar,
+                                        isAdmin: false,
+                                        lastMessage: safeText,
+                                        lastMessageType: item.msg?.type,
+                                        lastMessageTime: item.msg?.timestamp,
+                                        lastMessageIsSent: lastMsgSentByAdmin,
+                                        lastMessageIsRead: lastMsgReadByOther,
+                                        unreadCount: item.hasUnread ? 1 : 0,
+                                        conversationId: item.cid
+                                    };
+                                })}
                             />
                         );
                     })()}

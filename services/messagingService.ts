@@ -62,7 +62,13 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
     throw new Error('Receiver ID is required to send a message');
   }
 
-  const conversationId = [senderId, receiverId].sort().join('_');
+  const canonicalConvoId = [senderId, receiverId].sort().join('_');
+  const conversationId =
+    payload.conversationId &&
+    !payload.conversationId.includes('client_legacy') &&
+    (receiverId === 'client_legacy' || senderId === 'client_legacy')
+      ? payload.conversationId
+      : canonicalConvoId;
   const tempId = payload.tempId || `msg_${Date.now()}`;
   
   // Determine roles
@@ -74,7 +80,7 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
   const timestamp = serverTimestamp();
   
   // Prepare participants mapping
-  const participantIds = Array.from(new Set([senderId, receiverId])).filter(Boolean);
+  const participantIds = Array.from(new Set([senderId, receiverId, auth.currentUser?.uid || ''])).filter(Boolean);
 
   const batch = writeBatch(db);
 
@@ -85,17 +91,24 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
 
   const isNewConversation = !(await getDocSafe(conDocSnapRef)).exists();
 
+  const normalizedClientEmail = (payload.clientEmail || '').trim();
+  const normalizedClientName = (payload.clientName || '').trim() || 'Client';
+
   const conversationUpdate: Partial<Conversation> & Record<string, any> = {
     type,
     participant_ids: participantIds,
     last_message: payload.text || 'Shared a file',
     last_message_at: timestamp,
+    last_message_sender_id: senderId,
+    last_message_read: false,
+    ...(normalizedClientEmail ? { client_email: normalizedClientEmail } : {}),
+    ...(normalizedClientName && normalizedClientName !== 'Guest' ? { client_name: normalizedClientName } : {}),
   };
 
   // Assign optional fields depending on the schema
-  if (payload.senderId !== 'admin' && payload.receiverId !== 'admin') {
+  if (senderId !== 'admin' && receiverId !== 'admin') {
     // Booking chat usually has vendor/client
-    const clientId = senderRole === 'client' ? senderId : receiverId;
+    const clientId = senderRole === 'vendor' ? receiverId : senderId;
     const vendorId = senderRole === 'vendor' ? senderId : receiverId;
     conversationUpdate.client_id = clientId;
     conversationUpdate.vendor_id = vendorId;
@@ -126,8 +139,8 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
     // Additional fields to maintain parity with preexisting UI/UX without breaks
     senderId,
     receiverId,
-    clientEmail: payload.clientEmail || '',
-    clientName: payload.clientName || 'Guest',
+    clientEmail: normalizedClientEmail,
+    clientName: normalizedClientName,
     isRead: false,
     timestamp: new Date().toISOString(),
     tempId,
@@ -154,7 +167,7 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
   // Increment unread_count on members/{userId} for other participants
   for (const uid of participantIds) {
     const memberDocRef = doc(conDocSnapRef, 'members', uid);
-    if (uid === senderId) {
+    if (uid === senderId || (senderId !== 'admin' && uid === auth.currentUser?.uid)) {
       batch.set(memberDocRef, {
         last_read_at: timestamp
       }, { merge: true });
@@ -177,12 +190,16 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
 /**
  * Unsend/Delete a message from the database.
  */
-export async function deleteMessage(conversationId: string, messageId: string) {
+export async function deleteMessage(conversationId: string, messageId: string, fallbackLastMessage?: string) {
   if (!conversationId || !messageId) return;
+  const conDocRef = doc(db, 'conversations', conversationId);
   const msgDocRef = doc(db, 'conversations', conversationId, 'messages', messageId);
   try {
     const batch = writeBatch(db);
     batch.delete(msgDocRef);
+    if (fallbackLastMessage !== undefined) {
+      batch.set(conDocRef, { last_message: fallbackLastMessage }, { merge: true });
+    }
     await batch.commit();
   } catch (err) {
     console.error("Failed to delete/unsend message:", err);
@@ -238,7 +255,8 @@ export function subscribeToUserInbox(userId: string, callback: (conversations: a
 
 /**
  * 3. Mark as Read Action:
- * Batch updates to set read_by.{userId} = serverTimestamp() on unread messages,
+ * Batch updates to set read_by.{userId} = serverTimestamp() and isRead = true on incoming messages
+ * from the other party, records last_read_by / last_read_at_iso on the parent conversation doc,
  * and resets unread_count to 0 on their specific members/{userId} document.
  */
 export async function markChatAsRead(conversationId: string, userId: string) {
@@ -248,29 +266,45 @@ export async function markChatAsRead(conversationId: string, userId: string) {
   const messagesColRef = collection(conDocRef, 'messages');
 
   try {
-    // Read only unread messages (where they haven't explicitly read yet)
-    // We cannot query Map keys directly easily without reading all messages in limits or checking.
-    // So let's fetch active messages in the conversation (e.g. limit 50 or those where read_by.{userId} is not present)
     const q = query(messagesColRef, limit(50));
     const snapshot = await getDocsSafe(q);
 
     const batch = writeBatch(db);
     const timestamp = serverTimestamp();
-    let hasUpdates = false;
+    const nowIso = new Date().toISOString();
+    let hasIncomingMessages = false;
 
     snapshot.docs.forEach((msgDoc) => {
       const data = msgDoc.data();
       const readBy = data.read_by || {};
-      
-      // If user hasn't read-receipted this yet, update it
-      if (!readBy[userId]) {
-        batch.update(msgDoc.ref, {
-          [`read_by.${userId}`]: timestamp,
-          isRead: true, // compat fallback
-        });
-        hasUpdates = true;
+      const msgSenderId = data.sender_id || data.senderId || '';
+
+      // Only mark messages sent by the OTHER party as read when userId opens the conversation
+      if (msgSenderId && msgSenderId !== userId) {
+        hasIncomingMessages = true;
+        if (!readBy[userId] || !data.isRead) {
+          batch.update(msgDoc.ref, {
+            [`read_by.${userId}`]: timestamp,
+            isRead: true,
+            readAt: nowIso,
+          });
+        }
       }
     });
+
+    // Update parent conversation read-receipt metadata so the sender's listener sees it immediately
+    const convoReadUpdate: Record<string, any> = {
+      last_read_by: {
+        [userId]: timestamp,
+      },
+      last_read_at_iso: {
+        [userId]: nowIso,
+      },
+    };
+    if (hasIncomingMessages) {
+      convoReadUpdate.last_message_read = true;
+    }
+    batch.set(conDocRef, convoReadUpdate, { merge: true });
 
     // Reset unread_count to 0 on their members/{userId} doc
     const memberDocRef = doc(conDocRef, 'members', userId);
@@ -282,7 +316,6 @@ export async function markChatAsRead(conversationId: string, userId: string) {
     await batch.commit();
   } catch (err) {
     console.warn("Failed to mark chat as read in transaction/batch:", err);
-    // Silent fail if permission or lock issues, but throw if necessary
   }
 }
 
