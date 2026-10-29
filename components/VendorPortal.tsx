@@ -9,7 +9,7 @@ import { Vendor, Booking, Message, SelectedService, VendorService, ServiceCatego
 import { db, storage, auth } from '../services/firebase';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { markChatAsRead, deleteMessage, sendNewMessage } from '../services/messagingService';
-import { doc, updateDoc, writeBatch, onSnapshot, collection } from 'firebase/firestore';
+import { doc, updateDoc, writeBatch, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
@@ -457,6 +457,127 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     );
     return () => unsub();
   }, []);
+
+  // Direct real-time listener for all conversations involving this vendor so messages arrive immediately
+  const [liveVendorMessages, setLiveVendorMessages] = useState<Message[]>([]);
+  useEffect(() => {
+    if (!vendor?.id) return;
+    const msgListeners = new Map<string, () => void>();
+    const convoMsgsMap = new Map<string, Message[]>();
+
+    const rebuild = () => {
+      const seen = new Set<string>();
+      const list: Message[] = [];
+      for (const arr of convoMsgsMap.values()) {
+        for (const m of arr) {
+          if (m.id && seen.has(m.id)) continue;
+          if (m.id) seen.add(m.id);
+          list.push(m);
+        }
+      }
+      list.sort((a, b) => {
+        const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return tA - tB;
+      });
+      setLiveVendorMessages(list);
+    };
+
+    const subscribeConvoDoc = (cid: string) => {
+      if (!cid || msgListeners.has(cid)) return;
+      const unsubMsg = onSnapshot(
+        collection(db, 'conversations', cid, 'messages'),
+        (snap) => {
+          const msgs = snap.docs.map((docSnap) => {
+            const data = docSnap.data();
+            let timestampStr = data.timestamp || new Date().toISOString();
+            if (data.sent_at) {
+              if (typeof data.sent_at.toDate === 'function') {
+                timestampStr = data.sent_at.toDate().toISOString();
+              } else {
+                timestampStr = new Date(data.sent_at).toISOString();
+              }
+            }
+            return {
+              id: docSnap.id,
+              ...data,
+              senderId: data.sender_id || data.senderId,
+              conversationId: data.conversationId || cid,
+              timestamp: timestampStr,
+            } as Message;
+          });
+          convoMsgsMap.set(cid, msgs);
+          rebuild();
+        },
+        () => {}
+      );
+      msgListeners.set(cid, unsubMsg);
+    };
+
+    const qParticipants = query(
+      collection(db, 'conversations'),
+      where('participant_ids', 'array-contains', vendor.id)
+    );
+    const qVendorField = query(
+      collection(db, 'conversations'),
+      where('vendor_id', '==', vendor.id)
+    );
+
+    const unsub1 = onSnapshot(
+      qParticipants,
+      (snap) => {
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          if (data.type === 'admin_support') return;
+          subscribeConvoDoc(d.id);
+        });
+      },
+      () => {}
+    );
+
+    const unsub2 = onSnapshot(
+      qVendorField,
+      (snap) => {
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          if (data.type === 'admin_support') return;
+          subscribeConvoDoc(d.id);
+        });
+      },
+      () => {}
+    );
+
+    return () => {
+      unsub1();
+      unsub2();
+      msgListeners.forEach((u) => u());
+      msgListeners.clear();
+    };
+  }, [vendor?.id]);
+
+  const allVendorMessages = useMemo(() => {
+    const byId = new Map<string, Message>();
+    const combined = [...messages, ...liveVendorMessages];
+    combined.forEach((m) => {
+      if (!m) return;
+      if (m.isAdminInquiry || m.senderId === 'admin' || m.receiverId === 'admin') return;
+      const role = (m as any).sender_role;
+      // Exclude messages where the vendor account was acting as a client messaging a DIFFERENT vendor
+      if (role === 'client' && m.receiverId && m.receiverId !== vendor.id) {
+        const vEmail = (vendor.contactEmail || vendor.username || '').trim().toLowerCase();
+        if (!vEmail || m.vendorEmail?.toLowerCase() !== vEmail) {
+          return;
+        }
+      }
+      const key = m.id || m.tempId || `${m.senderId}_${m.timestamp}_${m.text}`;
+      byId.set(key, m);
+    });
+    return Array.from(byId.values()).sort((a, b) => {
+      const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return tA - tB;
+    });
+  }, [messages, liveVendorMessages, vendor.id, vendor.contactEmail, vendor.username]);
 
   const getClientPhoto = (b: Booking): string | undefined => {
     if (b.clientPhotoURL) return b.clientPhotoURL;
@@ -1151,7 +1272,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     // 3. Deduplicate messages by ID and seed identity links from messages
     const seenMessageIds = new Set<string>();
     const uniqueMessages: Message[] = [];
-    messages.forEach((m) => {
+    allVendorMessages.forEach((m) => {
       if (!m) return;
       if (m.id && seenMessageIds.has(m.id)) return;
       if (m.id) seenMessageIds.add(m.id);
@@ -1226,7 +1347,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         (resolvedEmail ? resolvedEmail.split('@')[0] : 'Client');
 
       const canonicalConvoId =
-        resolvedUid
+        m.conversationId && !m.conversationId.includes('client_legacy')
+          ? m.conversationId
+          : resolvedUid
           ? [vendor.id, resolvedUid].sort().join('_')
           : m.conversationId;
 
@@ -1305,7 +1428,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         lastMessage: g.lastMessage,
       },
     ] as [string, { name: string; email: string; clientUid: string; conversationId?: string; messages: Message[]; lastMessage: Message }]);
-  }, [messages, vendor.id, clientDirectoryMap, bookings]);
+  }, [allVendorMessages, vendor.id, clientDirectoryMap, bookings]);
 
   const getThreadClientPhoto = (email: string, clientUid?: string): string | undefined => {
     if (clientUid && clientPhotosMap[clientUid]) return clientPhotosMap[clientUid];
@@ -3464,19 +3587,25 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
                 if (!threadData) return null;
 
-                const targetClientUid =
-                  threadData.clientUid ||
-                  threadData.messages.find(m => m.senderId !== vendor.id)?.senderId ||
-                  selectedThreadContext?.clientUid ||
-                  selectedThreadEmail;
-                const targetConversationId =
-                  threadData.conversationId ||
-                  threadData.lastMessage?.conversationId ||
-                  selectedThreadContext?.conversationId ||
-                  [vendor.id, targetClientUid].sort().filter(Boolean).join('_');
                 const cleanThreadEmail =
                   (threadData.email && threadData.email.includes('@') ? threadData.email : '') ||
                   (selectedThreadContext?.email && selectedThreadContext.email.includes('@') ? selectedThreadContext.email : '');
+                const targetClientUid =
+                  (threadData.clientUid && threadData.clientUid !== 'client_legacy' && !threadData.clientUid.includes('@') ? threadData.clientUid : '') ||
+                  threadData.messages.find(m => m.senderId && m.senderId !== vendor.id && (m as any).sender_role !== 'vendor' && m.senderId !== 'client_legacy' && !m.senderId.includes('@'))?.senderId ||
+                  threadData.messages.find(m => m.receiverId && m.receiverId !== vendor.id && (m as any).sender_role === 'vendor' && m.receiverId !== 'client_legacy' && !m.receiverId.includes('@'))?.receiverId ||
+                  (selectedThreadContext?.clientUid && selectedThreadContext.clientUid !== 'client_legacy' && !selectedThreadContext.clientUid.includes('@') ? selectedThreadContext.clientUid : '') ||
+                  (cleanThreadEmail && clientDirectoryMap[cleanThreadEmail.toLowerCase()]?.uid) ||
+                  bookings.find(b => cleanThreadEmail && b.contactEmail?.toLowerCase() === cleanThreadEmail.toLowerCase() && (b.userId || b.clientId))?.userId ||
+                  selectedThreadEmail;
+                const targetConversationId =
+                  threadData.conversationId && !threadData.conversationId.includes('client_legacy')
+                    ? threadData.conversationId
+                    : threadData.lastMessage?.conversationId && !threadData.lastMessage.conversationId.includes('client_legacy')
+                    ? threadData.lastMessage.conversationId
+                    : selectedThreadContext?.conversationId && !selectedThreadContext.conversationId.includes('client_legacy')
+                    ? selectedThreadContext.conversationId
+                    : [vendor.id, targetClientUid].sort().filter(Boolean).join('_');
                 const clientPhoto = getThreadClientPhoto(cleanThreadEmail, targetClientUid);
 
                 return (
@@ -3490,23 +3619,39 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     }}
                     onSendMessage={async (payload) => {
                       const senderId = vendor.id;
-                      const rawReceiver = payload.receiverId || targetClientUid;
-                      const receiverId =
-                        rawReceiver && rawReceiver !== 'client_legacy' && !rawReceiver.includes('@')
-                          ? rawReceiver
-                          : targetClientUid;
-                      const conversationId =
-                        payload.conversationId && !payload.conversationId.includes('client_legacy')
-                          ? payload.conversationId
-                          : [senderId, receiverId].sort().join('_');
-                      const finalClientEmail =
+                      const finalClientEmail = (
                         (payload.clientEmail && payload.clientEmail.includes('@') ? payload.clientEmail : '') ||
                         cleanThreadEmail ||
-                        (clientDirectoryMap[receiverId]?.email || '');
+                        (targetClientUid && clientDirectoryMap[targetClientUid]?.email) ||
+                        ''
+                      ).trim().toLowerCase();
+
+                      const rawReceiver = payload.receiverId || targetClientUid;
+                      const resolvedClientUid =
+                        (rawReceiver && rawReceiver !== 'client_legacy' && rawReceiver !== vendor.id && !rawReceiver.includes('@')
+                          ? rawReceiver
+                          : '') ||
+                        (targetClientUid && targetClientUid !== 'client_legacy' && targetClientUid !== vendor.id && !targetClientUid.includes('@')
+                          ? targetClientUid
+                          : '') ||
+                        (finalClientEmail && clientDirectoryMap[finalClientEmail]?.uid) ||
+                        bookings.find(b => finalClientEmail && b.contactEmail?.toLowerCase() === finalClientEmail && (b.userId || b.clientId))?.userId ||
+                        rawReceiver ||
+                        'client_legacy';
+
+                      const receiverId = resolvedClientUid;
+                      const conversationId =
+                        receiverId && receiverId !== 'client_legacy' && !receiverId.includes('@')
+                          ? [senderId, receiverId].sort().join('_')
+                          : payload.conversationId && !payload.conversationId.includes('client_legacy')
+                          ? payload.conversationId
+                          : [senderId, receiverId].sort().join('_');
+
                       const finalClientName =
                         (payload.clientName && payload.clientName !== 'Client' && payload.clientName !== 'Guest' ? payload.clientName : '') ||
                         threadData.name ||
                         clientDirectoryMap[receiverId]?.name ||
+                        (finalClientEmail && clientDirectoryMap[finalClientEmail]?.name) ||
                         'Client';
 
                       await sendNewMessage({
@@ -3516,6 +3661,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         participants: [senderId, receiverId],
                         clientEmail: finalClientEmail,
                         clientName: finalClientName,
+                        vendorId: vendor.id,
+                        vendorName: vendor.name,
                         vendorEmail: vendor.contactEmail || '',
                         text: payload.text || '',
                         senderRole: 'vendor',
@@ -3525,11 +3672,12 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         audioUrl: payload.audioUrl,
                         audioDuration: payload.audioDuration,
                         fileName: payload.fileName,
-                        fileType: payload.fileType
-                      });
+                        fileType: payload.fileType,
+                        tempId: payload.tempId
+                      } as any);
                     }}
                     showNotification={showNotification}
-                    messages={messages}
+                    messages={allVendorMessages}
                     user={{
                       id: vendor.id,
                       name: vendor.name,

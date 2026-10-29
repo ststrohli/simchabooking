@@ -31,7 +31,7 @@ import {
 import { Vendor, Message, UserAccount } from '../types';
 import { auth, db, handleFirestoreError, OperationType } from '../services/firebase';
 import { markChatAsRead, subscribeToUserInbox, ensureAdminSupportConversation, deleteMessage } from '../services/messagingService';
-import { collection, query, orderBy, onSnapshot, doc, limit, startAfter, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, limit, startAfter, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
 import { uploadFileWithProgress } from '../services/uploadService';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 
@@ -50,6 +50,7 @@ interface ChatModalProps {
   recipientImage?: string;
   recipientCategory?: string;
   conversationIdOverride?: string;
+  threadMessages?: Message[];
   isAdminReplying?: boolean;
   isVendorReplying?: boolean;
   vendors?: Vendor[];
@@ -119,6 +120,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   recipientImage,
   recipientCategory,
   conversationIdOverride,
+  threadMessages = [],
   isAdminReplying,
   isVendorReplying,
   vendors = [],
@@ -309,15 +311,28 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       return;
     }
 
-    const q = query(
-      collection(db, 'conversations', activeConversationId, 'messages'),
-      orderBy('sent_at', 'desc'),
-      limit(35)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const subLists = new Map<string, Message[]>();
+    const rebuildActiveMessages = () => {
       const seenIds = new Set<string>();
-      const msgsRaw = snapshot.docs.map(docSnap => {
+      const combined: Message[] = [];
+      subLists.forEach((list) => {
+        list.forEach((m) => {
+          if (m.id && !seenIds.has(m.id)) {
+            seenIds.add(m.id);
+            combined.push(m);
+          }
+        });
+      });
+      combined.sort((a, b) => {
+        const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
+      });
+      setActiveMessages(combined);
+    };
+
+    const parseSnapshotDocs = (docs: any[]) => {
+      return docs.map(docSnap => {
         const data = docSnap.data();
         let timestampStr = new Date().toISOString();
         if (data.sent_at) {
@@ -326,82 +341,270 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           } else {
             timestampStr = new Date(data.sent_at).toISOString();
           }
+        } else if (data.timestamp) {
+          timestampStr = typeof data.timestamp === 'string' ? data.timestamp : new Date(data.timestamp).toISOString();
         }
         return {
           id: docSnap.id,
           ...data,
           senderId: data.sender_id || data.senderId,
+          receiverId: data.receiver_id || data.receiverId,
           timestamp: timestampStr,
         } as Message;
       });
+    };
 
-      const cleanMsgs: Message[] = [];
-      msgsRaw.forEach(m => {
-        if (m.id && !seenIds.has(m.id)) {
-          seenIds.add(m.id);
-          cleanMsgs.push(m);
-        }
-      });
+    const q = query(
+      collection(db, 'conversations', activeConversationId, 'messages')
+    );
 
-      cleanMsgs.reverse();
-      setActiveMessages(cleanMsgs);
+    let fallbackUnsub: (() => void) | null = null;
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgsRaw = parseSnapshotDocs(snapshot.docs);
+      subLists.set(activeConversationId, msgsRaw);
+      rebuildActiveMessages();
 
       if (snapshot.docs.length > 0) {
         setLastVisibleDoc(snapshot.docs[snapshot.docs.length - 1]);
       }
-      setHasMore(snapshot.docs.length >= 35);
+      setHasMore(false);
     }, (err) => {
-      console.warn("Firestore ordered messages subcollection query failed, falling back:", err);
-      const fallbackQ = query(
-        collection(db, 'conversations', activeConversationId, 'messages'),
-        limit(35)
-      );
-      return onSnapshot(fallbackQ, (snapshot) => {
-        const msgsRaw = snapshot.docs.map(docSnap => {
-          const data = docSnap.data();
-          let timestampStr = new Date().toISOString();
-          if (data.sent_at) {
-            if (typeof data.sent_at.toDate === 'function') {
-              timestampStr = data.sent_at.toDate().toISOString();
-            } else {
-              timestampStr = new Date(data.sent_at).toISOString();
-            }
-          }
-          return {
-            id: docSnap.id,
-            ...data,
-            senderId: data.sender_id || data.senderId,
-            timestamp: timestampStr,
-          } as Message;
-        });
-
-        const seenIds = new Set<string>();
-        const cleanMsgs: Message[] = [];
-        msgsRaw.forEach(m => {
-          if (m.id && !seenIds.has(m.id)) {
-            seenIds.add(m.id);
-            cleanMsgs.push(m);
-          }
-        });
-
-        cleanMsgs.sort((a, b) => {
-          const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-          const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-          return (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
-        });
-        
-        setActiveMessages(cleanMsgs);
-        if (snapshot.docs.length > 0) {
-          setLastVisibleDoc(snapshot.docs[snapshot.docs.length - 1]);
-        }
-        setHasMore(snapshot.docs.length >= 35);
-      }, (err2) => {
-        handleFirestoreError(err2, OperationType.LIST, 'messages');
-      });
+      console.warn("Firestore messages subcollection query error:", err);
+      handleFirestoreError(err, OperationType.LIST, 'messages');
     });
 
-    return () => unsubscribe();
-  }, [isOpen, activeConversationId]);
+    // Also listen to all conversation documents for this client + vendor/admin pair
+    // (including default UID pair, client_legacy, client_email, client_id, and any conversationIds from threadMessages/propMessages)
+    // so any message that showed up on the pill-shaped thread button is guaranteed to show in the actual chat
+    const extraUnsubs = new Map<string, () => void>();
+    const topQueryUnsubs: (() => void)[] = [];
+    const myEmailLower = (clientEmail || user?.username || auth.currentUser?.email || '').trim().toLowerCase();
+
+    const attachAltConvoListener = (altCid: string, filterByClient = false) => {
+      if (!altCid || altCid === activeConversationId || extraUnsubs.has(altCid)) return;
+      const altQ = query(collection(db, 'conversations', altCid, 'messages'));
+      const u = onSnapshot(
+        altQ,
+        (snap) => {
+          if (!snap.empty) {
+            let parsed = parseSnapshotDocs(snap.docs);
+            if (filterByClient && myUid) {
+              parsed = parsed.filter((m: any) => {
+                const mEmail = (m.clientEmail || m.client_email || '').trim().toLowerCase();
+                const mSender = m.senderId || m.sender_id || '';
+                const mReceiver = m.receiverId || m.receiver_id || '';
+                const mClientId = m.client_id || '';
+                if (mSender === myUid || mReceiver === myUid || mClientId === myUid) return true;
+                if (myEmailLower && (mEmail === myEmailLower || mSender.toLowerCase() === myEmailLower || mReceiver.toLowerCase() === myEmailLower)) return true;
+                // If no other client's email/UID is attached on a legacy vendor/admin reply, include it
+                if (!mEmail && (mReceiver === 'client_legacy' || mSender === targetUid || mSender === 'admin')) return true;
+                return false;
+              });
+            }
+            subLists.set(altCid, parsed);
+            rebuildActiveMessages();
+          }
+        },
+        () => {}
+      );
+      extraUnsubs.set(altCid, u);
+    };
+
+    const defaultPairCid = myUid && targetUid ? [myUid, targetUid].sort().join('_') : '';
+    if (defaultPairCid && defaultPairCid !== activeConversationId) {
+      attachAltConvoListener(defaultPairCid, false);
+    }
+
+    // Attach listeners to any conversationId present in threadMessages or matching propMessages
+    if (!isAdminReplying && !isVendorReplying) {
+      threadMessages.forEach((tm) => {
+        if (!tm?.conversationId) return;
+        const isTmAdmin = Boolean(tm.isAdminInquiry || tm.senderId === 'admin' || tm.receiverId === 'admin' || tm.conversationId.includes('admin'));
+        if (isSupportChat && isTmAdmin) {
+          attachAltConvoListener(tm.conversationId, false);
+        } else if (!isSupportChat && !isTmAdmin && targetUid) {
+          attachAltConvoListener(tm.conversationId, false);
+        }
+      });
+
+      propMessages.forEach((pm) => {
+        if (!pm?.conversationId) return;
+        const pmSender = pm.senderId || (pm as any).sender_id || '';
+        const pmReceiver = pm.receiverId || (pm as any).receiver_id || '';
+        const pmVendorId = (pm as any).vendorId || (pm as any).vendor_id || '';
+        const pmEmail = (pm.clientEmail || (pm as any).client_email || '').trim().toLowerCase();
+        const isMine =
+          pmSender === myUid ||
+          pmReceiver === myUid ||
+          (pm as any).client_id === myUid ||
+          (myEmailLower && (pmEmail === myEmailLower || pmSender.toLowerCase() === myEmailLower || pmReceiver.toLowerCase() === myEmailLower));
+        if (!isMine) return;
+
+        const isPmAdmin = Boolean(pm.isAdminInquiry || pmSender === 'admin' || pmReceiver === 'admin' || pm.conversationId.includes('admin'));
+        if (isSupportChat && isPmAdmin) {
+          attachAltConvoListener(pm.conversationId, false);
+        } else if (
+          !isSupportChat &&
+          !isPmAdmin &&
+          targetUid &&
+          (pmSender === targetUid ||
+            pmReceiver === targetUid ||
+            pmVendorId === targetUid ||
+            pm.conversationId.includes(targetUid) ||
+            (currentContact?.email && pm.vendorEmail && pm.vendorEmail.toLowerCase() === currentContact.email.toLowerCase()))
+        ) {
+          attachAltConvoListener(pm.conversationId, false);
+        }
+      });
+    }
+
+    if (!isAdminReplying && !isVendorReplying && targetUid) {
+      if (targetUid === 'admin') {
+        attachAltConvoListener(['admin', 'client_legacy'].sort().join('_'), true);
+        const matchesAdminConvo = (dSnap: any) => {
+          const d = dSnap.data() || {};
+          const pIds: string[] = d.participant_ids || [];
+          return d.type === 'admin_support' || pIds.includes('admin') || dSnap.id.includes('admin');
+        };
+        if (myUid) {
+          const qAdminByParticipant = query(collection(db, 'conversations'), where('participant_ids', 'array-contains', myUid));
+          topQueryUnsubs.push(
+            onSnapshot(qAdminByParticipant, (snap) => {
+              snap.docs.forEach((dSnap) => {
+                if (matchesAdminConvo(dSnap)) attachAltConvoListener(dSnap.id, false);
+              });
+            }, () => {})
+          );
+          const qAdminByClientId = query(collection(db, 'conversations'), where('client_id', '==', myUid));
+          topQueryUnsubs.push(
+            onSnapshot(qAdminByClientId, (snap) => {
+              snap.docs.forEach((dSnap) => {
+                if (matchesAdminConvo(dSnap)) attachAltConvoListener(dSnap.id, false);
+              });
+            }, () => {})
+          );
+        }
+        if (myEmailLower) {
+          attachAltConvoListener([myEmailLower, 'admin'].sort().join('_'), false);
+          const qEmailAdmin = query(collection(db, 'conversations'), where('client_email', '==', myEmailLower));
+          topQueryUnsubs.push(
+            onSnapshot(
+              qEmailAdmin,
+              (snap) => {
+                snap.docs.forEach((dSnap) => {
+                  if (matchesAdminConvo(dSnap)) {
+                    attachAltConvoListener(dSnap.id, false);
+                  }
+                });
+              },
+              () => {}
+            )
+          );
+          const qEmailParticipantAdmin = query(collection(db, 'conversations'), where('participant_ids', 'array-contains', myEmailLower));
+          topQueryUnsubs.push(
+            onSnapshot(qEmailParticipantAdmin, (snap) => {
+              snap.docs.forEach((dSnap) => {
+                if (matchesAdminConvo(dSnap)) attachAltConvoListener(dSnap.id, false);
+              });
+            }, () => {})
+          );
+        }
+      } else {
+        // Vendor chat: listen to client_legacy_<vendorId>, email_<vendorId>, and any conversation matching client + vendor
+        attachAltConvoListener(['client_legacy', targetUid].sort().join('_'), true);
+        if (myEmailLower) {
+          attachAltConvoListener([myEmailLower, targetUid].sort().join('_'), false);
+          if (clientEmail && clientEmail.trim() !== myEmailLower) {
+            attachAltConvoListener([clientEmail.trim(), targetUid].sort().join('_'), false);
+          }
+        }
+
+        const matchesTargetVendor = (dSnap: any) => {
+          const d = dSnap.data() || {};
+          const pIds: string[] = d.participant_ids || [];
+          return (
+            d.vendor_id === targetUid ||
+            d.vendorId === targetUid ||
+            pIds.includes(targetUid) ||
+            dSnap.id.split('_').includes(targetUid) ||
+            (currentContact?.name && d.vendor_name && d.vendor_name.toLowerCase() === currentContact.name.toLowerCase())
+          );
+        };
+
+        if (myUid) {
+          const qByParticipant = query(collection(db, 'conversations'), where('participant_ids', 'array-contains', myUid));
+          topQueryUnsubs.push(
+            onSnapshot(
+              qByParticipant,
+              (snap) => {
+                snap.docs.forEach((dSnap) => {
+                  if (matchesTargetVendor(dSnap)) {
+                    attachAltConvoListener(dSnap.id, false);
+                  }
+                });
+              },
+              () => {}
+            )
+          );
+
+          const qByClientId = query(collection(db, 'conversations'), where('client_id', '==', myUid));
+          topQueryUnsubs.push(
+            onSnapshot(
+              qByClientId,
+              (snap) => {
+                snap.docs.forEach((dSnap) => {
+                  if (matchesTargetVendor(dSnap)) {
+                    attachAltConvoListener(dSnap.id, false);
+                  }
+                });
+              },
+              () => {}
+            )
+          );
+        }
+
+        if (myEmailLower) {
+          const qByClientEmail = query(collection(db, 'conversations'), where('client_email', '==', myEmailLower));
+          topQueryUnsubs.push(
+            onSnapshot(
+              qByClientEmail,
+              (snap) => {
+                snap.docs.forEach((dSnap) => {
+                  if (matchesTargetVendor(dSnap)) {
+                    attachAltConvoListener(dSnap.id, false);
+                  }
+                });
+              },
+              () => {}
+            )
+          );
+
+          const qByParticipantEmail = query(collection(db, 'conversations'), where('participant_ids', 'array-contains', myEmailLower));
+          topQueryUnsubs.push(
+            onSnapshot(
+              qByParticipantEmail,
+              (snap) => {
+                snap.docs.forEach((dSnap) => {
+                  if (matchesTargetVendor(dSnap)) {
+                    attachAltConvoListener(dSnap.id, false);
+                  }
+                });
+              },
+              () => {}
+            )
+          );
+        }
+      }
+    }
+
+    return () => {
+      unsubscribe();
+      if (fallbackUnsub) fallbackUnsub();
+      topQueryUnsubs.forEach((u) => u());
+      extraUnsubs.forEach((u) => u());
+      extraUnsubs.clear();
+    };
+  }, [isOpen, activeConversationId, isAdminReplying, isVendorReplying, isSupportChat, targetUid, myUid, clientEmail, user?.username, threadMessages, propMessages, currentContact?.email, currentContact?.name]);
 
   // Clean optimistic messages that are now confirmed in database
   useEffect(() => {
@@ -483,23 +686,111 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       }
     });
 
+    // Directly include threadMessages passed from the clicked pill-shaped box in ClientPortal
+    if (!isAdminReplying && !isVendorReplying && threadMessages && threadMessages.length > 0) {
+      threadMessages.forEach(m => {
+        if (!m || (m.id && seenIds.has(m.id))) return;
+        const mSender = m.senderId || (m as any).sender_id || '';
+        const mReceiver = m.receiverId || (m as any).receiver_id || '';
+        const mVendorId = (m as any).vendorId || (m as any).vendor_id || '';
+        const isMsgAdmin = Boolean(
+          m.isAdminInquiry ||
+          mSender === 'admin' ||
+          mReceiver === 'admin' ||
+          (m.conversationId && m.conversationId.includes('admin'))
+        );
+        const matchesActiveContact = isSupportChat
+          ? isMsgAdmin
+          : (!isMsgAdmin &&
+              Boolean(targetUid) &&
+              (targetUid === initialVendor?.id ||
+                mSender === targetUid ||
+                mReceiver === targetUid ||
+                mVendorId === targetUid ||
+                (m.conversationId && m.conversationId.includes(targetUid)) ||
+                (currentContact?.email && m.vendorEmail && m.vendorEmail.toLowerCase() === currentContact.email.toLowerCase())));
+
+        if (matchesActiveContact) {
+          if (m.id) seenIds.add(m.id);
+          uniqueMessages.push({
+            ...m,
+            senderId: mSender || m.senderId,
+            receiverId: mReceiver || m.receiverId,
+          });
+        }
+      });
+    }
+
     // Include matching propMessages as immediate fallback if not already in activeMessages
     if (propMessages && propMessages.length > 0) {
+      const myEmailNorm = (clientEmail || user?.username || auth.currentUser?.email || '').trim().toLowerCase();
       propMessages.forEach(m => {
         if (!m || (m.id && seenIds.has(m.id))) return;
-        const msgConvoId = m.conversationId || [m.senderId, m.receiverId].sort().join('_');
-        const matchesConvo = activeConversationId && msgConvoId === activeConversationId;
+        const mSender = m.senderId || (m as any).sender_id || '';
+        const mReceiver = m.receiverId || (m as any).receiver_id || '';
+        const mVendorId = (m as any).vendorId || (m as any).vendor_id || '';
+        const mVendorName = ((m as any).vendorName || (m as any).vendor_name || '').trim().toLowerCase();
+        const mClientEmail = (m.clientEmail || (m as any).client_email || '').trim().toLowerCase();
+        const mClientId = (m as any).client_id || '';
+        const msgConvoId = m.conversationId || [mSender, mReceiver].sort().join('_');
+
+        const matchesConvo = Boolean(activeConversationId && msgConvoId === activeConversationId);
         const matchesParticipants =
-          (m.senderId === myUid && m.receiverId === targetUid) ||
-          (m.senderId === targetUid && m.receiverId === myUid);
+          (mSender === myUid && mReceiver === targetUid) ||
+          (mSender === targetUid && mReceiver === myUid);
         const matchesVendorClientEmail =
           isVendorReplying &&
           currentContact?.email &&
-          m.clientEmail?.toLowerCase() === currentContact.email.toLowerCase();
+          mClientEmail === currentContact.email.trim().toLowerCase();
+        const matchesAdminSupport =
+          isAdminReplying &&
+          (m.isAdminInquiry || mSender === 'admin' || mReceiver === 'admin') &&
+          (mSender === targetUid ||
+            mReceiver === targetUid ||
+            (currentContact?.email && mClientEmail === currentContact.email.trim().toLowerCase()));
+        const matchesClientSide =
+          mSender === myUid ||
+          mReceiver === myUid ||
+          mClientId === myUid ||
+          (myEmailNorm &&
+            (mClientEmail === myEmailNorm ||
+              mSender.toLowerCase() === myEmailNorm ||
+              mReceiver.toLowerCase() === myEmailNorm ||
+              mClientId.toLowerCase() === myEmailNorm)) ||
+          (m.participants && m.participants.some((p: string) => p === myUid || (myEmailNorm && p.toLowerCase() === myEmailNorm)));
+        const matchesClientSupport =
+          !isAdminReplying &&
+          !isVendorReplying &&
+          isSupportChat &&
+          (m.isAdminInquiry || mSender === 'admin' || mReceiver === 'admin' || (m.conversationId && m.conversationId.includes('admin'))) &&
+          matchesClientSide;
+        const matchesClientVendorMessage =
+          !isAdminReplying &&
+          !isVendorReplying &&
+          !isSupportChat &&
+          Boolean(targetUid) &&
+          (mSender === targetUid ||
+            mReceiver === targetUid ||
+            mVendorId === targetUid ||
+            (m.conversationId && m.conversationId.split('_').includes(targetUid)) ||
+            (currentContact?.email && m.vendorEmail && m.vendorEmail.toLowerCase() === currentContact.email.toLowerCase()) ||
+            (currentContact?.name && mVendorName && mVendorName === currentContact.name.trim().toLowerCase())) &&
+          matchesClientSide;
 
-        if (matchesConvo || matchesParticipants || matchesVendorClientEmail) {
+        if (
+          matchesConvo ||
+          matchesParticipants ||
+          matchesVendorClientEmail ||
+          matchesAdminSupport ||
+          matchesClientSupport ||
+          matchesClientVendorMessage
+        ) {
           if (m.id) seenIds.add(m.id);
-          uniqueMessages.push(m);
+          uniqueMessages.push({
+            ...m,
+            senderId: mSender || m.senderId,
+            receiverId: mReceiver || m.receiverId,
+          });
         }
       });
     }
@@ -510,8 +801,16 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       return (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
     });
 
-    const dbTempIds = new Set(uniqueMessages.map(m => m.tempId).filter(Boolean));
-    const resolvedDbMessages = uniqueMessages.map(m => {
+    const seenTempIds = new Set<string>();
+    const dedupedByIdAndTemp: Message[] = [];
+    for (const m of uniqueMessages) {
+      if (m.tempId && seenTempIds.has(m.tempId)) continue;
+      if (m.tempId) seenTempIds.add(m.tempId);
+      dedupedByIdAndTemp.push(m);
+    }
+
+    const dbTempIds = new Set(dedupedByIdAndTemp.map(m => m.tempId).filter(Boolean));
+    const resolvedDbMessages = dedupedByIdAndTemp.map(m => {
       if (m.tempId) {
         return { ...m, status: 'sent' as const };
       }
@@ -519,11 +818,23 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     });
 
     const pendingOptimistic = optimisticMessages
-      .filter(om => !dbTempIds.has(om.tempId))
+      .filter(om => {
+        if (om.tempId && dbTempIds.has(om.tempId)) return false;
+        // Also exclude if a real DB message with matching content and sender arrived within 15 seconds
+        const omTime = om.timestamp ? new Date(om.timestamp).getTime() : Date.now();
+        const hasMatchingRealMsg = resolvedDbMessages.some(dbMsg => {
+          if (dbMsg.senderId !== om.senderId) return false;
+          if ((dbMsg.type || 'text') !== (om.type || 'text')) return false;
+          if ((dbMsg.text || '') !== (om.text || '')) return false;
+          const dbTime = dbMsg.timestamp ? new Date(dbMsg.timestamp).getTime() : 0;
+          return Math.abs(dbTime - omTime) < 15000;
+        });
+        return !hasMatchingRealMsg;
+      })
       .map(om => ({ ...om, isOptimistic: true, status: om.status || ('sending' as const) }));
 
     return [...resolvedDbMessages, ...pendingOptimistic];
-  }, [historicalMessages, activeMessages, optimisticMessages, propMessages, activeConversationId, myUid, targetUid, isVendorReplying, currentContact]);
+  }, [historicalMessages, activeMessages, optimisticMessages, threadMessages, propMessages, initialVendor?.id, activeConversationId, myUid, targetUid, isVendorReplying, isAdminReplying, isSupportChat, clientEmail, user?.username, currentContact]);
 
   // In-chat search filter & jump
   useEffect(() => {
@@ -684,6 +995,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         ...payload,
         tempId,
       });
+      // Remove optimistic placeholder once send completes so it never duplicates the real DB message
+      setOptimisticMessages(prev => prev.filter(m => m.tempId !== tempId));
     } catch (err) {
       console.error("Failed to send message:", err);
       setOptimisticMessages(prev =>
@@ -714,6 +1027,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         fileType: msg.fileType,
         tempId: msg.tempId
       });
+      setOptimisticMessages(prev => prev.filter(m => m.tempId !== msg.tempId));
     } catch (err) {
       console.error("Failed retry of message send:", err);
       setOptimisticMessages(prev =>
@@ -739,7 +1053,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     if (e) e.preventDefault();
     if (!text.trim()) return;
     
-    if (!isIdentityVerified) {
+    if (!isIdentityVerified && !isAdminReplying && !isVendorReplying) {
       if (clientName && clientEmail) {
         setIsIdentityVerified(true);
       } else {
@@ -747,14 +1061,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       }
     }
 
-    const conversationId = activeConversationId || [myUid, targetUid].sort().join('_');
+    const effectiveTargetUid = (!isAdminReplying && !isVendorReplying && isSupportChat) ? 'admin' : targetUid;
+    const conversationId = (!isAdminReplying && !isVendorReplying && isSupportChat)
+      ? (activeConversationId || [myUid, 'admin'].sort().join('_'))
+      : (activeConversationId || [myUid, effectiveTargetUid].sort().join('_'));
 
     sendOptimisticMessage({
       text,
       clientName: (isAdminReplying || isVendorReplying) ? (currentContact?.name || clientName) : clientName,
       clientEmail: (isAdminReplying || isVendorReplying) ? (currentContact?.email || clientEmail) : clientEmail,
       senderId: myUid,
-      receiverId: targetUid,
+      receiverId: effectiveTargetUid,
       conversationId,
       isAdminInquiry: isSupportChat,
       type: 'text'
@@ -803,7 +1120,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     setIsUploading(true);
 
     try {
-      const conversationId = activeConversationId || [myUid, targetUid].sort().join('_');
+      const effectiveTargetUid = (!isAdminReplying && !isVendorReplying && isSupportChat) ? 'admin' : targetUid;
+      const conversationId = (!isAdminReplying && !isVendorReplying && isSupportChat)
+        ? (activeConversationId || [myUid, 'admin'].sort().join('_'))
+        : (activeConversationId || [myUid, effectiveTargetUid].sort().join('_'));
       const storagePath = `chats/${conversationId}/${Date.now()}_${file.name}`;
       const url = await uploadFileWithProgress(file, storagePath, (progress) => {
         setUploadProgress(progress);
@@ -814,7 +1134,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         clientName: (isAdminReplying || isVendorReplying) ? (currentContact?.name || clientName) : clientName,
         clientEmail: (isAdminReplying || isVendorReplying) ? (currentContact?.email || clientEmail) : clientEmail,
         senderId: myUid,
-        receiverId: targetUid,
+        receiverId: effectiveTargetUid,
         conversationId,
         isAdminInquiry: isSupportChat,
         type: isImage ? 'image' : 'file',
@@ -908,14 +1228,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           const url = await uploadFileWithProgress(audioBlob, storagePath, (progress) => {
             setUploadProgress(progress);
           }, { contentType: mimeType });
-          const conversationId = activeConversationId || [myUid, targetUid].sort().join('_');
+          const effectiveTargetUid = (!isAdminReplying && !isVendorReplying && isSupportChat) ? 'admin' : targetUid;
+          const conversationId = (!isAdminReplying && !isVendorReplying && isSupportChat)
+            ? (activeConversationId || [myUid, 'admin'].sort().join('_'))
+            : (activeConversationId || [myUid, effectiveTargetUid].sort().join('_'));
 
           sendOptimisticMessage({
             text: 'Voice note',
             clientName: (isAdminReplying || isVendorReplying) ? (currentContact?.name || clientName) : clientName,
             clientEmail: (isAdminReplying || isVendorReplying) ? (currentContact?.email || clientEmail) : clientEmail,
             senderId: myUid,
-            receiverId: targetUid,
+            receiverId: effectiveTargetUid,
             conversationId,
             isAdminInquiry: isSupportChat,
             type: 'voice',
@@ -1029,17 +1352,35 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
   const checkIfSent = (msg: Message) => {
     if (!msg) return false;
+    const role = (msg as any).sender_role;
+
+    // 1. Admin Portal View: Admin's own replies on RIGHT (true), Client messages on LEFT (false)
     if (isAdminReplying) {
-      return msg.senderId === 'admin' || (msg as any).sender_role === 'admin';
+      return msg.senderId === 'admin' || role === 'admin';
     }
+
+    // 2. Vendor Portal View: Vendor's own replies on RIGHT (true), Client messages on LEFT (false)
     if (isVendorReplying) {
-      return msg.senderId === myUid || (msg as any).sender_role === 'vendor';
+      if (role === 'client') return false;
+      if (role === 'vendor') return true;
+      if (targetUid && msg.senderId === targetUid && msg.senderId !== myUid) return false;
+      return msg.senderId === myUid;
     }
+
+    // 3. Client chatting with Admin Support ("? Ask" button): Client on RIGHT (true), Admin on LEFT (false)
+    if (isSupportChat) {
+      if (msg.senderId === 'admin' || role === 'admin') return false;
+      return true;
+    }
+
+    // 4. Client chatting with a Vendor: Client on RIGHT (true), Vendor on LEFT (false)
+    if (role === 'vendor' || role === 'admin') return false;
+    if (targetUid && msg.senderId === targetUid && role !== 'client') return false;
     const loggedInUid = user?.id || auth.currentUser?.uid;
     if (loggedInUid && msg.senderId === loggedInUid) {
       return true;
     }
-    if (msg.senderId === 'client' || (msg as any).sender_role === 'client') {
+    if (msg.senderId === 'client' || role === 'client') {
       return true;
     }
     return false;
@@ -1199,6 +1540,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             existing.lastMessageTime = item.lastMessageTime || existing.lastMessageTime;
             if (item.lastMessageIsSent !== undefined) existing.lastMessageIsSent = item.lastMessageIsSent;
             if (item.lastMessageIsRead !== undefined) existing.lastMessageIsRead = item.lastMessageIsRead;
+            if (item.conversationId) existing.conversationId = item.conversationId;
           }
           if (item.unreadCount > existing.unreadCount) {
             existing.unreadCount = item.unreadCount;
@@ -1211,41 +1553,105 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         }
       };
 
-      // 1. Always include Simcha Concierge (Admin support) for clients
-      const adminConvo = inboxThreads.find(c => c.type === 'admin_support' || (c.participant_ids || []).includes('admin'));
-      const rawAdminLast = adminConvo?.last_message;
-      const safeAdminLast = typeof rawAdminLast === 'string'
-        ? rawAdminLast
-        : (rawAdminLast && typeof rawAdminLast === 'object' && typeof rawAdminLast.text === 'string' ? rawAdminLast.text : '');
-      upsertContact({
-        id: adminConvo?.id || [myUid, 'admin'].sort().join('_'),
-        contactId: 'admin',
-        name: 'Simcha Concierge',
-        category: 'Support & Concierge',
-        isAdmin: true,
-        lastMessage: safeAdminLast || 'Inquire with our expert event specialists',
-        lastMessageTime: adminConvo?.last_message_at || 0,
-        lastMessageIsSent: adminConvo?.last_message_sender_id ? adminConvo.last_message_sender_id === myUid : false,
-        lastMessageIsRead: Boolean(adminConvo?.last_message_read),
-        unreadCount: adminConvo?.unread_count || 0,
-        conversationId: adminConvo?.id || [myUid, 'admin'].sort().join('_')
-      });
+      const myLowerEmail = (user?.username || clientEmail || auth.currentUser?.email || '').toLowerCase().trim();
 
-      // 2. Populate threads from inboxThreads
+      // 1. Always include this client's Admin Support thread (Simcha Concierge) in Client mode
+      const adminConvo = inboxThreads.find(
+        c =>
+          (c.type === 'admin_support' || (c.participant_ids || []).includes('admin')) &&
+          ((c.participant_ids || []).includes(myUid) ||
+            c.client_id === myUid ||
+            (myLowerEmail && (c.client_email || '').toLowerCase() === myLowerEmail))
+      );
+      if (adminConvo || (initialIsAdminMode && !initialVendor)) {
+        const rawAdminLast = adminConvo?.last_message;
+        const safeAdminLast = typeof rawAdminLast === 'string'
+          ? rawAdminLast
+          : (rawAdminLast && typeof rawAdminLast === 'object' && typeof rawAdminLast.text === 'string' ? rawAdminLast.text : '');
+        upsertContact({
+          id: adminConvo?.id || conversationIdOverride || [myUid, 'admin'].sort().join('_'),
+          contactId: 'admin',
+          name: 'Simcha Concierge',
+          category: 'Support & Concierge',
+          isAdmin: true,
+          lastMessage: safeAdminLast || 'Inquire with our expert event specialists',
+          lastMessageTime: adminConvo?.last_message_at || 0,
+          lastMessageIsSent: adminConvo?.last_message_sender_id ? adminConvo.last_message_sender_id === myUid : false,
+          lastMessageIsRead: Boolean(adminConvo?.last_message_read),
+          unreadCount: adminConvo?.unread_count || 0,
+          conversationId: adminConvo?.id || conversationIdOverride || [myUid, 'admin'].sort().join('_')
+        });
+      }
+
+      if (propMessages && propMessages.length > 0) {
+        propMessages.forEach(m => {
+          if (!m) return;
+          if (m.isAdminInquiry || m.senderId === 'admin' || m.receiverId === 'admin' || (m.conversationId && m.conversationId.includes('admin'))) {
+            const isMyInquiry =
+              m.senderId === myUid ||
+              m.receiverId === myUid ||
+              (m as any).client_id === myUid ||
+              (myLowerEmail && m.clientEmail?.toLowerCase() === myLowerEmail) ||
+              (myLowerEmail && (m as any).client_email?.toLowerCase() === myLowerEmail);
+            if (!isMyInquiry) return;
+            const mIsSent = checkIfSent(m);
+            const mReadBy = (m as any).read_by || {};
+            const mIsRead = Boolean(m.isRead || Object.keys(mReadBy).some(k => k !== m.senderId && k !== myUid));
+            const rawText = typeof m.text === 'string' ? m.text : '';
+            const resolvedAdminCid = m.conversationId || adminConvo?.id || [myUid, 'admin'].sort().join('_');
+            upsertContact({
+              id: resolvedAdminCid,
+              contactId: 'admin',
+              name: 'Simcha Concierge',
+              category: 'Support & Concierge',
+              isAdmin: true,
+              lastMessage: rawText,
+              lastMessageType: m.type,
+              lastMessageTime: m.timestamp,
+              lastMessageIsSent: mIsSent,
+              lastMessageIsRead: mIsRead,
+              unreadCount: m.receiverId === myUid && !m.isRead ? 1 : 0,
+              conversationId: resolvedAdminCid
+            });
+          }
+        });
+      }
+
+      // Compute vendor IDs owned by the logged-in user so incoming messages to their own vendor business
+      // never leak into their Client conversation list (never treat non-vendor accounts like bookingsimcha@gmail.com as owning a vendor)
+      const isNonVendorAccount = ['bookingsimcha@gmail.com', 'adminbookingsimcha@gmail.com', 'ststrohli@gmail.com'].includes(myLowerEmail);
+      const myOwnedVendorIds = new Set<string>(
+        isNonVendorAccount
+          ? []
+          : vendors
+              .filter(
+                v =>
+                  v.id === myUid ||
+                  (myLowerEmail && v.contactEmail?.toLowerCase().trim() === myLowerEmail) ||
+                  (myLowerEmail && v.username?.toLowerCase().trim() === myLowerEmail)
+              )
+              .map(v => v.id)
+      );
+
+      // 2. Populate threads from inboxThreads (with vendors)
       inboxThreads.forEach(t => {
-        const otherId = (t.participant_ids || []).find((p: string) => p !== myUid) || '';
-        if (!otherId || otherId === 'admin') return;
+        const pIds: string[] = t.participant_ids || [];
+        if (t.type === 'admin_support' || pIds.includes('admin')) return;
+        if (Array.from(myOwnedVendorIds).some(vid => vid !== myUid && pIds.includes(vid))) return;
+        const otherId = t.vendor_id || pIds.find((p: string) => p !== myUid) || '';
+        if (!otherId || otherId === 'admin' || myOwnedVendorIds.has(otherId)) return;
 
         const vendorMatch = vendors.find(v => v.id === otherId);
+        const vendorName = vendorMatch?.name || t.vendor_name || 'Vendor';
         const rawThreadLast = t.last_message;
         const safeThreadLast = typeof rawThreadLast === 'string'
           ? rawThreadLast
           : (rawThreadLast && typeof rawThreadLast === 'object' && typeof rawThreadLast.text === 'string' ? rawThreadLast.text : '');
         upsertContact({
           id: t.id,
-          contactId: otherId,
-          name: vendorMatch?.name || t.client_name || 'Vendor Contact',
-          email: vendorMatch?.contactEmail || t.client_email,
+          contactId: vendorMatch?.id || otherId,
+          name: vendorName,
+          email: vendorMatch?.contactEmail,
           category: vendorMatch?.category || 'Vendor',
           image: vendorMatch?.image,
           isAdmin: false,
@@ -1258,43 +1664,42 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         });
       });
 
-      // 3. Also enrich from propMessages so all vendor chats appear in one unified contact list
+      // 3. Also enrich from propMessages so all vendor chats (including vendor-sent replies) appear in one unified contact list
       if (propMessages && propMessages.length > 0) {
         propMessages.forEach(m => {
           if (!m) return;
+          if (m.isAdminInquiry || m.senderId === 'admin' || m.receiverId === 'admin' || (m.conversationId && m.conversationId.includes('admin'))) {
+            return;
+          }
+          const isMyMessage =
+            m.senderId === myUid ||
+            m.receiverId === myUid ||
+            (m as any).client_id === myUid ||
+            (myLowerEmail && m.clientEmail?.toLowerCase() === myLowerEmail) ||
+            (myLowerEmail && (m as any).client_email?.toLowerCase() === myLowerEmail);
+          if (!isMyMessage) return;
+
           const mIsSent = checkIfSent(m);
           const mReadBy = (m as any).read_by || {};
           const mIsRead = Boolean(m.isRead || Object.keys(mReadBy).some(k => k !== m.senderId && k !== myUid));
-          if (m.isAdminInquiry || m.senderId === 'admin' || m.receiverId === 'admin') {
-            const rawText = typeof m.text === 'string' ? m.text : '';
-            upsertContact({
-              id: [myUid, 'admin'].sort().join('_'),
-              contactId: 'admin',
-              name: 'Simcha Concierge',
-              category: 'Support & Concierge',
-              isAdmin: true,
-              lastMessage: rawText,
-              lastMessageType: m.type,
-              lastMessageTime: m.timestamp,
-              lastMessageIsSent: mIsSent,
-              lastMessageIsRead: mIsRead,
-              unreadCount: m.receiverId === myUid && !m.isRead ? 1 : 0,
-              conversationId: [myUid, 'admin'].sort().join('_')
-            });
+          const explicitVendorId = (m as any).vendorId || (m as any).vendor_id;
+          const otherId = explicitVendorId || (m.senderId === myUid ? m.receiverId : m.senderId);
+          if (myOwnedVendorIds.has(otherId) || myOwnedVendorIds.has(m.senderId) || myOwnedVendorIds.has(m.receiverId)) {
             return;
           }
-          const otherId = m.senderId === myUid ? m.receiverId : m.senderId;
           const vendorMatch = vendors.find(
             v =>
+              v.id === explicitVendorId ||
               v.id === otherId ||
               v.id === m.senderId ||
               v.id === m.receiverId ||
               (m.vendorEmail && v.contactEmail?.toLowerCase() === m.vendorEmail.toLowerCase())
           );
-          if (vendorMatch) {
+          if (vendorMatch && !myOwnedVendorIds.has(vendorMatch.id)) {
             const rawText = typeof m.text === 'string' ? m.text : '';
+            const resolvedVendorCid = m.conversationId || [myUid, vendorMatch.id].sort().join('_');
             upsertContact({
-              id: [myUid, vendorMatch.id].sort().join('_'),
+              id: resolvedVendorCid,
               contactId: vendorMatch.id,
               name: vendorMatch.name,
               email: vendorMatch.contactEmail,
@@ -1307,7 +1712,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               lastMessageIsSent: mIsSent,
               lastMessageIsRead: mIsRead,
               unreadCount: 0,
-              conversationId: [myUid, vendorMatch.id].sort().join('_')
+              conversationId: resolvedVendorCid
             });
           }
         });
@@ -1401,10 +1806,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       role="dialog" 
       aria-modal="true" 
       aria-label="WhatsApp Style Messaging" 
-      className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[200] flex items-center justify-center p-0 md:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
     >
       {/* Main WhatsApp Window Container */}
-      <div className="fixed inset-0 z-50 w-full h-[100svh] bg-[#0b0b0b] rounded-none md:relative md:max-w-4xl lg:max-w-5xl md:h-[88vh] md:max-h-[820px] md:rounded-2xl md:border md:border-[#D4AF37]/30 md:shadow-[0_20px_60px_rgba(0,0,0,0.95)] flex overflow-hidden font-sans select-none">
+      <div className="fixed inset-0 z-[200] w-full h-[100dvh] bg-[#0b0b0b] rounded-none md:relative md:max-w-4xl lg:max-w-5xl md:h-[88vh] md:max-h-[820px] md:rounded-2xl md:border md:border-[#D4AF37]/30 md:shadow-[0_20px_60px_rgba(0,0,0,0.95)] flex overflow-hidden font-sans select-none">
         
         {/* ================= LEFT COLUMN: CONVERSATION LIST (PILL STYLE) ================= */}
         <div 
@@ -1925,15 +2330,21 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                           initial={{ opacity: 0, y: 10, scale: 0.98 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           transition={{ duration: 0.18, ease: "easeOut" }}
-                          className={`flex flex-col ${isSent ? 'items-end' : 'items-start'} group`}
+                          className={`flex flex-col w-full ${isSent ? 'items-end pl-10 sm:pl-16' : 'items-start pr-10 sm:pr-16'} group`}
                         >
                           <div 
-                            className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-2.5 sm:p-3 relative shadow-sm transition-all ${
+                            className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-2.5 sm:p-3 relative transition-all ${
                               isSent 
-                                ? 'bg-[#201b0b] border border-[#D4AF37]/35 text-zinc-100 rounded-tr-xs' 
-                                : 'bg-[#18181c] border border-white/10 text-zinc-100 rounded-tl-xs'
+                                ? 'simcha-chat-bubble simcha-chat-bubble-sent bg-gradient-to-br from-[#3d300c] via-[#2f2509] to-[#241c06] border border-[#D4AF37]/65 text-white rounded-tr-none shadow-[0_4px_14px_rgba(212,175,55,0.16)]' 
+                                : 'simcha-chat-bubble simcha-chat-bubble-received bg-gradient-to-br from-[#1b2230] via-[#161c28] to-[#121722] border border-[#34B7F1]/35 text-white rounded-tl-none shadow-[0_4px_14px_rgba(0,0,0,0.4)]'
                             } ${isMatchedInSearch ? 'ring-2 ring-[#D4AF37] shadow-[0_0_12px_rgba(212,175,55,0.4)]' : ''}`}
                           >
+                            {/* Sender Role / Name Label so Left vs Right is unmistakably clear */}
+                            <div className={`text-[10px] font-bold uppercase tracking-wider mb-1 px-1 select-none flex items-center ${isSent ? 'justify-end text-[#D4AF37]' : 'justify-start text-[#34B7F1]'}`}>
+                              {isSent
+                                ? 'You'
+                                : (currentContact?.name || (isAdminReplying || isVendorReplying ? (msg.clientName || 'Client') : 'Vendor'))}
+                            </div>
                             {/* Image Attachment */}
                             {msg.type === 'image' || msg.imageUrl ? (
                               <div 

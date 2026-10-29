@@ -15,7 +15,7 @@ import { CustomAudioPlayer } from './CustomAudioPlayer';
 import { trackFunnelStep } from '../services/analyticsService';
 import { EmbeddedCheckoutModal } from './EmbeddedCheckoutModal';
 import { ThemeModeSwitch } from './ThemeModeSwitch';
-import { collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, getDocs, query, where, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 
 interface ClientPortalProps {
   user: UserAccount;
@@ -31,8 +31,8 @@ interface ClientPortalProps {
   onClose: () => void;
   onUpdateProfile: (data: { name: string, photoURL: string, photoStoragePath?: string }) => void;
   onDeleteAccount: () => void;
-  onMessageVendor: (vendor: Vendor) => void;
-  onOpenAdminChat?: () => void;
+  onMessageVendor: (vendor: Vendor, conversationId?: string, threadMessages?: Message[]) => void;
+  onOpenAdminChat?: (conversationId?: string, threadMessages?: Message[]) => void;
   onActiveChatChange?: (isActive: boolean) => void;
   onTabChange?: (tab: string) => void;
   initialTab?: string;
@@ -256,19 +256,131 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     });
   }, [clientBookings, vendors, selectedEventCategory]);
   
-  // Group messages by vendor/contact for the chat hub (strictly one thread per contact, newest on top)
+  // Direct real-time listener on conversations + messages subcollections for this client
+  const [liveClientMessages, setLiveClientMessages] = useState<Message[]>([]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setLiveClientMessages([]);
+      return;
+    }
+    const myEmailLower = (user.username || '').trim().toLowerCase();
+    const subUnsubs = new Map<string, () => void>();
+    const convMessagesMap = new Map<string, Message[]>();
+
+    const rebuildLiveMessages = () => {
+      const merged: Message[] = [];
+      const seen = new Set<string>();
+      convMessagesMap.forEach((list) => {
+        list.forEach((m) => {
+          if (m.id && !seen.has(m.id)) {
+            seen.add(m.id);
+            merged.push(m);
+          }
+        });
+      });
+      setLiveClientMessages(merged);
+    };
+
+    const attachConversationListener = (convDoc: any) => {
+      const cid = convDoc.id;
+      const convData = convDoc.data() || {};
+      if (subUnsubs.has(cid)) return;
+
+      const msgsRef = collection(db, 'conversations', cid, 'messages');
+      const unsubMsgs = onSnapshot(
+        msgsRef,
+        (msgSnap) => {
+          const list: Message[] = msgSnap.docs.map((mDoc) => {
+            const d = mDoc.data() || {};
+            let ts = new Date().toISOString();
+            if (d.timestamp) {
+              ts = typeof d.timestamp === 'string' ? d.timestamp : (typeof d.timestamp?.toDate === 'function' ? d.timestamp.toDate().toISOString() : ts);
+            } else if (d.sent_at) {
+              ts = typeof d.sent_at?.toDate === 'function' ? d.sent_at.toDate().toISOString() : new Date(d.sent_at).toISOString();
+            }
+            const senderId = d.senderId || d.sender_id || '';
+            const receiverId = d.receiverId || d.receiver_id || (senderId === user.id ? (convData.vendor_id || 'admin') : user.id);
+            return {
+              id: mDoc.id,
+              ...d,
+              conversationId: cid,
+              senderId,
+              receiverId,
+              vendorId: d.vendorId || d.vendor_id || convData.vendor_id || undefined,
+              vendorName: d.vendorName || d.vendor_name || convData.vendor_name || undefined,
+              clientEmail: d.clientEmail || d.client_email || convData.client_email || user.username,
+              participants: Array.isArray(d.participants) ? d.participants : (Array.isArray(convData.participant_ids) ? convData.participant_ids : [senderId, receiverId]),
+              isAdminInquiry: Boolean(d.isAdminInquiry || convData.type === 'admin_support' || senderId === 'admin' || receiverId === 'admin'),
+              timestamp: ts,
+            } as Message;
+          });
+          convMessagesMap.set(cid, list);
+          rebuildLiveMessages();
+        },
+        () => {}
+      );
+      subUnsubs.set(cid, unsubMsgs);
+    };
+
+    const qByParticipant = query(collection(db, 'conversations'), where('participant_ids', 'array-contains', user.id));
+    const unsub1 = onSnapshot(qByParticipant, (snap) => {
+      snap.docs.forEach(attachConversationListener);
+    }, () => {});
+
+    const qByClientId = query(collection(db, 'conversations'), where('client_id', '==', user.id));
+    const unsub2 = onSnapshot(qByClientId, (snap) => {
+      snap.docs.forEach(attachConversationListener);
+    }, () => {});
+
+    let unsub3 = () => {};
+    if (myEmailLower) {
+      const qByClientEmail = query(collection(db, 'conversations'), where('client_email', '==', myEmailLower));
+      unsub3 = onSnapshot(qByClientEmail, (snap) => {
+        snap.docs.forEach(attachConversationListener);
+      }, () => {});
+    }
+
+    return () => {
+      unsub1();
+      unsub2();
+      unsub3();
+      subUnsubs.forEach((u) => u());
+      subUnsubs.clear();
+    };
+  }, [user?.id, user?.username]);
+
+  // Group messages by vendor/contact for the chat hub (includes both Admin Support and Vendor conversations for this client)
   const chatThreads = useMemo(() => {
     const groups: Record<string, { vendor: Vendor; messages: Message[]; lastMessage: Message }> = {};
     const seenMessageIds = new Set<string>();
+    const myEmailLower = (user.username || '').trim().toLowerCase();
+    const isNonVendorAccount = ['bookingsimcha@gmail.com', 'adminbookingsimcha@gmail.com', 'ststrohli@gmail.com'].includes(myEmailLower);
 
-    messages.forEach((m) => {
+    const myOwnVendorIds = new Set(
+      isNonVendorAccount
+        ? []
+        : vendors
+            .filter(
+              (v) =>
+                v.id === user.id ||
+                (myEmailLower &&
+                  (v.contactEmail?.toLowerCase() === myEmailLower ||
+                    v.username?.toLowerCase() === myEmailLower))
+            )
+            .map((v) => v.id)
+    );
+
+    const combinedMessages = [...messages, ...liveClientMessages];
+
+    combinedMessages.forEach((m) => {
       if (!m) return;
       if (m.id && seenMessageIds.has(m.id)) return;
       if (m.id) seenMessageIds.add(m.id);
 
       let vendor: Vendor | undefined;
 
-      // 1. Check if this message belongs to the Admin Support thread
+      // 1. Admin Support messages for this client
       if (
         m.isAdminInquiry ||
         m.senderId === 'admin' ||
@@ -276,30 +388,82 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         (m.participants && m.participants.includes('admin')) ||
         (m.conversationId && m.conversationId.split('_').includes('admin'))
       ) {
+        const isMyAdminChat =
+          m.senderId === user.id ||
+          m.receiverId === user.id ||
+          (m as any).client_id === user.id ||
+          (myEmailLower && m.clientEmail?.toLowerCase() === myEmailLower) ||
+          (myEmailLower && (m as any).client_email?.toLowerCase() === myEmailLower) ||
+          (m.participants && m.participants.includes(user.id)) ||
+          (m.conversationId && m.conversationId.split('_').includes(user.id));
+
+        if (!isMyAdminChat) return;
+
         vendor = {
           id: 'admin',
-          name: 'Simcha Admin',
-          category: 'Support',
-          description: 'Direct support from the Simcha platform.',
-          priceRange: 'N/A',
-          location: 'System',
-          image: '',
+          name: 'Simcha Concierge',
+          category: 'Support & Concierge' as any,
+          price: 0,
           rating: 5,
-          reviews: [],
-        } as unknown as Vendor;
+          image: '',
+          description: 'Official Simcha Booking Concierge & Admin Support',
+          EventTypes: []
+        } as Vendor;
       } else {
-        // 2. Resolve vendor by senderId, receiverId, participants, conversationId, or vendorEmail
+        // 2. Vendor conversations for this client (including messages sent by the vendor to this client)
+        const role = (m as any).sender_role;
+        const explicitVendorId = (m as any).vendorId || (m as any).vendor_id;
         const candidateOtherId = m.senderId === user.id ? m.receiverId : m.senderId;
+        const msgVendorId =
+          explicitVendorId ||
+          (role === 'vendor' ? m.senderId : role === 'client' ? m.receiverId : candidateOtherId);
+
+        // If this user owns a vendor profile, exclude messages where another client is messaging this user's own vendor
+        if (myOwnVendorIds.size > 0) {
+          if (msgVendorId && myOwnVendorIds.has(msgVendorId)) return;
+          if (myOwnVendorIds.has(m.receiverId) && m.senderId !== user.id) return;
+          if (myOwnVendorIds.has(m.senderId) && role === 'vendor') return;
+        }
+
+        // Verify this message involves this client
+        const isMyVendorMessage =
+          m.senderId === user.id ||
+          m.receiverId === user.id ||
+          (m as any).client_id === user.id ||
+          (myEmailLower && m.clientEmail?.toLowerCase() === myEmailLower) ||
+          (myEmailLower && (m as any).client_email?.toLowerCase() === myEmailLower) ||
+          (m.participants && m.participants.includes(user.id)) ||
+          (myEmailLower && m.participants && m.participants.some((p: string) => p.toLowerCase() === myEmailLower)) ||
+          (m.conversationId && m.conversationId.split('_').includes(user.id));
+
+        if (!isMyVendorMessage) return;
+
         vendor =
-          vendors.find((v) => v.id === candidateOtherId) ||
+          (explicitVendorId ? vendors.find((v) => v.id === explicitVendorId && !myOwnVendorIds.has(v.id)) : undefined) ||
+          vendors.find((v) => v.id === candidateOtherId && !myOwnVendorIds.has(v.id)) ||
+          vendors.find((v) => v.id === msgVendorId && !myOwnVendorIds.has(v.id)) ||
           vendors.find(
             (v) =>
-              v.id === m.senderId ||
-              v.id === m.receiverId ||
-              (m.participants && m.participants.includes(v.id)) ||
-              (m.conversationId && m.conversationId.split('_').includes(v.id)) ||
-              (m.vendorEmail && v.contactEmail && v.contactEmail.toLowerCase() === m.vendorEmail.toLowerCase())
+              !myOwnVendorIds.has(v.id) &&
+              (v.id === m.senderId ||
+                v.id === m.receiverId ||
+                (m.participants && m.participants.includes(v.id)) ||
+                (m.conversationId && m.conversationId.split('_').includes(v.id)) ||
+                (m.vendorEmail && v.contactEmail && v.contactEmail.toLowerCase() === m.vendorEmail.toLowerCase()))
           );
+
+        if (!vendor && msgVendorId && msgVendorId !== user.id && !myOwnVendorIds.has(msgVendorId)) {
+          vendor = {
+            id: msgVendorId,
+            name: (m as any).vendorName || (m as any).vendor_name || (role === 'vendor' ? m.senderName : '') || 'Vendor',
+            category: 'Vendor' as any,
+            price: 0,
+            rating: 5,
+            image: '',
+            description: '',
+            EventTypes: []
+          } as Vendor;
+        }
       }
 
       if (vendor) {
@@ -327,7 +491,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
       const timeB = b[1].lastMessage?.timestamp ? new Date(b[1].lastMessage.timestamp).getTime() : 0;
       return timeB - timeA;
     });
-  }, [messages, vendors, user.id]);
+  }, [messages, liveClientMessages, vendors, user.id, user.username]);
 
   const onActiveChatChangeRef = useRef(onActiveChatChange);
   useEffect(() => {
@@ -676,7 +840,11 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                     {/* Bottom Stair Step: Message button */}
                     <button
                       type="button"
-                      onClick={() => onMessageVendor(vendor)}
+                      onClick={() => {
+                        const existingThread = chatThreads.find(([vid]) => vid === vendor.id);
+                        const conId = existingThread?.[1]?.lastMessage?.conversationId || [user.id, vendor.id].sort().filter(Boolean).join('_');
+                        onMessageVendor(vendor, conId, existingThread?.[1]?.messages);
+                      }}
                       className="simcha-event-btn px-4 py-1.5 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black active:scale-95 rounded-full transition-all border border-[#D4AF37]/50 flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-widest cursor-pointer shadow-md"
                     >
                       <MessageSquare className="w-3 h-3" />
@@ -701,7 +869,10 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                 const vendorPhoto = data.vendor.image;
                 const initials = getVendorInitials(data.vendor.name);
                 const lastMsg = data.lastMessage;
-                const isLastSentByMe = lastMsg.senderId === user.id || (lastMsg as any).sender_role === 'client';
+                const isLastSentByMe =
+                  vendorId === 'admin'
+                    ? (lastMsg.senderId !== 'admin' && (lastMsg as any).sender_role !== 'admin')
+                    : (lastMsg.senderId !== vendorId && (lastMsg as any).sender_role !== 'vendor');
                 const lastReadByMap = (lastMsg as any).read_by || {};
                 const isLastReadByOther = Boolean(
                   lastMsg.isRead ||
@@ -718,9 +889,9 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                     markChatAsRead(conId, user.id).catch(() => {});
                   }
                   if (vendorId === 'admin' && onOpenAdminChat) {
-                    onOpenAdminChat();
+                    onOpenAdminChat(conId, data.messages);
                   } else {
-                    onMessageVendor(data.vendor);
+                    onMessageVendor(data.vendor, conId, data.messages);
                   }
                 };
 

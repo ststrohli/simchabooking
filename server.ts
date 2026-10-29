@@ -1701,6 +1701,27 @@ async function startServer() {
     }
   });
 
+  // Bot-Detection Security Flag Endpoint
+  app.post("/api/auth/flag-bot-attempt", async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const ip = req.ip || "unknown";
+      console.warn(`[Security][BotDetection] Blocked sign-in attempt from IP ${ip} (email: ${payload.email || 'unknown'}, score: ${payload.score}):`, payload.reasons);
+
+      await safeFirestoreOp(async (database) => {
+        await database.collection('security_flags').add({
+          ...payload,
+          ip,
+          serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }, "Flag Bot Attempt", "security_flags");
+
+      res.json({ status: "flagged" });
+    } catch (err: any) {
+      res.status(200).json({ status: "logged" });
+    }
+  });
+
   // Search endpoint with privacy protection
   app.get("/api/vendors", async (req, res) => {
     const ip = req.ip || "unknown";

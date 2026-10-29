@@ -747,14 +747,41 @@ body.light-mode,
   color: #000000 !important;
 }
 
-.light-mode .simcha-event-card .text-white {
+.light-mode .simcha-event-card .text-white,
+.light-mode .simcha-event-card .simcha-event-pill {
   color: #ffffff !important;
 }
 
 .light-mode .simcha-event-card .text-zinc-100,
 .light-mode .simcha-event-card .text-zinc-200,
-.light-mode .simcha-event-card .text-zinc-300 {
+.light-mode .simcha-event-card .text-zinc-200\/90,
+.light-mode .simcha-event-card .text-zinc-300,
+.light-mode .simcha-event-card .text-zinc-400 {
+  color: #f4f4f5 !important;
+}
+
+/* Keep chat message bubbles and their text/metadata high-contrast and readable in Light Mode */
+.light-mode .simcha-chat-bubble,
+.light-mode .simcha-chat-bubble p,
+.light-mode .simcha-chat-bubble .text-white,
+.light-mode .simcha-chat-bubble .text-zinc-100,
+.light-mode .simcha-chat-bubble .text-zinc-200,
+.light-mode .simcha-chat-bubble .text-amber-50 {
+  color: #ffffff !important;
+}
+
+.light-mode .simcha-chat-bubble .text-zinc-300,
+.light-mode .simcha-chat-bubble .text-zinc-400,
+.light-mode .simcha-chat-bubble .text-zinc-500 {
   color: #e4e4e7 !important;
+}
+
+.light-mode .simcha-chat-bubble .text-\[\#D4AF37\] {
+  color: #FFE885 !important;
+}
+
+.light-mode .simcha-chat-bubble .text-\[\#34B7F1\] {
+  color: #34B7F1 !important;
 }
 
 .simcha-pill-fade-left {

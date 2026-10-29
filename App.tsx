@@ -19,6 +19,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage, getDocSafe, getDocsSafe } from './services/firebase';
 import { uploadFileRobustly } from './services/uploadService';
 import { trackFunnelStep } from './services/analyticsService';
+import { botDetectionService } from './services/botDetectionService';
 import { sendNewMessage, subscribeToUserInbox, ensureAdminSupportConversation } from './services/messagingService';
 import VendorCard from './components/VendorCard';
 import VendorCardSkeleton from './components/VendorCardSkeleton';
@@ -248,14 +249,20 @@ const FixedGoldScrollbar: React.FC = () => {
   );
 };
 
-const ADMIN_EMAILS = ['bookingsimcha@gmail.com', 'shimpose@gmail.com'];
+const ADMIN_EMAILS = ['bookingsimcha@gmail.com', 'adminbookingsimcha@gmail.com', 'shimpose@gmail.com'];
 const CLIENT_OVERRIDE_EMAILS = ['ststrohli@gmail.com'];
+const NON_VENDOR_EMAILS = ['bookingsimcha@gmail.com', 'adminbookingsimcha@gmail.com', 'ststrohli@gmail.com'];
 
 const isWhitelistedAdminEmail = (email?: string | null): boolean => {
   if (!email) return false;
   const userEmail = email.trim().toLowerCase();
   if (CLIENT_OVERRIDE_EMAILS.includes(userEmail)) return false;
   return ADMIN_EMAILS.includes(userEmail);
+};
+
+const isNonVendorEmail = (email?: string | null): boolean => {
+  if (!email) return false;
+  return NON_VENDOR_EMAILS.includes(email.trim().toLowerCase());
 };
 
 const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | 'client'> => {
@@ -533,6 +540,7 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
 
   const photoPreviewUrl = useMemo(() => (photo ? URL.createObjectURL(photo) : ''), [photo]);
   useEffect(() => {
+    botDetectionService.markSignInFormOpened();
     return () => {
       if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
     };
@@ -590,6 +598,15 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
           </header>
 
           <form ref={signUpFormRef} aria-label="Registration Form" onSubmit={onRegister} className="space-y-4">
+            <input
+              type="text"
+              name="website_company_url"
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              onChange={e => botDetectionService.setHoneypotValue(e.target.value)}
+              className="absolute -left-[9999px] top-0 w-px h-px opacity-0 pointer-events-none"
+            />
             <div className="flex flex-col items-center mb-4">
               <label className="relative group cursor-pointer">
                 <div className="w-20 h-20 bg-black/60 border-2 border-dashed border-[#D4AF37]/30 rounded-full flex items-center justify-center overflow-hidden transition-all group-hover:border-[#D4AF37]">
@@ -774,6 +791,7 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
   }, [isSignUpOpen]);
 
   useEffect(() => {
+    botDetectionService.markSignInFormOpened();
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = '';
@@ -859,6 +877,15 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
 
           {step === 'login' ? (
             <form ref={signInFormRef} aria-label="Sign In Form" onSubmit={onLogin} className="space-y-6">
+              <input
+                type="text"
+                name="website_company_url"
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                onChange={e => botDetectionService.setHoneypotValue(e.target.value)}
+                className="absolute -left-[9999px] top-0 w-px h-px opacity-0 pointer-events-none"
+              />
               <div className="flex rounded-full border border-[#D4AF37]/20 bg-black/60 p-1 mb-4">
                 <button
                   type="button"
@@ -1363,12 +1390,59 @@ function App() {
   const [paymentVendorId, setPaymentVendorId] = useState<string | null>(null);
 
   const vendorProfileId = useMemo(() => {
-    if (!fbUser?.email) return null;
+    if (!fbUser) return null;
+    const lowerEmail = (fbUser.email || '').trim().toLowerCase();
+    // bookingsimcha@gmail.com is strictly an Admin & Client, NEVER a Vendor
+    if (isNonVendorEmail(lowerEmail)) return null;
     if (currentUserVendorId) return currentUserVendorId;
     if (userDocData?.vendorId) return userDocData.vendorId;
-    const matchedVendor = vendors.find(v => v.username?.toLowerCase() === fbUser.email?.toLowerCase());
+    const matchedVendor = vendors.find(
+      v =>
+        v.id === fbUser.uid ||
+        (lowerEmail &&
+          (v.username?.toLowerCase() === lowerEmail ||
+            v.contactEmail?.toLowerCase() === lowerEmail ||
+            (lowerEmail === 'shimpose@gmail.com' &&
+              (v.contactEmail?.toLowerCase() === 'bookingsimcha@gmail.com' ||
+                v.username?.toLowerCase() === 'bookingsimcha@gmail.com'))))
+    );
     return matchedVendor ? matchedVendor.id : null;
   }, [fbUser, currentUserVendorId, userDocData, vendors]);
+
+  const ownedVendorIds = useMemo(() => {
+    if (!fbUser) return [];
+    const lowerEmail = (fbUser.email || '').trim().toLowerCase();
+    // bookingsimcha@gmail.com is strictly an Admin & Client, NEVER a Vendor
+    if (isNonVendorEmail(lowerEmail)) return [];
+    const ids = new Set<string>();
+    if (currentUserVendorId) ids.add(currentUserVendorId);
+    if (vendorProfileId) ids.add(vendorProfileId);
+    if (userDocData?.vendorId) ids.add(userDocData.vendorId);
+    vendors.forEach(v => {
+      if (
+        v.id === fbUser.uid ||
+        (lowerEmail &&
+          (v.username?.toLowerCase() === lowerEmail ||
+            v.contactEmail?.toLowerCase() === lowerEmail ||
+            (lowerEmail === 'shimpose@gmail.com' &&
+              (v.contactEmail?.toLowerCase() === 'bookingsimcha@gmail.com' ||
+                v.username?.toLowerCase() === 'bookingsimcha@gmail.com'))))
+      ) {
+        ids.add(v.id);
+      }
+    });
+    return Array.from(ids);
+  }, [currentUserVendorId, vendorProfileId, userDocData, fbUser, vendors]);
+
+  useEffect(() => {
+    if (fbUser && isNonVendorEmail(fbUser.email)) {
+      if (currentUserVendorId !== null) setCurrentUserVendorId(null);
+      return;
+    }
+    if (vendorProfileId && !currentUserVendorId) {
+      setCurrentUserVendorId(vendorProfileId);
+    }
+  }, [vendorProfileId, currentUserVendorId, fbUser]);
 
   const isAdmin = useMemo(() => {
     const email = fbUser?.email?.trim().toLowerCase();
@@ -1380,11 +1454,15 @@ function App() {
   }, [fbUser, userDocData, userRole]);
 
   const isActuallyVendor = useMemo(() => {
+    const email = fbUser?.email?.trim().toLowerCase();
+    // bookingsimcha@gmail.com is strictly an Admin & Client, NEVER a Vendor
+    if (email && isNonVendorEmail(email)) return false;
     if (userRole === 'vendor') return true;
+    if (ownedVendorIds.length > 0) return true;
     if (isInitializing || isRoleLoading) return false;
     if (!fbUser || !userDocData) return false;
     return userDocData.isVendor === true || userDocData.role === 'vendor';
-  }, [isInitializing, isRoleLoading, fbUser, userDocData, userRole]);
+  }, [isInitializing, isRoleLoading, fbUser, userDocData, userRole, ownedVendorIds]);
 
   useEffect(() => {
     if (!isInitializing && !isRoleLoading) {
@@ -1501,6 +1579,15 @@ function App() {
         updatedAt: new Date().toISOString()
       };
 
+      if (isWhitelistedAdminEmail(user.email)) {
+        userData.role = 'admin';
+        userData.isAdmin = true;
+      }
+
+      if (isNonVendorEmail(user.email)) {
+        userData.isVendor = false;
+      }
+
       if (additionalData.photoStoragePath !== undefined) {
         userData.photoStoragePath = additionalData.photoStoragePath;
       }
@@ -1520,7 +1607,26 @@ function App() {
         if (existingData?.themeMode === undefined && userData.themeMode === undefined) {
           userData.themeMode = 'dark';
         }
+        if (isNonVendorEmail(user.email)) {
+          userData.vendorId = deleteField();
+          userData.isVendor = false;
+        }
         await updateDoc(userDocRef, userData);
+      }
+
+      // If any vendor document in Firestore accidentally had bookingsimcha@gmail.com as contactEmail/username,
+      // migrate it to shimpose@gmail.com so shimpose@gmail.com owns it and bookingsimcha@gmail.com never appears as a vendor
+      if (isWhitelistedAdminEmail(user.email)) {
+        vendors.forEach(v => {
+          const cEmail = (v.contactEmail || '').trim().toLowerCase();
+          const uName = (v.username || '').trim().toLowerCase();
+          if (cEmail === 'bookingsimcha@gmail.com' || uName === 'bookingsimcha@gmail.com' || cEmail === 'adminbookingsimcha@gmail.com' || uName === 'adminbookingsimcha@gmail.com') {
+            updateDoc(doc(db, 'vendors', v.id), {
+              contactEmail: 'shimpose@gmail.com',
+              ...(uName.includes('@') ? { username: 'shimpose@gmail.com' } : {})
+            }).catch(() => {});
+          }
+        });
       }
     } catch (err: any) {
       if (err.message?.includes('offline') || err.message?.includes('Failed to get document')) {
@@ -1777,8 +1883,9 @@ function App() {
         )
       );
 
-      if (currentUserVendorId) {
-        const qByVendorId = query(collection(db, 'bookings'), where('vendorId', '==', currentUserVendorId));
+      const activeVendorTarget = currentUserVendorId || vendorProfileId;
+      if (activeVendorTarget) {
+        const qByVendorId = query(collection(db, 'bookings'), where('vendorId', '==', activeVendorTarget));
         unsubs.push(
           onSnapshot(
             qByVendorId,
@@ -1799,24 +1906,28 @@ function App() {
     // Messages (Subcollection aggregation to keep existing UI fully intact without deep structural rewrite of all panels)
     let unsubMessages = () => {};
     
-    // First, determine conversation query based on role
-    let convoQuery;
-    if (userRole === 'admin') {
-      convoQuery = collection(db, 'conversations');
-    } else {
-      const participantTargets = Array.from(
-        new Set([fbUser.uid, currentUserVendorId, vendorProfileId].filter(Boolean))
-      ) as string[];
-      convoQuery = participantTargets.length > 1
-        ? query(
-            collection(db, 'conversations'),
-            where('participant_ids', 'array-contains-any', participantTargets)
-          )
-        : query(
-            collection(db, 'conversations'),
-            where('participant_ids', 'array-contains', fbUser.uid)
-          );
-    }
+    // First, determine conversation query based on role (Admin only queries 'admin' support threads, never private vendor-client chats)
+    const participantTargets = Array.from(
+      new Set(
+        [
+          ...(userRole === 'admin' || isAdmin ? ['admin'] : []),
+          fbUser.uid,
+          currentUserVendorId,
+          vendorProfileId,
+          ...ownedVendorIds,
+        ].filter(Boolean)
+      )
+    ).slice(0, 10) as string[];
+
+    const convoQuery = participantTargets.length > 1
+      ? query(
+          collection(db, 'conversations'),
+          where('participant_ids', 'array-contains-any', participantTargets)
+        )
+      : query(
+          collection(db, 'conversations'),
+          where('participant_ids', 'array-contains', participantTargets[0] || fbUser.uid)
+        );
 
     const activeListeners = new Map<string, () => void>();
     const allConvoMessages = new Map<string, Message[]>();
@@ -1840,91 +1951,145 @@ function App() {
       setMessages(merged);
     };
 
-    const unsubConvos = onSnapshot(convoQuery, (snapshot) => {
-      // For each conversation, subscribe to its subcollection message list
-      const currentConversations = snapshot.docs.map(doc => doc.id);
-      
-      // Clean up listeners for conversations that are no longer active
-      for (const cid of activeListeners.keys()) {
-        if (!currentConversations.includes(cid)) {
-          activeListeners.get(cid)?.();
-          activeListeners.delete(cid);
-          allConvoMessages.delete(cid);
-        }
-      }
+    const attachConversationMessagesListener = (convoDoc: any) => {
+      const cid = convoDoc.id;
+      const convoData = convoDoc.data() || {};
+      if (activeListeners.has(cid)) return;
 
-      snapshot.docs.forEach((convoDoc) => {
-        const cid = convoDoc.id;
-        if (!activeListeners.has(cid)) {
-          const msgQuery = query(
-            collection(db, 'conversations', cid, 'messages'),
-            orderBy('sent_at', 'asc')
-          );
-          
-          const unsubMsg = onSnapshot(msgQuery, (msgSnap) => {
-            const msgs = msgSnap.docs.map(docSnap => {
-              const data = docSnap.data();
-              let timestampStr = new Date().toISOString();
-              if (data.sent_at) {
-                if (typeof data.sent_at.toDate === 'function') {
-                  timestampStr = data.sent_at.toDate().toISOString();
-                } else {
-                  timestampStr = new Date(data.sent_at).toISOString();
-                }
-              }
-              return {
-                id: docSnap.id,
-                ...data,
-                senderId: data.sender_id || data.senderId,
-                timestamp: timestampStr,
-              } as Message;
-            });
-            allConvoMessages.set(cid, msgs);
-            rebuildMergedMessages();
-          }, (err) => {
-            handleFirestoreError(err, OperationType.LIST, `conversations/${cid}/messages`, notifyErr);
-            // Fallback without ordering
-            const fallbackQuery = collection(db, 'conversations', cid, 'messages');
-            const unsubFallback = onSnapshot(fallbackQuery, (msgSnap) => {
-              const msgs = msgSnap.docs.map(docSnap => {
-                const data = docSnap.data();
-                let timestampStr = new Date().toISOString();
-                if (data.sent_at) {
-                  if (typeof data.sent_at.toDate === 'function') {
-                    timestampStr = data.sent_at.toDate().toISOString();
-                  } else {
-                    timestampStr = new Date(data.sent_at).toISOString();
-                  }
-                }
-                return {
-                  id: docSnap.id,
-                  ...data,
-                  senderId: data.sender_id || data.senderId,
-                  timestamp: timestampStr,
-                } as Message;
-              });
-              allConvoMessages.set(cid, msgs);
+      const mapSnapToMessages = (msgSnap: any): Message[] => {
+        return msgSnap.docs.map((docSnap: any) => {
+          const data = docSnap.data() || {};
+          let timestampStr = new Date().toISOString();
+          if (data.timestamp) {
+            timestampStr = typeof data.timestamp === 'string'
+              ? data.timestamp
+              : (typeof data.timestamp?.toDate === 'function' ? data.timestamp.toDate().toISOString() : timestampStr);
+          } else if (data.sent_at) {
+            if (typeof data.sent_at.toDate === 'function') {
+              timestampStr = data.sent_at.toDate().toISOString();
+            } else {
+              timestampStr = new Date(data.sent_at).toISOString();
+            }
+          }
+          const senderId = data.senderId || data.sender_id || '';
+          const receiverId =
+            data.receiverId ||
+            data.receiver_id ||
+            (senderId === fbUser.uid ? (convoData.vendor_id || 'admin') : fbUser.uid);
+          return {
+            id: docSnap.id,
+            ...data,
+            conversationId: cid,
+            senderId,
+            receiverId,
+            vendorId: data.vendorId || data.vendor_id || convoData.vendor_id || undefined,
+            vendorName: data.vendorName || data.vendor_name || convoData.vendor_name || undefined,
+            clientEmail: data.clientEmail || data.client_email || convoData.client_email || undefined,
+            participants: Array.isArray(data.participants)
+              ? data.participants
+              : (Array.isArray(convoData.participant_ids) ? convoData.participant_ids : [senderId, receiverId]),
+            isAdminInquiry: Boolean(
+              data.isAdminInquiry ||
+                convoData.type === 'admin_support' ||
+                senderId === 'admin' ||
+                receiverId === 'admin'
+            ),
+            timestamp: timestampStr,
+          } as Message;
+        });
+      };
+
+      const msgQuery = query(
+        collection(db, 'conversations', cid, 'messages'),
+        orderBy('sent_at', 'asc')
+      );
+
+      const unsubMsg = onSnapshot(
+        msgQuery,
+        (msgSnap) => {
+          allConvoMessages.set(cid, mapSnapToMessages(msgSnap));
+          rebuildMergedMessages();
+        },
+        (err) => {
+          handleFirestoreError(err, OperationType.LIST, `conversations/${cid}/messages`, notifyErr);
+          const fallbackQuery = collection(db, 'conversations', cid, 'messages');
+          const unsubFallback = onSnapshot(
+            fallbackQuery,
+            (msgSnap) => {
+              allConvoMessages.set(cid, mapSnapToMessages(msgSnap));
               rebuildMergedMessages();
-            }, (err2) => {
+            },
+            (err2) => {
               handleFirestoreError(err2, OperationType.LIST, `conversations/${cid}/messages`, notifyErr);
-            });
-            activeListeners.set(cid + '_fallback', unsubFallback);
-          });
-          activeListeners.set(cid, unsubMsg);
+            }
+          );
+          activeListeners.set(cid + '_fallback', unsubFallback);
         }
-      });
-      
-      if (snapshot.docs.length === 0) {
-        setMessages([]);
-      } else {
+      );
+      activeListeners.set(cid, unsubMsg);
+    };
+
+    const unsubConvos = onSnapshot(
+      convoQuery,
+      (snapshot) => {
+        snapshot.docs.forEach(attachConversationMessagesListener);
         rebuildMergedMessages();
+      },
+      (err) => {
+        handleFirestoreError(err, OperationType.LIST, 'conversations', notifyErr);
       }
-    }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'conversations', notifyErr);
-    });
+    );
+
+    const qByClientId = query(collection(db, 'conversations'), where('client_id', '==', fbUser.uid));
+    const unsubByClientId = onSnapshot(
+      qByClientId,
+      (snapshot) => {
+        snapshot.docs.forEach(attachConversationMessagesListener);
+        rebuildMergedMessages();
+      },
+      () => {}
+    );
+
+    const lowerAuthEmail = (fbUser.email || '').trim().toLowerCase();
+    let unsubByClientEmail = () => {};
+    let unsubByEmailParticipant = () => {};
+    let unsubByClientIdEmail = () => {};
+    if (lowerAuthEmail) {
+      const qByClientEmail = query(collection(db, 'conversations'), where('client_email', '==', lowerAuthEmail));
+      unsubByClientEmail = onSnapshot(
+        qByClientEmail,
+        (snapshot) => {
+          snapshot.docs.forEach(attachConversationMessagesListener);
+          rebuildMergedMessages();
+        },
+        () => {}
+      );
+      const qByEmailParticipant = query(collection(db, 'conversations'), where('participant_ids', 'array-contains', lowerAuthEmail));
+      unsubByEmailParticipant = onSnapshot(
+        qByEmailParticipant,
+        (snapshot) => {
+          snapshot.docs.forEach(attachConversationMessagesListener);
+          rebuildMergedMessages();
+        },
+        () => {}
+      );
+      const qByClientIdEmail = query(collection(db, 'conversations'), where('client_id', '==', lowerAuthEmail));
+      unsubByClientIdEmail = onSnapshot(
+        qByClientIdEmail,
+        (snapshot) => {
+          snapshot.docs.forEach(attachConversationMessagesListener);
+          rebuildMergedMessages();
+        },
+        () => {}
+      );
+    }
 
     unsubMessages = () => {
       unsubConvos();
+      unsubByClientId();
+      unsubByClientEmail();
+      unsubByEmailParticipant();
+      unsubByClientIdEmail();
       activeListeners.forEach(unsub => unsub());
       activeListeners.clear();
     };
@@ -2009,7 +2174,7 @@ function App() {
       unsubUserDoc();
       unsubUsers();
     };
-  }, [fbUser, userRole, currentUserVendorId, isAdmin, isSignInFlipping, applyThemeDomClasses]);
+  }, [fbUser, userRole, currentUserVendorId, vendorProfileId, ownedVendorIds.join(','), isAdmin, isSignInFlipping, applyThemeDomClasses]);
 
   // Clean Layer Slide-Up Sign-In Transition Effect (1.25s Modal Speed)
   useEffect(() => {
@@ -2226,7 +2391,13 @@ function App() {
              else if (docRole === 'vendor' || data.isVendor === true) finalRole = 'vendor';
              else finalRole = data.role;
           }
-          resolvedVendorId = data.vendorId || null;
+          if (isNonVendorEmail(userEmail)) {
+            resolvedVendorId = null;
+            resolvedUserDocData.isVendor = false;
+            delete resolvedUserDocData.vendorId;
+          } else {
+            resolvedVendorId = data.vendorId || null;
+          }
         }
 
         applyThemeDomClasses(resolvedTheme);
@@ -2239,10 +2410,14 @@ function App() {
 
         await waitMinReloadTime();
 
+        if (isNonVendorEmail(userEmail)) {
+          setIsVendorView(false);
+          setPortalTab('client');
+        }
         setUserDocData(resolvedUserDocData);
         setUserRole(finalRole);
         try { localStorage.setItem('simcha_user_role', finalRole); } catch (e) {}
-        setCurrentUserVendorId(resolvedVendorId);
+        setCurrentUserVendorId(isNonVendorEmail(userEmail) ? null : resolvedVendorId);
         setFbUser(user);
         console.log("Logged in UID:", user.uid, "| Detected Role:", finalRole);
       } catch (err: any) {
@@ -2332,6 +2507,8 @@ function App() {
     setQuickViewVendor(v);
   };
   const [chatVendor, setChatVendor] = useState<Vendor | null>(null);
+  const [chatConversationId, setChatConversationId] = useState<string | undefined>(undefined);
+  const [chatThreadMessages, setChatThreadMessages] = useState<Message[]>([]);
   const [isAdminChatOpen, setIsAdminChatOpen] = useState(false);
   const [isPortalChatActive, setIsPortalChatActive] = useState(false);
   const [adminInquiryText, setAdminInquiryText] = useState('');
@@ -3308,10 +3485,17 @@ function App() {
         payload.senderId === 'admin' ||
         (view === 'admin' && payload.receiverId !== 'admin');
 
+      const isSendingFromAskButton =
+        !isSendingFromAdminPanel &&
+        (Boolean(payload.isAdminInquiry) || payload.receiverId === 'admin' || isAdminChatOpen);
+
+      // Only send as a vendor when actively inside the Vendor Portal
       const isSendingFromVendorPortal =
         !isSendingFromAdminPanel &&
-        ((view === 'portal' && portalTab === 'vendor' && !!activeVendorId) ||
-          (!!activeVendorId && payload.senderId === activeVendorId && payload.receiverId !== activeVendorId));
+        !isSendingFromAskButton &&
+        view === 'portal' &&
+        portalTab === 'vendor' &&
+        !!activeVendorId;
 
       let senderId = payload.senderId || currentUid;
       let receiverId = payload.receiverId || '';
@@ -3323,6 +3507,10 @@ function App() {
         if (!receiverId && payload.clientEmail) {
           receiverId = getClientUidSync(payload.clientEmail) || 'client_legacy';
         }
+      } else if (isSendingFromAskButton) {
+        senderId = currentUid;
+        receiverId = 'admin';
+        effectiveSenderRole = 'client';
       } else if (isSendingFromVendorPortal) {
         senderId = activeVendorId;
         effectiveSenderRole = 'vendor';
@@ -3331,11 +3519,12 @@ function App() {
           if (resolvedUid) receiverId = resolvedUid;
         }
       } else {
+        // Sending from Client Portal or Marketplace always sends from the user's client account
         senderId = currentUid;
         effectiveSenderRole = 'client';
       }
 
-      if (payload.isAdminInquiry || payload.receiverId === 'admin') {
+      if (payload.isAdminInquiry || payload.receiverId === 'admin' || isSendingFromAskButton) {
         if (senderId !== 'admin') {
           receiverId = 'admin';
         } else if ((!receiverId || receiverId === 'admin' || receiverId === 'client_legacy') && payload.clientEmail) {
@@ -3435,21 +3624,27 @@ function App() {
     const rawEmail = (user.email || fallbackEmail || '').trim();
     const lowerEmail = rawEmail.toLowerCase();
     const isKnownAdmin = isWhitelistedAdminEmail(lowerEmail);
+    const isBlockedFromVendor = isNonVendorEmail(lowerEmail);
 
-    let matchedVendor: Vendor | null =
-      vendors.find(
-        v =>
-          v.id === user.uid ||
-          v.username?.toLowerCase() === lowerEmail ||
-          v.contactEmail?.toLowerCase() === lowerEmail
-      ) || null;
+    let matchedVendor: Vendor | null = isBlockedFromVendor
+      ? null
+      : (vendors.find(
+          v =>
+            v.id === user.uid ||
+            v.username?.toLowerCase() === lowerEmail ||
+            v.contactEmail?.toLowerCase() === lowerEmail ||
+            (lowerEmail === 'shimpose@gmail.com' &&
+              (v.contactEmail?.toLowerCase() === 'bookingsimcha@gmail.com' ||
+                v.username?.toLowerCase() === 'bookingsimcha@gmail.com'))
+        ) || null);
 
-    let isVendor =
-      Boolean(matchedVendor) ||
-      (lowerEmail ? INITIAL_VENDORS.some(v => v.username?.toLowerCase() === lowerEmail) : false);
+    let isVendor = isBlockedFromVendor
+      ? false
+      : (Boolean(matchedVendor) ||
+        (lowerEmail ? INITIAL_VENDORS.some(v => v.username?.toLowerCase() === lowerEmail) : false));
 
     // Only wait for remote vendor lookup before sliding if the email is unverified and not already known as admin/vendor
-    if (!user.emailVerified && !isVendor && !isKnownAdmin) {
+    if (!user.emailVerified && !isVendor && !isKnownAdmin && !isBlockedFromVendor) {
       try {
         const directVendorDoc = await getDocSafe(doc(db, 'vendors', user.uid)).catch(() => null);
         if (directVendorDoc && directVendorDoc.exists()) {
@@ -3542,7 +3737,7 @@ function App() {
           !matchedVendor ? getDocSafe(doc(db, 'vendors', user.uid)).catch(() => null) : Promise.resolve(null),
         ]);
 
-        if (!matchedVendor && directVendorDoc && directVendorDoc.exists()) {
+        if (!matchedVendor && !isBlockedFromVendor && directVendorDoc && directVendorDoc.exists()) {
           isVendor = true;
           matchedVendor = { id: directVendorDoc.id, ...directVendorDoc.data() } as Vendor;
         }
@@ -3552,12 +3747,12 @@ function App() {
           finalRole = 'admin';
         } else if (CLIENT_OVERRIDE_EMAILS.includes(lowerEmail)) {
           finalRole = 'client';
-        } else if (isVendor || matchedVendor) {
+        } else if (!isBlockedFromVendor && (isVendor || matchedVendor)) {
           finalRole = 'vendor';
         }
 
         let updatedTheme = resolvedTheme;
-        let updatedVendorId = matchedVendor?.id || resolvedVendorId;
+        let updatedVendorId = isBlockedFromVendor ? null : (matchedVendor?.id || resolvedVendorId);
 
         if (initialUserDoc && initialUserDoc.exists()) {
           const data = initialUserDoc.data();
@@ -3569,18 +3764,23 @@ function App() {
           } else if (!CLIENT_OVERRIDE_EMAILS.includes(lowerEmail)) {
             const docRole = typeof data.role === 'string' ? data.role.toLowerCase() : '';
             if (docRole === 'admin' || data.isAdmin === true) finalRole = 'admin';
-            else if (docRole === 'vendor' || data.isVendor === true || isVendor) finalRole = 'vendor';
+            else if (!isBlockedFromVendor && (docRole === 'vendor' || data.isVendor === true || isVendor)) finalRole = 'vendor';
           }
-          updatedVendorId = matchedVendor?.id || data.vendorId || null;
+          updatedVendorId = isBlockedFromVendor ? null : (matchedVendor?.id || data.vendorId || null);
           setUserDocData({
             ...data,
             role: finalRole,
             isAdmin: finalRole === 'admin',
-            isVendor: finalRole === 'vendor',
+            isVendor: isBlockedFromVendor ? false : finalRole === 'vendor',
+            vendorId: updatedVendorId || undefined,
             themeMode: updatedTheme,
           });
         }
 
+        if (isBlockedFromVendor) {
+          setIsVendorView(false);
+          setPortalTab('client');
+        }
         if (updatedTheme !== resolvedTheme) {
           applyThemeDomClasses(updatedTheme);
           setThemeMode(updatedTheme);
@@ -3605,6 +3805,13 @@ function App() {
 
   const handleAuthLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    const botEval = botDetectionService.evaluateSignInAttempt(e);
+    if (!botEval.allowed) {
+      void botDetectionService.flagBlockedAttempt(botEval, authEmail, 'sign-in');
+      setIsAuthLoading(false);
+      setAuthError('Automated or non-human activity detected. Sign-in request blocked and flagged.');
+      return;
+    }
     setIsAuthLoading(true);
     setAuthError('');
     setNotification(null);
@@ -3637,6 +3844,13 @@ function App() {
 
   const handleAuthRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    const botEval = botDetectionService.evaluateSignInAttempt(e);
+    if (!botEval.allowed) {
+      void botDetectionService.flagBlockedAttempt(botEval, authEmail, 'sign-up');
+      setIsAuthLoading(false);
+      setAuthError('Automated or non-human activity detected. Registration request blocked and flagged.');
+      return;
+    }
     if (authPassword !== authConfirmPassword) {
       setAuthError('Passwords do not match');
       return;
@@ -4071,12 +4285,20 @@ function App() {
             onUpdateSubCategoryImage={handleAdminUpdateSubCategoryImage}
             heroBackgroundUrl={heroBackgroundUrl}
             onUpdateHeroBackground={handleAdminUpdateHeroBackground}
-            messages={messages}
+            messages={messages.filter(
+              m =>
+                m.isAdminInquiry ||
+                m.senderId === 'admin' ||
+                m.receiverId === 'admin' ||
+                (m.participants && m.participants.includes('admin')) ||
+                (m.conversationId && m.conversationId.split('_').includes('admin'))
+            )}
             onSendMessage={handleSendMessage}
             showNotification={showNotification}
             onSeedTaxonomy={handleSeedTaxonomy}
             onUpdateCategoryOrder={handleAdminUpdateCategoryOrder}
             onDeleteCategory={handleAdminDeleteCategory}
+            onActiveChatChange={setIsPortalChatActive}
           />
         </motion.div>
       );
@@ -4084,10 +4306,38 @@ function App() {
 
     if (view === 'portal' && fbUser) {
       const isVendor = isActuallyVendor;
+      const effectiveVendorId = currentUserVendorId || vendorProfileId;
 
       if (portalTab === 'vendor' && isVendor) {
-        const v = vendors.find(v => v.id === currentUserVendorId);
+        const v = vendors.find(v => v.id === effectiveVendorId) || vendors.find(v => ownedVendorIds.includes(v.id));
         if (v) {
+          const vendorIdsSet = new Set([v.id, ...ownedVendorIds].filter(Boolean));
+          const vEmailLower = (v.contactEmail || v.username || '').trim().toLowerCase();
+          const vendorMessages = messages.filter(m => {
+            if (!m) return false;
+            if (m.isAdminInquiry || m.senderId === 'admin' || m.receiverId === 'admin') return false;
+            const role = (m as any).sender_role;
+            if (role === 'client') {
+              return (
+                vendorIdsSet.has(m.receiverId) ||
+                (vEmailLower && m.vendorEmail?.toLowerCase() === vEmailLower)
+              );
+            }
+            if (role === 'vendor') {
+              return (
+                vendorIdsSet.has(m.senderId) ||
+                (vEmailLower && m.vendorEmail?.toLowerCase() === vEmailLower)
+              );
+            }
+            return (
+              vendorIdsSet.has(m.receiverId) ||
+              vendorIdsSet.has(m.senderId) ||
+              (m.participants && m.participants.some(p => vendorIdsSet.has(p))) ||
+              (m.conversationId && m.conversationId.split('_').some(p => vendorIdsSet.has(p))) ||
+              (vEmailLower && m.vendorEmail?.toLowerCase() === vEmailLower)
+            );
+          });
+
           return (
             <motion.div 
               initial={{ opacity: 0, y: 30 }}
@@ -4099,14 +4349,8 @@ function App() {
                 <VendorPortal 
                   vendor={v} 
                   initialTab={portalInitialTab}
-                  bookings={bookings.filter(b => b.vendorId === v.id)} 
-                  messages={messages.filter(
-                    m =>
-                      m.receiverId === v.id ||
-                      m.senderId === v.id ||
-                      (m.participants && m.participants.includes(v.id)) ||
-                      (m.conversationId && m.conversationId.split('_').includes(v.id))
-                  )} 
+                  bookings={bookings.filter(b => vendorIdsSet.has(b.vendorId))} 
+                  messages={vendorMessages} 
                   onUpdateVendor={handleUpdateVendor} 
                   onUpdateBookingStatus={handleUpdateBookingStatus} 
                   onReplyMessage={handleReplyMessage} 
@@ -4124,20 +4368,54 @@ function App() {
         }
       }
 
-      // Otherwise render client portal
+      // Otherwise render client portal (strictly exclude incoming client-to-vendor inquiries meant for the user's vendor profile)
       const myBookings = bookings.filter(
         b =>
           b.userId === fbUser.uid ||
           b.clientId === fbUser.uid ||
           (b.contactEmail && fbUser.email && b.contactEmail.toLowerCase() === fbUser.email.toLowerCase())
       );
-      const myMessages = messages.filter(
-        m =>
+      const myVendorIdsSet = new Set(ownedVendorIds);
+      const myEmailLower = (fbUser.email || '').trim().toLowerCase();
+      const myMessages = messages.filter(m => {
+        if (!m) return false;
+        const isAdminMsg =
+          m.isAdminInquiry ||
+          m.senderId === 'admin' ||
+          m.receiverId === 'admin' ||
+          (m.participants && m.participants.includes('admin')) ||
+          (m.conversationId && m.conversationId.split('_').includes('admin'));
+
+        if (isAdminMsg) {
+          return (
+            m.senderId === fbUser.uid ||
+            m.receiverId === fbUser.uid ||
+            (m.participants && m.participants.includes(fbUser.uid)) ||
+            (m.conversationId && m.conversationId.split('_').includes(fbUser.uid)) ||
+            (myEmailLower && m.clientEmail?.toLowerCase() === myEmailLower)
+          );
+        }
+
+        const role = (m as any).sender_role;
+        const msgClientId = role === 'vendor' ? m.receiverId : (role === 'client' ? m.senderId : '');
+
+        // Exclude incoming/outgoing messages where ANOTHER client is messaging a vendor business owned by this user
+        if (role === 'client' && m.senderId && m.senderId !== fbUser.uid && (!myEmailLower || m.clientEmail?.toLowerCase() !== myEmailLower)) {
+          return false;
+        }
+        if (role === 'vendor' && myVendorIdsSet.has(m.senderId) && m.receiverId !== fbUser.uid && (!myEmailLower || m.clientEmail?.toLowerCase() !== myEmailLower)) {
+          return false;
+        }
+
+        return (
+          msgClientId === fbUser.uid ||
           m.senderId === fbUser.uid ||
           m.receiverId === fbUser.uid ||
           (m.participants && m.participants.includes(fbUser.uid)) ||
-          (m.clientEmail && fbUser.email && m.clientEmail.toLowerCase() === fbUser.email.toLowerCase())
-      );
+          (m.conversationId && m.conversationId.split('_').includes(fbUser.uid)) ||
+          (myEmailLower && m.clientEmail?.toLowerCase() === myEmailLower)
+        );
+      });
       return (
         <motion.div 
           initial={{ opacity: 0, y: 30 }}
@@ -4161,8 +4439,16 @@ function App() {
               onClose={() => setView('marketplace')} 
               onUpdateProfile={handleUpdateProfile} 
               onDeleteAccount={handleDeleteAccount} 
-              onMessageVendor={v => setChatVendor(v)}
-              onOpenAdminChat={() => setIsAdminChatOpen(true)}
+              onMessageVendor={(v, convoId, threadMsgs) => {
+                setChatConversationId(convoId);
+                setChatThreadMessages(threadMsgs || []);
+                setChatVendor(v);
+              }}
+              onOpenAdminChat={(convoId, threadMsgs) => {
+                setChatConversationId(convoId);
+                setChatThreadMessages(threadMsgs || []);
+                setIsAdminChatOpen(true);
+              }}
               onActiveChatChange={setIsPortalChatActive}
               onTabChange={tab => setPortalInitialTab(tab)}
               themeMode={themeMode}
@@ -4841,10 +5127,12 @@ function App() {
         isOpen={!!chatVendor || isAdminChatOpen} 
         vendor={chatVendor} 
         isAdminMode={isAdminChatOpen}
-        messages={messages} 
+        conversationIdOverride={chatConversationId}
+        threadMessages={chatThreadMessages}
+        messages={chatThreadMessages.length > 0 ? [...messages, ...chatThreadMessages] : messages} 
         user={currentAuthenticatedUser} 
         onSendMessage={handleSendMessage} 
-        onClose={() => { setChatVendor(null); setIsAdminChatOpen(false); }} 
+        onClose={() => { setChatVendor(null); setChatConversationId(undefined); setChatThreadMessages([]); setIsAdminChatOpen(false); }} 
         showNotification={showNotification}
         vendors={vendors}
       />

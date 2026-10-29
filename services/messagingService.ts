@@ -79,8 +79,10 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
 
   const timestamp = serverTimestamp();
   
-  // Prepare participants mapping
-  const participantIds = Array.from(new Set([senderId, receiverId, auth.currentUser?.uid || ''])).filter(Boolean);
+  // Prepare participants mapping strictly for the two conversation sides
+  const participantIds = Array.from(
+    new Set([senderId, receiverId, ...(payload.participants || [])])
+  ).filter(Boolean);
 
   const batch = writeBatch(db);
 
@@ -91,8 +93,12 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
 
   const isNewConversation = !(await getDocSafe(conDocSnapRef)).exists();
 
-  const normalizedClientEmail = (payload.clientEmail || '').trim();
+  const normalizedClientEmail = (payload.clientEmail || '').trim().toLowerCase();
   const normalizedClientName = (payload.clientName || '').trim() || 'Client';
+  const resolvedVendorId =
+    (payload as any).vendorId ||
+    (senderRole === 'vendor' ? senderId : (receiverId !== 'admin' && senderId !== 'admin' ? receiverId : null));
+  const resolvedVendorName = (payload as any).vendorName || null;
 
   const conversationUpdate: Partial<Conversation> & Record<string, any> = {
     type,
@@ -103,6 +109,8 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
     last_message_read: false,
     ...(normalizedClientEmail ? { client_email: normalizedClientEmail } : {}),
     ...(normalizedClientName && normalizedClientName !== 'Guest' ? { client_name: normalizedClientName } : {}),
+    ...(resolvedVendorId ? { vendor_id: resolvedVendorId } : {}),
+    ...(resolvedVendorName ? { vendor_name: resolvedVendorName } : {}),
   };
 
   // Assign optional fields depending on the schema
@@ -111,7 +119,7 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
     const clientId = senderRole === 'vendor' ? receiverId : senderId;
     const vendorId = senderRole === 'vendor' ? senderId : receiverId;
     conversationUpdate.client_id = clientId;
-    conversationUpdate.vendor_id = vendorId;
+    conversationUpdate.vendor_id = resolvedVendorId || vendorId;
   } else {
     // Admin support chat
     const clientId = senderId === 'admin' ? receiverId : senderId;
@@ -141,6 +149,8 @@ export async function sendNewMessage(payload: Partial<Message> & { senderRole?: 
     receiverId,
     clientEmail: normalizedClientEmail,
     clientName: normalizedClientName,
+    vendorId: resolvedVendorId || null,
+    vendorName: resolvedVendorName || null,
     isRead: false,
     timestamp: new Date().toISOString(),
     tempId,

@@ -53,6 +53,7 @@ interface AdminPanelProps {
   onSeedTaxonomy?: () => Promise<void>;
   onUpdateCategoryOrder: (orderedCategories: string[]) => void;
   onDeleteCategory?: (name: string) => void;
+  onActiveChatChange?: (isActive: boolean) => void;
 }
 
 const TableContainer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -129,7 +130,7 @@ const renderMedia = (url: string | undefined | null, className: string, defaultC
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
-    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder, onDeleteCategory
+    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder, onDeleteCategory, onActiveChatChange
 }) => {
   const [isAuthenticated] = useState(true);
   const [accessCode, setAccessCode] = useState('');
@@ -479,7 +480,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   
   // Conversation search & filter states
   const [convoSearchQuery, setConvoSearchQuery] = useState('');
-  const [convoTypeFilter, setConvoTypeFilter] = useState<'all' | 'admin' | 'vendor_client'>('all');
   const [convoReadFilter, setConvoReadFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [convoSortBy, setConvoSortBy] = useState<'recent' | 'oldest' | 'alphabetical'>('recent');
   
@@ -490,6 +490,123 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     email: string;
     role: 'client' | 'vendor';
   } | null>(null);
+
+  useEffect(() => {
+    onActiveChatChange?.(Boolean(selectedConversationId || chatOpen));
+    return () => {
+      onActiveChatChange?.(false);
+    };
+  }, [selectedConversationId, chatOpen, onActiveChatChange]);
+
+  // Direct real-time listener for Admin Support conversations only (never private client-vendor chats)
+  const [liveAdminMessages, setLiveAdminMessages] = useState<Message[]>([]);
+  useEffect(() => {
+    const msgListeners = new Map<string, () => void>();
+    const convoMsgsMap = new Map<string, Message[]>();
+
+    const rebuild = () => {
+      const seen = new Set<string>();
+      const list: Message[] = [];
+      for (const arr of convoMsgsMap.values()) {
+        for (const m of arr) {
+          if (m.id && seen.has(m.id)) continue;
+          if (m.id) seen.add(m.id);
+          list.push(m);
+        }
+      }
+      list.sort((a, b) => {
+        const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return tA - tB;
+      });
+      setLiveAdminMessages(list);
+    };
+
+    const subscribeConvoDoc = (cid: string) => {
+      if (!cid || msgListeners.has(cid)) return;
+      const unsubMsg = onSnapshot(
+        collection(db, 'conversations', cid, 'messages'),
+        (snap) => {
+          const msgs = snap.docs.map((docSnap) => {
+            const data = docSnap.data();
+            let timestampStr = data.timestamp || new Date().toISOString();
+            if (data.sent_at) {
+              if (typeof data.sent_at.toDate === 'function') {
+                timestampStr = data.sent_at.toDate().toISOString();
+              } else {
+                timestampStr = new Date(data.sent_at).toISOString();
+              }
+            }
+            return {
+              id: docSnap.id,
+              ...data,
+              senderId: data.sender_id || data.senderId,
+              conversationId: data.conversationId || cid,
+              timestamp: timestampStr,
+            } as Message;
+          });
+          convoMsgsMap.set(cid, msgs);
+          rebuild();
+        },
+        () => {}
+      );
+      msgListeners.set(cid, unsubMsg);
+    };
+
+    const qAdminPart = query(
+      collection(db, 'conversations'),
+      where('participant_ids', 'array-contains', 'admin')
+    );
+    const qAdminType = query(
+      collection(db, 'conversations'),
+      where('type', '==', 'admin_support')
+    );
+
+    const unsub1 = onSnapshot(
+      qAdminPart,
+      (snap) => {
+        snap.docs.forEach((d) => subscribeConvoDoc(d.id));
+      },
+      () => {}
+    );
+    const unsub2 = onSnapshot(
+      qAdminType,
+      (snap) => {
+        snap.docs.forEach((d) => subscribeConvoDoc(d.id));
+      },
+      () => {}
+    );
+
+    return () => {
+      unsub1();
+      unsub2();
+      msgListeners.forEach((u) => u());
+      msgListeners.clear();
+    };
+  }, []);
+
+  const allAdminSupportMessages = React.useMemo(() => {
+    const byId = new Map<string, Message>();
+    const combined = [...messages, ...liveAdminMessages];
+    combined.forEach((m) => {
+      if (!m) return;
+      const isAdminSupport = Boolean(
+        m.isAdminInquiry ||
+        m.senderId === 'admin' ||
+        m.receiverId === 'admin' ||
+        (m.participants && m.participants.includes('admin')) ||
+        (m.conversationId && m.conversationId.split('_').includes('admin'))
+      );
+      if (!isAdminSupport) return;
+      const key = m.id || m.tempId || `${m.senderId}_${m.timestamp}_${m.text}`;
+      byId.set(key, m);
+    });
+    return Array.from(byId.values()).sort((a, b) => {
+      const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return tA - tB;
+    });
+  }, [messages, liveAdminMessages]);
 
   const getOtherUserId = (msg: Message) => {
     if (msg.senderId === 'admin') return msg.receiverId;
@@ -2639,62 +2756,130 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 cid: string;
                 cids: Set<string>;
                 isAdminSupport: boolean;
-                vendorDetails: { id: string; name: string; email: string; avatar: string };
                 clientDetails: { id: string; name: string; email: string; avatar: string };
                 otherUser: { id: string; name: string; email: string; role: 'vendor' | 'client'; avatar: string };
                 messages: Message[];
                 msg: Message;
             };
 
+            const uidToEmail: Record<string, string> = {};
+            const emailToUid: Record<string, string> = {};
+            const uidToName: Record<string, string> = {};
+            const emailToName: Record<string, string> = {};
+            const uidToAvatar: Record<string, string> = {};
+            const emailToAvatar: Record<string, string> = {};
+
+            users.forEach(u => {
+                const uEmail = (u.username || (u as any).email || '').trim();
+                const uEmailLower = uEmail.toLowerCase();
+                if (u.id && uEmailLower) {
+                    uidToEmail[u.id] = uEmail;
+                    emailToUid[uEmailLower] = u.id;
+                }
+                if (u.name && u.name !== 'Client' && u.name !== 'Guest') {
+                    if (u.id) uidToName[u.id] = u.name;
+                    if (uEmailLower) emailToName[uEmailLower] = u.name;
+                }
+                if (u.photoURL) {
+                    if (u.id) uidToAvatar[u.id] = u.photoURL;
+                    if (uEmailLower) emailToAvatar[uEmailLower] = u.photoURL;
+                }
+            });
+
+            allAdminSupportMessages.forEach(m => {
+                if (!m) return;
+                const rawOther = m.senderId === 'admin' ? m.receiverId : m.senderId;
+                const validUid = rawOther && rawOther !== 'admin' && rawOther !== 'client_legacy' && !rawOther.includes('@') ? rawOther : '';
+                const validEmail = (m.clientEmail && m.clientEmail.includes('@') ? m.clientEmail : (rawOther && rawOther.includes('@') ? rawOther : '')).trim();
+                const validEmailLower = validEmail.toLowerCase();
+
+                if (validUid && validEmailLower) {
+                    if (!uidToEmail[validUid]) uidToEmail[validUid] = validEmail;
+                    if (!emailToUid[validEmailLower]) emailToUid[validEmailLower] = validUid;
+                }
+                if (m.clientName && m.clientName !== 'Client' && m.clientName !== 'Guest' && m.clientName !== 'User') {
+                    if (validUid && !uidToName[validUid]) uidToName[validUid] = m.clientName;
+                    if (validEmailLower && !emailToName[validEmailLower]) emailToName[validEmailLower] = m.clientName;
+                }
+            });
+
             const buckets: AdminThreadBucket[] = [];
             const seenMsgIds = new Set<string>();
 
-            messages.forEach(m => {
+            allAdminSupportMessages.forEach(m => {
                 if (!m) return;
                 if (m.id && seenMsgIds.has(m.id)) return;
                 if (m.id) seenMsgIds.add(m.id);
 
-                const rawCid = m.conversationId || (m.senderId === 'admin' ? `admin_${m.receiverId || 'unknown'}` : `${m.senderId || 'unknown'}_admin`);
-                const isAdminSupport = Boolean(m.senderId === 'admin' || m.receiverId === 'admin' || m.participants?.includes('admin') || m.isAdminInquiry);
-                const { vendor: vendorDetails, client: clientDetails } = getConversationParticipants(m);
-                const otherId = getOtherUserId(m);
-                const otherUser = getOtherUserDetails(otherId, m);
+                // Strictly only Admin Support conversations
+                const isAdminSupport = Boolean(
+                    m.senderId === 'admin' ||
+                    m.receiverId === 'admin' ||
+                    m.participants?.includes('admin') ||
+                    m.isAdminInquiry ||
+                    (m.conversationId && m.conversationId.split('_').includes('admin'))
+                );
+                if (!isAdminSupport) return;
 
-                const clientUidValid = clientDetails.id && clientDetails.id !== 'client_legacy' && clientDetails.id !== 'admin' && !clientDetails.id.includes('@') ? clientDetails.id : '';
-                const clientEmailLower = (clientDetails.email && clientDetails.email.includes('@') ? clientDetails.email : '').trim().toLowerCase();
-                const vendorIdValid = vendorDetails.id && vendorDetails.id !== 'admin' ? vendorDetails.id : '';
+                const rawOther = m.senderId === 'admin' ? m.receiverId : m.senderId;
+                const directUid = rawOther && rawOther !== 'admin' && rawOther !== 'client_legacy' && !rawOther.includes('@') ? rawOther : '';
+                const directEmail = (m.clientEmail && m.clientEmail.includes('@') ? m.clientEmail : (rawOther && rawOther.includes('@') ? rawOther : '')).trim();
+                const directEmailLower = directEmail.toLowerCase();
 
-                // Find if an existing bucket represents the exact same contact/conversation pair
+                const resolvedUid = directUid || (directEmailLower ? emailToUid[directEmailLower] || '' : '');
+                const resolvedEmail = directEmail || (resolvedUid ? uidToEmail[resolvedUid] || '' : '');
+                const resolvedEmailLower = resolvedEmail.toLowerCase();
+
+                const resolvedName =
+                    (m.clientName && m.clientName !== 'Client' && m.clientName !== 'Guest' && m.clientName !== 'User' ? m.clientName : '') ||
+                    (resolvedUid ? uidToName[resolvedUid] : '') ||
+                    (resolvedEmailLower ? emailToName[resolvedEmailLower] : '') ||
+                    m.clientName ||
+                    (resolvedEmail ? resolvedEmail.split('@')[0] : 'Client');
+
+                const resolvedAvatar =
+                    (resolvedUid ? uidToAvatar[resolvedUid] : '') ||
+                    (resolvedEmailLower ? emailToAvatar[resolvedEmailLower] : '') ||
+                    '';
+
+                const rawCid = m.conversationId || (resolvedUid ? ['admin', resolvedUid].sort().join('_') : `admin_${resolvedEmailLower || 'unknown'}`);
+                const canonicalCid =
+                    m.conversationId && !m.conversationId.includes('client_legacy')
+                        ? m.conversationId
+                        : resolvedUid
+                        ? ['admin', resolvedUid].sort().join('_')
+                        : rawCid;
+
+                const clientDetails = {
+                    id: resolvedUid || rawOther || '',
+                    name: resolvedName,
+                    email: resolvedEmail,
+                    avatar: resolvedAvatar
+                };
+
+                const otherUser = {
+                    id: resolvedUid || rawOther || resolvedEmail,
+                    name: resolvedName,
+                    email: resolvedEmail,
+                    role: 'client' as const,
+                    avatar: resolvedAvatar
+                };
+
+                // Find if an existing bucket represents the exact same user
                 let bucket = buckets.find(b => {
-                    if (b.isAdminSupport !== isAdminSupport) return false;
-                    if (isAdminSupport) {
-                        const bClientUid = b.clientDetails.id && b.clientDetails.id !== 'client_legacy' && !b.clientDetails.id.includes('@') ? b.clientDetails.id : '';
-                        const bEmailLower = (b.clientDetails.email || '').trim().toLowerCase();
-                        if (clientUidValid && bClientUid && clientUidValid === bClientUid) return true;
-                        if (clientEmailLower && bEmailLower && clientEmailLower === bEmailLower) return true;
-                        if (b.cids.has(rawCid)) return true;
-                        return false;
-                    } else {
-                        const bClientUid = b.clientDetails.id && b.clientDetails.id !== 'client_legacy' && !b.clientDetails.id.includes('@') ? b.clientDetails.id : '';
-                        const bEmailLower = (b.clientDetails.email || '').trim().toLowerCase();
-                        const sameVendor = vendorIdValid && b.vendorDetails.id === vendorIdValid;
-                        if (sameVendor && clientUidValid && bClientUid && clientUidValid === bClientUid) return true;
-                        if (sameVendor && clientEmailLower && bEmailLower && clientEmailLower === bEmailLower) return true;
-                        if (b.cids.has(rawCid)) return true;
-                        return false;
-                    }
+                    const bClientUid = b.clientDetails.id && b.clientDetails.id !== 'client_legacy' && b.clientDetails.id !== 'admin' && !b.clientDetails.id.includes('@') ? b.clientDetails.id : '';
+                    const bEmailLower = (b.clientDetails.email || '').trim().toLowerCase();
+                    if (resolvedUid && bClientUid && resolvedUid === bClientUid) return true;
+                    if (resolvedEmailLower && bEmailLower && resolvedEmailLower === bEmailLower) return true;
+                    if (b.cids.has(rawCid) || b.cids.has(canonicalCid)) return true;
+                    return false;
                 });
-
-                const canonicalCid = isAdminSupport
-                    ? (clientUidValid ? ['admin', clientUidValid].sort().join('_') : rawCid)
-                    : (clientUidValid && vendorIdValid ? [vendorIdValid, clientUidValid].sort().join('_') : rawCid);
 
                 if (!bucket) {
                     bucket = {
                         cid: canonicalCid,
                         cids: new Set([rawCid, canonicalCid]),
-                        isAdminSupport,
-                        vendorDetails,
+                        isAdminSupport: true,
                         clientDetails,
                         otherUser,
                         messages: [],
@@ -2707,17 +2892,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     if (bucket.cid.includes('client_legacy') && !canonicalCid.includes('client_legacy')) {
                         bucket.cid = canonicalCid;
                     }
-                    if ((!bucket.clientDetails.id || bucket.clientDetails.id === 'client_legacy') && clientUidValid) {
-                        bucket.clientDetails.id = clientUidValid;
+                    if ((!bucket.clientDetails.id || bucket.clientDetails.id === 'client_legacy') && resolvedUid) {
+                        bucket.clientDetails.id = resolvedUid;
                     }
-                    if (!bucket.clientDetails.email && clientDetails.email) {
-                        bucket.clientDetails.email = clientDetails.email;
+                    if (!bucket.clientDetails.email && resolvedEmail) {
+                        bucket.clientDetails.email = resolvedEmail;
                     }
-                    if ((bucket.clientDetails.name === 'Client' || bucket.clientDetails.name === 'User') && clientDetails.name !== 'Client') {
-                        bucket.clientDetails.name = clientDetails.name;
+                    if ((bucket.clientDetails.name === 'Client' || bucket.clientDetails.name === 'User') && resolvedName !== 'Client') {
+                        bucket.clientDetails.name = resolvedName;
                     }
-                    if (!bucket.clientDetails.avatar && clientDetails.avatar) {
-                        bucket.clientDetails.avatar = clientDetails.avatar;
+                    if (!bucket.clientDetails.avatar && resolvedAvatar) {
+                        bucket.clientDetails.avatar = resolvedAvatar;
                     }
                     if ((!bucket.otherUser.id || bucket.otherUser.id === 'client_legacy') && otherUser.id && otherUser.id !== 'client_legacy') {
                         bucket.otherUser = otherUser;
@@ -2742,9 +2927,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     cid: bucket.cid,
                     cids: bucket.cids,
                     messages: bucket.messages,
-                    isAdminSupport: bucket.isAdminSupport,
+                    isAdminSupport: true,
                     hasUnread,
-                    vendorDetails: bucket.vendorDetails,
                     clientDetails: bucket.clientDetails,
                     otherUser: bucket.otherUser
                 };
@@ -2754,19 +2938,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 const matchesSearch = convoSearchQuery === '' ||
                     item.clientDetails.name.toLowerCase().includes(convoSearchQuery.toLowerCase()) ||
                     item.clientDetails.email.toLowerCase().includes(convoSearchQuery.toLowerCase()) ||
-                    item.vendorDetails.name.toLowerCase().includes(convoSearchQuery.toLowerCase()) ||
-                    item.vendorDetails.email.toLowerCase().includes(convoSearchQuery.toLowerCase()) ||
                     (item.msg.text || '').toLowerCase().includes(convoSearchQuery.toLowerCase());
-
-                const matchesType = convoTypeFilter === 'all' ||
-                    (convoTypeFilter === 'admin' && item.isAdminSupport) ||
-                    (convoTypeFilter === 'vendor_client' && !item.isAdminSupport);
 
                 const matchesRead = convoReadFilter === 'all' ||
                     (convoReadFilter === 'unread' && item.hasUnread) ||
                     (convoReadFilter === 'read' && !item.hasUnread);
 
-                return matchesSearch && matchesType && matchesRead;
+                return matchesSearch && matchesRead;
             });
 
             filteredList.sort((a, b) => {
@@ -2798,7 +2976,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 type="text"
                                 value={convoSearchQuery}
                                 onChange={(e) => setConvoSearchQuery(e.target.value)}
-                                placeholder="Search chats..."
+                                placeholder="Search support inquiries..."
                                 className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-8 py-2.5 text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-[#D4AF37] transition-all"
                             />
                             {convoSearchQuery && (
@@ -2810,16 +2988,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                             )}
                         </div>
-                        <div className="grid grid-cols-3 gap-2">
-                            <select
-                                value={convoTypeFilter}
-                                onChange={(e) => setConvoTypeFilter(e.target.value as any)}
-                                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
-                            >
-                                <option value="all">All Chats</option>
-                                <option value="admin">Support</option>
-                                <option value="vendor_client">Vendor-Client</option>
-                            </select>
+                        <div className="grid grid-cols-2 gap-2">
                             <select
                                 value={convoReadFilter}
                                 onChange={(e) => setConvoReadFilter(e.target.value as any)}
@@ -2845,15 +3014,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="space-y-3">
                         {filteredList.length === 0 ? (
                             <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
-                                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No Active Chats</p>
+                                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No Active Support Chats</p>
                             </div>
                         ) : (
-                            filteredList.map(({ msg, cid, isAdminSupport, hasUnread, vendorDetails, clientDetails, otherUser }, idx) => {
-                                const displayPhoto = otherUser.avatar || clientDetails.avatar || vendorDetails.avatar;
-                                const displayName = isAdminSupport
-                                    ? clientDetails.name
-                                    : `${clientDetails.name} • ${vendorDetails.name}`;
-                                const initials = getInitials(clientDetails.name || otherUser.name);
+                            filteredList.map(({ msg, cid, hasUnread, clientDetails, otherUser }, idx) => {
+                                const displayPhoto = otherUser.avatar || clientDetails.avatar;
+                                const displayName = clientDetails.name || otherUser.name || 'Client';
+                                const initials = getInitials(displayName);
                                 const isVoice = msg.type === 'voice' || !!msg.audioUrl;
                                 const isImg = msg.type === 'image' || !!msg.imageUrl;
                                 const isVid = msg.type === 'file' && msg.fileType?.startsWith('video/');
@@ -2862,7 +3029,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 const handleOpenAdminThread = () => {
                                     setSelectedInquiryEmail(otherUser.email);
                                     setSelectedConversationId(cid);
-                                    if (cid && isAdminSupport) {
+                                    if (cid) {
                                         markChatAsRead(cid, 'admin').catch(console.error);
                                     }
                                 };
@@ -2985,12 +3152,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         );
                         const conversationMessages = matchedBucket
                             ? matchedBucket.messages
-                            : messages.filter(m => 
+                            : allAdminSupportMessages.filter(m => 
                                 (selectedConversationId && (m.conversationId === selectedConversationId || [m.senderId, m.receiverId].sort().join('_') === selectedConversationId)) ||
-                                (!selectedConversationId && (m.clientEmail === selectedInquiryEmail || m.vendorEmail === selectedInquiryEmail))
+                                (!selectedConversationId && m.clientEmail === selectedInquiryEmail)
                             );
                         const lastMsg = conversationMessages[conversationMessages.length - 1];
-                        const otherId = matchedBucket?.otherUser.id || (lastMsg ? getOtherUserId(lastMsg) : '');
+                        const otherId = matchedBucket?.clientDetails.id || matchedBucket?.otherUser.id || (lastMsg ? getOtherUserId(lastMsg) : '');
                         const otherUser = matchedBucket?.otherUser || (lastMsg ? getOtherUserDetails(otherId, lastMsg) : { id: selectedInquiryEmail || '', name: 'User', email: selectedInquiryEmail || '', role: 'client' as const, avatar: '' });
 
                         return (
@@ -3002,29 +3169,30 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     setSelectedConversationId(null);
                                     setSelectedInquiryEmail(null);
                                 }}
-                                onSendMessage={(payload) => {
-                                    onSendMessage({
+                                onSendMessage={async (payload) => {
+                                    await onSendMessage({
                                         ...payload,
                                         senderId: 'admin',
-                                        receiverId: payload.receiverId || otherUser.id || otherUser.email,
+                                        receiverId: payload.receiverId || otherId || otherUser.id || otherUser.email,
                                         conversationId: payload.conversationId || matchedBucket?.cid || selectedConversationId,
-                                        clientEmail: payload.clientEmail || (otherUser.role === 'client' ? otherUser.email : (lastMsg?.clientEmail || '')),
-                                        vendorEmail: otherUser.role === 'vendor' ? otherUser.email : (lastMsg?.vendorEmail || ''),
+                                        clientEmail: payload.clientEmail || otherUser.email || (lastMsg?.clientEmail || ''),
+                                        clientName: payload.clientName || otherUser.name || (lastMsg?.clientName || 'Client'),
+                                        isAdminInquiry: true,
                                         isRead: false
                                     });
                                 }}
                                 showNotification={showNotification}
-                                messages={messages}
+                                messages={allAdminSupportMessages}
                                 user={{
                                     id: 'admin',
                                     name: 'Admin support',
                                     username: 'Admin'
                                 }}
-                                recipientUid={otherUser.id || otherUser.email}
+                                recipientUid={otherId || otherUser.id || otherUser.email}
                                 recipientName={otherUser.name || 'User'}
                                 recipientEmail={otherUser.email}
                                 recipientImage={otherUser.avatar}
-                                conversationIdOverride={selectedConversationId}
+                                conversationIdOverride={matchedBucket?.cid || selectedConversationId}
                                 isAdminReplying={true}
                                 vendors={vendors}
                                 customConversations={filteredList.map(item => {
@@ -3043,11 +3211,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     );
                                     return {
                                         id: item.cid,
-                                        contactId: item.otherUser.id || item.otherUser.email || item.cid,
-                                        name: item.otherUser.name || item.clientDetails.name || 'User',
-                                        email: item.otherUser.email || item.clientDetails.email,
-                                        category: item.isAdminSupport ? 'Support Inquiry' : `${item.clientDetails.name} ↔ ${item.vendorDetails.name}`,
-                                        image: item.otherUser.avatar || item.clientDetails.avatar || item.vendorDetails.avatar,
+                                        contactId: item.clientDetails.id || item.otherUser.id || item.otherUser.email || item.cid,
+                                        name: item.clientDetails.name || item.otherUser.name || 'User',
+                                        email: item.clientDetails.email || item.otherUser.email,
+                                        category: 'Support Inquiry',
+                                        image: item.clientDetails.avatar || item.otherUser.avatar,
                                         isAdmin: false,
                                         lastMessage: safeText,
                                         lastMessageType: item.msg?.type,
