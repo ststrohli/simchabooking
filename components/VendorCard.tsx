@@ -25,8 +25,16 @@ const VendorCard: React.FC<VendorCardProps> = React.memo(({ vendor, onQuickView,
   const coverImage = vendor.image || 'https://picsum.photos/800/600';
 
   return (
-    <motion.button 
+    <motion.div
+      role="button"
+      tabIndex={0}
       onClick={() => onQuickView(vendor)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onQuickView(vendor);
+        }
+      }}
       whileHover={{ y: -5, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       transition={{ type: "spring", stiffness: 260, damping: 20 }}
@@ -48,8 +56,10 @@ const VendorCard: React.FC<VendorCardProps> = React.memo(({ vendor, onQuickView,
          <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.25em] mb-1.5 drop-shadow-md">{vendor.category}</p>
          <h3 id={`vendor-name-${vendor.id}`} className="font-black text-xl md:text-2xl text-white font-[Cinzel] leading-tight drop-shadow-lg">{vendor.name}</h3>
       </div>
-    </motion.button>
+    </motion.div>
   );
 });
 
 export default VendorCard;
+
+

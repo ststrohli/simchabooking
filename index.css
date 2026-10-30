@@ -799,3 +799,13 @@ body.light-mode,
 .light-mode .simcha-pill-fade-right {
   background: linear-gradient(to left, #ffffff 0%, rgba(255, 255, 255, 0) 100%) !important;
 }
+
+.simcha-logo-svg,
+.light-mode .simcha-logo-svg {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+

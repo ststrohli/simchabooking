@@ -348,10 +348,13 @@ const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | '
   return 'client';
 };
 
-const SimchaLogo = ({ className = "h-10 w-10", viewBox = "0 0 100 100" }: { className?: string; viewBox?: string }) => (
-  <svg className={`simcha-logo-svg ${className}`} viewBox={viewBox} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <text className="simcha-logo-text" x="50" y="75" fontFamily="'Cinzel', serif" fontSize="85" fill="#D4AF37" textAnchor="middle" fontWeight="bold" letterSpacing="-5">SB</text>
-  </svg>
+const SimchaLogo = ({ className = "h-8 w-8" }: { className?: string; viewBox?: string }) => (
+  <img
+    src="/sb-logo-transparent-gold.png"
+    alt="Simcha Booking"
+    aria-hidden="true"
+    className={`simcha-logo-svg block object-contain select-none shrink-0 bg-transparent border-0 shadow-none p-0 ${className}`}
+  />
 );
 
 const AUTH_MODAL_TRANSITION = { duration: 1.15, ease: [0.25, 0.85, 0.35, 1] as const };
@@ -4937,11 +4940,11 @@ function App() {
               <motion.button 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full p-1.5" 
+                className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full p-1 bg-transparent border-0 shadow-none" 
                 onClick={() => { setView('marketplace'); setActiveCategory('All'); setIsVendorView(false); }} 
                 aria-label="Simcha Booking Home"
               >
-                  <SimchaLogo className="h-8 w-8 sm:h-9 sm:w-9 group-hover:scale-110 transition-transform" />
+                  <SimchaLogo className="h-7 w-7 sm:h-8 sm:w-8 group-hover:scale-110 transition-transform" />
                   <div className="text-left">
                       <h1 className="simcha-brand-title text-lg sm:text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
                         <span className="block md:inline">Simcha</span><span className="block md:inline md:ml-1.5">Booking</span>
@@ -4960,7 +4963,6 @@ function App() {
                     onClick={() => setView('admin')} 
                     className="text-zinc-300 hover:text-[#D4AF37] transition-colors focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded-full p-2 hover:bg-white/10 cursor-pointer" 
                     aria-label="Admin Panel"
-                    title="Admin Panel"
                   >
                     <Shield className="w-5 h-5" />
                   </motion.button>

@@ -1,20 +1,33 @@
 {
-  "name": "Simcha Booking",
-  "short_name": "Simcha",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#D4AF37",
-  "theme_color": "#000000",
+  "id": "/",
+  "short_name": "Simcha Booking",
+  "name": "Simcha Booking — Premier Event Vendors",
+  "description": "Discover and book premier kosher event photographers, musicians, caterers, and decorators.",
   "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "64x64",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/logo192.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any maskable"
     },
     {
       "src": "/logo512.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any maskable"
     }
-  ]
+  ],
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  " display_override": ["window-controls-overlay", "standalone"],
+  "theme_color": "#D4AF37",
+  "background_color": "#050505",
+  "orientation": "portrait-primary"
 }
