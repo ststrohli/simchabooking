@@ -54,6 +54,9 @@ interface AdminPanelProps {
   onUpdateCategoryOrder: (orderedCategories: string[]) => void;
   onDeleteCategory?: (name: string) => void;
   onActiveChatChange?: (isActive: boolean) => void;
+  maxSearchDates?: number;
+  searchDateResetHours?: number;
+  onUpdateSearchCalendarSettings?: (settings: { maxSearchDates: number; searchDateResetHours: number; resetAllNow?: boolean }) => Promise<void> | void;
 }
 
 const TableContainer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -130,14 +133,24 @@ const renderMedia = (url: string | undefined | null, className: string, defaultC
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
-    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder, onDeleteCategory, onActiveChatChange
+    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder, onDeleteCategory, onActiveChatChange, maxSearchDates = 4, searchDateResetHours = 24, onUpdateSearchCalendarSettings
 }) => {
   const [isAuthenticated] = useState(true);
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'invite' | 'posts' | 'categories' | 'bookings' | 'stripe' | 'users' | 'messages' | 'analytics' | 'moderation'>('manage');
+  const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'calendar' | 'invite' | 'posts' | 'categories' | 'bookings' | 'stripe' | 'users' | 'messages' | 'analytics' | 'moderation'>('manage');
   const [isUploading, setIsUploading] = useState(false);
   const [isSeedingTaxonomy, setIsSeedingTaxonomy] = useState(false);
+  const [localMaxSearchDates, setLocalMaxSearchDates] = useState<number>(maxSearchDates);
+  const [localSearchDateResetHours, setLocalSearchDateResetHours] = useState<number>(searchDateResetHours);
+
+  useEffect(() => {
+    setLocalMaxSearchDates(maxSearchDates);
+  }, [maxSearchDates]);
+
+  useEffect(() => {
+    setLocalSearchDateResetHours(searchDateResetHours);
+  }, [searchDateResetHours]);
 
   // Vendor Invite states and user_roles Firestore listener
   const [inviteEmail, setInviteEmail] = useState('');
@@ -2003,6 +2016,38 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                               )}
                            </div>
                         </div>
+                     </div>
+                     <div className="mt-8 pt-6 border-t border-white/5 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                       <div>
+                         <label className={labelClass}>Max Search Dates</label>
+                         <input
+                           type="number"
+                           min="1"
+                           max="31"
+                           value={localMaxSearchDates}
+                           onChange={(e) => {
+                             const next = Math.max(1, parseInt(e.target.value, 10) || 1);
+                             setLocalMaxSearchDates(next);
+                             onUpdateSearchCalendarSettings?.({ maxSearchDates: next, searchDateResetHours: localSearchDateResetHours });
+                           }}
+                           className={inputClass}
+                         />
+                       </div>
+                       <div>
+                         <label className={labelClass}>Search Date Reset Hours</label>
+                         <input
+                           type="number"
+                           min="0"
+                           max="720"
+                           value={localSearchDateResetHours}
+                           onChange={(e) => {
+                             const next = Math.max(0, parseInt(e.target.value, 10) || 0);
+                             setLocalSearchDateResetHours(next);
+                             onUpdateSearchCalendarSettings?.({ maxSearchDates: localMaxSearchDates, searchDateResetHours: next });
+                           }}
+                           className={inputClass}
+                         />
+                       </div>
                      </div>
                   </div>
               </div>

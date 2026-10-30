@@ -36,6 +36,7 @@ import SuggestionModal from './components/SuggestionModal';
 import ClientPortal from './components/ClientPortal';
 import PaymentSuccess from './components/PaymentSuccess';
 import { ThemeModeSwitch } from './components/ThemeModeSwitch';
+import { SearchDateCalendar } from './components/SearchDateCalendar';
 import { VENDORS as INITIAL_VENDORS, MOCK_BOOKINGS } from './services/mockData';
 import { Vendor, VendorCategory, CartItem, Booking, Review, Post, Message, UserAccount, SelectedService } from './types';
 
@@ -350,7 +351,7 @@ const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | '
 
 const SimchaLogo = ({ className = "h-7 w-7" }: { className?: string; viewBox?: string }) => (
   <img
-    src="/sb-logo-old-gold.png"
+    src="/sb-logo-old-gold.png?v=5"
     alt="Simcha Booking"
     aria-hidden="true"
     className={`simcha-logo-svg block object-contain select-none shrink-0 bg-transparent border-0 shadow-none p-0 ${className}`}
@@ -1517,6 +1518,9 @@ function App() {
   const [categorySubCategories, setCategorySubCategories] = useState<Record<string, Record<string, string[]>>>({});
   const [subCategoryImages, setSubCategoryImages] = useState<Record<string, string>>({});
   const [heroBackgroundUrl, setHeroBackgroundUrl] = useState<string>("https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80");
+  const [maxSearchDates, setMaxSearchDates] = useState<number>(4);
+  const [searchDateResetHours, setSearchDateResetHours] = useState<number>(24);
+  const [searchDateResetNonce, setSearchDateResetNonce] = useState<number>(0);
 
   const [themeMode, setThemeMode] = useState<'dark' | 'light'>(() => {
     try {
@@ -1686,6 +1690,9 @@ function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.heroBackgroundUrl) setHeroBackgroundUrl(data.heroBackgroundUrl);
+        if (typeof data.maxSearchDates === 'number' && data.maxSearchDates >= 1) setMaxSearchDates(data.maxSearchDates);
+        if (typeof data.searchDateResetHours === 'number' && data.searchDateResetHours >= 0) setSearchDateResetHours(data.searchDateResetHours);
+        if (typeof data.searchDateResetNonce === 'number') setSearchDateResetNonce(data.searchDateResetNonce);
       } else {
         // Seed metadata
         setDoc(doc(db, 'metadata', 'app_config'), {
@@ -1693,7 +1700,10 @@ function App() {
           categoryImages: INITIAL_CATEGORY_IMAGES,
           categorySubCategories: {},
           subCategoryImages: {},
-          heroBackgroundUrl: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80"
+          heroBackgroundUrl: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80",
+          maxSearchDates: 4,
+          searchDateResetHours: 24,
+          searchDateResetNonce: 0
         }).catch(err => handleFirestoreError(err, OperationType.CREATE, 'metadata/app_config', notifyErr));
       }
     }, (err) => handleFirestoreError(err, OperationType.GET, 'metadata/app_config', notifyErr));
@@ -2483,6 +2493,12 @@ function App() {
   const [activeSubSubCategory, setActiveSubSubCategory] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [eventDate, setEventDate] = useState('');
+  const [selectedSearchDates, setSelectedSearchDates] = useState<string[]>([]);
+
+  const handleSelectedSearchDatesChange = useCallback((dates: string[]) => {
+    setSelectedSearchDates(dates);
+    setEventDate(dates[0] || '');
+  }, []);
   const [bookingVendor, setBookingVendor] = useState<Vendor | null>(null);
   const [bookingOpenCount, setBookingOpenCount] = useState(0);
   const [initialBookingDetails, setInitialBookingDetails] = useState<any>(null);
@@ -2542,8 +2558,92 @@ function App() {
   const [isPriorityFromSuggestions, setIsPriorityFromSuggestions] = useState(false);
   const [isBookingModalSuccess, setIsBookingModalSuccess] = useState(false);
 
+  const normalizeDateKey = useCallback((rawDate: string): string => {
+    if (!rawDate || typeof rawDate !== 'string') return '';
+    const trimmed = rawDate.trim();
+    const datePart = trimmed.includes('T') ? trimmed.split('T')[0] : trimmed;
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      const y = parts[0];
+      const m = parts[1].padStart(2, '0');
+      const d = parts[2].padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    return datePart;
+  }, []);
+
+  const isVendorAvailableForSearchDates = useCallback((vendor: Vendor, dates: string[]): boolean => {
+    if (!dates || dates.length === 0) return true;
+    const normalizedTargetDates = dates.map(normalizeDateKey).filter(Boolean);
+    if (normalizedTargetDates.length === 0) return true;
+
+    const blockedSet = new Set<string>();
+
+    // 1. Vendor's explicit unavailableDates array
+    (vendor.unavailableDates || []).forEach(d => {
+      const norm = normalizeDateKey(d);
+      if (norm) blockedSet.add(norm);
+    });
+
+    // 2. Vendor's synced Google Calendar events (googleEvents)
+    if (Array.isArray(vendor.googleEvents)) {
+      vendor.googleEvents.forEach((ev: any) => {
+        if (!ev?.start) return;
+        const startNorm = normalizeDateKey(ev.start);
+        const endNorm = ev.end ? normalizeDateKey(ev.end) : startNorm;
+        if (!startNorm) return;
+        if (!endNorm || endNorm <= startNorm) {
+          blockedSet.add(startNorm);
+        } else {
+          // For multi-day events or exclusive end dates in Google Calendar
+          const startParts = startNorm.split('-').map(Number);
+          const endParts = endNorm.split('-').map(Number);
+          const cur = new Date(startParts[0], startParts[1] - 1, startParts[2]);
+          const endD = new Date(endParts[0], endParts[1] - 1, endParts[2]);
+          const isAllDayExclusive = !ev.end.includes('T') && endNorm > startNorm;
+          let steps = 0;
+          while ((isAllDayExclusive ? cur < endD : cur <= endD) && steps < 60) {
+            const y = cur.getFullYear();
+            const m = String(cur.getMonth() + 1).padStart(2, '0');
+            const day = String(cur.getDate()).padStart(2, '0');
+            blockedSet.add(`${y}-${m}-${day}`);
+            cur.setDate(cur.getDate() + 1);
+            steps++;
+          }
+        }
+      });
+    }
+
+    // 3. Active/Confirmed Bookings for this vendor
+    bookings.forEach(b => {
+      if (
+        b.vendorId === vendor.id &&
+        b.date &&
+        (b.status as string) !== 'declined' &&
+        (b.status as string) !== 'cancelled' &&
+        (b.status as string) !== 'rejected'
+      ) {
+        const norm = normalizeDateKey(b.date);
+        if (norm) blockedSet.add(norm);
+      }
+    });
+
+    // Exclude vendor if ANY selected date in the search calendar is marked unavailable
+    return normalizedTargetDates.every(d => !blockedSet.has(d));
+  }, [bookings, normalizeDateKey]);
+
+  const countAvailableVendorsForDate = useCallback((dateStr: string): number => {
+    return vendors.filter(v => isVendorAvailableForSearchDates(v, [dateStr])).length;
+  }, [vendors, isVendorAvailableForSearchDates]);
+
   const filteredVendors = useMemo(() => {
     return vendors.filter(vendor => {
+      if (selectedSearchDates.length > 0 && !isVendorAvailableForSearchDates(vendor, selectedSearchDates)) {
+        return false;
+      }
+      if (eventDate && !isVendorAvailableForSearchDates(vendor, [eventDate])) {
+        return false;
+      }
       const matchesCategory = activeCategory === 'All' || showAllCategoriesGrid || vendor.category === activeCategory;
       const matchesSearch = vendor.name.toLowerCase().includes(searchTerm.toLowerCase()) || vendor.location.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesSubCategories = activeSubSubCategory && activeSubSubCategory !== '__ALL__'
@@ -2553,16 +2653,10 @@ function App() {
             : (activeSubCategories.length === 0 || activeSubCategories.some(sub => vendor.subCategories?.includes(sub))));
       return matchesCategory && matchesSearch && matchesSubCategories;
     }).sort((a, b) => {
-        if (eventDate) {
-            const aUnavailable = a.unavailableDates?.includes(eventDate);
-            const bUnavailable = b.unavailableDates?.includes(eventDate);
-            if (!aUnavailable && bUnavailable) return -1;
-            if (aUnavailable && !bUnavailable) return 1;
-        }
         if (b.rating !== a.rating) return b.rating - a.rating;
         return a.name.localeCompare(b.name);
     });
-  }, [vendors, activeCategory, showAllCategoriesGrid, searchTerm, eventDate, activeSubCategories, activeSubCategoryGroup, activeSubSubCategory, categorySubCategories]);
+  }, [vendors, activeCategory, showAllCategoriesGrid, searchTerm, eventDate, selectedSearchDates, isVendorAvailableForSearchDates, activeSubCategories, activeSubCategoryGroup, activeSubSubCategory, categorySubCategories]);
 
   useEffect(() => {
     setActiveSubCategories(prev => (prev.length === 0 ? prev : []));
@@ -3479,6 +3573,32 @@ function App() {
     }
   };
 
+  const handleAdminUpdateSearchCalendarSettings = async (settings: { maxSearchDates: number; searchDateResetHours: number; resetAllNow?: boolean }) => {
+    try {
+      const payload: Record<string, any> = {
+        maxSearchDates: Math.max(1, Number(settings.maxSearchDates) || 4),
+        searchDateResetHours: Math.max(0, Number(settings.searchDateResetHours) ?? 24)
+      };
+      if (settings.resetAllNow) {
+        payload.searchDateResetNonce = Date.now();
+      }
+      await setDoc(doc(db, 'metadata', 'app_config'), payload, { merge: true });
+      setMaxSearchDates(payload.maxSearchDates);
+      setSearchDateResetHours(payload.searchDateResetHours);
+      if (payload.searchDateResetNonce) {
+        setSearchDateResetNonce(payload.searchDateResetNonce);
+      }
+      showNotification(
+        settings.resetAllNow
+          ? 'Search calendar rules saved and 24h cooldown reset for all users!'
+          : 'Search calendar rules updated!'
+      );
+    } catch (err) {
+      console.error("Error updating search calendar settings:", err);
+      showNotification('Failed to update search calendar settings.', 'error');
+    }
+  };
+
   const handleSendMessage = async (payload: Partial<Message>) => {
     try {
       const currentUid = fbUser?.uid || '';
@@ -4302,6 +4422,9 @@ function App() {
             onUpdateCategoryOrder={handleAdminUpdateCategoryOrder}
             onDeleteCategory={handleAdminDeleteCategory}
             onActiveChatChange={setIsPortalChatActive}
+            maxSearchDates={maxSearchDates}
+            searchDateResetHours={searchDateResetHours}
+            onUpdateSearchCalendarSettings={handleAdminUpdateSearchCalendarSettings}
           />
         </motion.div>
       );
@@ -4520,15 +4643,16 @@ function App() {
         ref={mainMenuUnfoldRef}
         className="flex-1 flex flex-col pb-36 md:pb-0 will-change-transform"
       >
-        <section className="simcha-hero-section relative bg-black text-white overflow-hidden" aria-labelledby="hero-title">
-          <motion.div
-            className="absolute -inset-x-1 -top-1 -bottom-2 z-0 will-change-transform transform-gpu"
-            style={{ y: heroBgY, scale: heroBgScale }}
-            aria-hidden="true"
-          >
-            {renderMedia(heroBackgroundUrl, "simcha-hero-media w-full h-full object-cover opacity-80", undefined, true, true)}
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero"></div>
-          </motion.div>
+        <section className="simcha-hero-section relative bg-black text-white z-20" aria-labelledby="hero-title">
+          <div className="absolute inset-0 overflow-hidden pointer-events-none z-0" aria-hidden="true">
+            <motion.div
+              className="absolute -inset-x-1 -top-1 -bottom-2 z-0 will-change-transform transform-gpu"
+              style={{ y: heroBgY, scale: heroBgScale }}
+            >
+              {renderMedia(heroBackgroundUrl, "simcha-hero-media w-full h-full object-cover opacity-80", undefined, true, true)}
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero"></div>
+            </motion.div>
+          </div>
           <div className="relative z-10 max-w-7xl mx-auto px-4 py-[72px] md:py-32 text-center">
             <motion.h2
               id="hero-title"
@@ -4543,36 +4667,68 @@ function App() {
               <motion.span variants={HERO_TITLE_LINE_VARIANTS} className="simcha-hero-title-line simcha-hero-title-main block text-3xl sm:text-4xl md:text-6xl will-change-[opacity,transform] transform-gpu">Book Perfection.</motion.span>
             </motion.h2>
             <p className="mb-10 text-zinc-300 text-base md:text-lg font-light max-w-2xl mx-auto leading-relaxed">From world-class kosher caterers to soulful bands, create your complete simcha in one place.</p>
-            <div className="simcha-search-bar max-w-3xl mx-auto bg-zinc-950/90 rounded-full p-1.5 pl-4 sm:pl-6 flex items-center shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_15px_rgba(212,175,55,0.15)] border border-[#D4AF37]/30 backdrop-blur-md">
-              <div className="flex-1 flex items-center min-w-0 pr-2">
-                <label htmlFor="search-input" className="sr-only">Search vendors</label>
-                <Search className="simcha-search-icon w-4 h-4 sm:w-5 sm:h-5 text-[#D4AF37] mr-2.5 sm:mr-3 shrink-0" aria-hidden="true" />
-                <input 
-                  id="search-input" 
-                  type="text" 
-                  placeholder="Search elite vendors..." 
-                  className="w-full focus:outline-none text-zinc-100 placeholder:text-zinc-300 bg-transparent h-9 sm:h-11 text-xs sm:text-base font-medium truncate" 
-                  value={searchTerm} 
-                  onChange={(e) => setSearchTerm(e.target.value)} 
-                />
-              </div>
-              <motion.button 
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => {
-                  if (activeCategory !== 'All') setActiveCategory('All');
-                }}
-                className="simcha-gold-pill bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] hover:from-[#FFF0A8] hover:via-[#E5C76B] hover:to-[#B88B14] text-black px-4 sm:px-6 py-2 sm:py-2.5 rounded-full font-black uppercase tracking-wider text-xs sm:text-sm transition-all duration-300 shadow-[0_4px_14px_rgba(212,175,55,0.5),inset_0_1px_2px_rgba(255,255,255,0.85)] border border-[#FFF8D1] shrink-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-white flex items-center gap-1.5"
-              >
-                <span>Search</span>
-              </motion.button>
-            </div>
+            <SearchDateCalendar
+              searchTerm={searchTerm}
+              onSearchTermChange={setSearchTerm}
+              onSearchSubmit={() => {
+                if (activeCategory !== 'All') setActiveCategory('All');
+              }}
+              selectedDates={selectedSearchDates}
+              onSelectedDatesChange={handleSelectedSearchDatesChange}
+              maxSearchDates={maxSearchDates}
+              searchDateResetHours={searchDateResetHours}
+              searchDateResetNonce={searchDateResetNonce}
+              userId={fbUser?.uid}
+              availableVendorCountForDate={countAvailableVendorsForDate}
+            />
           </div>
         </section>
 
         {activeCategory === 'All' && !showAllCategoriesGrid && !searchTerm ? (
             <div className="py-4 sm:py-6 bg-black flex-1 border-b border-[#D4AF37]/10">
                 <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+                    {/* When dates are selected in the calendar, immediately pop up all available vendors right at the top above categories */}
+                    {selectedSearchDates.length > 0 && (
+                      <div className="mb-10 pb-8 border-b border-[#D4AF37]/15">
+                        <div className="flex items-center justify-between mb-5">
+                          <div>
+                            <h3 className="text-xl sm:text-2xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider">
+                              Available Vendors ({filteredVendors.length})
+                            </h3>
+                            <p className="text-xs text-zinc-400 mt-1">
+                              Showing only vendors available on your selected {selectedSearchDates.length === 1 ? 'date' : 'dates'}. Select any category below to narrow by service.
+                            </p>
+                          </div>
+                        </div>
+                        {filteredVendors.length > 0 ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+                            {filteredVendors.map(v => (
+                              <div
+                                id={`vendor-home-${v.id}`}
+                                key={v.id}
+                                tabIndex={-1}
+                                className="outline-none focus:ring-2 focus:ring-[#D4AF37] rounded-xl transform-gpu"
+                              >
+                                <VendorCard
+                                  vendor={v}
+                                  onBook={v => handleOpenBooking(v, true)}
+                                  onMessage={v => setChatVendor(v)}
+                                  onQuickView={handleViewVendor}
+                                  selectedDate={selectedSearchDates[0] || eventDate}
+                                  onAddReview={handleAddReview}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="py-12 text-center" role="status">
+                            <Calendar className="w-12 h-12 mx-auto mb-3 text-[#D4AF37]/60" aria-hidden="true" />
+                            <p className="text-lg font-[Cinzel] text-zinc-200">No vendors are available for the selected {selectedSearchDates.length === 1 ? 'date' : 'dates'}.</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <motion.nav 
                       key="main-categories-grid"
                       variants={CARD_GRID_VARIANTS}
@@ -4797,12 +4953,12 @@ function App() {
 
 
                 {/* Vendors List */}
-                {(showAllCategoriesGrid || activeSubCategoryGroup === '__ALL__' || activeSubSubCategory === '__ALL__' || activeSubSubCategory || !categorySubCategories?.[activeCategory] || Object.keys(categorySubCategories[activeCategory] || {}).length === 0) && (
+                {(selectedSearchDates.length > 0 || showAllCategoriesGrid || activeSubCategoryGroup === '__ALL__' || activeSubSubCategory === '__ALL__' || activeSubSubCategory || !categorySubCategories?.[activeCategory] || Object.keys(categorySubCategories[activeCategory] || {}).length === 0) && (
                   <>
                   <motion.div 
-                    key={`vendors-${activeCategory}-${showAllCategoriesGrid}-${activeSubCategoryGroup}-${activeSubSubCategory}-${searchTerm}-${isLoadingVendors}`}
+                    key={`vendors-${activeCategory}-${showAllCategoriesGrid}-${activeSubCategoryGroup}-${activeSubSubCategory}-${searchTerm}-${selectedSearchDates.join(',')}-${isLoadingVendors}`}
                     variants={CARD_GRID_VARIANTS}
-                    initial="hidden"
+                    initial={selectedSearchDates.length > 0 ? false : "hidden"}
                     animate="show"
                     className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4"
                   >

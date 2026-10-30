@@ -305,6 +305,18 @@ body.light-mode,
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08), 0 0 12px rgba(212, 175, 55, 0.18) !important;
 }
 
+.light-mode .simcha-popout-calendar {
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  background-image: none !important;
+  border-color: rgba(212, 175, 55, 0.45) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.14), 0 0 20px rgba(212, 175, 55, 0.18) !important;
+}
+
+.light-mode .simcha-date-trigger-btn:not(.bg-\[\#D4AF37\]) {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+  border-color: rgba(212, 175, 55, 0.55) !important;
+}
+
 /* White Buttons with Black Text -> Black Buttons with White Text */
 .light-mode .bg-white.text-black {
   background-color: #09090b !important;
