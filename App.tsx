@@ -348,9 +348,9 @@ const fetchUserRole = async (user: FirebaseUser): Promise<'admin' | 'vendor' | '
   return 'client';
 };
 
-const SimchaLogo = ({ className = "h-8 w-8" }: { className?: string; viewBox?: string }) => (
+const SimchaLogo = ({ className = "h-7 w-7" }: { className?: string; viewBox?: string }) => (
   <img
-    src="/sb-logo-transparent-gold.png"
+    src="/sb-logo-old-gold.png"
     alt="Simcha Booking"
     aria-hidden="true"
     className={`simcha-logo-svg block object-contain select-none shrink-0 bg-transparent border-0 shadow-none p-0 ${className}`}
@@ -592,7 +592,7 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
             className="text-center mb-6 cursor-grab active:cursor-grabbing select-none"
           >
             <div className="flex items-center justify-center mx-auto mb-4">
-              <SimchaLogo className="w-20 h-20 overflow-visible" viewBox="-10 -8 120 110" />
+              <SimchaLogo className="w-14 h-14 overflow-visible" viewBox="-10 -8 120 110" />
             </div>
             <h2 id="auth-signup-title" className="text-2xl sm:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">
               WELCOME TO SIMCHA SIGN UP
@@ -870,7 +870,7 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
             className="text-center mb-6 cursor-grab active:cursor-grabbing select-none"
           >
             <div className="flex items-center justify-center mx-auto mb-4">
-              <SimchaLogo className="w-20 h-20 overflow-visible" viewBox="-10 -8 120 110" />
+              <SimchaLogo className="w-14 h-14 overflow-visible" viewBox="-10 -8 120 110" />
             </div>
             <h2 id="auth-signin-title" className="text-2xl sm:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">
               WELCOME TO SIMCHA SIGN IN
@@ -4056,7 +4056,7 @@ function App() {
         {/* Centered Welcome Card */}
         <div className="bg-[#111] rounded-3xl p-8 md:p-12 max-w-lg w-full border border-[#D4AF37]/20 shadow-2xl relative z-10 text-center">
           <header className="text-center mb-10">
-            <div className="flex items-center justify-center mx-auto mb-6"><SimchaLogo className="w-20 h-20" /></div>
+            <div className="flex items-center justify-center mx-auto mb-6"><SimchaLogo className="w-14 h-14" /></div>
             <h1 className="text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider uppercase">WELCOME TO SIMCHA BOOKING</h1>
             <p className="text-[10px] text-zinc-300 uppercase tracking-[0.4em] mt-2">Professional Planning Access</p>
           </header>
@@ -4214,7 +4214,7 @@ function App() {
   if (isInitializing) {
     return (
       <main className="min-h-screen bg-black flex flex-col items-center justify-center" aria-label="Loading Simcha Booking">
-        <SimchaLogo className="w-24 h-24 animate-pulse mb-8" />
+        <SimchaLogo className="w-16 h-16 animate-pulse mb-8" />
         <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
         <span className="sr-only">Loading application...</span>
       </main>
@@ -4853,8 +4853,8 @@ function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex flex-col md:flex-row justify-between items-center gap-10">
                 <div className="flex flex-col items-center md:items-start gap-4">
-                    <div className="flex items-center gap-3">
-                      <SimchaLogo className="h-10 w-10" /><span className="text-2xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider leading-tight">Simcha Booking</span>
+                    <div className="flex items-center gap-2.5">
+                      <SimchaLogo className="h-7 w-7 sm:h-8 sm:w-8" /><span className="text-2xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider leading-tight">Simcha Booking</span>
                     </div>
                     <p className="text-zinc-300 text-sm max-w-xs text-center md:text-left leading-relaxed">Curating exceptional Jewish celebrations with world-class professional partners.</p>
                 </div>
@@ -4944,7 +4944,7 @@ function App() {
                 onClick={() => { setView('marketplace'); setActiveCategory('All'); setIsVendorView(false); }} 
                 aria-label="Simcha Booking Home"
               >
-                  <SimchaLogo className="h-7 w-7 sm:h-8 sm:w-8 group-hover:scale-110 transition-transform" />
+                  <SimchaLogo className="h-7 w-7 sm:h-7 sm:w-7 md:h-8 md:w-8 group-hover:scale-110 transition-transform" />
                   <div className="text-left">
                       <h1 className="simcha-brand-title text-lg sm:text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
                         <span className="block md:inline">Simcha</span><span className="block md:inline md:ml-1.5">Booking</span>
