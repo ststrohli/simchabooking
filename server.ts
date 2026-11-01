@@ -9,7 +9,6 @@ import { getFirestore, FieldValue, type Firestore, type DocumentReference } from
 import { getAuth } from "firebase-admin/auth";
 import { getStorage } from "firebase-admin/storage";
 import multer from "multer";
-import session from "express-session";
 import crypto from "crypto";
 import fs from "fs";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
@@ -571,21 +570,6 @@ async function startServer() {
     }
   });
 
-  // 2. SESSION CONFIG - USE MEMORY STORE TO PREVENT FIRESTORE WRITES
-  // This addresses the "Commit" errors in Firestore Metrics
-  const MemoryStore = session.MemoryStore;
-  const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
-  app.use(session({
-    store: new MemoryStore(),
-    secret: sessionSecret,
-    resave: false,
-    saveUninitialized: false,
-    cookie: { 
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: 'none'
-    }
-  }));
 
   if (!process.env.APP_URL) {
     console.warn("APP_URL environment variable is missing. Stripe redirects may not work correctly. Please add it in Settings > Secrets.");
