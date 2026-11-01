@@ -4,8 +4,10 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import Stripe from "stripe";
-import admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
+import { initializeApp, getApps, deleteApp, cert, applicationDefault, type App } from "firebase-admin/app";
+import { getFirestore, FieldValue, type Firestore, type DocumentReference } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
+import { getStorage } from "firebase-admin/storage";
 import multer from "multer";
 import session from "express-session";
 import crypto from "crypto";
@@ -42,7 +44,7 @@ const __filename_val = typeof __filename !== 'undefined' ? __filename : '';
 const __dirname_val = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
 // Initialize Firebase Admin
-let adminApp: admin.app.App;
+let adminApp: App;
 let dbId: string | undefined;
 
 const uploadDir = path.join(process.cwd(), 'uploads');
@@ -56,11 +58,11 @@ const configProjectId = firebaseConfig.projectId && !firebaseConfig.projectId.in
 const envProjectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.PROJECT_ID || process.env.GCP_PROJECT;
 
 // Global db instance
-let db: admin.firestore.Firestore;
+let db: Firestore;
 let isServerFirestoreAvailable = true;
-const initializedDbs = new WeakSet<admin.firestore.Firestore>();
+const initializedDbs = new WeakSet<Firestore>();
 
-function applyDbSettings(dbInstance: admin.firestore.Firestore) {
+function applyDbSettings(dbInstance: Firestore) {
   if (!dbInstance || initializedDbs.has(dbInstance)) return;
   try {
     dbInstance.settings({ ignoreUndefinedProperties: true });
@@ -108,9 +110,10 @@ async function initializeFirebase(useEnvFallback: boolean = false) {
     }
       
     // Forcefully re-initialize ALL apps to ensure no stale configurations
-    if (admin.apps.length > 0) {
-      console.log(`[Firebase] Found ${admin.apps.length} existing apps. Deleting all...`);
-      await Promise.all(admin.apps.map(app => app?.delete().catch(() => {})));
+    const existingApps = getApps();
+    if (existingApps.length > 0) {
+      console.log(`[Firebase] Found ${existingApps.length} existing apps. Deleting all...`);
+      await Promise.all(existingApps.map(app => deleteApp(app).catch(() => {})));
     }
     
     // Check for service account credentials
@@ -119,22 +122,22 @@ async function initializeFirebase(useEnvFallback: boolean = false) {
       try {
         console.log(`[Firebase] Initializing with FIREBASE_SERVICE_ACCOUNT secret...`);
         const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-        credential = admin.credential.cert(serviceAccount);
+        credential = cert(serviceAccount);
         if (serviceAccount.project_id) {
           targetProjectId = serviceAccount.project_id;
         }
       } catch (e) {
         console.error(`[Firebase] Failed to parse FIREBASE_SERVICE_ACCOUNT secret:`, e);
-        credential = admin.credential.applicationDefault();
+        credential = applicationDefault();
       }
     } else {
       const serviceAccountPath = path.join(process.cwd(), 'service-account.json');
-      credential = admin.credential.applicationDefault();
+      credential = applicationDefault();
       try {
         const fs = await import('fs');
         if (fs.existsSync(serviceAccountPath)) {
           console.log(`[Firebase] Using local service account credentials from: ${serviceAccountPath}`);
-          credential = admin.credential.cert(serviceAccountPath);
+          credential = cert(serviceAccountPath);
         } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
           console.log(`[Firebase] Using GOOGLE_APPLICATION_CREDENTIALS: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
         } else {
@@ -145,7 +148,7 @@ async function initializeFirebase(useEnvFallback: boolean = false) {
       }
     }
 
-    adminApp = admin.initializeApp({ 
+    adminApp = initializeApp({ 
       credential,
       projectId: targetProjectId,
       storageBucket: "simcha-booking-2748d.firebasestorage.app"
@@ -188,7 +191,7 @@ async function initializeFirebase(useEnvFallback: boolean = false) {
 initializeFirebase();
 
 // Helper for resilient Firestore operations
-const safeFirestoreOp = async (op: (database: admin.firestore.Firestore) => Promise<any>, label: string = "Operation", collection?: string, id?: string) => {
+const safeFirestoreOp = async (op: (database: Firestore) => Promise<any>, label: string = "Operation", collection?: string, id?: string) => {
   try {
     // Ensure db is initialized
     if (!db || !isServerFirestoreAvailable) {
@@ -639,7 +642,7 @@ async function startServer() {
       await db.collection('webhook_debug').add({
         type: event.type,
         id: event.id,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
+        timestamp: FieldValue.serverTimestamp()
       });
     } catch (debugErr) {
       console.error("[Webhook] Failed to write debug log to Firestore:", debugErr);
@@ -661,7 +664,7 @@ async function startServer() {
                 paymentStatus: 'paid',
                 paymentMethod: 'Credit Card (Stripe)',
                 stripeSessionId: session.id,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                updatedAt: FieldValue.serverTimestamp()
               }, { merge: true });
             }, "Webhook Checkout Completed", "bookings", bookingId);
             
@@ -764,7 +767,7 @@ async function startServer() {
       // 1. Attempt upload to Firebase Cloud Storage via Admin SDK
       if (adminApp) {
         try {
-          const storageInstance = admin.storage(adminApp);
+          const storageInstance = getStorage(adminApp);
           const bucket = storageInstance.bucket();
           const blob = bucket.file(storagePath);
           const downloadToken = crypto.randomUUID();
@@ -952,7 +955,7 @@ async function startServer() {
       const idToken = authHeader.split("Bearer ")[1];
       let decodedToken;
       try {
-        decodedToken = await admin.auth().verifyIdToken(idToken);
+        decodedToken = await getAuth().verifyIdToken(idToken);
       } catch (authErr: any) {
         return res.status(401).json({ error: "Unauthorized: Invalid authentication token." });
       }
@@ -973,7 +976,7 @@ async function startServer() {
       const activeAuthUids = new Set<string>();
       let nextPageToken: string | undefined = undefined;
       do {
-        const listResult = await admin.auth().listUsers(1000, nextPageToken);
+        const listResult = await getAuth().listUsers(1000, nextPageToken);
         listResult.users.forEach((u) => activeAuthUids.add(u.uid));
         nextPageToken = listResult.pageToken;
       } while (nextPageToken);
@@ -982,7 +985,7 @@ async function startServer() {
 
       // 2. Scan user_roles
       const userRolesSnap = await db.collection("user_roles").get();
-      const orphanedRoleRefs: admin.firestore.DocumentReference[] = [];
+      const orphanedRoleRefs: DocumentReference[] = [];
       userRolesSnap.forEach((doc) => {
         if (!activeAuthUids.has(doc.id) && !doc.id.startsWith("invite_")) {
           orphanedRoleRefs.push(doc.ref);
@@ -994,7 +997,7 @@ async function startServer() {
 
       // 3. Scan users
       const usersSnap = await db.collection("users").get();
-      const orphanedUserRefs: admin.firestore.DocumentReference[] = [];
+      const orphanedUserRefs: DocumentReference[] = [];
       usersSnap.forEach((doc) => {
         if (!activeAuthUids.has(doc.id)) {
           orphanedUserRefs.push(doc.ref);
@@ -1006,7 +1009,7 @@ async function startServer() {
 
       // 4. Scan vendors
       const vendorsSnap = await db.collection("vendors").get();
-      const orphanedVendorRefs: admin.firestore.DocumentReference[] = [];
+      const orphanedVendorRefs: DocumentReference[] = [];
       const orphanedVendorIds: string[] = [];
       vendorsSnap.forEach((doc) => {
         const vendorId = doc.id;
@@ -1025,7 +1028,7 @@ async function startServer() {
       });
 
       // 5. Scan posts
-      const orphanedPostRefs: admin.firestore.DocumentReference[] = [];
+      const orphanedPostRefs: DocumentReference[] = [];
       if (orphanedVendorIds.length > 0) {
         const postsSnap = await db.collection("posts").get();
         postsSnap.forEach((doc) => {
@@ -1128,7 +1131,7 @@ async function startServer() {
       // SAVE ID IMMEDIATELY: Save the new stripeAccountId to vendor's document before redirecting
       const updateData = {
         stripeAccountId: account.id,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       };
 
       try {
@@ -1208,7 +1211,7 @@ async function startServer() {
                 stripeAccountId: stripeAccountId as string,
                 stripeConnected: true, // Force true as requested for auto-provisioning
                 onboardingComplete: true,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                updatedAt: FieldValue.serverTimestamp()
               }, { merge: true });
               
               console.log(`[Onboarding] Successfully force-created fields for vendor ${vendorId}`);
@@ -1299,7 +1302,7 @@ async function startServer() {
       if (isConnected) {
         const updateData = {
           stripeConnected: true,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          updatedAt: FieldValue.serverTimestamp()
         };
 
         // 3. Automatically set stripeConnected: true in Firestore
@@ -1342,7 +1345,7 @@ async function startServer() {
       const updateData = {
         stripeConnected: !!isConnected,
         stripeAccountId: stripeAccountId,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       };
 
       await safeFirestoreOp(async (database) => {
@@ -1396,7 +1399,7 @@ async function startServer() {
 
       const updateData = {
         stripeConnected: !!isConnected,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       };
 
       await safeFirestoreOp(async (database) => {
@@ -1436,7 +1439,7 @@ async function startServer() {
       const updateData: any = {
         stripeConnected: true,
         stripeAccountId: resolvedAccountId.trim(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       };
 
       await safeFirestoreOp(async (database) => {
@@ -1462,7 +1465,7 @@ async function startServer() {
       const updateData = {
         paymentStatus: 'paid',
         status: 'confirmed', // Also confirm the booking if paid
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       };
 
       const result = await safeFirestoreOp(async (database) => {
@@ -1660,7 +1663,7 @@ async function startServer() {
         handleCodeInApp: true,
       };
 
-      const verificationLink = await admin.auth().generateEmailVerificationLink(email, actionCodeSettings);
+      const verificationLink = await getAuth().generateEmailVerificationLink(email, actionCodeSettings);
       
       console.log(`VERIFICATION EMAIL QUEUED: Sending to ${email}`);
       
@@ -1705,7 +1708,7 @@ async function startServer() {
         handleCodeInApp: false,
       };
 
-      const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
+      const resetLink = await getAuth().generatePasswordResetLink(email, actionCodeSettings);
       
       console.log(`PASSWORD RESET QUEUED: Sending to ${email}`);
       
@@ -1745,7 +1748,7 @@ async function startServer() {
         await database.collection('security_flags').add({
           ...payload,
           ip,
-          serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+          serverTimestamp: FieldValue.serverTimestamp(),
         });
       }, "Flag Bot Attempt", "security_flags");
 
@@ -1811,9 +1814,9 @@ async function startServer() {
     try {
       // 1. Mark user as verified in Firebase Auth (just in case the redirect happened before Firebase finished)
       try {
-        const user = await admin.auth().getUserByEmail(emailStr);
+        const user = await getAuth().getUserByEmail(emailStr);
         if (user && !user.emailVerified) {
-          await admin.auth().updateUser(user.uid, { emailVerified: true });
+          await getAuth().updateUser(user.uid, { emailVerified: true });
           console.log(`[Auth] User ${emailStr} marked as verified in Firebase.`);
         }
       } catch (authErr) {
@@ -1865,7 +1868,7 @@ async function startServer() {
       return res.status(400).json({ error: "Email parameter is required" });
     }
     try {
-      const user = await admin.auth().getUserByEmail(email as string);
+      const user = await getAuth().getUserByEmail(email as string);
       res.json({ uid: user.uid });
     } catch (error: any) {
       if (error.code === 'auth/user-not-found' || error.message?.includes('user-not-found')) {
@@ -1963,7 +1966,7 @@ async function runDailyCheckIn() {
           // Mark as sent
           await database.collection('bookings').doc(bookingId).update({
             checkInSent: true,
-            checkInSentAt: admin.firestore.FieldValue.serverTimestamp()
+            checkInSentAt: FieldValue.serverTimestamp()
           });
           
         } catch (emailErr) {
