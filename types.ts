@@ -57,6 +57,7 @@ export interface SelectedService {
   unit?: string;
   categoryType?: ServiceCategoryType;
   selectedHours?: number;
+  hours?: number;
   defaultHours?: number;
   hourlyRate?: number;
 }
@@ -131,6 +132,7 @@ export interface Message {
   vendorEmail?: string;
   tempId?: string;
   isOptimistic?: boolean;
+  senderName?: string;
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'error';
 }
 

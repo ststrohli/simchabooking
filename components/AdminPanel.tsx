@@ -919,14 +919,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       }
 
       const parsedDownPayment = formData.priceStart !== '' ? Number(formData.priceStart) : undefined;
+      const { password: _ignoredPassword, ...safeFormData } = formData;
       const newVendor: Vendor = {
-        ...formData,
+        ...safeFormData,
         id: vendorId, 
         image: imageUrl, 
         priceStart: parsedDownPayment ?? 0,
         downPayment: parsedDownPayment,
         rating: editingVendor ? editingVendor.rating : 5.0, 
-        password: formData.password || '123', 
         unavailableDates: editingVendor ? editingVendor.unavailableDates : [], 
         reviews: editingVendor ? editingVendor.reviews : [], 
         services: editingVendor ? editingVendor.services : [], 

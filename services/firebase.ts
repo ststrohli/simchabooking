@@ -5,18 +5,18 @@ import { getFirestore, doc, getDoc, getDocs, getDocFromCache, getDocsFromCache, 
 import { getStorage } from "firebase/storage";
 import appletConfig from "../firebase-applet-config.json";
 
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// Load Firebase configuration from firebase-applet-config.json (authoritative) with env fallback
 export const firebaseConfig = {
-  apiKey: "AIzaSyDNobx7D28xdpn83FzroTeBeD0f0R-8uU4",
-  authDomain: "simcha-booking-2748d.firebaseapp.com",
-  projectId: "simcha-booking-2748d",
-  storageBucket: "simcha-booking-2748d.firebasestorage.app",
-  messagingSenderId: "404525970453",
-  appId: "1:404525970453:web:7ae47f8cd51a208e554a1c",
-  measurementId: "G-SP3MFEZFYP"
+  apiKey: appletConfig.apiKey || (import.meta as any).env?.VITE_FIREBASE_API_KEY,
+  authDomain: appletConfig.authDomain || (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: appletConfig.projectId || (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: appletConfig.storageBucket || (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: appletConfig.messagingSenderId || (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: appletConfig.appId || (import.meta as any).env?.VITE_FIREBASE_APP_ID,
+  ...((import.meta as any).env?.VITE_FIREBASE_MEASUREMENT_ID
+    ? { measurementId: (import.meta as any).env.VITE_FIREBASE_MEASUREMENT_ID }
+    : {})
 };
-
-const targetProjectId = firebaseConfig.projectId;
 
 const app = initializeApp(firebaseConfig);
 
@@ -29,7 +29,10 @@ provider.addScope('https://www.googleapis.com/auth/calendar.events');
 provider.setCustomParameters({ prompt: 'consent', access_type: 'offline' });
 
 // Initialize Firestore
-export const db = getFirestore(app, 'ai-studio-b85c10e8-0729-4d1f-841b-60b5c119be28');
+const firestoreDatabaseId =
+  appletConfig.firestoreDatabaseId ||
+  (import.meta as any).env?.VITE_FIREBASE_DATABASE_ID;
+export const db = getFirestore(app, firestoreDatabaseId);
 
 export const storage = getStorage(app, `gs://${firebaseConfig.storageBucket}`);
 

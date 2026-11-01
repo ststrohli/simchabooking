@@ -29,7 +29,6 @@ export const VENDORS: Vendor[] = [
     isKosher: true,
     isVerified: true,
     username: 'goldstein',
-    password: '123',
     unavailableDates: [getFutureDate(1), getFutureDate(7), getFutureDate(14)],
     reviews: [
       { id: 'r1', author: 'Rachel M.', rating: 5, text: 'Absolutely stunning venue! The chuppah area was magical.', date: '2023-10-15' },
@@ -42,8 +41,7 @@ export const VENDORS: Vendor[] = [
       { id: 's3_am2', name: 'Valet Parking & Coat Check', price: 800, categoryType: 'amenities' }
     ],
     paymentMethods: ['Credit Card', 'Stripe', 'PayPal', 'Check', 'Bank Transfer', 'Zelle'],
-    commissionRate: 10,
-    stripeAccountId: 'acct_1TFG4u1F9HWZ6UFS'
+    commissionRate: 10
   },
   {
     id: 'ea54cmd95',
@@ -57,10 +55,8 @@ export const VENDORS: Vendor[] = [
     location: 'Brooklyn, NY',
     contactEmail: 'test@ea54cmd95.com',
     username: 'ea54cmd95',
-    password: '123',
     paymentMethods: ['Stripe'],
-    commissionRate: 5,
-    stripeAccountId: 'acct_1TFG4u1F9HWZ6UFS'
+    commissionRate: 5
   },
   {
     id: '2',
@@ -81,7 +77,6 @@ export const VENDORS: Vendor[] = [
     isKosher: true,
     isVerified: true,
     username: 'levine',
-    password: '123',
     unavailableDates: [getFutureDate(2), getFutureDate(3)],
     reviews: [
       { id: 'r3', author: 'Sarah L.', rating: 5, text: 'The brisket lived up to the hype! Everyone raved about the food.', date: '2023-09-20' }
@@ -114,7 +109,6 @@ export const VENDORS: Vendor[] = [
     unavailableDates: [getFutureDate(5), getFutureDate(6)],
     reviews: [],
     username: 'simcha',
-    password: '123',
     services: [
       { id: 's7_loc1', name: 'Brooklyn / Queens / NYC', price: 2200, defaultHours: 3, hourlyRate: 100, categoryType: 'location' },
       { id: 's7_loc2', name: 'Monsey', price: 2500, defaultHours: 3, hourlyRate: 75, categoryType: 'location' },
@@ -151,7 +145,6 @@ export const VENDORS: Vendor[] = [
        { id: 'r5', author: 'Leah T.', rating: 5, text: 'So professional and unobtrusive.', date: '2023-12-10' }
     ],
     username: 'photo',
-    password: '123',
     services: [
       { id: 's10_loc1', name: 'Local Metro Area', price: 3000, defaultHours: 3, hourlyRate: 150, categoryType: 'location' },
       { id: 's10_loc2', name: 'Regional Travel (Up to 100 mi)', price: 3300, defaultHours: 3, hourlyRate: 150, categoryType: 'location' },
@@ -173,7 +166,6 @@ export const VENDORS: Vendor[] = [
     location: 'Online',
     reviews: [],
     username: 'kippah',
-    password: '123',
     services: [
       { id: 's13', name: '100 Custom Suede Kippahs', price: 500, allowQuantity: true, categoryType: 'amenities' },
       { id: 's14', name: '100 Custom Satin Kippahs', price: 400, allowQuantity: true, categoryType: 'amenities' },
@@ -198,7 +190,6 @@ export const VENDORS: Vendor[] = [
       { id: 'r6', author: 'Josh & Maya', rating: 5, text: 'Rabbi Cohen made our ceremony so meaningful and personal.', date: '2024-01-15' }
     ],
     username: 'rabbi',
-    password: '123',
     services: [
       { id: 's16_loc1', name: 'South Florida / Miami', price: 800, defaultHours: 3, hourlyRate: 100, categoryType: 'location' },
       { id: 's16_loc2', name: 'Destination / Out of Area', price: 1250, defaultHours: 3, hourlyRate: 100, categoryType: 'location' },
@@ -228,7 +219,6 @@ export const VENDORS: Vendor[] = [
       { id: 'r7', author: 'Rebecca W.', rating: 4, text: 'Beautiful gardens, but make sure to rent the tent just in case.', date: '2023-06-12' }
     ],
     username: 'garden',
-    password: '123',
     paymentMethods: ['Check', 'Bank Transfer'],
     commissionRate: 10
   },
@@ -247,7 +237,6 @@ export const VENDORS: Vendor[] = [
        { id: 'r8', author: 'Dan G.', rating: 5, text: 'The hummus bar was a hit!', date: '2023-08-22' }
     ],
     username: 'telaviv',
-    password: '123',
     paymentMethods: ['Credit Card', 'Cash'],
     commissionRate: 10
   }

@@ -11,6 +11,7 @@ import session from "express-session";
 import crypto from "crypto";
 import fs from "fs";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
+import { GoogleGenAI } from "@google/genai";
 import { 
   sendTestEmail, 
   sendCustomerReceipt, 
@@ -300,25 +301,13 @@ async function verifyAdminDb() {
 let stripeClient: Stripe | null = null;
 let lastUsedKey: string | null = null;
 
-// Hardcoded fallback for the user's specific key to ensure they are unblocked
-const HARDCODED_KEY = "sk_test_51TC6mI1E7LVIIrh99iztXfVYR2yoQx35CgaCPQafQq5495DHpTIQgUCxgYBuh48HE8bdOKuPy9RTFXdv8pLf00Kf00u3MKjOWe";
-
 async function getStripe(): Promise<Stripe> {
   const rawEnvKey = process.env.STRIPE_SECRET_KEY?.trim() || "";
   // Remove any non-printable or control characters just in case
-  let currentKey = rawEnvKey.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
-  
-  // If truncated or missing, use the hardcoded fallback provided by the user
-  if (!currentKey || currentKey.length < 100 || currentKey.includes('*')) {
-    console.log("[Stripe] Env key invalid or truncated. Using hardcoded fallback.");
-    currentKey = HARDCODED_KEY.trim().replace(/[\x00-\x1F\x7F-\x9F]/g, "");
-  }
-
-  const hint = currentKey.length > 10 ? `${currentKey.substring(0, 7)}...${currentKey.substring(currentKey.length - 4)}` : "None";
-  console.log(`[Stripe] Accessing Secret Key. Length: ${currentKey?.length || 0}, Hint: ${hint}`);
+  const currentKey = rawEnvKey.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
   
   if (!currentKey) {
-    throw new Error("STRIPE_SECRET_KEY is missing. Please use the 'Emergency Key Update' in the Vendor Portal.");
+    throw new Error("STRIPE_SECRET_KEY environment variable is missing. Please configure STRIPE_SECRET_KEY in your environment settings.");
   }
 
   // Basic format check - always check this even if client exists
@@ -431,12 +420,9 @@ async function startServer() {
         console.warn("[Stripe] DB Fetch failed, using defaults.", dbError);
       }
 
-      // HARDCODED BACKUP (TEMPORARY) for Vendor '1', '2' and 'ea54cmd95'
-      if (!vendorStripeAccountId && (vendorId === '1' || vendorId === '2' || vendorId === 'ea54cmd95')) {
-        const backupId = 'acct_1TFG4u1F9HWZ6UFS';
-        console.log(`[Stripe] Using hardcoded backup for Vendor '${vendorId}': ${backupId}`);
-        vendorStripeAccountId = backupId;
-        commissionRate = 5; // Use default 5% for the backup
+      // Optional environment fallback for default connected account in test/staging environments
+      if (!vendorStripeAccountId && process.env.STRIPE_DEFAULT_CONNECTED_ACCOUNT_ID) {
+        vendorStripeAccountId = process.env.STRIPE_DEFAULT_CONNECTED_ACCOUNT_ID.trim();
       }
 
       // CRUCIAL: Throw error if vendor.stripeAccountId is missing or undefined
@@ -585,12 +571,14 @@ async function startServer() {
   // 2. SESSION CONFIG - USE MEMORY STORE TO PREVENT FIRESTORE WRITES
   // This addresses the "Commit" errors in Firestore Metrics
   const MemoryStore = session.MemoryStore;
+  const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
   app.use(session({
     store: new MemoryStore(),
-    secret: process.env.SESSION_SECRET || "simcha-booking-secret",
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: { 
+      httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: 'none'
     }
@@ -641,9 +629,6 @@ async function startServer() {
       event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
     } catch (err: any) {
       console.error(`[Webhook] Signature verification failed: ${err.message}`);
-      console.error(`[Webhook] Full Error:`, err);
-      console.error(`[Webhook] Secret used (first 8 chars): ${webhookSecret.substring(0, 8)}...`);
-      console.error(`[Webhook] Signature header (first 20 chars): ${sig.substring(0, 20)}...`);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
@@ -757,10 +742,22 @@ async function startServer() {
   }, async (req, res) => {
     try {
       const file = req.file;
-      const { path: storagePath } = req.body;
+      const { path: rawStoragePath } = req.body;
       
       if (!file) return res.status(400).send("No file uploaded");
-      if (!storagePath) return res.status(400).send("No storage path provided");
+      if (!rawStoragePath || typeof rawStoragePath !== "string") {
+        return res.status(400).send("No valid storage path provided");
+      }
+
+      // Sanitize storagePath to prevent path traversal
+      const storagePath = path.posix
+        .normalize(rawStoragePath.replace(/\\/g, "/"))
+        .replace(/^(\.\.(\/|\\|$))+/, "")
+        .replace(/^\/+/, "");
+
+      if (!storagePath || storagePath.includes("..")) {
+        return res.status(400).send("Invalid storage path");
+      }
 
       console.log(`[Upload] Processing: ${storagePath} (${file.size} bytes)`);
 
@@ -813,12 +810,17 @@ async function startServer() {
           await fsPromises.mkdir(uploadDir, { recursive: true });
         }
 
-        // Generate safe unique filename
-        const ext = path.extname(storagePath) || path.extname(file.originalname) || '';
-        const base = path.basename(storagePath, ext) || 'file';
-        const cleanBase = base.replace(/[^a-zA-Z0-9_-]/g, '_');
+        // Generate safe unique filename and verify path stays within uploadDir
+        const rawExt = path.extname(storagePath) || path.extname(file.originalname) || '';
+        const ext = rawExt.replace(/[^a-zA-Z0-9.]/g, '').slice(0, 10);
+        const base = path.basename(storagePath, rawExt) || 'file';
+        const cleanBase = base.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
         const uniqueFilename = `${Date.now()}_${cleanBase}${ext}`;
-        const localPath = path.join(uploadDir, uniqueFilename);
+        const localPath = path.resolve(uploadDir, uniqueFilename);
+
+        if (!localPath.startsWith(path.resolve(uploadDir))) {
+          return res.status(400).send("Invalid upload destination");
+        }
 
         console.log(`[Upload] Saving locally to container: ${localPath}`);
         await fsPromises.writeFile(localPath, file.buffer);
@@ -841,11 +843,10 @@ async function startServer() {
 
   const getKeyDiagnostics = () => {
     const key = lastUsedKey || process.env.STRIPE_SECRET_KEY?.trim() || "";
-    // Remove any non-printable or control characters just in case
     const cleanKey = key.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
     
     return {
-      hint: cleanKey.length > 10 ? `${cleanKey.substring(0, 7)}...${cleanKey.substring(cleanKey.length - 4)}` : "None",
+      configured: cleanKey.length > 0,
       length: cleanKey.length,
       isSuspicious: cleanKey.length > 0 && (cleanKey.length !== 107 || cleanKey.includes('*')),
       hasAsterisks: cleanKey.includes('*')
@@ -860,11 +861,11 @@ async function startServer() {
     
     if (isAuthError) {
       if (diag.hasAsterisks) {
-        errorMessage = `You have pasted a MASKED key (containing asterisks). Please go to Stripe Dashboard > Developers > API keys, click "Reveal test key", and copy the FULL 107-character key.`;
+        errorMessage = `You have pasted a MASKED key (containing asterisks). Please go to Stripe Dashboard > Developers > API keys, click "Reveal test key", and copy the FULL key.`;
       } else if (diag.length < 100) {
-        errorMessage = `Key is too short (${diag.length} chars). A valid Stripe Secret Key should be 107 characters. It was likely truncated during copy-paste. Please ensure you copy the entire string starting with 'sk_test_'.`;
+        errorMessage = `Stripe Secret Key is missing or incomplete. Please verify STRIPE_SECRET_KEY in your environment variables.`;
       } else {
-        errorMessage = `Stripe rejected this key. Length: ${diag.length}, Hint: ${diag.hint}. Please verify it matches your Stripe Dashboard exactly.`;
+        errorMessage = `Stripe rejected the configured secret key. Please verify STRIPE_SECRET_KEY matches your Stripe Dashboard.`;
       }
     } else if (isInvalidRequest && errorMessage.includes('cannot be set to your own account')) {
       errorMessage = `Stripe Error: You are trying to pay to the same account that owns the API key. In test mode, you cannot transfer money to yourself. Please use a different vendor account or skip the transfer for this test.`;
@@ -877,32 +878,67 @@ async function startServer() {
     });
   };
 
-  // Maps key endpoint (server-side secret retrieval for client browser)
+  // Server-side Gemini AI endpoints (keeps GEMINI_API_KEY strictly on the server)
+  app.post("/api/ai/planning-advice", async (req, res) => {
+    try {
+      const { prompt } = req.body || {};
+      if (!prompt || typeof prompt !== "string") {
+        return res.status(400).json({ error: "A valid prompt string is required." });
+      }
+      const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({ error: "AI service is not configured on the server." });
+      }
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-pro-preview",
+        contents: prompt.slice(0, 4000),
+        config: {
+          systemInstruction:
+            "You are an elite Jewish event coordinator (Simcha Specialist). Provide expert, warm, and practical advice for life-cycle events including weddings, bar/bat mitzvahs, and bris ceremonies. Focus on traditions, logistical efficiency, and vendor management.",
+          temperature: 0.7,
+        },
+      });
+      res.json({ text: response.text || "I apologize, I'm having trouble thinking of advice right now. Mazel Tov anyway!" });
+    } catch (error: any) {
+      console.error("[AI] Planning Advice Error:", error);
+      res.status(500).json({ error: "The Simcha AI is currently unavailable. Please try again later." });
+    }
+  });
+
+  app.post("/api/ai/summarize-file", async (req, res) => {
+    try {
+      const { fileName, fileType, notes } = req.body || {};
+      if (!fileName || typeof fileName !== "string") {
+        return res.status(400).json({ error: "fileName is required." });
+      }
+      const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({ error: "AI service is not configured on the server." });
+      }
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = `Summarize this file for a simcha planning dashboard.\nFile Name: ${fileName}\nFile Type: ${fileType || "unknown"}\nUser Notes: ${notes || ""}\n\nProvide a concise, professional summary of what this file likely contains and its importance to the event planning process.`;
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt.slice(0, 4000),
+        config: {
+          systemInstruction:
+            "You are a helpful assistant for a Jewish event planning platform. Your goal is to provide brief, useful summaries of uploaded documents to help users stay organized.",
+          temperature: 0.5,
+        },
+      });
+      res.json({ text: response.text || "No summary available." });
+    } catch (error: any) {
+      console.error("[AI] Summarize File Error:", error);
+      res.status(500).json({ error: "AI summary could not be generated." });
+    }
+  });
+
+  // Maps key endpoint (server-side configuration retrieval for client browser)
   app.get("/api/maps-key", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     const key = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_PLATFORM_KEY || process.env.VITE_GOOGLE_MAPS_PLATFORM_KEY || "";
     res.json({ key });
-  });
-
-  // Debug endpoint for Firebase status
-  app.get("/api/firebase/debug", (req, res) => {
-    res.json({
-      envProjectId,
-      configProjectId,
-      GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT,
-      PROJECT_ID: process.env.PROJECT_ID,
-      GCP_PROJECT: process.env.GCP_PROJECT,
-      currentProjectId: adminApp?.options?.projectId,
-      dbId,
-      adminAppName: adminApp?.name,
-      appsCount: admin.apps.length,
-      isDbInitialized: !!db,
-      firebaseConfig: {
-        projectId: firebaseConfig.projectId,
-        firestoreDatabaseId: (firebaseConfig as any).firestoreDatabaseId
-      },
-      envKeys: Object.keys(process.env).filter(k => k.includes('PROJECT') || k.includes('GOOGLE') || k.includes('FIREBASE'))
-    });
   });
 
   // Admin Cleanup Orphaned Data Endpoint
@@ -1034,14 +1070,13 @@ async function startServer() {
 
   // Stripe Publishable Key Config
   app.get("/api/stripe/config", (req, res) => {
-    const publishableKey = process.env.VITE_STRIPE_PUBLISHABLE_KEY || process.env.STRIPE_PUBLISHABLE_KEY || "pk_test_51PxyzSamplePublishableKey";
+    const publishableKey = process.env.VITE_STRIPE_PUBLISHABLE_KEY || process.env.STRIPE_PUBLISHABLE_KEY || "";
     res.json({ publishableKey });
   });
 
   // Stripe Health Check
   app.get("/api/stripe/health", async (req, res) => {
     const diag = getKeyDiagnostics();
-    console.log(`Stripe Health Check - Key Length: ${diag.length}, Hint: ${diag.hint}`);
 
     try {
       const stripe = await getStripe();
@@ -1392,10 +1427,15 @@ async function startServer() {
         return res.status(400).json({ error: "Missing vendorId" });
       }
 
+      const resolvedAccountId = stripeAccountId || process.env.STRIPE_DEFAULT_CONNECTED_ACCOUNT_ID;
+      if (!resolvedAccountId || typeof resolvedAccountId !== 'string' || !resolvedAccountId.startsWith('acct_')) {
+        return res.status(400).json({ error: "A valid stripeAccountId (starting with acct_) is required." });
+      }
+
       // Directly update Firestore with the requested values
       const updateData: any = {
         stripeConnected: true,
-        stripeAccountId: stripeAccountId || 'acct_1TC6mI1E7LVIIrh9',
+        stripeAccountId: resolvedAccountId.trim(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
 
@@ -1529,18 +1569,11 @@ async function startServer() {
     }
   });
 
-  // Firebase Debug Endpoint
+  // Health status endpoint (without exposing internal environment variables)
   app.get("/api/firebase/debug", (req, res) => {
     res.json({
       isServerFirestoreAvailable,
-      projectId: adminApp?.options.projectId,
-      databaseId: dbId || '(default)',
-      appId: firebaseConfig.appId,
-      env: {
-        GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT,
-        PROJECT_ID: process.env.PROJECT_ID,
-        GCP_PROJECT: process.env.GCP_PROJECT
-      }
+      status: "ok"
     });
   });
 

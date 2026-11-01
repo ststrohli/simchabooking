@@ -358,7 +358,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       collection(db, 'conversations', activeConversationId, 'messages')
     );
 
-    let fallbackUnsub: (() => void) | null = null;
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgsRaw = parseSnapshotDocs(snapshot.docs);
       subLists.set(activeConversationId, msgsRaw);
@@ -599,7 +598,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
     return () => {
       unsubscribe();
-      if (fallbackUnsub) fallbackUnsub();
       topQueryUnsubs.forEach((u) => u());
       extraUnsubs.forEach((u) => u());
       extraUnsubs.clear();

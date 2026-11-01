@@ -23,7 +23,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        (request.auth.token.email != null && (
+        (request.auth.token.email != null && request.auth.token.email_verified == true && (
           request.auth.token.email == 'bookingsimcha@gmail.com' ||
           request.auth.token.email == 'adminbookingsimcha@gmail.com' ||
           request.auth.token.email == 'shimpose@gmail.com' ||
@@ -60,7 +60,10 @@ service cloud.firestore {
     }
 
     function isParticipantOfId(conversationId) {
-      return isAuthenticated();
+      return isAuthenticated() && (
+        request.auth.uid in conversationId.split('_') ||
+        isAdmin()
+      );
     }
 
     function isVendor(vendorId) {
@@ -181,27 +184,48 @@ service cloud.firestore {
       ));
     }
 
-    // Messaging & Live Chats: Authenticated participants or admins
+    // Messaging & Live Chats: Authenticated participants, vendors, or admins
     match /conversations/{conversationId} {
       allow read: if isAuthenticated() && (
         resource == null ||
         isAdmin() ||
         isParticipantOfId(conversationId) ||
-        request.auth.uid in resource.data.participant_ids
+        request.auth.uid in resource.data.participant_ids ||
+        resource.data.client_id == request.auth.uid ||
+        (request.auth.token.email != null && (
+          resource.data.client_email == request.auth.token.email ||
+          resource.data.client_email == request.auth.token.email.lower() ||
+          resource.data.client_id == request.auth.token.email.lower() ||
+          request.auth.token.email.lower() in resource.data.participant_ids
+        )) ||
+        (resource.data.vendor_id != null && isVendor(resource.data.vendor_id)) ||
+        hasRole('vendor')
       );
       allow write: if isAuthenticated() && (
         isAdmin() ||
         isParticipantOfId(conversationId) ||
-        (request.resource != null && request.auth.uid in request.resource.data.participant_ids) ||
-        (resource != null && request.auth.uid in resource.data.participant_ids)
+        (request.resource != null && (
+          request.auth.uid in request.resource.data.participant_ids ||
+          request.resource.data.client_id == request.auth.uid
+        )) ||
+        (resource != null && (
+          request.auth.uid in resource.data.participant_ids ||
+          resource.data.client_id == request.auth.uid ||
+          (resource.data.vendor_id != null && isVendor(resource.data.vendor_id))
+        )) ||
+        hasRole('vendor')
       );
       
       match /messages/{messageId} {
         allow read, write: if isAuthenticated() && (
           isAdmin() ||
           isParticipantOfId(conversationId) ||
-          (exists(/databases/$(database)/documents/conversations/$(conversationId)) && 
-           request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participant_ids)
+          hasRole('vendor') ||
+          (exists(/databases/$(database)/documents/conversations/$(conversationId)) && (
+            request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participant_ids ||
+            get(/databases/$(database)/documents/conversations/$(conversationId)).data.client_id == request.auth.uid ||
+            (request.auth.token.email != null && get(/databases/$(database)/documents/conversations/$(conversationId)).data.client_email == request.auth.token.email.lower())
+          ))
         );
       }
       
@@ -209,26 +233,28 @@ service cloud.firestore {
         allow read, write: if isAuthenticated() && (
           isAdmin() ||
           isParticipantOfId(conversationId) ||
-          (exists(/databases/$(database)/documents/conversations/$(conversationId)) && 
-           request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participant_ids)
+          hasRole('vendor') ||
+          (exists(/databases/$(database)/documents/conversations/$(conversationId)) && (
+            request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participant_ids ||
+            get(/databases/$(database)/documents/conversations/$(conversationId)).data.client_id == request.auth.uid
+          ))
         );
       }
     }
 
     // System Logging, Analytics & Bot Security Flags
     match /analytics_logs/{logId} {
-      allow create: if true;
+      allow create: if request.resource.data.keys().size() <= 15;
       allow read, update, delete: if isAdmin();
     }
 
     match /security_flags/{flagId} {
-      allow create: if true;
+      allow create: if request.resource.data.keys().size() <= 15;
       allow read, update, delete: if isAdmin();
     }
     
     match /webhook_debug/{docId} {
-      allow create: if true;
-      allow read, update, delete: if isAuthenticated();
+      allow read, write: if isAdmin();
     }
   }
 }

@@ -56,7 +56,8 @@ const clean = (obj: any) => {
 const AnimatedRoleSwitcher: React.FC<{
   isVendorView: boolean;
   onToggleVendor: (targetVendorView?: boolean) => void;
-}> = React.memo(({ isVendorView, onToggleVendor }) => {
+  floatingY?: any;
+}> = React.memo(({ isVendorView, onToggleVendor, floatingY }) => {
   const clientBtnRef = useRef<HTMLButtonElement | null>(null);
   const vendorBtnRef = useRef<HTMLButtonElement | null>(null);
   const lastRoleRef = useRef(isVendorView);
@@ -169,7 +170,11 @@ const AnimatedRoleSwitcher: React.FC<{
   }, [onToggleVendor, runSlideWiggle]);
 
   return (
-    <nav aria-label="Account Role Switcher" className="fixed top-[84px] sm:top-24 left-3 sm:left-4 z-50 flex items-center pointer-events-auto">
+    <motion.nav
+      aria-label="Account Role Switcher"
+      style={{ y: floatingY }}
+      className="fixed top-[78px] sm:top-[86px] left-2 sm:left-[10px] z-50 flex items-center pointer-events-auto will-change-transform transform-gpu"
+    >
       <div className="simcha-switch-track relative flex items-center gap-[3px] h-[28px] sm:h-[30px] bg-zinc-950/95 border border-[#D4AF37]/45 backdrop-blur-xl rounded-full p-[3px] shadow-[0_6px_16px_rgba(0,0,0,0.9),0_0_10px_rgba(212,175,55,0.2)] text-[9.5px] sm:text-[10px] tracking-normal uppercase font-extrabold leading-none">
         <motion.div
           style={{
@@ -210,7 +215,7 @@ const AnimatedRoleSwitcher: React.FC<{
           <span className="leading-none">Vendor</span>
         </button>
       </div>
-    </nav>
+    </motion.nav>
   );
 });
 
@@ -1367,8 +1372,12 @@ function App() {
   const heroTitleOpacity = useTransform(scrollY, [0, 200], [1, 0]);
   const heroTitleScale = useTransform(scrollY, [0, 200], [1, 0.8]);
   const heroTitleY = useTransform(scrollY, [0, 200], [0, -28]);
-  const heroBgY = useTransform(scrollY, [0, 320], [0, 32]);
   const heroBgScale = useTransform(scrollY, [0, 320], [1, 1.06]);
+  // Scroll the Client/Vendor switch & Ask button up with the header/hero image by the exact header height (70px mobile / 76px sm+) until they reach the top of the screen
+  const floatingControlsY = useTransform(scrollY, (y) => {
+    const headerHeight = typeof window !== 'undefined' && window.innerWidth >= 640 ? 76 : 70;
+    return -Math.min(Math.max(0, y), headerHeight);
+  });
 
   const [view, setView] = useState<'marketplace' | 'vendor-portal' | 'admin' | 'posts' | 'client-portal' | 'payment-success' | 'verify-account' | 'portal'>('marketplace');
   const [portalTab, setPortalTab] = useState<'client' | 'vendor'>('client');
@@ -1760,9 +1769,9 @@ function App() {
     };
   }, []);
 
-  // Webhook Debug Listener
+  // Webhook Debug Listener (Admins only)
   useEffect(() => {
-    if (!fbUser) return;
+    if (!fbUser || !isAdmin) return;
 
     const unsubWebhooks = onSnapshot(
       query(collection(db, 'webhook_debug'), orderBy('timestamp', 'desc'), limit(1)),
@@ -1777,10 +1786,11 @@ function App() {
             showNotification(`Webhook Received: ${data.type}`, 'info');
           }
         }
-      }
+      },
+      () => {}
     );
     return () => unsubWebhooks();
-  }, [fbUser]);
+  }, [fbUser, isAdmin]);
 
   // Firebase Auth Observer & 3D Angled Paper Roll Sign-In Transition State
   const isFirstAuthCheckRef = useRef(true);
@@ -1919,7 +1929,7 @@ function App() {
     // Messages (Subcollection aggregation to keep existing UI fully intact without deep structural rewrite of all panels)
     let unsubMessages = () => {};
     
-    // First, determine conversation query based on role (Admin only queries 'admin' support threads, never private vendor-client chats)
+    // First, determine conversation query targets based on role (Admin only queries 'admin' support threads, never private vendor-client chats)
     const participantTargets = Array.from(
       new Set(
         [
@@ -1931,16 +1941,6 @@ function App() {
         ].filter(Boolean)
       )
     ).slice(0, 10) as string[];
-
-    const convoQuery = participantTargets.length > 1
-      ? query(
-          collection(db, 'conversations'),
-          where('participant_ids', 'array-contains-any', participantTargets)
-        )
-      : query(
-          collection(db, 'conversations'),
-          where('participant_ids', 'array-contains', participantTargets[0] || fbUser.uid)
-        );
 
     const activeListeners = new Map<string, () => void>();
     const allConvoMessages = new Map<string, Message[]>();
@@ -2023,8 +2023,7 @@ function App() {
           allConvoMessages.set(cid, mapSnapToMessages(msgSnap));
           rebuildMergedMessages();
         },
-        (err) => {
-          handleFirestoreError(err, OperationType.LIST, `conversations/${cid}/messages`, notifyErr);
+        () => {
           const fallbackQuery = collection(db, 'conversations', cid, 'messages');
           const unsubFallback = onSnapshot(
             fallbackQuery,
@@ -2032,9 +2031,7 @@ function App() {
               allConvoMessages.set(cid, mapSnapToMessages(msgSnap));
               rebuildMergedMessages();
             },
-            (err2) => {
-              handleFirestoreError(err2, OperationType.LIST, `conversations/${cid}/messages`, notifyErr);
-            }
+            () => {}
           );
           activeListeners.set(cid + '_fallback', unsubFallback);
         }
@@ -2042,15 +2039,15 @@ function App() {
       activeListeners.set(cid, unsubMsg);
     };
 
-    const unsubConvos = onSnapshot(
-      convoQuery,
-      (snapshot) => {
-        snapshot.docs.forEach(attachConversationMessagesListener);
-        rebuildMergedMessages();
-      },
-      (err) => {
-        handleFirestoreError(err, OperationType.LIST, 'conversations', notifyErr);
-      }
+    const convoTargetUnsubs = participantTargets.map((targetId) =>
+      onSnapshot(
+        query(collection(db, 'conversations'), where('participant_ids', 'array-contains', targetId)),
+        (snapshot) => {
+          snapshot.docs.forEach(attachConversationMessagesListener);
+          rebuildMergedMessages();
+        },
+        () => {}
+      )
     );
 
     const qByClientId = query(collection(db, 'conversations'), where('client_id', '==', fbUser.uid));
@@ -2098,7 +2095,7 @@ function App() {
     }
 
     unsubMessages = () => {
-      unsubConvos();
+      convoTargetUnsubs.forEach(u => u());
       unsubByClientId();
       unsubByClientEmail();
       unsubByEmailParticipant();
@@ -2302,38 +2299,39 @@ function App() {
 
       const userEmail = user.email ? user.email.trim().toLowerCase() : '';
 
-      // If logged in but email not verified, we also treat it as not fully authenticated for the app, EXCEPT if they are a vendor or admin!
-      if (!user.emailVerified && !isWhitelistedAdminEmail(userEmail)) {
-        let isVendor = false;
+      // If logged in but email not verified, check if they are an existing user, vendor, or admin before blocking
+      if (!user.emailVerified && !isWhitelistedAdminEmail(userEmail) && !CLIENT_OVERRIDE_EMAILS.includes(userEmail)) {
+        let isAllowedUnverified = false;
         try {
-          const vendorDoc = await getDocSafe(doc(db, 'vendors', user.uid));
-          if (vendorDoc.exists()) {
-            isVendor = true;
+          const [vendorDoc, existingUserDoc] = await Promise.all([
+            getDocSafe(doc(db, 'vendors', user.uid)).catch(() => null),
+            getDocSafe(doc(db, 'users', user.uid)).catch(() => null)
+          ]);
+          if ((vendorDoc && vendorDoc.exists()) || (existingUserDoc && existingUserDoc.exists())) {
+            isAllowedUnverified = true;
           } else if (user.email) {
             const q = query(collection(db, 'vendors'), where('contactEmail', '==', user.email));
             const snapshot = await getDocsSafe(q);
             if (!snapshot.empty) {
-              isVendor = true;
+              isAllowedUnverified = true;
             } else {
               const q2 = query(collection(db, 'vendors'), where('username', '==', user.email));
               const snapshot2 = await getDocsSafe(q2);
               if (!snapshot2.empty) {
-                isVendor = true;
+                isAllowedUnverified = true;
               }
             }
           }
         } catch (err: any) {
           if (err.message?.includes('offline') || err.message?.includes('Failed to get document')) {
             console.warn("Vendor status check paused (offline mode) during auth state change:", err.message);
-            if (user.email && INITIAL_VENDORS.some(v => v.username?.toLowerCase() === user.email?.toLowerCase())) {
-              isVendor = true;
-            }
+            isAllowedUnverified = true;
           } else {
             console.error("Error checking vendor status during auth state change:", err);
           }
         }
 
-        if (!isVendor) {
+        if (!isAllowedUnverified) {
           await waitMinReloadTime();
           syncSavedThemePreference();
           setFbUser(null);
@@ -3766,10 +3764,17 @@ function App() {
       : (Boolean(matchedVendor) ||
         (lowerEmail ? INITIAL_VENDORS.some(v => v.username?.toLowerCase() === lowerEmail) : false));
 
-    // Only wait for remote vendor lookup before sliding if the email is unverified and not already known as admin/vendor
+    // Only wait for remote lookup before sliding if the email is unverified and not already known as admin/vendor
     if (!user.emailVerified && !isVendor && !isKnownAdmin && !isBlockedFromVendor) {
+      let hasExistingProfile = false;
       try {
-        const directVendorDoc = await getDocSafe(doc(db, 'vendors', user.uid)).catch(() => null);
+        const [directVendorDoc, existingUserDoc] = await Promise.all([
+          getDocSafe(doc(db, 'vendors', user.uid)).catch(() => null),
+          getDocSafe(doc(db, 'users', user.uid)).catch(() => null)
+        ]);
+        if (existingUserDoc && existingUserDoc.exists()) {
+          hasExistingProfile = true;
+        }
         if (directVendorDoc && directVendorDoc.exists()) {
           isVendor = true;
           matchedVendor = { id: directVendorDoc.id, ...directVendorDoc.data() } as Vendor;
@@ -3790,7 +3795,7 @@ function App() {
         }
       } catch (err) {}
 
-      if (!isVendor) {
+      if (!isVendor && !hasExistingProfile) {
         isInteractiveSignInRef.current = false;
         setIsAuthLoading(false);
         setUnverifiedEmail(rawEmail || authEmail);
@@ -3928,9 +3933,10 @@ function App() {
 
   const handleAuthLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanEmail = authEmail.trim();
     const botEval = botDetectionService.evaluateSignInAttempt(e);
     if (!botEval.allowed) {
-      void botDetectionService.flagBlockedAttempt(botEval, authEmail, 'sign-in');
+      void botDetectionService.flagBlockedAttempt(botEval, cleanEmail, 'sign-in');
       setIsAuthLoading(false);
       setAuthError('Automated or non-human activity detected. Sign-in request blocked and flagged.');
       return;
@@ -3940,12 +3946,19 @@ function App() {
     setNotification(null);
     isInteractiveSignInRef.current = true;
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, authEmail, authPassword);
-      await completeAuthenticatedSignIn(userCredential.user, authEmail);
+      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, authPassword);
+      await completeAuthenticatedSignIn(userCredential.user, cleanEmail);
     } catch (err: any) {
+      console.error('[Auth] Sign-in error:', err?.code, err?.message);
       isInteractiveSignInRef.current = false;
       setIsAuthLoading(false);
-      setAuthError('Password or email incorrect, or account requires verification.');
+      if (err?.code === 'auth/too-many-requests') {
+        setAuthError('Too many failed attempts. Please wait a moment or reset your password.');
+      } else if (err?.code === 'auth/network-request-failed') {
+        setAuthError('Network error while connecting to authentication service. Please try again.');
+      } else {
+        setAuthError('Password or email incorrect, or account requires verification.');
+      }
     }
   };
 
@@ -4641,17 +4654,17 @@ function App() {
       <main 
         id="main-content" 
         ref={mainMenuUnfoldRef}
-        className="flex-1 flex flex-col pb-36 md:pb-0 will-change-transform"
+        className="relative z-30 flex-1 flex flex-col pb-36 md:pb-0 will-change-transform"
       >
-        <section className="simcha-hero-section relative bg-black text-white z-20" aria-labelledby="hero-title">
-          <div className="absolute inset-0 overflow-hidden pointer-events-none z-0" aria-hidden="true">
+        <section className="simcha-hero-section relative bg-black text-white z-20 -mt-3 rounded-t-[20px] sm:rounded-t-[24px] shadow-none" aria-labelledby="hero-title">
+          <div className="absolute inset-0 rounded-t-[20px] sm:rounded-t-[24px] overflow-hidden pointer-events-none z-0" aria-hidden="true">
             <motion.div
               className="absolute -inset-x-1 -top-1 -bottom-2 z-0 will-change-transform transform-gpu"
-              style={{ y: heroBgY, scale: heroBgScale }}
+              style={{ scale: heroBgScale }}
             >
               {renderMedia(heroBackgroundUrl, "simcha-hero-media w-full h-full object-cover opacity-80", undefined, true, true)}
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero"></div>
             </motion.div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero"></div>
           </div>
           <div className="relative z-10 max-w-7xl mx-auto px-4 py-[72px] md:py-32 text-center">
             <motion.h2
@@ -5066,10 +5079,15 @@ function App() {
         <AnimatedRoleSwitcher
           isVendorView={isVendorView}
           onToggleVendor={handleToggleVendor}
+          floatingY={floatingControlsY}
         />
       )}
 
-      <aside aria-label="Support Assistance" className="fixed top-[84px] sm:top-24 right-3 sm:right-4 z-50 flex items-center pointer-events-auto">
+      <motion.aside
+        aria-label="Support Assistance"
+        style={{ y: floatingControlsY }}
+        className="fixed top-[78px] sm:top-[86px] right-2 sm:right-[10px] z-50 flex items-center pointer-events-auto will-change-transform transform-gpu"
+      >
         <motion.button 
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
@@ -5086,12 +5104,12 @@ function App() {
           <HelpCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3 shrink-0 stroke-[2.5]" />
           <span className="leading-none">Ask</span>
         </motion.button>
-      </aside>
+      </motion.aside>
 
-      <header className="bg-black sticky top-0 z-40 border-b border-[#D4AF37]/20 shadow-xl rounded-b-lg sm:rounded-b-none" aria-label="Main Navigation">
+      <header className={`bg-black relative z-20 pb-3 shadow-none ${view === 'marketplace' ? '' : 'border-b border-[#D4AF37]/20'}`} aria-label="Main Navigation">
         <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-full focus:font-bold">Skip to main content</a>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-[72px] sm:h-20 items-center">
+          <div className="flex justify-between h-[70px] sm:h-[76px] items-center">
             <div className="flex items-center gap-4 md:gap-8 ml-0">
               <motion.button 
                 whileHover={{ scale: 1.02 }}

@@ -16,7 +16,6 @@
         "location": { "type": "string" },
         "isVerified": { "type": "boolean" },
         "username": { "type": "string" },
-        "password": { "type": "string" },
         "commissionRate": { "type": "number", "description": "Percentage of sales taken as platform fee" },
         "stripeAccountId": { "type": "string", "description": "Stripe Connect account ID" },
         "enableDateCheckLimit": { "type": "boolean", "description": "Whether the date check limit is enabled for this vendor" },

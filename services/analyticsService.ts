@@ -1,24 +1,5 @@
-import { getAnalytics, logEvent, isSupported, Analytics } from "firebase/analytics";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import app, { db, auth } from "./firebase";
-
-let firebaseAnalytics: Analytics | null = null;
-
-// Initialize Firebase Analytics asynchronously after checking for environment support
-isSupported().then((supported) => {
-  if (supported) {
-    try {
-      firebaseAnalytics = getAnalytics(app);
-      console.log("[Analytics] Firebase Analytics successfully initialized.");
-    } catch (err) {
-      console.warn("[Analytics] Firebase Analytics initialization failed:", err);
-    }
-  } else {
-    console.log("[Analytics] Firebase Analytics is not supported in this browser environment.");
-  }
-}).catch((err) => {
-  console.warn("[Analytics] Firebase Analytics support check failed:", err);
-});
+import { db, auth } from "./firebase";
 
 export interface TrackingEvent {
   eventName: string;
@@ -31,7 +12,7 @@ export interface TrackingEvent {
 
 /**
  * Tracks an analytics event.
- * Logs to standard Firebase Analytics, falls back to custom Firestore database logging for sandbox robustness,
+ * Persists to custom Firestore database logging for sandbox robustness
  * and prints a clean debug log in development.
  */
 export const trackEvent = async (eventName: string, params?: Record<string, any>) => {
@@ -47,23 +28,14 @@ export const trackEvent = async (eventName: string, params?: Record<string, any>
     params,
   };
 
-  // 1. Log to official Firebase Analytics (if initialized and supported)
-  if (firebaseAnalytics) {
-    try {
-      logEvent(firebaseAnalytics, eventName, params);
-    } catch (err) {
-      console.warn(`[Analytics] Direct logEvent failed for ${eventName}:`, err);
-    }
-  }
-
-  // 2. Log in console with pristine visual presentation
+  // 1. Log in console with pristine visual presentation
   console.log(
     `%c[Simcha Analytics] 📊 Event tracked: ${eventName}`,
     "color: #D4AF37; font-weight: bold; background-color: #111; padding: 4px 8px; border-radius: 4px;",
     eventData
   );
 
-  // 3. Persist event in Firestore for server-side analytics, bypassing any browser cookie blockers
+  // 2. Persist event in Firestore for server-side analytics, bypassing any browser cookie blockers
   try {
     const analyticsRef = collection(db, "analytics_logs");
     await addDoc(analyticsRef, {
@@ -71,7 +43,7 @@ export const trackEvent = async (eventName: string, params?: Record<string, any>
       firestoreTimestamp: serverTimestamp(),
     });
   } catch (err) {
-    console.error(`[Analytics] Firestore persistence failed for ${eventName}:`, err);
+    console.warn(`[Analytics] Firestore persistence skipped for ${eventName}:`, err);
   }
 };
 

@@ -1172,7 +1172,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
               items: VendorService[];
             }[] = [
               {
-                type: 'location',
+                type: 'location' as ServiceCategoryType,
                 title: 'Locations',
                 subtitle: 'Select one location & adjust hours',
                 icon: MapPin,
@@ -1180,7 +1180,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                 items: vendor.services.filter(s => inferServiceCategory(s) === 'location')
               },
               {
-                type: 'amenities',
+                type: 'amenities' as ServiceCategoryType,
                 title: 'Add-ons & Extras',
                 subtitle: 'Select add-ons & extras',
                 icon: Sparkles,

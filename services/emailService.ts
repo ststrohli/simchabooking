@@ -12,21 +12,16 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Verify connection configuration
-transporter.verify(function (error, success) {
-  if (error) {
-    console.error('[Email] Connection verification failed:', error);
-    console.log('[Email] Current Config:', {
-      host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-      port: process.env.EMAIL_PORT || '587',
-      user: process.env.EMAIL_USER ? '***' : 'MISSING',
-      pass: process.env.EMAIL_PASS ? '***' : 'MISSING',
-      secure: process.env.EMAIL_SECURE
-    });
-  } else {
-    console.log('[Email] Server is ready to take our messages');
-  }
-});
+// Verify connection configuration when credentials are provided
+if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  transporter.verify(function (error) {
+    if (error) {
+      console.error('[Email] Connection verification failed:', error.message);
+    } else {
+      console.log('[Email] Server is ready to take our messages');
+    }
+  });
+}
 
 const GOLD = '#D4AF37';
 const BLACK = '#111111';

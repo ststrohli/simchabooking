@@ -25,7 +25,7 @@ interface VendorPortalProps {
   onUpdateVendor: (updatedVendor: Vendor) => void;
   onUpdateBookingStatus: (bookingId: string, status: 'confirmed' | 'cancelled') => void;
   onReplyMessage: (clientEmail: string, clientName: string, text: string, type?: 'text' | 'image' | 'voice' | 'file', fileUrl?: string, audioUrl?: string, fileName?: string, fileType?: string) => void;
-  showNotification: (message: string, type?: 'success' | 'info') => void;
+  showNotification: (message: string, type?: 'success' | 'info' | 'error') => void;
   onLogout: () => void;
   onSwitchToClientView?: () => void;
   onActiveChatChange?: (isActive: boolean) => void;

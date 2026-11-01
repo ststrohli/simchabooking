@@ -7,7 +7,7 @@ interface CustomAudioPlayerProps {
   duration?: number;
   avatarUrl?: string;
   timestampFormatted?: string;
-  status?: 'sending' | 'sent' | 'error';
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'error';
   isRead?: boolean;
   showSeenLabel?: boolean;
   onDelete?: () => void;

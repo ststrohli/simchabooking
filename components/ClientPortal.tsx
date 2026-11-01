@@ -313,7 +313,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
               participants: Array.isArray(d.participants) ? d.participants : (Array.isArray(convData.participant_ids) ? convData.participant_ids : [senderId, receiverId]),
               isAdminInquiry: Boolean(d.isAdminInquiry || convData.type === 'admin_support' || senderId === 'admin' || receiverId === 'admin'),
               timestamp: ts,
-            } as Message;
+            } as unknown as Message;
           });
           convMessagesMap.set(cid, list);
           rebuildLiveMessages();
@@ -408,7 +408,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           image: '',
           description: 'Official Simcha Booking Concierge & Admin Support',
           EventTypes: []
-        } as Vendor;
+        } as unknown as Vendor;
       } else {
         // 2. Vendor conversations for this client (including messages sent by the vendor to this client)
         const role = (m as any).sender_role;
@@ -462,7 +462,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
             image: '',
             description: '',
             EventTypes: []
-          } as Vendor;
+          } as unknown as Vendor;
         }
       }
 

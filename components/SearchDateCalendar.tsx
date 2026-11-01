@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Calendar, ChevronLeft, ChevronRight, X, RotateCcw, Clock, Check } from 'lucide-react';
 
@@ -22,6 +23,12 @@ interface StoredQuotaState {
   resetNonce: number;
 }
 
+interface PopupLayoutState {
+  bottomPx: number;
+  originOffsetX: number;
+  originOffsetY: number;
+}
+
 export const SearchDateCalendar: React.FC<SearchDateCalendarProps> = ({
   searchTerm,
   onSearchTermChange,
@@ -38,8 +45,41 @@ export const SearchDateCalendar: React.FC<SearchDateCalendarProps> = ({
   const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date());
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  const [popupLayout, setPopupLayout] = useState<PopupLayoutState>({
+    bottomPx: 260,
+    originOffsetX: 140,
+    originOffsetY: 28
+  });
 
+  const searchBarRef = useRef<HTMLDivElement>(null);
   const calendarWrapperRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  const updatePopupLayout = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const searchRect = searchBarRef.current?.getBoundingClientRect();
+    const btnRect = calendarWrapperRef.current?.getBoundingClientRect();
+    const measuredPopupHeight = popupRef.current?.offsetHeight || 356;
+
+    const idealBottom = searchRect ? vh - searchRect.top + 10 : vh * 0.45;
+    // Clamp so the top of the calendar always stays at least 12px inside the top of the viewport
+    const maxAllowedBottom = Math.max(12, vh - measuredPopupHeight - 12);
+    const bottomPx = Math.max(12, Math.min(idealBottom, maxAllowedBottom));
+
+    const calendarBottomX = vw / 2;
+    const calendarBottomY = vh - bottomPx;
+
+    const btnCenterX = btnRect ? btnRect.left + btnRect.width / 2 : vw / 2 + 140;
+    const btnCenterY = btnRect ? btnRect.top + btnRect.height / 2 : calendarBottomY + 28;
+
+    setPopupLayout({
+      bottomPx,
+      originOffsetX: btnCenterX - calendarBottomX,
+      originOffsetY: btnCenterY - calendarBottomY
+    });
+  }, []);
 
   const storageKey = `simcha_search_date_quota_${userId || 'guest'}`;
   const resetPeriodMs = Math.max(0, searchDateResetHours) * 60 * 60 * 1000;
@@ -107,13 +147,33 @@ export const SearchDateCalendar: React.FC<SearchDateCalendarProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
+    updatePopupLayout();
+    const rafId = requestAnimationFrame(() => updatePopupLayout());
+    window.addEventListener('resize', updatePopupLayout);
+    window.addEventListener('scroll', updatePopupLayout, { passive: true });
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', updatePopupLayout);
+      window.removeEventListener('scroll', updatePopupLayout);
+    };
+  }, [isOpen, updatePopupLayout, selectedDates.length, statusMessage, quotaState.quotaDates.length]);
+
+  useEffect(() => {
+    if (!isOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (calendarWrapperRef.current && !calendarWrapperRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        calendarWrapperRef.current &&
+        !calendarWrapperRef.current.contains(target) &&
+        (!popupRef.current || !popupRef.current.contains(target))
+      ) {
+        updatePopupLayout();
         setIsOpen(false);
       }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        updatePopupLayout();
         setIsOpen(false);
       }
     };
@@ -123,7 +183,7 @@ export const SearchDateCalendar: React.FC<SearchDateCalendarProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen]);
+  }, [isOpen, updatePopupLayout]);
 
   const saveQuotaState = (next: StoredQuotaState) => {
     setQuotaState(next);
@@ -251,15 +311,18 @@ export const SearchDateCalendar: React.FC<SearchDateCalendarProps> = ({
   const weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   // SVG path for the gold Search button:
-  // Left side: full semicircular pill cap (radius 19).
+  // Left side: deep, full semicircular pill cap (rx 23, ry 19) so the left side is richly rounded.
   // Right side: straight top/bottom lines to (115, 1) and (115, 39), then a pushed-in concave arc (radius 21.5)
-  // that curves inward by ~10px so the circular date button nests 1-2px away from the curve without touching.
-  const searchBtnSvgPath = 'M 20,1 L 115,1 A 21.5,21.5 0 0,0 115,39 L 20,39 A 19,19 0 0,1 20,1 Z';
+  // with two sharp tips wrapping around the circular date button.
+  const searchBtnSvgPath = 'M 24,1 L 115,1 A 21.5,21.5 0 0,0 115,39 L 24,39 A 23,19 0 0,1 24,1 Z';
 
   return (
     <div className="max-w-3xl mx-auto w-full relative z-30">
       {/* Original Pill-Shaped Search Bar */}
-      <div className="simcha-search-bar max-w-3xl mx-auto bg-zinc-950/90 rounded-full p-1.5 pl-4 sm:pl-6 flex items-center shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_15px_rgba(212,175,55,0.15)] border border-[#D4AF37]/30 backdrop-blur-md">
+      <div
+        ref={searchBarRef}
+        className="simcha-search-bar max-w-3xl mx-auto bg-zinc-950/90 rounded-full p-1.5 pl-4 sm:pl-6 flex items-center shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_15px_rgba(212,175,55,0.15)] border border-[#D4AF37]/30 backdrop-blur-md"
+      >
         <div className="flex-1 flex items-center min-w-0 pr-2">
           <label htmlFor="search-input" className="sr-only">Search vendors</label>
           <Search className="simcha-search-icon w-4 h-4 sm:w-5 sm:h-5 text-[#D4AF37] mr-2.5 sm:mr-3 shrink-0" aria-hidden="true" />
@@ -280,20 +343,21 @@ export const SearchDateCalendar: React.FC<SearchDateCalendarProps> = ({
           />
         </div>
 
-        {/* Right Controls Inside Search Bar: Pill-left/Concave-right Gold Search Button + Same-Height Roundy Date Button 1-2px apart */}
+        {/* Right Controls Inside Search Bar: Pill-left/Concave-right Gold Search Button + Same-Height Roundy Date Button */}
         <div className="flex items-center shrink-0">
-          {/* Gold Search Button: Pill-shaped on the left, pushed-in concave right edge with two sharp tips wrapping around the date button */}
+          {/* Gold Search Button: Pill-shaped on the left (rounded-l-full), pushed-in concave right edge with two sharp tips wrapping around the date button */}
           <motion.button
             type="button"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
             onClick={onSearchSubmit}
-            className="relative h-9 sm:h-10 w-[88px] sm:w-[108px] pr-3 sm:pr-3.5 flex items-center justify-center font-black uppercase tracking-wider text-xs sm:text-sm text-black shrink-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-white select-none z-10"
+            className="relative h-9 sm:h-10 w-[88px] sm:w-[108px] pl-1 pr-3 sm:pr-3.5 rounded-l-full flex items-center justify-center font-black uppercase tracking-wider text-xs sm:text-sm text-black shrink-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-white select-none z-10"
           >
             <svg
               className="absolute inset-0 w-full h-full pointer-events-none overflow-visible drop-shadow-[0_4px_12px_rgba(212,175,55,0.45)]"
               viewBox="0 0 116 40"
               preserveAspectRatio="none"
+              shapeRendering="geometricPrecision"
               aria-hidden="true"
             >
               <defs>
@@ -310,19 +374,21 @@ export const SearchDateCalendar: React.FC<SearchDateCalendarProps> = ({
                 strokeWidth="1.25"
                 strokeLinejoin="miter"
                 strokeMiterlimit="12"
+                shapeRendering="geometricPrecision"
               />
             </svg>
             <span className="relative z-10 text-[#09090b] font-black">Search</span>
           </motion.button>
 
-          {/* Roundy Date Calendar Button: Exact same height (h-9 sm:h-10) nestled 1-2px from the Search button's concave curve without touching */}
-          <div ref={calendarWrapperRef} className="relative -ml-[6px] sm:-ml-[7px] shrink-0 flex items-center justify-center z-20">
+          {/* Roundy Date Calendar Button: Exact same height (h-9 sm:h-10) with slightly more spacing (-ml-[3px] sm:-ml-[4px]) */}
+          <div ref={calendarWrapperRef} className="relative -ml-[3px] sm:-ml-[4px] shrink-0 flex items-center justify-center z-20">
             <motion.button
               type="button"
               whileHover={{ scale: 1.06 }}
               whileTap={{ scale: 0.93 }}
               onClick={() => {
                 setStatusMessage(null);
+                updatePopupLayout();
                 setIsOpen(prev => !prev);
               }}
               aria-label="Filter vendors by available dates"
@@ -342,211 +408,237 @@ export const SearchDateCalendar: React.FC<SearchDateCalendarProps> = ({
               )}
             </motion.button>
 
-            {/* Pop-Out / Zoom-Out Scaled-Down Booking Modal Calendar */}
-            <AnimatePresence>
-              {isOpen && (
-                <motion.div
-                  key="search-date-calendar-popout"
-                  initial={{ opacity: 0, scale: 0.08, y: -22, x: 6 }}
-                  animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
-                  exit={{ opacity: 0, scale: 0.08, y: -22, x: 6 }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 26, mass: 0.72 }}
-                  style={{ transformOrigin: 'top right' }}
-                  className="simcha-popout-calendar absolute right-0 top-[48px] sm:top-[52px] w-[284px] sm:w-[304px] z-[90] bg-[#050505]/95 border border-[#D4AF37]/35 rounded-2xl p-3.5 shadow-[0_24px_60px_rgba(0,0,0,0.95),0_0_25px_rgba(212,175,55,0.22)] backdrop-blur-xl select-none text-left"
-                >
-                  <div className="absolute inset-0 border border-white/5 pointer-events-none rounded-2xl" />
-
-                  {/* Top bar: Title + Quota + Close */}
-                  <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-[#D4AF37]/15">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#D4AF37] font-[Cinzel]">
-                        Availability Filter
-                      </p>
-                      <p className="text-[10px] text-zinc-400">
-                        Max {maxSearchDates} dates · {quotaState.quotaDates.length}/{maxSearchDates} used
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsOpen(false)}
-                      className="w-6 h-6 rounded-full bg-black/60 border border-[#D4AF37]/25 hover:border-[#D4AF37] text-zinc-300 hover:text-[#D4AF37] flex items-center justify-center transition-all cursor-pointer"
-                      aria-label="Close calendar"
+            {/* Portaled Pop-Out Calendar: Centered horizontally on screen, positioned above search bar, and layered ON TOP OF Main Header, Ask button & Client/Vendor switch */}
+            {typeof document !== 'undefined' &&
+              createPortal(
+                <AnimatePresence>
+                  {isOpen && (
+                    <div
+                      className="fixed inset-x-0 z-[250] flex justify-center pointer-events-none px-3"
+                      style={{ bottom: `${popupLayout.bottomPx}px` }}
                     >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  {/* Month Navigation Header (Scaled-Down BookingModal Style) */}
-                  <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-[#D4AF37]/15">
-                    <button
-                      type="button"
-                      onClick={prevMonth}
-                      className="p-1.5 rounded-full border border-[#D4AF37]/15 hover:border-[#D4AF37]/50 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none cursor-pointer"
-                      aria-label="Previous Month"
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" />
-                    </button>
-
-                    <span className="font-[Cinzel] text-[#D4AF37] font-black uppercase tracking-widest text-[11px] flex items-center gap-1">
-                      {monthName} <span className="text-white">{year}</span>
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={nextMonth}
-                      className="p-1.5 rounded-full border border-[#D4AF37]/15 hover:border-[#D4AF37]/50 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none cursor-pointer"
-                      aria-label="Next Month"
-                    >
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  {/* Weekdays */}
-                  <div className="grid grid-cols-7 gap-1 text-center mb-1">
-                    {weekdays.map((wd, idx) => (
-                      <div key={`wd-${idx}`} className="text-[9px] text-[#D4AF37]/70 font-black uppercase tracking-widest py-0.5">
-                        {wd}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Roundy Dates Grid */}
-                  <div className="grid grid-cols-7 gap-1 mb-2.5">
-                    {Array.from({ length: firstDay }).map((_, i) => (
-                      <div key={`empty-${i}`} className="aspect-square opacity-0 pointer-events-none" />
-                    ))}
-
-                    {Array.from({ length: daysInMonth }).map((_, idx) => {
-                      const day = idx + 1;
-                      const dateObj = new Date(year, month, day);
-                      const dateStr = formatDateString(dateObj);
-                      const isPast = isPastDate(dateObj);
-                      const isSelected = selectedDates.includes(dateStr);
-                      const isInQuota = quotaState.quotaDates.includes(dateStr);
-                      const isLockedOut = !isInQuota && isQuotaFull;
-                      const availCount = availableVendorCountForDate ? availableVendorCountForDate(dateStr) : null;
-                      const hasZeroAvailable = availCount !== null && availCount === 0;
-
-                      let btnStyle = '';
-                      if (isSelected) {
-                        btnStyle =
-                          'bg-[#D4AF37] text-[#09090b] font-black shadow-[0_0_12px_rgba(212,175,55,0.5)] scale-105 border border-[#D4AF37]';
-                      } else if (isPast) {
-                        btnStyle =
-                          'text-zinc-400 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent';
-                      } else if (isInQuota) {
-                        btnStyle =
-                          'text-[#D4AF37] bg-[#D4AF37]/15 border border-[#D4AF37]/50 hover:bg-[#D4AF37]/25 cursor-pointer';
-                      } else if (isLockedOut) {
-                        btnStyle =
-                          'text-zinc-500 bg-black/40 border border-white/5 opacity-45 cursor-not-allowed';
-                      } else if (hasZeroAvailable) {
-                        btnStyle =
-                          'text-red-400/80 bg-red-950/20 border border-red-900/20 hover:border-red-500/40 cursor-pointer';
-                      } else {
-                        btnStyle =
-                          'text-zinc-100 bg-black/40 border border-white/5 hover:bg-[#D4AF37]/15 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 hover:scale-105 hover:shadow-[0_0_10px_rgba(212,175,55,0.25)] active:scale-95 cursor-pointer';
-                      }
-
-                      return (
-                        <button
-                          key={`day-${day}`}
-                          type="button"
-                          disabled={isPast}
-                          onClick={() => handleDateClick(dateStr, isPast)}
-                          className={`aspect-square rounded-full flex flex-col items-center justify-center text-[11px] font-bold transition-all outline-none relative group ${btnStyle}`}
-                        >
-                          <span>{day}</span>
-                          {!isSelected && !isPast && !isLockedOut && !hasZeroAvailable && (
-                            <span className="w-1 h-1 rounded-full bg-[#D4AF37] opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Selected Date Tags */}
-                  {quotaState.quotaDates.length > 0 && (
-                    <div className="mb-2.5 pt-2 border-t border-white/5">
-                      <div className="flex flex-wrap gap-1.5">
-                        {quotaState.quotaDates.map(d => {
-                          const active = selectedDates.includes(d);
-                          return (
-                            <button
-                              key={d}
-                              type="button"
-                              onClick={() => handleDateClick(d, false)}
-                              className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                                active
-                                  ? 'bg-[#D4AF37] text-[#09090b] shadow-sm'
-                                  : 'bg-black/40 text-zinc-400 border border-white/10 hover:text-white'
-                              }`}
-                              title={active ? 'Click to pause filtering on this date' : 'Click to re-enable this date'}
-                            >
-                              <span>{formatShortReadableDate(d)}</span>
-                              {active ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : null}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Status / Cooldown Notice */}
-                  {statusMessage && (
-                    <div className="mb-2.5 p-2 bg-black/60 border border-[#D4AF37]/30 rounded-xl text-[10px] text-zinc-200 text-center leading-snug">
-                      {statusMessage}
-                    </div>
-                  )}
-
-                  {/* Footer Controls: 24h Reset & Done */}
-                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#D4AF37]/15">
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={handleResetQuota}
-                        disabled={isResetOnCooldown || (quotaState.quotaDates.length === 0 && selectedDates.length === 0)}
-                        className={`px-2.5 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all ${
-                          isResetOnCooldown || (quotaState.quotaDates.length === 0 && selectedDates.length === 0)
-                            ? 'bg-black/40 text-zinc-500 border border-white/5 cursor-not-allowed'
-                            : 'bg-black/60 hover:bg-red-950/60 text-zinc-200 hover:text-red-300 border border-white/10 hover:border-red-500/30 cursor-pointer'
-                        }`}
+                      <motion.div
+                        ref={popupRef}
+                        key="search-date-calendar-popout"
+                        initial={{
+                          opacity: 0,
+                          scale: 0.06,
+                          x: popupLayout.originOffsetX,
+                          y: popupLayout.originOffsetY
+                        }}
+                        animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+                        exit={{
+                          opacity: 0,
+                          scale: 0.06,
+                          x: popupLayout.originOffsetX,
+                          y: popupLayout.originOffsetY
+                        }}
+                        transition={{ type: 'spring', stiffness: 390, damping: 26, mass: 0.72 }}
+                        style={{ transformOrigin: 'bottom center' }}
+                        className="simcha-popout-calendar pointer-events-auto relative w-[290px] sm:w-[310px] bg-[#050505]/95 border border-[#D4AF37]/35 rounded-2xl p-3.5 shadow-[0_24px_60px_rgba(0,0,0,0.95),0_0_25px_rgba(212,175,55,0.22)] backdrop-blur-xl select-none text-left"
                       >
-                        {isResetOnCooldown ? (
-                          <>
-                            <Clock className="w-3 h-3 text-[#D4AF37]" />
-                            <span>Reset in {formatRemainingTime(remainingCooldownMs)}</span>
-                          </>
-                        ) : (
-                          <>
-                            <RotateCcw className="w-3 h-3" />
-                            <span>Reset ({searchDateResetHours}h)</span>
-                          </>
+                        <div className="absolute inset-0 border border-white/5 pointer-events-none rounded-2xl" />
+
+                        {/* Top bar: Title + Quota + Close */}
+                        <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-[#D4AF37]/15">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#D4AF37] font-[Cinzel]">
+                              Availability Filter
+                            </p>
+                            <p className="text-[10px] text-zinc-400">
+                              Max {maxSearchDates} dates · {quotaState.quotaDates.length}/{maxSearchDates} used
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updatePopupLayout();
+                              setIsOpen(false);
+                            }}
+                            className="w-6 h-6 rounded-full bg-black/60 border border-[#D4AF37]/25 hover:border-[#D4AF37] text-zinc-300 hover:text-[#D4AF37] flex items-center justify-center transition-all cursor-pointer"
+                            aria-label="Close calendar"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Month Navigation Header (Scaled-Down BookingModal Style) */}
+                        <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-[#D4AF37]/15">
+                          <button
+                            type="button"
+                            onClick={prevMonth}
+                            className="p-1.5 rounded-full border border-[#D4AF37]/15 hover:border-[#D4AF37]/50 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none cursor-pointer"
+                            aria-label="Previous Month"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </button>
+
+                          <span className="font-[Cinzel] text-[#D4AF37] font-black uppercase tracking-widest text-[11px] flex items-center gap-1">
+                            {monthName} <span className="text-white">{year}</span>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={nextMonth}
+                            className="p-1.5 rounded-full border border-[#D4AF37]/15 hover:border-[#D4AF37]/50 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none cursor-pointer"
+                            aria-label="Next Month"
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Weekdays */}
+                        <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                          {weekdays.map((wd, idx) => (
+                            <div key={`wd-${idx}`} className="text-[9px] text-[#D4AF37]/70 font-black uppercase tracking-widest py-0.5">
+                              {wd}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Roundy Dates Grid */}
+                        <div className="grid grid-cols-7 gap-1 mb-2.5">
+                          {Array.from({ length: firstDay }).map((_, i) => (
+                            <div key={`empty-${i}`} className="aspect-square opacity-0 pointer-events-none" />
+                          ))}
+
+                          {Array.from({ length: daysInMonth }).map((_, idx) => {
+                            const day = idx + 1;
+                            const dateObj = new Date(year, month, day);
+                            const dateStr = formatDateString(dateObj);
+                            const isPast = isPastDate(dateObj);
+                            const isSelected = selectedDates.includes(dateStr);
+                            const isInQuota = quotaState.quotaDates.includes(dateStr);
+                            const isLockedOut = !isInQuota && isQuotaFull;
+                            const availCount = availableVendorCountForDate ? availableVendorCountForDate(dateStr) : null;
+                            const hasZeroAvailable = availCount !== null && availCount === 0;
+
+                            let btnStyle = '';
+                            if (isSelected) {
+                              btnStyle =
+                                'bg-[#D4AF37] text-[#09090b] font-black shadow-[0_0_12px_rgba(212,175,55,0.5)] scale-105 border border-[#D4AF37]';
+                            } else if (isPast) {
+                              btnStyle =
+                                'text-zinc-400 bg-[#111]/20 opacity-30 cursor-not-allowed scale-95 border border-transparent';
+                            } else if (isInQuota) {
+                              btnStyle =
+                                'text-[#D4AF37] bg-[#D4AF37]/15 border border-[#D4AF37]/50 hover:bg-[#D4AF37]/25 cursor-pointer';
+                            } else if (isLockedOut) {
+                              btnStyle =
+                                'text-zinc-500 bg-black/40 border border-white/5 opacity-45 cursor-not-allowed';
+                            } else if (hasZeroAvailable) {
+                              btnStyle =
+                                'text-red-400/80 bg-red-950/20 border border-red-900/20 hover:border-red-500/40 cursor-pointer';
+                            } else {
+                              btnStyle =
+                                'text-zinc-100 bg-black/40 border border-white/5 hover:bg-[#D4AF37]/15 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 hover:scale-105 hover:shadow-[0_0_10px_rgba(212,175,55,0.25)] active:scale-95 cursor-pointer';
+                            }
+
+                            return (
+                              <button
+                                key={`day-${day}`}
+                                type="button"
+                                disabled={isPast}
+                                onClick={() => handleDateClick(dateStr, isPast)}
+                                className={`aspect-square rounded-full flex flex-col items-center justify-center text-[11px] font-bold transition-all outline-none relative group ${btnStyle}`}
+                              >
+                                <span>{day}</span>
+                                {!isSelected && !isPast && !isLockedOut && !hasZeroAvailable && (
+                                  <span className="w-1 h-1 rounded-full bg-[#D4AF37] opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Selected Date Tags */}
+                        {quotaState.quotaDates.length > 0 && (
+                          <div className="mb-2.5 pt-2 border-t border-white/5">
+                            <div className="flex flex-wrap gap-1.5">
+                              {quotaState.quotaDates.map(d => {
+                                const active = selectedDates.includes(d);
+                                return (
+                                  <button
+                                    key={d}
+                                    type="button"
+                                    onClick={() => handleDateClick(d, false)}
+                                    className={`px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                                      active
+                                        ? 'bg-[#D4AF37] text-[#09090b] shadow-sm'
+                                        : 'bg-black/40 text-zinc-400 border border-white/10 hover:text-white'
+                                    }`}
+                                    title={active ? 'Click to pause filtering on this date' : 'Click to re-enable this date'}
+                                  >
+                                    <span>{formatShortReadableDate(d)}</span>
+                                    {active ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : null}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
                         )}
-                      </button>
 
-                      {selectedDates.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => onSelectedDatesChange([])}
-                          className="px-2 py-1.5 rounded-full text-[10px] font-bold text-zinc-400 hover:text-white transition-colors cursor-pointer"
-                        >
-                          Show All
-                        </button>
-                      )}
+                        {/* Status / Cooldown Notice */}
+                        {statusMessage && (
+                          <div className="mb-2.5 p-2 bg-black/60 border border-[#D4AF37]/30 rounded-xl text-[10px] text-zinc-200 text-center leading-snug">
+                            {statusMessage}
+                          </div>
+                        )}
+
+                        {/* Footer Controls: 24h Reset & Done */}
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#D4AF37]/15">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={handleResetQuota}
+                              disabled={isResetOnCooldown || (quotaState.quotaDates.length === 0 && selectedDates.length === 0)}
+                              className={`px-2.5 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all ${
+                                isResetOnCooldown || (quotaState.quotaDates.length === 0 && selectedDates.length === 0)
+                                  ? 'bg-black/40 text-zinc-500 border border-white/5 cursor-not-allowed'
+                                  : 'bg-black/60 hover:bg-red-950/60 text-zinc-200 hover:text-red-300 border border-white/10 hover:border-red-500/30 cursor-pointer'
+                              }`}
+                            >
+                              {isResetOnCooldown ? (
+                                <>
+                                  <Clock className="w-3 h-3 text-[#D4AF37]" />
+                                  <span>Reset in {formatRemainingTime(remainingCooldownMs)}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <RotateCcw className="w-3 h-3" />
+                                  <span>Reset ({searchDateResetHours}h)</span>
+                                </>
+                              )}
+                            </button>
+
+                            {selectedDates.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => onSelectedDatesChange([])}
+                                className="px-2 py-1.5 rounded-full text-[10px] font-bold text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                              >
+                                Show All
+                              </button>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updatePopupLayout();
+                              setIsOpen(false);
+                            }}
+                            className="px-3.5 py-1.5 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-[#09090b] font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer shadow-md"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </motion.div>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsOpen(false)}
-                      className="px-3.5 py-1.5 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-[#09090b] font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer shadow-md"
-                    >
-                      Done
-                    </button>
-                  </div>
-                </motion.div>
+                  )}
+                </AnimatePresence>,
+                document.body
               )}
-            </AnimatePresence>
           </div>
         </div>
       </div>

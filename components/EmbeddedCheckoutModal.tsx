@@ -52,12 +52,12 @@ export const EmbeddedCheckoutModal: React.FC<EmbeddedCheckoutModalProps> = ({
           if (data.publishableKey) {
             setStripePromise(loadStripe(data.publishableKey));
           } else {
-            setStripePromise(loadStripe('pk_test_51PxyzSamplePublishableKey'));
+            setStripePromise(null);
           }
         })
         .catch(err => {
           console.warn('Failed to load Stripe config:', err);
-          setStripePromise(loadStripe('pk_test_51PxyzSamplePublishableKey'));
+          setStripePromise(null);
         })
         .finally(() => {
           setIsLoadingKey(false);
