@@ -1341,7 +1341,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                           className="w-5 h-5 rounded-full bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] disabled:opacity-35 text-[#D4AF37] flex items-center justify-center text-xs font-black leading-none transition-colors cursor-pointer disabled:cursor-default"
                                           aria-label={`Decrease ${service.name} hours`}
                                         >
-                                          -
+                                          <span aria-hidden="true">-</span>
                                         </button>
                                         <span className="text-[10px] font-black text-zinc-100 min-w-[14px] text-center tabular-nums">
                                           {currentHours}
@@ -1373,7 +1373,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                           className="w-5 h-5 rounded-full bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] flex items-center justify-center text-xs font-black leading-none transition-colors cursor-pointer"
                                           aria-label={`Increase ${service.name} hours`}
                                         >
-                                          +
+                                          <span aria-hidden="true">+</span>
                                         </button>
                                       </div>
                                     </div>
@@ -1407,7 +1407,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                         className="w-5 h-5 rounded-full bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] flex items-center justify-center text-xs font-black leading-none transition-colors cursor-pointer"
                                         aria-label={`Decrease ${service.name} quantity`}
                                       >
-                                        -
+                                        <span aria-hidden="true">-</span>
                                       </button>
                                       <span className="text-[10px] font-black text-zinc-200 min-w-[14px] text-center tabular-nums">
                                         {qty}
@@ -1427,7 +1427,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                         className="w-5 h-5 rounded-full bg-black/80 border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] flex items-center justify-center text-xs font-black leading-none transition-colors cursor-pointer"
                                         aria-label={`Increase ${service.name} quantity`}
                                       >
-                                        +
+                                        <span aria-hidden="true">+</span>
                                       </button>
                                     </div>
                                   )}

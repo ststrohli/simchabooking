@@ -5121,7 +5121,7 @@ function App() {
                   <SimchaLogo className="h-7 w-7 sm:h-7 sm:w-7 md:h-8 md:w-8 group-hover:scale-110 transition-transform" />
                   <div className="text-left">
                       <h1 className="simcha-brand-title text-lg sm:text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
-                        <span className="block md:inline">Simcha</span><span className="block md:inline md:ml-1.5">Booking</span>
+                        <span className="block md:inline">Simcha</span>{' '}<span className="block md:inline md:ml-1.5">Booking</span>
                       </h1>
                   </div>
               </motion.button>

@@ -391,7 +391,7 @@ export const SearchDateCalendar: React.FC<SearchDateCalendarProps> = ({
                 updatePopupLayout();
                 setIsOpen(prev => !prev);
               }}
-              aria-label="Filter vendors by available dates"
+              aria-label={selectedDates.length > 0 ? `Filter vendors by available dates (${selectedDates.length} selected)` : "Filter vendors by available dates"}
               aria-expanded={isOpen}
               className={`simcha-date-trigger-btn w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all duration-300 relative select-none ${
                 isOpen || selectedDates.length > 0

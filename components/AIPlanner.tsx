@@ -42,7 +42,7 @@ export default function AIPlanner() {
         <button 
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-24 z-[45] bg-[#D4AF37] text-black p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center gap-2 font-bold border-2 border-black"
-          aria-label="Open Simcha AI Advisor"
+          aria-label="Open Planning AI Advisor"
         >
           <Sparkles className="w-5 h-5" />
           <span className="hidden md:inline">Planning AI</span>
