@@ -5106,7 +5106,7 @@ function App() {
         </motion.button>
       </motion.aside>
 
-      <header className={`bg-black relative z-20 pb-3 shadow-none ${view === 'marketplace' ? '' : 'border-b border-[#D4AF37]/20'}`} aria-label="Main Navigation">
+      <header className={`bg-black relative z-20 shadow-none ${view === 'marketplace' ? 'pb-3' : 'border-b border-[#D4AF37]/20'}`} aria-label="Main Navigation">
         <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-full focus:font-bold">Skip to main content</a>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-[70px] sm:h-[76px] items-center">

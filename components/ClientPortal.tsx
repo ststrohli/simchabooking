@@ -538,9 +538,9 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   );
 
   return (
-    <div className="min-h-[calc(100dvh-72px)] sm:min-h-[calc(100dvh-5rem)] flex-1 bg-[#050505] text-zinc-100 flex flex-col md:flex-row relative">
+    <div className="min-h-[calc(100dvh-70px)] sm:min-h-[calc(100dvh-76px)] flex-1 bg-[#050505] text-zinc-100 flex flex-col md:flex-row relative">
       {/* Desktop Sidebar (BottomNav handles mobile navigation) */}
-      <aside className="hidden md:flex md:w-72 bg-[#0a0a0a] border-r border-[#D4AF37]/10 flex-col md:h-[calc(100dvh-5rem)] md:sticky md:top-20 shadow-2xl">
+      <aside className="hidden md:flex md:w-72 bg-[#0a0a0a] border-r border-[#D4AF37]/10 flex-col md:h-[calc(100dvh-76px)] md:sticky md:top-[76px] shadow-2xl">
         <div className="p-6 md:p-8 flex items-center justify-between border-b border-white/5">
           <div>
             <h2 className="text-xl md:text-2xl font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-tighter">Planner</h2>
