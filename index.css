@@ -7,7 +7,7 @@
 
 @layer base {
   html {
-    overflow-y: scroll;
+    background-color: #000000;
   }
   body {
     @apply font-sans bg-black text-slate-100;
@@ -384,15 +384,80 @@ body.light-mode,
 }
 
 /* 4. Image Faders & Gradients */
-/* Dark Mode: Smooth bottom dark fade with solid bottom buffer to prevent any seam line */
+/* Sticky Header Bar: Balanced matte mask coating fade (not too dark, not too light) + downward-curling 1px gold line in the middle */
+.simcha-header-bar {
+  background-color: transparent !important;
+  background-image: linear-gradient(
+    to bottom,
+    rgba(10, 10, 12, 0.78) 0%,
+    rgba(10, 10, 12, 0.68) 42%,
+    rgba(10, 10, 12, 0.54) 76%,
+    rgba(10, 10, 12, 0.38) 100%
+  ) !important;
+  backdrop-filter: blur(16px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(120%) !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+}
+
+.simcha-header-arch-wrap {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+}
+
+.simcha-header-corner-triangle-left,
+.simcha-header-corner-triangle-right {
+  --arch-r: 16px;
+  background-color: transparent !important;
+  background-image: linear-gradient(
+    to bottom,
+    rgba(10, 10, 12, 0.38) 0%,
+    rgba(10, 10, 12, 0.28) 100%
+  ) !important;
+  backdrop-filter: blur(16px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(120%) !important;
+}
+
+@media (min-width: 640px) {
+  .simcha-header-corner-triangle-left,
+  .simcha-header-corner-triangle-right {
+    --arch-r: 20px;
+  }
+}
+
+.simcha-header-corner-triangle-left {
+  mask-image: radial-gradient(circle var(--arch-r) at 100% 100%, transparent calc(var(--arch-r) - 0.75px), #000000 calc(var(--arch-r) - 0.25px));
+  -webkit-mask-image: radial-gradient(circle var(--arch-r) at 100% 100%, transparent calc(var(--arch-r) - 0.75px), #000000 calc(var(--arch-r) - 0.25px));
+}
+
+.simcha-header-corner-triangle-right {
+  mask-image: radial-gradient(circle var(--arch-r) at 0% 100%, transparent calc(var(--arch-r) - 0.75px), #000000 calc(var(--arch-r) - 0.25px));
+  -webkit-mask-image: radial-gradient(circle var(--arch-r) at 0% 100%, transparent calc(var(--arch-r) - 0.75px), #000000 calc(var(--arch-r) - 0.25px));
+}
+
+.simcha-header-arch-line {
+  background-color: transparent !important;
+  border-top: 1px solid rgba(212, 175, 55, 0.52) !important;
+  border-left: 1px solid rgba(212, 175, 55, 0.42) !important;
+  border-right: 1px solid rgba(212, 175, 55, 0.42) !important;
+  box-shadow: none !important;
+}
+
+/* Dark Mode: Ultra-smooth bottom dark fade with solid bottom buffer to prevent any seam line */
 .simcha-image-fader-hero {
   background-image: linear-gradient(
     to top,
     #000000 0%,
-    #000000 8%,
-    rgba(0, 0, 0, 0.65) 26%,
-    rgba(0, 0, 0, 0.32) 48%,
-    rgba(0, 0, 0, 0.04) 100%
+    #000000 12%,
+    rgba(0, 0, 0, 0.92) 20%,
+    rgba(0, 0, 0, 0.78) 30%,
+    rgba(0, 0, 0, 0.58) 42%,
+    rgba(0, 0, 0, 0.36) 56%,
+    rgba(0, 0, 0, 0.16) 74%,
+    rgba(0, 0, 0, 0) 100%
   ) !important;
 }
 
@@ -437,15 +502,60 @@ body.light-mode,
   opacity: 0.8 !important;
 }
 
+.light-mode .simcha-header-bar {
+  background-color: transparent !important;
+  background-image: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(255, 255, 255, 0.72) 42%,
+    rgba(255, 255, 255, 0.58) 76%,
+    rgba(255, 255, 255, 0.42) 100%
+  ) !important;
+  backdrop-filter: blur(16px) brightness(1.03) saturate(115%) !important;
+  -webkit-backdrop-filter: blur(16px) brightness(1.03) saturate(115%) !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+}
+
+.light-mode .simcha-header-arch-wrap {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+}
+
+.light-mode .simcha-header-corner-triangle-left,
+.light-mode .simcha-header-corner-triangle-right {
+  background-color: transparent !important;
+  background-image: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.30) 100%
+  ) !important;
+  backdrop-filter: blur(16px) brightness(1.03) saturate(115%) !important;
+  -webkit-backdrop-filter: blur(16px) brightness(1.03) saturate(115%) !important;
+}
+
+.light-mode .simcha-header-arch-line {
+  background-color: transparent !important;
+  border-top: 1px solid rgba(212, 175, 55, 0.55) !important;
+  border-left: 1px solid rgba(212, 175, 55, 0.45) !important;
+  border-right: 1px solid rgba(212, 175, 55, 0.45) !important;
+  box-shadow: none !important;
+}
+
 .light-mode .simcha-image-fader-hero {
   background-image: linear-gradient(
     to top,
     #ffffff 0%,
-    #ffffff 8%,
-    rgba(255, 255, 255, 0.65) 26%,
-    rgba(255, 255, 255, 0.32) 48%,
-    rgba(255, 255, 255, 0.14) 74%,
-    rgba(255, 255, 255, 0.04) 100%
+    #ffffff 12%,
+    rgba(255, 255, 255, 0.92) 20%,
+    rgba(255, 255, 255, 0.78) 30%,
+    rgba(255, 255, 255, 0.58) 42%,
+    rgba(255, 255, 255, 0.36) 56%,
+    rgba(255, 255, 255, 0.16) 74%,
+    rgba(255, 255, 255, 0) 100%
   ) !important;
 }
 

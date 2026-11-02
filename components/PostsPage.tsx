@@ -14,7 +14,7 @@ interface PostsPageProps {
 const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVendor }) => {
   return (
     <div className="min-h-screen bg-black text-zinc-100 flex flex-col animate-in fade-in duration-500">
-      <header className="sticky top-0 z-50 bg-black/90 backdrop-blur-xl border-b border-[#D4AF37]/20 p-4">
+      <div className="px-4 pt-9 pb-4 sm:pt-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button 
             onClick={onBack}
@@ -29,7 +29,7 @@ const PostsPage: React.FC<PostsPageProps> = ({ posts, vendors, onBack, onViewVen
           </div>
           <div className="w-24 hidden md:block"></div> 
         </div>
-      </header>
+      </div>
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-12 space-y-16">
         <div className="text-center space-y-4 max-w-3xl mx-auto">

@@ -538,10 +538,10 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   );
 
   return (
-    <div className="min-h-[calc(100dvh-70px)] sm:min-h-[calc(100dvh-76px)] flex-1 bg-[#050505] text-zinc-100 flex flex-col md:flex-row relative">
+    <div className="min-h-[calc(100dvh-62px)] sm:min-h-[calc(100dvh-68px)] flex-1 bg-[#050505] text-zinc-100 flex flex-col md:flex-row relative">
       {/* Desktop Sidebar (BottomNav handles mobile navigation) */}
-      <aside className="hidden md:flex md:w-72 bg-[#0a0a0a] border-r border-[#D4AF37]/10 flex-col md:h-[calc(100dvh-76px)] md:sticky md:top-[76px] shadow-2xl">
-        <div className="p-6 md:p-8 flex items-center justify-between border-b border-white/5">
+      <aside className="hidden md:flex md:w-72 bg-[#0a0a0a] border-r border-[#D4AF37]/10 flex-col md:h-[calc(100dvh-68px)] md:sticky md:top-[68px] shadow-2xl">
+        <div className="p-6 md:p-8 md:pt-10 flex items-center justify-between border-b border-white/5">
           <div>
             <h2 className="text-xl md:text-2xl font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-tighter">Planner</h2>
             <p className="text-[9px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-[0.3em] mt-1">Client Station</p>
@@ -574,7 +574,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 bg-[#050505] p-4 pb-36 md:p-8 md:pb-10">
+      <main className="flex-1 bg-[#050505] px-4 pt-9 pb-36 md:px-8 md:pt-10 md:pb-10">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h1 className="text-xl sm:text-2xl font-bold font-[Cinzel] text-white capitalize tracking-tight">{activeTab}</h1>
         </div>

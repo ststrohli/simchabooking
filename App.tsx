@@ -56,8 +56,7 @@ const clean = (obj: any) => {
 const AnimatedRoleSwitcher: React.FC<{
   isVendorView: boolean;
   onToggleVendor: (targetVendorView?: boolean) => void;
-  floatingY?: any;
-}> = React.memo(({ isVendorView, onToggleVendor, floatingY }) => {
+}> = React.memo(({ isVendorView, onToggleVendor }) => {
   const clientBtnRef = useRef<HTMLButtonElement | null>(null);
   const vendorBtnRef = useRef<HTMLButtonElement | null>(null);
   const lastRoleRef = useRef(isVendorView);
@@ -172,8 +171,7 @@ const AnimatedRoleSwitcher: React.FC<{
   return (
     <motion.nav
       aria-label="Account Role Switcher"
-      style={{ y: floatingY }}
-      className="fixed top-[78px] sm:top-[86px] left-2 sm:left-[10px] z-50 flex items-center pointer-events-auto will-change-transform transform-gpu"
+      className="fixed top-[68px] sm:top-[74px] left-2 sm:left-[10px] z-50 flex items-center pointer-events-auto will-change-transform transform-gpu"
     >
       <div className="simcha-switch-track relative flex items-center gap-[3px] h-[28px] sm:h-[30px] bg-zinc-950/95 border border-[#D4AF37]/45 backdrop-blur-xl rounded-full p-[3px] shadow-[0_6px_16px_rgba(0,0,0,0.9),0_0_10px_rgba(212,175,55,0.2)] text-[9.5px] sm:text-[10px] tracking-normal uppercase font-extrabold leading-none">
         <motion.div
@@ -243,7 +241,7 @@ const FixedGoldScrollbar: React.FC = () => {
   const thumbTop = maxScroll > 0 ? (scrollTop / maxScroll) * (clientHeight - thumbHeight) : 0;
 
   return (
-    <div className="fixed top-0 right-0 w-[4px] h-full z-[200] pointer-events-none bg-black/20">
+    <div className="fixed top-0 right-0 w-[4px] h-full z-[200] pointer-events-none bg-transparent">
       <div 
         className="absolute w-full bg-[#D4AF37] rounded-full shadow-[0_0_8px_rgba(212,175,55,0.8)]"
         style={{
@@ -1373,11 +1371,6 @@ function App() {
   const heroTitleScale = useTransform(scrollY, [0, 200], [1, 0.8]);
   const heroTitleY = useTransform(scrollY, [0, 200], [0, -28]);
   const heroBgScale = useTransform(scrollY, [0, 320], [1, 1.06]);
-  // Scroll the Client/Vendor switch & Ask button up with the header/hero image by the exact header height (70px mobile / 76px sm+) until they reach the top of the screen
-  const floatingControlsY = useTransform(scrollY, (y) => {
-    const headerHeight = typeof window !== 'undefined' && window.innerWidth >= 640 ? 76 : 70;
-    return -Math.min(Math.max(0, y), headerHeight);
-  });
 
   const [view, setView] = useState<'marketplace' | 'vendor-portal' | 'admin' | 'posts' | 'client-portal' | 'payment-success' | 'verify-account' | 'portal'>('marketplace');
   const [portalTab, setPortalTab] = useState<'client' | 'vendor'>('client');
@@ -4654,19 +4647,19 @@ function App() {
       <main 
         id="main-content" 
         ref={mainMenuUnfoldRef}
-        className="relative z-30 flex-1 flex flex-col pb-36 md:pb-0 will-change-transform"
+        className="relative z-20 flex-1 flex flex-col pb-36 md:pb-0 will-change-transform"
       >
-        <section className="simcha-hero-section relative bg-black text-white z-20 -mt-3 rounded-t-[20px] sm:rounded-t-[24px] shadow-none" aria-labelledby="hero-title">
-          <div className="absolute inset-0 rounded-t-[20px] sm:rounded-t-[24px] overflow-hidden pointer-events-none z-0" aria-hidden="true">
+        <section className="simcha-hero-section relative -mt-[62px] sm:-mt-[68px] bg-black text-white z-20 shadow-none" aria-labelledby="hero-title">
+          <div className="absolute inset-0 overflow-hidden pointer-events-none z-0" aria-hidden="true">
             <motion.div
-              className="absolute -inset-x-1 -top-1 -bottom-2 z-0 will-change-transform transform-gpu"
+              className="absolute inset-0 z-0 will-change-transform transform-gpu"
               style={{ scale: heroBgScale }}
             >
               {renderMedia(heroBackgroundUrl, "simcha-hero-media w-full h-full object-cover opacity-80", undefined, true, true)}
             </motion.div>
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero"></div>
           </div>
-          <div className="relative z-10 max-w-7xl mx-auto px-4 py-[72px] md:py-32 text-center">
+          <div className="absolute inset-x-0 top-0 -bottom-1 pointer-events-none z-[1] bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero" aria-hidden="true"></div>
+          <div className="relative z-10 max-w-7xl mx-auto px-4 pt-[134px] sm:pt-[142px] pb-[64px] sm:pb-[72px] md:pt-[186px] md:pb-28 text-center">
             <motion.h2
               id="hero-title"
               variants={HERO_TITLE_CONTAINER_VARIANTS}
@@ -4698,7 +4691,7 @@ function App() {
         </section>
 
         {activeCategory === 'All' && !showAllCategoriesGrid && !searchTerm ? (
-            <div className="py-4 sm:py-6 bg-black flex-1 border-b border-[#D4AF37]/10">
+            <div className="pt-5 sm:pt-7 pb-4 sm:pb-6 bg-black flex-1 border-b border-[#D4AF37]/10 relative z-20">
                 <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
                     {/* When dates are selected in the calendar, immediately pop up all available vendors right at the top above categories */}
                     {selectedSearchDates.length > 0 && (
@@ -4795,7 +4788,7 @@ function App() {
                 </div>
             </div>
         ) : (
-            <div className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 w-full">
+            <div className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-9 sm:pt-10 pb-6 w-full">
                 <div className="flex flex-wrap items-center gap-2 mb-6" aria-label="Breadcrumb">
                    {/* Selected Category Pill with integrated back arrow */}
                    {activeCategory !== 'All' && (
@@ -5079,14 +5072,12 @@ function App() {
         <AnimatedRoleSwitcher
           isVendorView={isVendorView}
           onToggleVendor={handleToggleVendor}
-          floatingY={floatingControlsY}
         />
       )}
 
       <motion.aside
         aria-label="Support Assistance"
-        style={{ y: floatingControlsY }}
-        className="fixed top-[78px] sm:top-[86px] right-2 sm:right-[10px] z-50 flex items-center pointer-events-auto will-change-transform transform-gpu"
+        className="fixed top-[68px] sm:top-[74px] right-2 sm:right-[10px] z-50 flex items-center pointer-events-auto will-change-transform transform-gpu"
       >
         <motion.button 
           whileHover={{ scale: 1.05 }}
@@ -5106,52 +5097,56 @@ function App() {
         </motion.button>
       </motion.aside>
 
-      <header className={`bg-black relative z-20 shadow-none ${view === 'marketplace' ? 'pb-3' : 'border-b border-[#D4AF37]/20'}`} aria-label="Main Navigation">
+      <header className="sticky top-0 z-40 w-full h-[62px] sm:h-[68px] bg-transparent border-0 shadow-none overflow-visible" aria-label="Main Navigation">
         <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-[#D4AF37] focus:text-black focus:p-4 focus:rounded-full focus:font-bold">Skip to main content</a>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-[70px] sm:h-[76px] items-center">
-            <div className="flex items-center gap-4 md:gap-8 ml-0">
-              <motion.button 
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full p-1 bg-transparent border-0 shadow-none" 
-                onClick={() => { setView('marketplace'); setActiveCategory('All'); setIsVendorView(false); }} 
-                aria-label="Simcha Booking Home"
-              >
-                  <SimchaLogo className="h-7 w-7 sm:h-7 sm:w-7 md:h-8 md:w-8 group-hover:scale-110 transition-transform" />
-                  <div className="text-left">
-                      <h1 className="simcha-brand-title text-lg sm:text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
-                        <span className="block md:inline">Simcha</span>{' '}<span className="block md:inline md:ml-1.5">Booking</span>
-                      </h1>
-                  </div>
-              </motion.button>
+        <div className="simcha-header-bar relative z-10 w-full h-full">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
+            <div className="flex justify-between h-full items-center pt-1.5 sm:pt-2">
+              <div className="flex items-center gap-4 md:gap-8 ml-0">
+                <motion.button 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-full p-1 bg-transparent border-0 shadow-none" 
+                  onClick={() => { setView('marketplace'); setActiveCategory('All'); setIsVendorView(false); }} 
+                  aria-label="Simcha Booking Home"
+                >
+                    <SimchaLogo className="h-7 w-7 sm:h-7 sm:w-7 md:h-8 md:w-8 group-hover:scale-110 transition-transform" />
+                    <div className="text-left">
+                        <h1 className="simcha-brand-title text-lg sm:text-xl md:text-2xl font-bold text-[#D4AF37] tracking-tight font-[Cinzel] leading-tight md:leading-normal">
+                          <span className="block md:inline">Simcha</span>{' '}<span className="block md:inline md:ml-1.5">Booking</span>
+                        </h1>
+                    </div>
+                </motion.button>
+              </div>
               
-            </div>
-            
-            <div className="flex items-center gap-3 md:gap-6 mr-0">
-                
+              <div className="flex items-center gap-3 md:gap-6 mr-0">
+                  {!!fbUser && isAdmin && (
+                    <motion.button 
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => setView('admin')} 
+                      className="text-zinc-300 hover:text-[#D4AF37] transition-colors focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded-full p-2 hover:bg-white/10 cursor-pointer" 
+                      aria-label="Admin Panel"
+                    >
+                      <Shield className="w-5 h-5" />
+                    </motion.button>
+                  )}
 
-                {!!fbUser && isAdmin && (
                   <motion.button 
                     whileTap={{ scale: 0.9 }}
-                    onClick={() => setView('admin')} 
-                    className="text-zinc-300 hover:text-[#D4AF37] transition-colors focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none rounded-full p-2 hover:bg-white/10 cursor-pointer" 
-                    aria-label="Admin Panel"
+                    onClick={handleSignOut} 
+                    className="text-zinc-300 hover:text-zinc-200 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-full p-2 hover:bg-white/10 cursor-pointer" 
+                    aria-label="Sign Out"
                   >
-                    <Shield className="w-5 h-5" />
+                    <LogOut className="w-5 h-5" />
                   </motion.button>
-                )}
-
-                <motion.button 
-                  whileTap={{ scale: 0.9 }}
-                  onClick={handleSignOut} 
-                  className="text-zinc-300 hover:text-zinc-200 transition-colors focus-visible:ring-2 focus-visible:ring-red-500 outline-none rounded-full p-2 hover:bg-white/10 cursor-pointer" 
-                  aria-label="Sign Out"
-                >
-                  <LogOut className="w-5 h-5" />
-                </motion.button>
+              </div>
             </div>
           </div>
+        </div>
+        <div className="simcha-header-arch-wrap absolute inset-x-0 top-full h-[16px] sm:h-[20px] overflow-hidden pointer-events-none z-10" aria-hidden="true">
+          <div className="simcha-header-corner-triangle-left absolute top-0 left-0 w-[16px] h-[16px] sm:w-[20px] sm:h-[20px]" />
+          <div className="simcha-header-corner-triangle-right absolute top-0 right-0 w-[16px] h-[16px] sm:w-[20px] sm:h-[20px]" />
+          <div className="simcha-header-arch-line relative z-10 w-full h-[36px] rounded-t-[16px] sm:rounded-t-[20px]" />
         </div>
       </header>
       {renderActiveView()}
@@ -5207,7 +5202,7 @@ function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+            className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
             role="dialog"
             aria-modal="true"
             aria-labelledby="priority-hold-title"

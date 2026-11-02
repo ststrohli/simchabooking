@@ -1876,13 +1876,20 @@ async function startServer() {
   // Serve the local uploads folder as statically accessible files
   app.use('/uploads', express.static(uploadDir));
 
-  // Vite middleware for development
+  // Vite middleware for development (bind port 3000 immediately while Vite initializes)
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
+    const vitePromise = createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
-    app.use(vite.middlewares);
+    app.use(async (req, res, next) => {
+      try {
+        const vite = await vitePromise;
+        vite.middlewares(req, res, next);
+      } catch (err) {
+        next(err);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));

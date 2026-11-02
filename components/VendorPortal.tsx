@@ -2862,8 +2862,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       )}
 
       {/* Desktop Sidebar (BottomNav handles mobile navigation) */}
-      <aside className="hidden md:flex md:w-72 bg-[#0a0a0a] border-r border-[#D4AF37]/10 flex-col md:sticky md:top-[76px] md:h-[calc(100dvh-76px)] shadow-2xl">
-        <div className="p-6 md:p-8 flex items-center justify-between border-b border-white/5">
+      <aside className="hidden md:flex md:w-72 bg-[#0a0a0a] border-r border-[#D4AF37]/10 flex-col md:sticky md:top-[68px] md:h-[calc(100dvh-68px)] shadow-2xl">
+        <div className="p-6 md:p-8 md:pt-10 flex items-center justify-between border-b border-white/5">
           <div>
             <h2 className="text-xl md:text-2xl font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-tighter">Simcha Portal</h2>
             <p className="text-[9px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-[0.3em] mt-1">Vendor Station</p>
@@ -2883,7 +2883,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
       {/* Main Container */}
       <main className="flex-1 bg-[#050505] relative pb-36 md:pb-10">
-        <div className="sticky top-[70px] sm:top-[76px] z-30 bg-[#050505]/95 backdrop-blur-md px-4 md:px-10 py-3.5 md:py-5 border-b border-white/5">
+        <div className="px-4 pt-9 pb-2 md:px-10 md:pt-10 md:pb-4">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-lg md:text-2xl font-bold font-[Cinzel] text-white capitalize tracking-tight leading-none">{activeTab}</h1>
