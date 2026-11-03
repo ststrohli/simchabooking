@@ -4753,8 +4753,8 @@ function App() {
         ref={mainMenuUnfoldRef}
         className="relative z-20 flex-1 flex flex-col pb-36 md:pb-0 will-change-transform"
       >
-        <section className="simcha-hero-section relative -mt-[62px] sm:-mt-[68px] bg-black text-white z-20 shadow-none" aria-labelledby="hero-title">
-          <div className="simcha-hero-media-wrap absolute inset-0 overflow-hidden pointer-events-none z-0" aria-hidden="true">
+        <section className="simcha-hero-section relative bg-black text-white z-20 shadow-none overflow-hidden" aria-labelledby="hero-title">
+          <div className="simcha-hero-media-wrap absolute top-0 bottom-0 -left-[2px] -right-[2px] rounded-t-[16px] sm:rounded-t-[20px] overflow-hidden pointer-events-none z-0" aria-hidden="true">
             <motion.div
               className="absolute inset-0 z-0 will-change-transform transform-gpu"
               style={{ scale: heroBgScale }}
@@ -4762,8 +4762,8 @@ function App() {
               {renderMedia(heroBackgroundUrl, "simcha-hero-media w-full h-full object-cover opacity-100", undefined, true, true)}
             </motion.div>
           </div>
-          <div className="absolute inset-x-0 top-0 -bottom-1 pointer-events-none z-[1] simcha-image-fader-hero" aria-hidden="true"></div>
-          <div className="relative z-10 max-w-7xl mx-auto px-4 pt-[134px] sm:pt-[142px] pb-[64px] sm:pb-[72px] md:pt-[186px] md:pb-28 text-center">
+          <div className="absolute top-0 -bottom-1 -left-[2px] -right-[2px] rounded-t-[16px] sm:rounded-t-[20px] pointer-events-none z-[1] simcha-image-fader-hero" aria-hidden="true"></div>
+          <div className="relative z-10 max-w-7xl mx-auto px-4 pt-[72px] sm:pt-[74px] pb-[64px] sm:pb-[72px] md:pt-[118px] md:pb-28 text-center">
             <motion.h2
               id="hero-title"
               variants={HERO_TITLE_CONTAINER_VARIANTS}
@@ -5248,9 +5248,9 @@ function App() {
           </div>
         </div>
         <div className="simcha-header-arch-wrap absolute inset-x-0 top-full h-[16px] sm:h-[20px] overflow-hidden pointer-events-none z-10" aria-hidden="true">
-          <div className="simcha-header-corner-triangle-left absolute top-0 left-0 w-[16px] h-[16px] sm:w-[20px] sm:h-[20px]" />
-          <div className="simcha-header-corner-triangle-right absolute top-0 right-0 w-[16px] h-[16px] sm:w-[20px] sm:h-[20px]" />
-          <div className="simcha-header-arch-line relative z-10 w-full h-[36px] rounded-t-[16px] sm:rounded-t-[20px]" />
+          <div className="simcha-header-corner-triangle-left absolute top-0 -left-[2px] w-[16px] h-[16px] sm:w-[20px] sm:h-[20px]" />
+          <div className="simcha-header-corner-triangle-right absolute top-0 -right-[2px] w-[16px] h-[16px] sm:w-[20px] sm:h-[20px]" />
+          <div className="simcha-header-arch-line absolute top-0 -left-[2px] -right-[2px] z-10 h-[36px] rounded-t-[16px] sm:rounded-t-[20px]" />
         </div>
       </header>
       {renderActiveView()}

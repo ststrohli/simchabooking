@@ -397,23 +397,18 @@ body.light-mode,
 }
 
 /* 4. Image Faders & Gradients */
-/* Sticky Header Bar: Balanced matte mask coating fade (not too dark, not too light) + downward-curling 1px gold line in the middle */
+/* Sticky Header Bar: Solid single color with downward-curling 1px gold arch line */
 .simcha-header-bar {
-  background-color: transparent !important;
-  background-image: linear-gradient(
-    to bottom,
-    rgba(10, 10, 12, 0.78) 0%,
-    rgba(10, 10, 12, 0.68) 42%,
-    rgba(10, 10, 12, 0.54) 76%,
-    rgba(10, 10, 12, 0.38) 100%
-  ) !important;
-  backdrop-filter: blur(16px) saturate(120%) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(120%) !important;
+  background-color: #000000 !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border-bottom: none !important;
   box-shadow: none !important;
 }
 
 .simcha-header-arch-wrap {
+  --arch-r: 16px;
   background: transparent !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -423,18 +418,14 @@ body.light-mode,
 
 .simcha-header-corner-triangle-left,
 .simcha-header-corner-triangle-right {
-  --arch-r: 16px;
-  background-color: transparent !important;
-  background-image: linear-gradient(
-    to bottom,
-    rgba(10, 10, 12, 0.22) 0%,
-    rgba(10, 10, 12, 0.08) 100%
-  ) !important;
-  backdrop-filter: blur(12px) saturate(120%) !important;
-  -webkit-backdrop-filter: blur(12px) saturate(120%) !important;
+  background-color: #000000 !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 @media (min-width: 640px) {
+  .simcha-header-arch-wrap,
   .simcha-header-corner-triangle-left,
   .simcha-header-corner-triangle-right {
     --arch-r: 20px;
@@ -457,6 +448,8 @@ body.light-mode,
   border-left: 1px solid rgba(212, 175, 55, 0.42) !important;
   border-right: 1px solid rgba(212, 175, 55, 0.42) !important;
   box-shadow: none !important;
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
 }
 
 /* Bright, crystal-clear Hero Image in both Dark Mode and Light Mode with zero blur */
@@ -525,7 +518,7 @@ body.light-mode,
 }
 
 .light-mode .simcha-hero-section {
-  background-color: #000000 !important;
+  background-color: #ffffff !important;
 }
 
 .light-mode .simcha-hero-media {
@@ -541,16 +534,10 @@ body.light-mode,
 }
 
 .light-mode .simcha-header-bar {
-  background-color: transparent !important;
-  background-image: linear-gradient(
-    to bottom,
-    rgba(255, 255, 255, 0.82) 0%,
-    rgba(255, 255, 255, 0.72) 42%,
-    rgba(255, 255, 255, 0.58) 76%,
-    rgba(255, 255, 255, 0.42) 100%
-  ) !important;
-  backdrop-filter: blur(16px) brightness(1.03) saturate(115%) !important;
-  -webkit-backdrop-filter: blur(16px) brightness(1.03) saturate(115%) !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border-bottom: none !important;
   box-shadow: none !important;
 }
@@ -565,14 +552,10 @@ body.light-mode,
 
 .light-mode .simcha-header-corner-triangle-left,
 .light-mode .simcha-header-corner-triangle-right {
-  background-color: transparent !important;
-  background-image: linear-gradient(
-    to bottom,
-    rgba(255, 255, 255, 0.3) 0%,
-    rgba(255, 255, 255, 0.15) 100%
-  ) !important;
-  backdrop-filter: blur(12px) brightness(1.03) saturate(115%) !important;
-  -webkit-backdrop-filter: blur(12px) brightness(1.03) saturate(115%) !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 .light-mode .simcha-header-arch-line {
@@ -581,6 +564,8 @@ body.light-mode,
   border-left: 1px solid rgba(212, 175, 55, 0.45) !important;
   border-right: 1px solid rgba(212, 175, 55, 0.45) !important;
   box-shadow: none !important;
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
 }
 
 .light-mode .simcha-image-fader-hero {
