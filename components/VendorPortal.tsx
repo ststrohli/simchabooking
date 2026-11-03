@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, CalendarDays, Settings, LogOut, DollarSign, Users, User, TrendingUp, CheckCircle, XCircle, Clock, Save, Trash2, 
@@ -706,10 +707,77 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     </div>
   );
 
-  // Search & Filters for Bookings List
+  // Search & Filters for Bookings List (Default to 'pending' = New Requests)
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'cancelled'>('all');
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'confirmed' | 'cancelled'>('pending');
   const [dateFilter, setDateFilter] = useState('');
+  const [isRequestCalendarOpen, setIsRequestCalendarOpen] = useState(false);
+  const [requestCalendarMonth, setRequestCalendarMonth] = useState<Date>(() => new Date());
+  const [requestCalendarOrigin, setRequestCalendarOrigin] = useState<{ x: number; y: number }>({ x: 90, y: -140 });
+  const requestDateBtnRef = useRef<HTMLButtonElement>(null);
+  const requestCalendarPopupRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (activeTab === 'bookings') {
+      setStatusFilter('pending');
+    } else {
+      setIsRequestCalendarOpen(false);
+    }
+  }, [activeTab]);
+
+  const updateRequestCalendarOrigin = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const btnRect = requestDateBtnRef.current?.getBoundingClientRect();
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    const nextX = btnRect ? btnRect.left + btnRect.width / 2 - centerX : 90;
+    const nextY = btnRect ? btnRect.top + btnRect.height / 2 - centerY : -140;
+    setRequestCalendarOrigin(prev =>
+      Math.abs(prev.x - nextX) < 0.5 && Math.abs(prev.y - nextY) < 0.5
+        ? prev
+        : { x: nextX, y: nextY }
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!isRequestCalendarOpen) return;
+    updateRequestCalendarOrigin();
+    const rafId = requestAnimationFrame(() => updateRequestCalendarOrigin());
+    window.addEventListener('resize', updateRequestCalendarOrigin);
+    window.addEventListener('scroll', updateRequestCalendarOrigin, { passive: true });
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', updateRequestCalendarOrigin);
+      window.removeEventListener('scroll', updateRequestCalendarOrigin);
+    };
+  }, [isRequestCalendarOpen, updateRequestCalendarOrigin]);
+
+  useEffect(() => {
+    if (!isRequestCalendarOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        requestDateBtnRef.current &&
+        !requestDateBtnRef.current.contains(target) &&
+        (!requestCalendarPopupRef.current || !requestCalendarPopupRef.current.contains(target))
+      ) {
+        updateRequestCalendarOrigin();
+        setIsRequestCalendarOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        updateRequestCalendarOrigin();
+        setIsRequestCalendarOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isRequestCalendarOpen, updateRequestCalendarOrigin]);
 
   // ResizeObserver for Analytics Chart
   const [chartSize, setChartSize] = useState({ width: 500, height: 300 });
@@ -720,10 +788,13 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     const resizeObserver = new ResizeObserver((entries) => {
       if (!entries || entries.length === 0) return;
       const { width, height } = entries[0].contentRect;
-      setChartSize({ 
-        width: width || 500, 
-        height: height || 300 
-      });
+      const nextWidth = width || 500;
+      const nextHeight = height || 300;
+      setChartSize(prev =>
+        prev.width === nextWidth && prev.height === nextHeight
+          ? prev
+          : { width: nextWidth, height: nextHeight }
+      );
     });
     resizeObserver.observe(chartContainerRef.current);
     return () => resizeObserver.disconnect();
@@ -821,14 +892,32 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
   // Sorted bookings newest first by createdAt/request timestamp with strict single-booking deduplication
   const sortedBookings = useMemo(() => {
-    const sorted = [...bookings].sort((a, b) => {
-      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      if (timeA !== timeB) {
-        return timeB - timeA; // newest first
+    const getBookingTimeMs = (b: Booking): number => {
+      const raw = (b as any).createdAt ?? (b as any).timestamp ?? (b as any).updatedAt;
+      if (!raw) return 0;
+      if (typeof raw === 'number') return raw;
+      if (typeof raw === 'string') {
+        const parsed = new Date(raw).getTime();
+        return isNaN(parsed) ? 0 : parsed;
       }
-      return b.id.localeCompare(a.id);
-    });
+      if (typeof raw?.toDate === 'function') {
+        return raw.toDate().getTime();
+      }
+      if (typeof raw?.seconds === 'number') {
+        return raw.seconds * 1000 + Math.floor((raw.nanoseconds || 0) / 1e6);
+      }
+      return 0;
+    };
+
+    const sorted = bookings
+      .map((booking, idx) => ({ booking, idx, timeMs: getBookingTimeMs(booking) }))
+      .sort((a, b) => {
+        if (a.timeMs !== b.timeMs) {
+          return b.timeMs - a.timeMs; // Latest request always on top
+        }
+        return b.idx - a.idx;
+      })
+      .map(item => item.booking);
 
     const seen = new Set<string>();
     const deduped: Booking[] = [];
@@ -851,7 +940,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             b.clientName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             b.eventName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             b.contactEmail?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = statusFilter === 'all' || b.status === statusFilter;
+      const matchesStatus = b.status === statusFilter;
       const matchesDate = !dateFilter || b.date === dateFilter;
       return matchesSearch && matchesStatus && matchesDate;
     });
@@ -2883,10 +2972,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
       {/* Main Container */}
       <main className="flex-1 bg-[#050505] relative pb-36 md:pb-10">
-        <div className="px-4 pt-9 pb-2 md:px-10 md:pt-10 md:pb-4">
+        <div className="px-4 pt-9 pb-1 md:px-10 md:pt-10 md:pb-2">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-lg md:text-2xl font-bold font-[Cinzel] text-white capitalize tracking-tight leading-none">{activeTab}</h1>
+              <h1 className="text-lg md:text-2xl font-bold font-[Cinzel] text-white capitalize tracking-tight leading-none">{activeTab === 'bookings' ? 'Requests' : activeTab}</h1>
               <p className="text-[#D4AF37]/60 text-[9px] font-black uppercase tracking-[0.4em] mt-1">{vendor.name}</p>
             </div>
             <div className="flex items-center gap-4">
@@ -2900,7 +2989,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           </div>
         </div>
 
-        <div className="p-4 md:p-10 max-w-7xl mx-auto space-y-8">
+        <div className="px-4 pt-2 pb-4 md:px-10 md:pt-4 md:pb-10 max-w-7xl mx-auto space-y-6">
           {activeTab === 'overview' && (
             <div className="space-y-8">
               {isLoading ? (
@@ -3230,81 +3319,276 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             </div>
           )}
 
-          {activeTab === 'bookings' && (
-            <div className="space-y-6">
-              {isLoading ? (
-                <div className="animate-in fade-in duration-350">
-                  <ShimmerTable />
-                </div>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
-                  className="space-y-6"
-                >
-                  {/* Streamlined Mobile Controls Section */}
-                  <div className="bg-[#111] p-5 rounded-3xl border border-white/5 shadow-xl flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-black text-[#D4AF37] uppercase tracking-widest">Filter Bookings</h4>
-                      <p className="text-[10px] text-zinc-300 uppercase tracking-wider mt-0.5">Refine by client, status, or service date</p>
-                    </div>
-                    <div className="flex flex-col md:flex-row md:space-x-4 space-y-3 md:space-y-0 w-full md:w-auto">
-                      {/* Search Bar */}
-                      <div className="relative flex-1 md:w-64">
-                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                          <Search className="h-4 w-4 text-zinc-300" />
-                        </span>
-                        <input
-                          type="text"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          placeholder="Search name, event..."
-                          className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
-                        />
-                      </div>
-                      
-                      {/* Status Filter */}
-                      <div className="relative">
-                        <select
-                          value={statusFilter}
-                          onChange={(e: any) => setStatusFilter(e.target.value)}
-                          className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-[#D4AF37] appearance-none"
-                        >
-                          <option value="all">All Statuses</option>
-                          <option value="pending">Pending</option>
-                          <option value="confirmed">Confirmed</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                      </div>
-                      
-                      {/* Date Picker */}
-                      <div className="relative">
-                        <input
-                          type="date"
-                          value={dateFilter}
-                          onChange={(e) => setDateFilter(e.target.value)}
-                          className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
-                        />
-                        {dateFilter && (
-                          <button 
-                            onClick={() => setDateFilter('')}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-300 hover:text-white text-xs p-1 rounded-full hover:bg-white/10"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+          {activeTab === 'bookings' && (() => {
+            const reqCalYear = requestCalendarMonth.getFullYear();
+            const reqCalMonth = requestCalendarMonth.getMonth();
+            const reqCalDaysInMonth = getDaysInMonth(reqCalYear, reqCalMonth);
+            const reqCalFirstDay = getFirstDayOfMonth(reqCalYear, reqCalMonth);
+            const reqCalMonthName = requestCalendarMonth.toLocaleString('default', { month: 'long' });
+            const reqCalWeekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+            const datesWithRequests = new Set(sortedBookings.map(b => b.date).filter(Boolean));
 
-                  {/* Simplified Full-Width Pill-Shaped Requests List */}
-                  <div className="space-y-3">
-                    {filteredBookings.length === 0 ? (
-                      <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No matching requests found</p>
-                      </div>
-                    ) : (
+            const formatShortFilterDate = (dateStr: string) => {
+              const parts = dateStr.split('-');
+              if (parts.length !== 3) return dateStr;
+              const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+              return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            };
+
+            return (
+              <div className="space-y-3 animate-in slide-in-from-bottom-5 duration-500 max-w-4xl mx-auto w-full">
+                {/* Compact Filter Row below Client/Vendor switch: New Requests, Confirmed, Canceled + Small Date Calendar Button */}
+                <div className="relative w-full overflow-hidden">
+                  <div className="simcha-pill-fade-left pointer-events-none absolute inset-y-0 left-0 w-5 z-10" />
+                  <div className="simcha-pill-fade-right pointer-events-none absolute inset-y-0 right-0 w-5 z-10" />
+                  <div
+                    className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-1 px-1 touch-pan-x select-none"
+                    role="tablist"
+                    aria-label="Filter booking requests"
+                  >
+                    {([
+                      { id: 'pending' as const, label: 'Request' },
+                      { id: 'confirmed' as const, label: 'Confirmed' },
+                      { id: 'cancelled' as const, label: 'Canceled' }
+                    ]).map((tab) => {
+                      const isActive = statusFilter === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={isActive}
+                          onClick={() => setStatusFilter(tab.id)}
+                          className={`shrink-0 h-7 px-2.5 sm:px-3.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer border flex items-center justify-center whitespace-nowrap ${
+                            isActive
+                              ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-[0_0_12px_rgba(212,175,55,0.35)]'
+                              : 'bg-black/70 text-zinc-300 border-[#D4AF37]/25 hover:border-[#D4AF37]/60 hover:text-white'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+
+                    {/* Small Compact Date Calendar Button (Exact same height h-7 as filter pills) */}
+                    <motion.button
+                      ref={requestDateBtnRef}
+                      type="button"
+                      whileHover={{ scale: 1.06 }}
+                      whileTap={{ scale: 0.93 }}
+                      onClick={() => {
+                        updateRequestCalendarOrigin();
+                        setIsRequestCalendarOpen(prev => !prev);
+                      }}
+                      aria-label={dateFilter ? `Filter requests by date (${dateFilter})` : 'Filter requests by date'}
+                      aria-expanded={isRequestCalendarOpen}
+                      className={`simcha-date-trigger-btn shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transition-all duration-300 relative select-none ${
+                        isRequestCalendarOpen || Boolean(dateFilter)
+                          ? 'bg-[#D4AF37] text-[#09090b] border border-[#FFF8D1] shadow-[0_0_12px_rgba(212,175,55,0.5)]'
+                          : 'bg-black/85 hover:bg-black border border-[#D4AF37]/60 hover:border-[#D4AF37] text-[#D4AF37] shadow-sm'
+                      }`}
+                    >
+                      <Calendar className={`w-3.5 h-3.5 stroke-[2.2] ${isRequestCalendarOpen || Boolean(dateFilter) ? 'text-[#09090b]' : 'text-[#D4AF37]'}`} />
+                      {dateFilter && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-black border border-[#D4AF37]" />
+                      )}
+                    </motion.button>
+
+                    {dateFilter && (
+                      <button
+                        type="button"
+                        onClick={() => setDateFilter('')}
+                        className="shrink-0 h-7 px-2.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/40 hover:bg-[#D4AF37]/25 inline-flex items-center gap-1 transition-all cursor-pointer whitespace-nowrap"
+                        title="Clear date filter"
+                      >
+                        <span>{formatShortFilterDate(dateFilter)}</span>
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Portaled Pop-Out Calendar: Pops out from the small calendar button directly into the exact middle of the screen */}
+                {typeof document !== 'undefined' &&
+                  createPortal(
+                    <AnimatePresence>
+                      {isRequestCalendarOpen && (
+                        <div className="fixed inset-0 z-[250] flex items-center justify-center pointer-events-none px-3">
+                          <motion.div
+                            ref={requestCalendarPopupRef}
+                            key="vendor-request-date-calendar-popout"
+                            initial={{
+                              opacity: 0,
+                              scale: 0.06,
+                              x: requestCalendarOrigin.x,
+                              y: requestCalendarOrigin.y
+                            }}
+                            animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+                            exit={{
+                              opacity: 0,
+                              scale: 0.06,
+                              x: requestCalendarOrigin.x,
+                              y: requestCalendarOrigin.y
+                            }}
+                            transition={{ type: 'spring', stiffness: 390, damping: 26, mass: 0.72 }}
+                            style={{ transformOrigin: 'center center' }}
+                            className="simcha-popout-calendar pointer-events-auto relative w-[290px] sm:w-[310px] bg-[#050505]/95 border border-[#D4AF37]/35 rounded-2xl p-3.5 shadow-[0_24px_60px_rgba(0,0,0,0.95),0_0_25px_rgba(212,175,55,0.22)] backdrop-blur-xl select-none text-left"
+                          >
+                            <div className="absolute inset-0 border border-white/5 pointer-events-none rounded-2xl" />
+
+                            {/* Top bar: Title + Close */}
+                            <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-[#D4AF37]/15">
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#D4AF37] font-[Cinzel]">
+                                  Filter Requests by Date
+                                </p>
+                                <p className="text-[10px] text-zinc-400">
+                                  {dateFilter ? `Selected: ${formatShortFilterDate(dateFilter)}` : 'Showing all dates'}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateRequestCalendarOrigin();
+                                  setIsRequestCalendarOpen(false);
+                                }}
+                                className="w-6 h-6 rounded-full bg-black/60 border border-[#D4AF37]/25 hover:border-[#D4AF37] text-zinc-300 hover:text-[#D4AF37] flex items-center justify-center transition-all cursor-pointer"
+                                aria-label="Close calendar"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {/* Month Navigation Header */}
+                            <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-[#D4AF37]/15">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setRequestCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
+                                }
+                                className="p-1.5 rounded-full border border-[#D4AF37]/15 hover:border-[#D4AF37]/50 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none cursor-pointer"
+                                aria-label="Previous Month"
+                              >
+                                <ChevronLeft className="w-3.5 h-3.5" />
+                              </button>
+
+                              <span className="font-[Cinzel] text-[#D4AF37] font-black uppercase tracking-widest text-[11px] flex items-center gap-1">
+                                {reqCalMonthName} <span className="text-white">{reqCalYear}</span>
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setRequestCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
+                                }
+                                className="p-1.5 rounded-full border border-[#D4AF37]/15 hover:border-[#D4AF37]/50 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none cursor-pointer"
+                                aria-label="Next Month"
+                              >
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {/* Weekdays */}
+                            <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                              {reqCalWeekdays.map((wd, idx) => (
+                                <div key={`wd-${idx}`} className="text-[9px] text-[#D4AF37]/70 font-black uppercase tracking-widest py-0.5">
+                                  {wd}
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Roundy Dates Grid */}
+                            <div className="grid grid-cols-7 gap-1 mb-2.5">
+                              {Array.from({ length: reqCalFirstDay }).map((_, i) => (
+                                <div key={`empty-${i}`} className="aspect-square opacity-0 pointer-events-none" />
+                              ))}
+
+                              {Array.from({ length: reqCalDaysInMonth }).map((_, idx) => {
+                                const day = idx + 1;
+                                const yStr = String(reqCalYear);
+                                const mStr = String(reqCalMonth + 1).padStart(2, '0');
+                                const dStr = String(day).padStart(2, '0');
+                                const dateStr = `${yStr}-${mStr}-${dStr}`;
+                                const isSelected = dateFilter === dateStr;
+                                const hasRequestOnDate = datesWithRequests.has(dateStr);
+
+                                let btnStyle = '';
+                                if (isSelected) {
+                                  btnStyle =
+                                    'bg-[#D4AF37] text-[#09090b] font-black shadow-[0_0_12px_rgba(212,175,55,0.5)] scale-105 border border-[#D4AF37]';
+                                } else if (hasRequestOnDate) {
+                                  btnStyle =
+                                    'text-[#D4AF37] bg-[#D4AF37]/15 border border-[#D4AF37]/50 hover:bg-[#D4AF37]/25 cursor-pointer';
+                                } else {
+                                  btnStyle =
+                                    'text-zinc-100 bg-black/40 border border-white/5 hover:bg-[#D4AF37]/15 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 hover:scale-105 hover:shadow-[0_0_10px_rgba(212,175,55,0.25)] active:scale-95 cursor-pointer';
+                                }
+
+                                return (
+                                  <button
+                                    key={`day-${day}`}
+                                    type="button"
+                                    onClick={() => {
+                                      setDateFilter(prev => (prev === dateStr ? '' : dateStr));
+                                      updateRequestCalendarOrigin();
+                                      setIsRequestCalendarOpen(false);
+                                    }}
+                                    className={`aspect-square rounded-full flex flex-col items-center justify-center text-[11px] font-bold transition-all outline-none relative group ${btnStyle}`}
+                                  >
+                                    <span>{day}</span>
+                                    {!isSelected && hasRequestOnDate && (
+                                      <span className="w-1 h-1 rounded-full bg-[#D4AF37] mt-0.5" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Footer Controls */}
+                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#D4AF37]/15">
+                              {dateFilter ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setDateFilter('')}
+                                  className="px-2.5 py-1.5 rounded-full text-[10px] font-bold text-zinc-300 hover:text-[#D4AF37] bg-black/40 border border-white/10 transition-colors cursor-pointer"
+                                >
+                                  Show All Dates
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-zinc-400">Tap a date to filter</span>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateRequestCalendarOrigin();
+                                  setIsRequestCalendarOpen(false);
+                                }}
+                                className="px-3.5 py-1.5 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-[#09090b] font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer shadow-md"
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </motion.div>
+                        </div>
+                      )}
+                    </AnimatePresence>,
+                    document.body
+                  )}
+
+                {/* Simplified Full-Width Pill-Shaped Requests List */}
+                <div className="space-y-3">
+                  {filteredBookings.length === 0 ? (
+                    <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">
+                        {statusFilter === 'pending'
+                          ? 'No new requests found'
+                          : statusFilter === 'confirmed'
+                          ? 'No confirmed requests found'
+                          : 'No canceled requests found'}
+                      </p>
+                    </div>
+                  ) : (
                       filteredBookings.map((b, idx) => {
                         const clientPhoto = getClientPhoto(b);
                         const initials = getClientInitials(b.clientName);
@@ -3408,11 +3692,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         );
                       })
                     )}
-                  </div>
-                </motion.div>
-              )}
-            </div>
-          )}
+                </div>
+              </div>
+            );
+          })()}
 
           {activeTab === 'messages' && (
             <div className="space-y-3 animate-in fade-in duration-500">

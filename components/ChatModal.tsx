@@ -104,6 +104,8 @@ const ImageWithPlaceholder: React.FC<ImageWithPlaceholderProps> = ({ src, alt, o
 };
 
 const POPULAR_EMOJIS = ['😊', '😂', '❤️', '👍', '👏', '🙏', '🥂', '🍷', '✡️', '🎉', '🎈', '🎂', '👑', '💍', '🎵', '📸', '✨'];
+const EMPTY_MESSAGES: Message[] = [];
+const EMPTY_VENDORS: Vendor[] = [];
 
 export const ChatModal: React.FC<ChatModalProps> = ({ 
   isOpen, 
@@ -112,7 +114,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   onClose, 
   onSendMessage, 
   showNotification, 
-  messages: propMessages = [],
+  messages: propMessages = EMPTY_MESSAGES,
   user,
   recipientUid,
   recipientName,
@@ -120,10 +122,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   recipientImage,
   recipientCategory,
   conversationIdOverride,
-  threadMessages = [],
+  threadMessages = EMPTY_MESSAGES,
   isAdminReplying,
   isVendorReplying,
-  vendors = [],
+  vendors = EMPTY_VENDORS,
   customConversations
 }) => {
   // Active contact / conversation states
@@ -271,17 +273,26 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     };
   }, [isOpen]);
 
+  const threadMessagesRef = useRef<Message[]>(threadMessages);
+  threadMessagesRef.current = threadMessages;
+  const propMessagesRef = useRef<Message[]>(propMessages);
+  propMessagesRef.current = propMessages;
+
   useEffect(() => {
     if (isAdminReplying || isVendorReplying) {
-      setClientEmail(currentContact?.email || recipientEmail || '');
-      setClientName(currentContact?.name || recipientName || 'Client');
-      setIsIdentityVerified(true);
+      const nextEmail = currentContact?.email || recipientEmail || '';
+      const nextName = currentContact?.name || recipientName || 'Client';
+      setClientEmail(prev => (prev === nextEmail ? prev : nextEmail));
+      setClientName(prev => (prev === nextName ? prev : nextName));
+      setIsIdentityVerified(prev => (prev === true ? prev : true));
     } else if (user?.username) {
-      setClientEmail(user.username);
-      setClientName(user.name || user.username.split('@')[0] || 'Guest');
-      setIsIdentityVerified(true);
+      const nextEmail = user.username;
+      const nextName = user.name || user.username.split('@')[0] || 'Guest';
+      setClientEmail(prev => (prev === nextEmail ? prev : nextEmail));
+      setClientName(prev => (prev === nextName ? prev : nextName));
+      setIsIdentityVerified(prev => (prev === true ? prev : true));
     }
-  }, [user, isAdminReplying, isVendorReplying, recipientEmail, recipientName, currentContact]);
+  }, [user?.username, user?.name, isAdminReplying, isVendorReplying, recipientEmail, recipientName, currentContact?.email, currentContact?.name]);
 
   // Subscribe to user inbox threads for the WhatsApp conversation list
   useEffect(() => {
@@ -301,12 +312,12 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   // Real-time onSnapshot listener querying the nested messages subcollection
   useEffect(() => {
     if (!isOpen || !activeConversationId) {
-      setActiveMessages([]);
-      setOptimisticMessages([]);
-      setHistoricalMessages([]);
-      setLastVisibleDoc(null);
-      setHasMore(true);
-      setIsLoadingMore(false);
+      setActiveMessages(prev => (prev.length === 0 ? prev : []));
+      setOptimisticMessages(prev => (prev.length === 0 ? prev : []));
+      setHistoricalMessages(prev => (prev.length === 0 ? prev : []));
+      setLastVisibleDoc((prev: any) => (prev === null ? prev : null));
+      setHasMore(prev => (prev === true ? prev : true));
+      setIsLoadingMore(prev => (prev === false ? prev : false));
       lastMessageCountRef.current = 0;
       return;
     }
@@ -416,7 +427,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
     // Attach listeners to any conversationId present in threadMessages or matching propMessages
     if (!isAdminReplying && !isVendorReplying) {
-      threadMessages.forEach((tm) => {
+      threadMessagesRef.current.forEach((tm) => {
         if (!tm?.conversationId) return;
         const isTmAdmin = Boolean(tm.isAdminInquiry || tm.senderId === 'admin' || tm.receiverId === 'admin' || tm.conversationId.includes('admin'));
         if (isSupportChat && isTmAdmin) {
@@ -426,7 +437,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         }
       });
 
-      propMessages.forEach((pm) => {
+      propMessagesRef.current.forEach((pm) => {
         if (!pm?.conversationId) return;
         const pmSender = pm.senderId || (pm as any).sender_id || '';
         const pmReceiver = pm.receiverId || (pm as any).receiver_id || '';
@@ -602,7 +613,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       extraUnsubs.forEach((u) => u());
       extraUnsubs.clear();
     };
-  }, [isOpen, activeConversationId, isAdminReplying, isVendorReplying, isSupportChat, targetUid, myUid, clientEmail, user?.username, threadMessages, propMessages, currentContact?.email, currentContact?.name]);
+  }, [isOpen, activeConversationId, isAdminReplying, isVendorReplying, isSupportChat, targetUid, myUid, clientEmail, user?.username, currentContact?.email, currentContact?.name]);
 
   // Clean optimistic messages that are now confirmed in database
   useEffect(() => {
@@ -837,13 +848,13 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   // In-chat search filter & jump
   useEffect(() => {
     if (!chatSearchQuery.trim()) {
-      setChatSearchMatches([]);
-      setActiveMatchIndex(0);
+      setChatSearchMatches(prev => (prev.length === 0 ? prev : []));
+      setActiveMatchIndex(prev => (prev === 0 ? prev : 0));
       return;
     }
     const qLower = chatSearchQuery.toLowerCase();
     const matched = chatMessages.filter(m => (m.text || '').toLowerCase().includes(qLower)).map(m => m.id || m.tempId || '');
-    setChatSearchMatches(matched);
+    setChatSearchMatches(prev => (prev.length === matched.length && prev.every((v, i) => v === matched[i]) ? prev : matched));
     setActiveMatchIndex(0);
   }, [chatSearchQuery, chatMessages]);
 

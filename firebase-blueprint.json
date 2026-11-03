@@ -94,7 +94,12 @@
       "properties": {
         "categories": { "type": "array", "items": { "type": "string" } },
         "categoryImages": { "type": "object" },
-        "categorySubCategories": { "type": "object" }
+        "categorySubCategories": { "type": "object" },
+        "heroBackgroundUrl": { "type": "string" },
+        "heroImages": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
       }
     },
     "User": {

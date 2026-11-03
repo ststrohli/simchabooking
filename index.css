@@ -312,6 +312,19 @@ body.light-mode,
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.14), 0 0 20px rgba(212, 175, 55, 0.18) !important;
 }
 
+.light-mode .simcha-priority-popover {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border-color: rgba(212, 175, 55, 0.65) !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14), 0 0 16px rgba(212, 175, 55, 0.18) !important;
+}
+
+.light-mode .simcha-priority-popover-arrow {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border-color: rgba(212, 175, 55, 0.65) !important;
+}
+
 .light-mode .simcha-date-trigger-btn:not(.bg-\[\#D4AF37\]) {
   background-color: rgba(0, 0, 0, 0.05) !important;
   border-color: rgba(212, 175, 55, 0.55) !important;
@@ -414,11 +427,11 @@ body.light-mode,
   background-color: transparent !important;
   background-image: linear-gradient(
     to bottom,
-    rgba(10, 10, 12, 0.38) 0%,
-    rgba(10, 10, 12, 0.28) 100%
+    rgba(10, 10, 12, 0.22) 0%,
+    rgba(10, 10, 12, 0.08) 100%
   ) !important;
-  backdrop-filter: blur(16px) saturate(120%) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(120%) !important;
+  backdrop-filter: blur(12px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(120%) !important;
 }
 
 @media (min-width: 640px) {
@@ -446,17 +459,35 @@ body.light-mode,
   box-shadow: none !important;
 }
 
-/* Dark Mode: Ultra-smooth bottom dark fade with solid bottom buffer to prevent any seam line */
+/* Bright, crystal-clear Hero Image in both Dark Mode and Light Mode with zero blur */
+.simcha-hero-media {
+  opacity: 1 !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  image-rendering: -webkit-optimize-contrast !important;
+  image-rendering: high-quality !important;
+  object-fit: cover !important;
+  object-position: center 30% !important;
+  backface-visibility: hidden !important;
+  transform: translateZ(0) !important;
+}
+
+/* No mask on hero media wrapper */
+.simcha-hero-media-wrap {
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+}
+
+/* Bottom fade on hero image for seamless transition into page content */
 .simcha-image-fader-hero {
+  display: block !important;
   background-image: linear-gradient(
     to top,
     #000000 0%,
-    #000000 12%,
-    rgba(0, 0, 0, 0.92) 20%,
-    rgba(0, 0, 0, 0.78) 30%,
-    rgba(0, 0, 0, 0.58) 42%,
-    rgba(0, 0, 0, 0.36) 56%,
-    rgba(0, 0, 0, 0.16) 74%,
+    rgba(0, 0, 0, 0.9) 8%,
+    rgba(0, 0, 0, 0.65) 18%,
+    rgba(0, 0, 0, 0.3) 30%,
+    rgba(0, 0, 0, 0) 42%,
     rgba(0, 0, 0, 0) 100%
   ) !important;
 }
@@ -488,18 +519,25 @@ body.light-mode,
   ) !important;
 }
 
-/* Light Mode: Smooth bottom fade on Hero image matching Dark Mode visual weight, plus subtle bottom fade on cards */
+/* Light Mode: Bright, sharp hero media with no blur */
 .light-mode .group > .opacity-50 {
   opacity: 0.92 !important;
 }
 
 .light-mode .simcha-hero-section {
-  background-color: #ffffff !important;
+  background-color: #000000 !important;
 }
 
-.light-mode .simcha-hero-media,
-.light-mode section > div > .opacity-80 {
-  opacity: 0.8 !important;
+.light-mode .simcha-hero-media {
+  opacity: 1 !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  image-rendering: -webkit-optimize-contrast !important;
+  image-rendering: high-quality !important;
+  object-fit: cover !important;
+  object-position: center 30% !important;
+  backface-visibility: hidden !important;
+  transform: translateZ(0) !important;
 }
 
 .light-mode .simcha-header-bar {
@@ -530,11 +568,11 @@ body.light-mode,
   background-color: transparent !important;
   background-image: linear-gradient(
     to bottom,
-    rgba(255, 255, 255, 0.42) 0%,
-    rgba(255, 255, 255, 0.30) 100%
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0.15) 100%
   ) !important;
-  backdrop-filter: blur(16px) brightness(1.03) saturate(115%) !important;
-  -webkit-backdrop-filter: blur(16px) brightness(1.03) saturate(115%) !important;
+  backdrop-filter: blur(12px) brightness(1.03) saturate(115%) !important;
+  -webkit-backdrop-filter: blur(12px) brightness(1.03) saturate(115%) !important;
 }
 
 .light-mode .simcha-header-arch-line {
@@ -546,15 +584,14 @@ body.light-mode,
 }
 
 .light-mode .simcha-image-fader-hero {
+  display: block !important;
   background-image: linear-gradient(
     to top,
     #ffffff 0%,
-    #ffffff 12%,
-    rgba(255, 255, 255, 0.92) 20%,
-    rgba(255, 255, 255, 0.78) 30%,
-    rgba(255, 255, 255, 0.58) 42%,
-    rgba(255, 255, 255, 0.36) 56%,
-    rgba(255, 255, 255, 0.16) 74%,
+    rgba(255, 255, 255, 0.9) 8%,
+    rgba(255, 255, 255, 0.65) 18%,
+    rgba(255, 255, 255, 0.3) 30%,
+    rgba(255, 255, 255, 0) 42%,
     rgba(255, 255, 255, 0) 100%
   ) !important;
 }

@@ -100,6 +100,17 @@ export interface Vendor {
   dateCheckResetHours?: number;
 }
 
+export interface HeroImage {
+  id: string;
+  url: string;
+  name?: string;
+  uploadedAt?: string;
+  isDefault?: boolean;
+  fileSize?: number;
+  width?: number;
+  height?: number;
+}
+
 export interface Post {
   id: string;
   type: 'image' | 'video';

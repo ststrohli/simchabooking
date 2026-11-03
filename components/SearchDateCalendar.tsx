@@ -74,11 +74,20 @@ export const SearchDateCalendar: React.FC<SearchDateCalendarProps> = ({
     const btnCenterX = btnRect ? btnRect.left + btnRect.width / 2 : vw / 2 + 140;
     const btnCenterY = btnRect ? btnRect.top + btnRect.height / 2 : calendarBottomY + 28;
 
-    setPopupLayout({
-      bottomPx,
-      originOffsetX: btnCenterX - calendarBottomX,
-      originOffsetY: btnCenterY - calendarBottomY
-    });
+    const nextOriginOffsetX = btnCenterX - calendarBottomX;
+    const nextOriginOffsetY = btnCenterY - calendarBottomY;
+
+    setPopupLayout(prev =>
+      Math.abs(prev.bottomPx - bottomPx) < 0.5 &&
+      Math.abs(prev.originOffsetX - nextOriginOffsetX) < 0.5 &&
+      Math.abs(prev.originOffsetY - nextOriginOffsetY) < 0.5
+        ? prev
+        : {
+            bottomPx,
+            originOffsetX: nextOriginOffsetX,
+            originOffsetY: nextOriginOffsetY
+          }
+    );
   }, []);
 
   const storageKey = `simcha_search_date_quota_${userId || 'guest'}`;

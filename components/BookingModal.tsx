@@ -172,6 +172,8 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
 
   const [localDate, setLocalDate] = useState('');
   const [isPriorityDate, setIsPriorityDate] = useState(false);
+  const [showPriorityInfo, setShowPriorityInfo] = useState(false);
+  const priorityInfoWrapRef = React.useRef<HTMLDivElement>(null);
   const [privacyBlocked, setPrivacyBlocked] = useState(false);
   const [currentCalendarMonth, setCurrentCalendarMonth] = useState<Date>(() => new Date());
 
@@ -394,6 +396,8 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
         setIsSuccess(false);
         setUserInteracted(false);
         setLocalDate('');
+        setIsPriorityDate(false);
+        setShowPriorityInfo(false);
         setCurrentCalendarMonth(new Date());
         setClickedUnavailableDate(null);
       }
@@ -637,12 +641,25 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     setIsPriorityDate(prev => !prev);
   }, []);
 
-  const handlePriorityKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      setIsPriorityDate(prev => !prev);
-    }
+  const handleTogglePriorityInfo = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowPriorityInfo(prev => !prev);
   }, []);
+
+  useEffect(() => {
+    if (!showPriorityInfo) return;
+    const handlePointerDownOutside = (e: MouseEvent | TouchEvent) => {
+      if (priorityInfoWrapRef.current && !priorityInfoWrapRef.current.contains(e.target as Node)) {
+        setShowPriorityInfo(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDownOutside);
+    document.addEventListener('touchstart', handlePointerDownOutside);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDownOutside);
+      document.removeEventListener('touchstart', handlePointerDownOutside);
+    };
+  }, [showPriorityInfo]);
 
   const handleSubmit = useCallback(async (e: React.FormEvent | React.MouseEvent, explicitSubmitType?: 'add' | 'book') => {
     e.preventDefault();
@@ -1560,55 +1577,54 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
              {isOfferMode && <p className="text-[10px] text-zinc-300 leading-relaxed italic">Propose your desired price to the vendor. They will review and respond to your inquiry.</p>}
           </div>
 
-          {(!localDate || isPastDate(localDate)) && (
-            <div className="mx-6 mt-3 flex items-center justify-between rounded-2xl border border-[#D4AF37]/20 bg-[#0a0a0a] px-4 py-3 opacity-75" aria-disabled="true">
-              <div>
-                <span className="block text-sm font-bold text-[#D4AF37]">Set date to priority</span>
-                <span className="block text-xs text-zinc-500">Select a future event date to enable priority</span>
-              </div>
-              <span className="relative h-6 w-11 rounded-full bg-zinc-700">
-                <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-zinc-400" />
-              </span>
-            </div>
-          )}
-          {/* Priority Event Toggle */}
-          {localDate && !isPastDate(localDate) && (
-            <div 
-              onClick={handleTogglePriority}
-              onKeyDown={handlePriorityKeyDown}
-              role="button"
-              tabIndex={0}
-              className={`p-5 bg-[#0a0a0a] border rounded-xl space-y-3 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center outline-none select-none ${
-                isPriorityDate 
-                  ? 'border-[#D4AF37] bg-[#D4AF37]/5 shadow-[0_0_15px_rgba(212,175,55,0.15)]' 
-                  : 'border-[#D4AF37]/20 hover:border-[#D4AF37]'
-              }`}
-            >
-              <span className="text-sm font-semibold text-zinc-100 text-center">
-                Set date to priority
-              </span>
-              
-               <button 
+          {/* Compact Priority Button + Info Popover */}
+          <div className="flex items-center justify-center pt-1">
+            <div ref={priorityInfoWrapRef} className="relative inline-flex items-center gap-2">
+              <button
                 type="button"
                 onClick={handleTogglePriority}
                 role="switch"
                 aria-checked={isPriorityDate}
-                className={`px-6 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer hover:scale-105 active:scale-95 ${
-                  isPriorityDate 
-                    ? 'bg-[#D4AF37] text-black border-2 border-[#D4AF37] shadow-[0_0_15px_rgba(212,175,55,0.3)] hover:bg-[#E5C76B]' 
-                    : 'border-2 border-[#D4AF37] text-[#D4AF37] bg-transparent hover:scale-105 active:scale-95'
+                className={`h-8 px-4 rounded-full text-[11px] font-black uppercase tracking-[0.16em] transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] hover:scale-105 active:scale-95 ${
+                  isPriorityDate
+                    ? 'bg-[#D4AF37] text-black border border-[#D4AF37] shadow-[0_0_15px_rgba(212,175,55,0.35)] hover:bg-[#E5C76B]'
+                    : 'bg-black/80 text-[#D4AF37] border border-[#D4AF37]/45 hover:border-[#D4AF37] hover:bg-[#D4AF37]/10'
                 }`}
               >
-                Priority
+                {isPriorityDate && <Check className="w-3.5 h-3.5 text-black stroke-[3] shrink-0" />}
+                <span>Priority</span>
               </button>
 
-              <p className="text-zinc-400 text-xs mt-2 leading-relaxed text-center max-w-sm">
-                Tap to select. After submitting, we will instantly recommend other top vendors that are available on your selected date.
-              </p>
-            </div>
-          )}
+              <button
+                type="button"
+                onClick={handleTogglePriorityInfo}
+                aria-label="What does Priority do?"
+                aria-expanded={showPriorityInfo}
+                className={`w-6 h-6 rounded-full border flex items-center justify-center text-[11px] font-black transition-all duration-200 cursor-pointer select-none shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] hover:scale-105 active:scale-95 ${
+                  showPriorityInfo
+                    ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-[0_0_12px_rgba(212,175,55,0.4)]'
+                    : 'bg-[#0a0a0a] text-[#D4AF37] border-[#D4AF37]/50 hover:border-[#D4AF37] hover:bg-[#D4AF37]/10'
+                }`}
+              >
+                ?
+              </button>
 
-          <div className="flex flex-row gap-4 w-full mt-6">
+              {showPriorityInfo && (
+                <div
+                  role="tooltip"
+                  onClick={(e) => e.stopPropagation()}
+                  className="simcha-priority-popover absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 w-64 sm:w-72 z-40 bg-[#0a0a0a] border border-[#D4AF37]/50 rounded-xl p-3 shadow-[0_12px_30px_rgba(0,0,0,0.85),0_0_18px_rgba(212,175,55,0.14)] text-center animate-in fade-in zoom-in-95 duration-150"
+                >
+                  <p className="text-[11px] sm:text-xs text-zinc-200 font-medium leading-relaxed">
+                    Setting this priority after submitting will instantly recommend vendors available on this date.
+                  </p>
+                  <div className="simcha-priority-popover-arrow w-2.5 h-2.5 bg-[#0a0a0a] border-r border-b border-[#D4AF37]/50 rotate-45 absolute -bottom-[6px] left-[calc(50%+2.25rem)] -translate-x-1/2" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-row gap-4 w-full mt-4">
             <button 
                 type="button" 
                 onClick={handleAddClick}

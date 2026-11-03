@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, Check, CheckCheck, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff, Filter, ArrowUpDown, ArrowUp, ArrowDown, UserPlus, UserCheck, Clock, Mic } from 'lucide-react';
+import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, Check, CheckCheck, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff, Filter, ArrowUpDown, ArrowUp, ArrowDown, UserPlus, UserCheck, Clock, Mic, Sparkles, CheckCircle2, Maximize2, Copy } from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType, firebaseConfig } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
 import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, addDoc, setDoc, where, getDocs, getDoc, deleteField } from 'firebase/firestore';
@@ -10,7 +10,7 @@ import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadSe
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import ChatModal from './ChatModal';
 import LocationAutocomplete from './LocationAutocomplete';
-import { Vendor, VendorCategory, Post, Booking, UserAccount, Message } from '../types';
+import { Vendor, VendorCategory, Post, Booking, UserAccount, Message, HeroImage } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const getSecondaryAuth = () => {
@@ -48,6 +48,10 @@ interface AdminPanelProps {
   onUpdateSubCategoryImage?: (subCategory: string, url: string) => void;
   heroBackgroundUrl: string;
   onUpdateHeroBackground: (url: string) => void;
+  heroImages?: HeroImage[];
+  onAddHeroImage?: (image: HeroImage) => void;
+  onDeleteHeroImage?: (id: string) => void;
+  onUpdateHeroImages?: (images: HeroImage[]) => void;
   onSendMessage: (payload: Partial<Message>) => void;
   showNotification: (message: string, type?: 'success' | 'info' | 'error') => void;
   onSeedTaxonomy?: () => Promise<void>;
@@ -59,6 +63,44 @@ interface AdminPanelProps {
   onUpdateSearchCalendarSettings?: (settings: { maxSearchDates: number; searchDateResetHours: number; resetAllNow?: boolean }) => Promise<void> | void;
 }
 
+const FALLBACK_HERO_IMAGES: HeroImage[] = [
+  {
+    id: 'hero-chuppah-canopy',
+    name: 'Traditional Chuppah Canopy',
+    url: 'https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80',
+    uploadedAt: '2026-01-01T00:00:00.000Z',
+    isDefault: true,
+  },
+  {
+    id: 'hero-grand-hall',
+    name: 'Grand Celebration Hall',
+    url: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=1950',
+    uploadedAt: '2026-01-02T00:00:00.000Z',
+    isDefault: true,
+  },
+  {
+    id: 'hero-simcha-garden',
+    name: 'Enchanted Simcha Garden',
+    url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=1950',
+    uploadedAt: '2026-01-03T00:00:00.000Z',
+    isDefault: true,
+  },
+  {
+    id: 'hero-dance-lights',
+    name: 'Celebration Dance & Lights',
+    url: 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=1950',
+    uploadedAt: '2026-01-04T00:00:00.000Z',
+    isDefault: true,
+  },
+  {
+    id: 'hero-stone-courtyard',
+    name: 'Jerusalem Stone Courtyard',
+    url: 'https://images.unsplash.com/photo-1544077960-604201fe74bc?auto=format&fit=crop&q=80&w=1950',
+    uploadedAt: '2026-01-05T00:00:00.000Z',
+    isDefault: true,
+  },
+];
+
 const TableContainer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showLeftShadow, setShowLeftShadow] = useState(false);
@@ -67,8 +109,10 @@ const TableContainer: React.FC<{ children: React.ReactNode }> = ({ children }) =
   const checkScroll = () => {
     if (containerRef.current) {
       const { scrollLeft, scrollWidth, clientWidth } = containerRef.current;
-      setShowLeftShadow(scrollLeft > 10);
-      setShowRightShadow(scrollLeft < scrollWidth - clientWidth - 10);
+      const nextLeft = scrollLeft > 10;
+      const nextRight = scrollLeft < scrollWidth - clientWidth - 10;
+      setShowLeftShadow(prev => (prev === nextLeft ? prev : nextLeft));
+      setShowRightShadow(prev => (prev === nextRight ? prev : nextRight));
     }
   };
 
@@ -88,7 +132,7 @@ const TableContainer: React.FC<{ children: React.ReactNode }> = ({ children }) =
         observer.disconnect();
       };
     }
-  }, [children]);
+  }, []);
 
   return (
     <div className="relative group/table w-full rounded-xl overflow-hidden border border-white/5 bg-black/40">
@@ -133,16 +177,209 @@ const renderMedia = (url: string | undefined | null, className: string, defaultC
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
-    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder, onDeleteCategory, onActiveChatChange, maxSearchDates = 4, searchDateResetHours = 24, onUpdateSearchCalendarSettings
+    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, heroImages = [], onAddHeroImage, onDeleteHeroImage, onUpdateHeroImages, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder, onDeleteCategory, onActiveChatChange, maxSearchDates = 4, searchDateResetHours = 24, onUpdateSearchCalendarSettings
 }) => {
   const [isAuthenticated] = useState(true);
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'calendar' | 'invite' | 'posts' | 'categories' | 'bookings' | 'stripe' | 'users' | 'messages' | 'analytics' | 'moderation'>('manage');
+  const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'calendar' | 'invite' | 'posts' | 'categories' | 'hero' | 'bookings' | 'stripe' | 'users' | 'messages' | 'analytics' | 'moderation'>('manage');
   const [isUploading, setIsUploading] = useState(false);
   const [isSeedingTaxonomy, setIsSeedingTaxonomy] = useState(false);
   const [localMaxSearchDates, setLocalMaxSearchDates] = useState<number>(maxSearchDates);
   const [localSearchDateResetHours, setLocalSearchDateResetHours] = useState<number>(searchDateResetHours);
+
+  // Hero Background Library State
+  const [localHeroImages, setLocalHeroImages] = useState<HeroImage[]>(() => {
+    if (heroImages && heroImages.length > 0) return heroImages;
+    return FALLBACK_HERO_IMAGES;
+  });
+
+  useEffect(() => {
+    if (heroImages && heroImages.length > 0) {
+      setLocalHeroImages(heroImages);
+    }
+  }, [heroImages]);
+
+  // Real-time Firestore listener for hero images
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'metadata', 'app_config'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (Array.isArray(data.heroImages) && data.heroImages.length > 0) {
+          setLocalHeroImages(data.heroImages);
+        }
+      }
+    }, () => {});
+    return () => unsub();
+  }, []);
+
+  const labelClass = "text-xs font-bold text-zinc-400 uppercase tracking-wider block mb-2";
+  const inputClass = "w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all placeholder:text-zinc-600";
+
+  const [heroSearchTerm, setHeroSearchTerm] = useState('');
+  const [heroFilterTab, setHeroFilterTab] = useState<'all' | 'uploaded' | 'curated'>('all');
+  const [previewHeroModal, setPreviewHeroModal] = useState<HeroImage | null>(null);
+  const [editingHeroId, setEditingHeroId] = useState<string | null>(null);
+  const [editingHeroName, setEditingHeroName] = useState<string>('');
+  const [isActivatingHeroUrl, setIsActivatingHeroUrl] = useState<string | null>(null);
+  const [isHeroDragging, setIsHeroDragging] = useState(false);
+  const [showHeroMockupText, setShowHeroMockupText] = useState(true);
+
+  // Ensure current active background is included in the display list
+  const allDisplayHeroImages = useMemo<HeroImage[]>(() => {
+    const list = [...localHeroImages];
+    if (heroBackgroundUrl && !list.some((h: HeroImage) => h.url === heroBackgroundUrl)) {
+      list.unshift({
+        id: `hero-active-${Date.now()}`,
+        name: 'Current Active Background',
+        url: heroBackgroundUrl,
+        uploadedAt: new Date().toISOString(),
+        isDefault: false
+      });
+    }
+    return list;
+  }, [localHeroImages, heroBackgroundUrl]);
+
+  const filteredHeroImages = useMemo<HeroImage[]>(() => {
+    return allDisplayHeroImages.filter((item: HeroImage) => {
+      if (heroFilterTab === 'uploaded' && item.isDefault) return false;
+      if (heroFilterTab === 'curated' && !item.isDefault) return false;
+      if (heroSearchTerm.trim()) {
+        const term = heroSearchTerm.toLowerCase();
+        const matchesName = (item.name || '').toLowerCase().includes(term);
+        const matchesUrl = (item.url || '').toLowerCase().includes(term);
+        return matchesName || matchesUrl;
+      }
+      return true;
+    });
+  }, [allDisplayHeroImages, heroFilterTab, heroSearchTerm]);
+
+  const handleSelectActiveHero = async (url: string, name?: string) => {
+    if (url === heroBackgroundUrl) return;
+    setIsActivatingHeroUrl(url);
+    try {
+      onUpdateHeroBackground(url);
+      await setDoc(doc(db, 'metadata', 'app_config'), {
+        heroBackgroundUrl: url
+      }, { merge: true });
+      showNotification(`Hero background switched to "${name || 'selected image'}"!`, 'success');
+      if (previewHeroModal) {
+        setPreviewHeroModal(null);
+      }
+    } catch (err: any) {
+      console.error("Error setting active hero background:", err);
+      showNotification(err.message || "Failed to update active hero background.", 'error');
+    } finally {
+      setIsActivatingHeroUrl(null);
+    }
+  };
+
+  const handleDeleteHeroImage = async (heroItem: HeroImage) => {
+    if (heroItem.url === heroBackgroundUrl) {
+      showNotification("Cannot delete the currently active hero background. Please switch to another background first.", 'info');
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to remove "${heroItem.name || 'this hero background'}" from the library?`)) {
+      return;
+    }
+
+    try {
+      const updated = localHeroImages.filter(h => h.id !== heroItem.id && h.url !== heroItem.url);
+      setLocalHeroImages(updated);
+      
+      if (onDeleteHeroImage) {
+        onDeleteHeroImage(heroItem.id);
+      } else {
+        await setDoc(doc(db, 'metadata', 'app_config'), {
+          heroImages: updated
+        }, { merge: true });
+      }
+      showNotification(`"${heroItem.name || 'Hero image'}" removed from library.`, 'info');
+    } catch (err: any) {
+      console.error("Error deleting hero image:", err);
+      showNotification("Failed to remove hero image.", 'error');
+    }
+  };
+
+  const handleStartRenameHero = (heroItem: HeroImage) => {
+    setEditingHeroId(heroItem.id);
+    setEditingHeroName(heroItem.name || '');
+  };
+
+  const handleSaveRenameHero = async (heroItem: HeroImage) => {
+    if (!editingHeroName.trim()) {
+      setEditingHeroId(null);
+      return;
+    }
+    try {
+      const updated = localHeroImages.map(h => {
+        if (h.id === heroItem.id || h.url === heroItem.url) {
+          return { ...h, name: editingHeroName.trim() };
+        }
+        return h;
+      });
+      setLocalHeroImages(updated);
+      await setDoc(doc(db, 'metadata', 'app_config'), {
+        heroImages: updated
+      }, { merge: true });
+      showNotification("Hero background name updated.", 'success');
+    } catch (err: any) {
+      console.error("Error renaming hero image:", err);
+    } finally {
+      setEditingHeroId(null);
+    }
+  };
+
+  const handleProcessHeroFile = async (file: File) => {
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      showNotification("Please upload an image or video file.", 'info');
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setPreviewUrls(prev => ({ ...prev, 'hero': previewUrl }));
+    setUploadProgresses(prev => ({ ...prev, 'hero': 0 }));
+    setIsUploading(true);
+
+    try {
+      const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+      const formattedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+      
+      const url = await uploadFileWithProgress(file, `hero/${Date.now()}_${file.name}`, (progress) => {
+        setUploadProgresses(prev => ({ ...prev, 'hero': progress }));
+      });
+
+      const newHero: HeroImage = {
+        id: `hero_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        url,
+        name: formattedName || 'Custom Hero Image',
+        uploadedAt: new Date().toISOString(),
+        isDefault: false,
+        fileSize: file.size
+      };
+
+      onUpdateHeroBackground(url);
+      if (onAddHeroImage) {
+        onAddHeroImage(newHero);
+      } else {
+        const updated = [newHero, ...localHeroImages.filter(h => h.url !== url)];
+        setLocalHeroImages(updated);
+        await setDoc(doc(db, 'metadata', 'app_config'), {
+          heroBackgroundUrl: url,
+          heroImages: updated
+        }, { merge: true });
+      }
+
+      showNotification("Hero background uploaded, added to library, and activated!", "success");
+    } catch (err: any) {
+      console.error("Hero upload error:", err);
+      showNotification(err.message || "Failed to upload hero background.", 'info');
+    } finally {
+      setIsUploading(false);
+      setUploadProgresses(prev => { const newP = {...prev}; delete newP['hero']; return newP; });
+    }
+  };
 
   useEffect(() => {
     setLocalMaxSearchDates(maxSearchDates);
@@ -1125,22 +1362,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleHeroBackgroundUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
-    // Optimistic Preview
-    const previewUrl = URL.createObjectURL(file);
-    setPreviewUrls(prev => ({ ...prev, 'hero': previewUrl }));
-    setUploadProgresses(prev => ({ ...prev, 'hero': 0 }));
-
-    try {
-      const url = await uploadFileWithProgress(file, `hero/${Date.now()}_${file.name}`, (progress) => {
-        setUploadProgresses(prev => ({ ...prev, 'hero': progress }));
-      });
-      onUpdateHeroBackground(url);
-    } catch (err) {
-      showNotification("Failed to upload hero background.", 'info');
-    } finally {
-      setUploadProgresses(prev => { const newP = {...prev}; delete newP['hero']; return newP; });
-    }
+    await handleProcessHeroFile(file);
+    if (heroImageInputRef.current) heroImageInputRef.current.value = "";
   };
 
   const handlePostSubmit = async (e: React.FormEvent) => {
@@ -1358,8 +1581,439 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     setLocalCategorySubCategories(categorySubCategories);
   }, [categorySubCategories]);
 
-  const inputClass = "w-full bg-black border border-[#D4AF37]/20 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-zinc-400";
-  const labelClass = "block text-[10px] font-bold text-[#D4AF37]/70 uppercase tracking-widest mb-1.5";
+  const renderHeroBackgroundSection = (isFullTab = false) => {
+    const activeHeroItem = allDisplayHeroImages.find((h: HeroImage) => h.url === heroBackgroundUrl);
+    const uploadedCount = allDisplayHeroImages.filter((h: HeroImage) => !h.isDefault).length;
+    const curatedCount = allDisplayHeroImages.filter((h: HeroImage) => h.isDefault).length;
+
+    return (
+      <div className="space-y-8 animate-in fade-in duration-300">
+        {/* Section Header */}
+        <div className="bg-[#111] p-6 rounded-2xl border border-[#D4AF37]/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Camera className="w-5 h-5 text-[#D4AF37]" />
+              <h2 className="text-xl font-bold font-[Cinzel] text-white">Hero Visual System & Background Library</h2>
+            </div>
+            <p className="text-xs text-zinc-400 max-w-2xl leading-relaxed">
+              View all previously uploaded and curated hero visuals, preview landing page typography contrast, and select any image to activate as the live marketplace backdrop.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => heroImageInputRef.current?.click()}
+              disabled={isUploading}
+              className="px-5 py-2.5 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-xs uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg hover:shadow-[0_0_20px_rgba(212,175,55,0.4)] disabled:opacity-50 cursor-pointer"
+            >
+              {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              <span>Upload New Hero Image</span>
+            </button>
+            <input
+              type="file"
+              accept="image/*,video/*"
+              className="hidden"
+              ref={heroImageInputRef}
+              onChange={handleHeroBackgroundUpload}
+            />
+          </div>
+        </div>
+
+        {/* Current Active Background Hero Spotlight Card */}
+        <div className="bg-[#111] rounded-2xl border-2 border-[#D4AF37]/40 shadow-2xl overflow-hidden relative">
+          <div className="bg-black/90 px-6 py-4 border-b border-[#D4AF37]/20 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.25em]">Active Landing Page Hero</span>
+              <span className="text-xs font-bold text-white font-[Cinzel]">
+                — {activeHeroItem?.name || 'Selected Visual'}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowHeroMockupText(prev => !prev)}
+                className="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-zinc-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors border border-white/10 cursor-pointer"
+                title="Toggle mockup headline text overlay"
+              >
+                {showHeroMockupText ? <Eye className="w-3.5 h-3.5 text-[#D4AF37]" /> : <EyeOff className="w-3.5 h-3.5 text-zinc-400" />}
+                <span>{showHeroMockupText ? 'Hide Title Overlay' : 'Show Title Overlay'}</span>
+              </button>
+              {activeHeroItem && (
+                <button
+                  type="button"
+                  onClick={() => setPreviewHeroModal(activeHeroItem)}
+                  className="px-3 py-1.5 rounded-full bg-[#D4AF37]/15 hover:bg-[#D4AF37] hover:text-black text-[#D4AF37] text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors border border-[#D4AF37]/30 cursor-pointer"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                  <span>Full Screen Simulation</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="p-6 md:p-8">
+            <div className="relative aspect-[21/9] w-full rounded-xl overflow-hidden bg-black border border-[#D4AF37]/30 shadow-inner group">
+              {renderMedia(previewUrls['hero'] || heroBackgroundUrl, "w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000")}
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/30 pointer-events-none" />
+
+              {/* Real Simulation Title Overlay */}
+              {showHeroMockupText && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 pointer-events-none select-none">
+                  <div className="font-bold font-[Cinzel] tracking-tight leading-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.9)] max-w-xl">
+                    <span className="block text-xl sm:text-2xl md:text-3xl lg:text-4xl">Celebrate Your</span>
+                    <span className="block text-xl sm:text-2xl md:text-3xl lg:text-4xl text-[#D4AF37]">Simcha.</span>
+                    <span className="block text-xl sm:text-2xl md:text-3xl lg:text-4xl">Book Perfection.</span>
+                  </div>
+                  <p className="mt-2 text-[10px] sm:text-xs text-zinc-200 font-light max-w-md drop-shadow hidden sm:block">
+                    From world-class kosher caterers to soulful bands, create your complete simcha in one place.
+                  </p>
+                </div>
+              )}
+
+              {/* Badges on bottom */}
+              <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between text-[10px] text-zinc-300">
+                <span className="bg-black/75 px-3 py-1 rounded-full border border-[#D4AF37]/30 text-[#D4AF37] font-mono font-bold flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  Active on Landing Page
+                </span>
+                <span className="bg-black/75 px-3 py-1 rounded-full border border-white/10 font-mono text-zinc-400">
+                  {activeHeroItem?.uploadedAt ? `Updated ${new Date(activeHeroItem.uploadedAt).toLocaleDateString()}` : 'Default Preset'}
+                </span>
+              </div>
+
+              {typeof uploadProgresses['hero'] === 'number' && (
+                <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20">
+                  <div className="w-12 h-12 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_20px_rgba(212,175,55,0.4)]" />
+                  <div className="text-[#D4AF37] font-bold text-xs mt-3 tracking-widest">{Math.round(uploadProgresses['hero'])}%</div>
+                  <span className="text-zinc-400 text-[10px] mt-1 uppercase tracking-widest">Uploading to Cloud Storage...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Drag & Drop Upload Zone */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsHeroDragging(true); }}
+              onDragLeave={() => setIsHeroDragging(false)}
+              onDrop={async (e) => {
+                e.preventDefault();
+                setIsHeroDragging(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) await handleProcessHeroFile(file);
+              }}
+              onClick={() => heroImageInputRef.current?.click()}
+              className={`mt-6 p-6 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-2 ${
+                isHeroDragging
+                  ? 'border-[#D4AF37] bg-[#D4AF37]/10'
+                  : 'border-white/10 hover:border-[#D4AF37]/50 bg-black/40 hover:bg-black/60'
+              }`}
+            >
+              <Upload className="w-6 h-6 text-[#D4AF37]" />
+              <p className="text-xs font-bold text-white">
+                Drag and drop a new hero background here, or <span className="text-[#D4AF37] underline">browse files</span>
+              </p>
+              <p className="text-[10px] text-zinc-400">
+                Supports high-resolution PNG, JPG, WebP, or MP4 video (recommended 1920x1080 or wider)
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Previously Uploaded Hero Images Gallery Section */}
+        <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl p-6 md:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-5">
+            <div>
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-[#D4AF37]" />
+                <h3 className="text-lg font-bold font-[Cinzel] text-white">Previously Uploaded Hero Images</h3>
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
+                  {allDisplayHeroImages.length} Visuals
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-1">
+                Select any image below to immediately set it as the active background for the hero section.
+              </p>
+            </div>
+
+            {/* Filter Chips */}
+            <div className="flex items-center gap-1.5 bg-black/60 p-1 rounded-xl border border-white/5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setHeroFilterTab('all')}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                  heroFilterTab === 'all' ? 'bg-[#D4AF37] text-black font-black' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                All ({allDisplayHeroImages.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setHeroFilterTab('uploaded')}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                  heroFilterTab === 'uploaded' ? 'bg-[#D4AF37] text-black font-black' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                Uploaded ({uploadedCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setHeroFilterTab('curated')}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                  heroFilterTab === 'curated' ? 'bg-[#D4AF37] text-black font-black' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                Curated ({curatedCount})
+              </button>
+            </div>
+          </div>
+
+          {/* Search Bar */}
+          <div className="bg-black/50 p-3 rounded-xl border border-white/5 flex items-center gap-3">
+            <Search className="w-4 h-4 text-zinc-400 shrink-0" />
+            <input
+              type="text"
+              placeholder="Filter previously uploaded hero images by title or keyword..."
+              value={heroSearchTerm}
+              onChange={(e) => setHeroSearchTerm(e.target.value)}
+              className="bg-transparent border-none outline-none text-xs w-full text-white placeholder:text-zinc-500"
+            />
+            {heroSearchTerm && (
+              <button
+                type="button"
+                onClick={() => setHeroSearchTerm('')}
+                className="text-zinc-500 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Gallery Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredHeroImages.map((heroItem: HeroImage) => {
+              const isActive = heroItem.url === heroBackgroundUrl;
+              const isActivating = isActivatingHeroUrl === heroItem.url;
+              const isEditing = editingHeroId === heroItem.id;
+
+              return (
+                <div
+                  key={heroItem.id || heroItem.url}
+                  className={`group bg-black/60 rounded-xl overflow-hidden border transition-all duration-300 flex flex-col relative ${
+                    isActive
+                      ? 'border-[#D4AF37] ring-2 ring-[#D4AF37]/50 shadow-[0_0_25px_rgba(212,175,55,0.25)]'
+                      : 'border-white/10 hover:border-[#D4AF37]/50 hover:shadow-xl'
+                  }`}
+                >
+                  {/* Visual Preview Container */}
+                  <div
+                    className="relative aspect-[16/9] w-full bg-zinc-950 overflow-hidden cursor-pointer"
+                    onClick={() => !isActive && handleSelectActiveHero(heroItem.url, heroItem.name)}
+                  >
+                    {renderMedia(heroItem.url, "w-full h-full object-cover transition-transform duration-700 group-hover:scale-105")}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-80" />
+
+                    {/* Active Ribbon Badge */}
+                    {isActive ? (
+                      <div className="absolute top-3 left-3 flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] text-black font-black text-[9px] uppercase tracking-widest shadow-lg">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        <span>Active Background</span>
+                      </div>
+                    ) : (
+                      <div className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-zinc-400 text-[8px] font-mono uppercase tracking-wider">
+                        {heroItem.isDefault ? 'Curated' : 'Uploaded'}
+                      </div>
+                    )}
+
+                    {/* Hover Quick Action to Activate */}
+                    {!isActive && (
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleSelectActiveHero(heroItem.url, heroItem.name); }}
+                          disabled={isActivating}
+                          className="px-4 py-2 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 shadow-xl transform scale-95 group-hover:scale-100 transition-transform cursor-pointer"
+                        >
+                          {isActivating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                          <span>Set as Active</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Quick Expand Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setPreviewHeroModal(heroItem); }}
+                      className="absolute top-3 right-3 p-1.5 rounded-full bg-black/70 hover:bg-[#D4AF37] hover:text-black text-white border border-white/10 transition-colors cursor-pointer"
+                      title="Preview Simulated Landing Hero"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Card Info & Actions Footer */}
+                  <div className="p-4 flex-1 flex flex-col justify-between gap-3">
+                    <div>
+                      {isEditing ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={editingHeroName}
+                            onChange={(e) => setEditingHeroName(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSaveRenameHero(heroItem)}
+                            autoFocus
+                            className="bg-black border border-[#D4AF37] text-white text-xs px-2.5 py-1 rounded w-full outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveRenameHero(heroItem)}
+                            className="p-1 text-[#D4AF37] hover:text-white cursor-pointer"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-2">
+                          <h4 className="font-bold text-white text-xs font-[Cinzel] truncate" title={heroItem.name}>
+                            {heroItem.name || 'Untitled Hero Visual'}
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={() => handleStartRenameHero(heroItem)}
+                            className="text-zinc-500 hover:text-[#D4AF37] p-1 cursor-pointer"
+                            title="Rename visual"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between mt-1.5 text-[9px] text-zinc-400 font-mono">
+                        <span>{heroItem.uploadedAt ? new Date(heroItem.uploadedAt).toLocaleDateString() : 'Platform Preset'}</span>
+                        {heroItem.fileSize && (
+                          <span>{(heroItem.fileSize / (1024 * 1024)).toFixed(1)} MB</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action Bar */}
+                    <div className="pt-2 border-t border-white/5 flex items-center justify-between gap-2">
+                      {isActive ? (
+                        <div className="flex-1 py-1.5 px-3 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] font-black text-[9px] uppercase tracking-widest text-center flex items-center justify-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Active Background</span>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectActiveHero(heroItem.url, heroItem.name)}
+                          disabled={isActivating}
+                          className="flex-1 py-1.5 px-3 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-[9px] uppercase tracking-widest transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                        >
+                          {isActivating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                          <span>Set as Active</span>
+                        </button>
+                      )}
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(heroItem.url);
+                            showNotification("Image URL copied to clipboard!", "info");
+                          }}
+                          className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-full transition-colors cursor-pointer"
+                          title="Copy Image URL"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteHeroImage(heroItem)}
+                          disabled={isActive}
+                          className={`p-1.5 rounded-full transition-colors ${
+                            isActive
+                              ? 'text-zinc-700 cursor-not-allowed opacity-40'
+                              : 'text-zinc-400 hover:text-red-400 hover:bg-red-500/10 cursor-pointer'
+                          }`}
+                          title={isActive ? "Active background cannot be removed" : "Remove from library"}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {filteredHeroImages.length === 0 && (
+              <div className="col-span-full py-16 text-center border-2 border-dashed border-white/5 rounded-2xl">
+                <ImageIcon className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+                <h4 className="text-sm font-bold text-white font-[Cinzel]">No Hero Images Found</h4>
+                <p className="text-xs text-zinc-400 mt-1 max-w-sm mx-auto">
+                  {heroSearchTerm
+                    ? `No images match "${heroSearchTerm}". Try another search term.`
+                    : "No hero images in this category yet. Upload a high-resolution background to get started."}
+                </p>
+                {heroSearchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setHeroSearchTerm('')}
+                    className="mt-3 text-xs text-[#D4AF37] hover:underline cursor-pointer"
+                  >
+                    Clear Search
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Search Calendar Settings Card */}
+        <div className="bg-[#111] rounded-2xl border border-white/5 p-6 shadow-xl">
+          <div className="flex items-center gap-2 mb-2">
+            <Calendar className="w-4 h-4 text-[#D4AF37]" />
+            <h3 className="text-sm font-bold font-[Cinzel] text-white">Search Date Availability Controls</h3>
+          </div>
+          <p className="text-xs text-zinc-400 mb-4">
+            Configure how many dates clients may search and how often their quota resets.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>Max Search Dates</label>
+              <input
+                type="number"
+                min="1"
+                max="31"
+                value={localMaxSearchDates}
+                onChange={(e) => {
+                  const next = Math.max(1, parseInt(e.target.value, 10) || 1);
+                  setLocalMaxSearchDates(next);
+                  onUpdateSearchCalendarSettings?.({ maxSearchDates: next, searchDateResetHours: localSearchDateResetHours });
+                }}
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Search Date Reset Hours</label>
+              <input
+                type="number"
+                min="0"
+                max="720"
+                value={localSearchDateResetHours}
+                onChange={(e) => {
+                  const next = Math.max(0, parseInt(e.target.value, 10) || 0);
+                  setLocalSearchDateResetHours(next);
+                  onUpdateSearchCalendarSettings?.({ maxSearchDates: localMaxSearchDates, searchDateResetHours: next });
+                }}
+                className={inputClass}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (!isAuthenticated) {
     return (
@@ -1449,7 +2103,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* Tab Navigation */}
         <nav aria-label="Admin Navigation" className="flex justify-start md:justify-center mb-10 overflow-x-auto pb-3 scrollbar-none">
             <div className="bg-[#111] p-1.5 rounded-xl border border-white/5 flex shrink-0 gap-1">
-                {['manage', 'invite', 'users', 'moderation', 'bookings', 'messages', 'stripe', 'posts', 'categories', 'analytics', 'add'].map(tab => {
+                {['manage', 'invite', 'users', 'moderation', 'bookings', 'messages', 'stripe', 'posts', 'hero', 'categories', 'analytics', 'add'].map(tab => {
                     const pendingVendorsCount = vendors.filter(v => !v.isVerified && !removedModerationIds.includes(v.id)).length;
                     const pendingUsersCount = users.filter(u => !(u as any).isApproved && !removedModerationIds.includes(u.id)).length;
                     const totalPendingCount = pendingVendorsCount + pendingUsersCount;
@@ -1465,6 +2119,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         if (t === 'messages') return 'Inbox';
                         if (t === 'stripe') return 'Stripe Hub';
                         if (t === 'posts') return 'Moments';
+                        if (t === 'hero') return 'Hero Backgrounds';
                         if (t === 'categories') return 'Taxonomy';
                         return t;
                     };
@@ -1490,6 +2145,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     isActive ? 'bg-black text-[#D4AF37]' : 'bg-[#D4AF37] text-black'
                                 }`}>
                                     {vendorUserRoles.length}
+                                </span>
+                            )}
+                            {tab === 'hero' && allDisplayHeroImages.length > 0 && (
+                                <span className={`px-1.5 py-0.5 text-[8px] font-bold rounded-full ${
+                                    isActive ? 'bg-black text-[#D4AF37]' : 'bg-[#D4AF37] text-black'
+                                }`}>
+                                    {allDisplayHeroImages.length}
                                 </span>
                             )}
                             {tab === 'moderation' && totalPendingCount > 0 && (
@@ -1977,80 +2639,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
         )}
 
+        {activeTab === 'hero' && (
+          <div className="space-y-12 max-w-5xl mx-auto pb-20 animate-in fade-in duration-300">
+            {renderHeroBackgroundSection(true)}
+          </div>
+        )}
+
         {activeTab === 'categories' && (
           <div className="space-y-12 max-w-5xl mx-auto pb-20 animate-in fade-in duration-300">
-              {/* Hero Visual System */}
-              <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl overflow-hidden">
-                  <div className="bg-black p-6 border-b border-[#D4AF37]/20 flex items-center justify-between">
-                      <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Global Aesthetic</h2><p className="text-zinc-400 text-xs">Manage the landing page visual identity.</p></div>
-                      <Camera className="w-8 h-8 text-[#D4AF37]/20" />
-                  </div>
-                  <div className="p-8">
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
-                        <div className="md:col-span-1 space-y-4">
-                           <h3 className={labelClass}>Hero Background</h3>
-                           <p className="text-[10px] text-zinc-400 leading-relaxed">This image appears behind the "Celebrate Your Simcha" title. High-resolution horizontal assets work best.</p>
-                           <button 
-                             onClick={() => heroImageInputRef.current?.click()} 
-                             disabled={isUploading}
-                             className="w-full bg-[#D4AF37] text-black font-black py-3 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-widest text-[10px] flex items-center justify-center gap-2"
-                           >
-                             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                             Change Hero Image
-                           </button>
-                           <input type="file" accept="image/*,video/*" className="hidden" ref={heroImageInputRef} onChange={handleHeroBackgroundUpload} />
-                        </div>
-                        <div className="md:col-span-2">
-                           <div className="aspect-[21/9] bg-black rounded-xl border border-[#D4AF37]/20 overflow-hidden relative group">
-                              {renderMedia(previewUrls['hero'] || heroBackgroundUrl, "w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-1000")}
-                              <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
-                              <div className="absolute bottom-4 left-6">
-                                 <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">Live Preview</p>
-                              </div>
-                              
-                              {typeof uploadProgresses['hero'] === 'number' && (
-                                <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
-                                  <div className="w-12 h-12 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_15px_rgba(212,175,55,0.3)]"></div>
-                                  <div className="text-[#D4AF37] font-bold text-[10px] mt-3 tracking-widest">{Math.round(uploadProgresses['hero'])}%</div>
-                                </div>
-                              )}
-                           </div>
-                        </div>
-                     </div>
-                     <div className="mt-8 pt-6 border-t border-white/5 grid grid-cols-1 sm:grid-cols-2 gap-6">
-                       <div>
-                         <label className={labelClass}>Max Search Dates</label>
-                         <input
-                           type="number"
-                           min="1"
-                           max="31"
-                           value={localMaxSearchDates}
-                           onChange={(e) => {
-                             const next = Math.max(1, parseInt(e.target.value, 10) || 1);
-                             setLocalMaxSearchDates(next);
-                             onUpdateSearchCalendarSettings?.({ maxSearchDates: next, searchDateResetHours: localSearchDateResetHours });
-                           }}
-                           className={inputClass}
-                         />
-                       </div>
-                       <div>
-                         <label className={labelClass}>Search Date Reset Hours</label>
-                         <input
-                           type="number"
-                           min="0"
-                           max="720"
-                           value={localSearchDateResetHours}
-                           onChange={(e) => {
-                             const next = Math.max(0, parseInt(e.target.value, 10) || 0);
-                             setLocalSearchDateResetHours(next);
-                             onUpdateSearchCalendarSettings?.({ maxSearchDates: localMaxSearchDates, searchDateResetHours: next });
-                           }}
-                           className={inputClass}
-                         />
-                       </div>
-                     </div>
-                  </div>
-              </div>
+              {/* Hero Visual System & Previously Uploaded Backgrounds */}
+              {renderHeroBackgroundSection(false)}
 
               {/* Add New Category */}
               <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl overflow-hidden">
@@ -3587,6 +4185,95 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             ) : (
               <video src={fullscreenMedia.url} controls autoPlay className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl bg-black" />
             )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Hero Simulation / Fullscreen Preview Modal */}
+      <AnimatePresence>
+        {previewHeroModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-6"
+            onClick={() => setPreviewHeroModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#111] border-2 border-[#D4AF37]/40 rounded-2xl max-w-5xl w-full overflow-hidden shadow-2xl flex flex-col"
+            >
+              {/* Modal Header */}
+              <div className="p-4 bg-black border-b border-[#D4AF37]/20 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Camera className="w-5 h-5 text-[#D4AF37]" />
+                  <span className="font-bold text-white font-[Cinzel] text-sm">
+                    Landing Page Hero Simulation — {previewHeroModal.name}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {previewHeroModal.url !== heroBackgroundUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectActiveHero(previewHeroModal.url, previewHeroModal.name)}
+                      className="px-4 py-2 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-xs uppercase tracking-widest flex items-center gap-1.5 transition-all shadow-lg cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Activate This Background</span>
+                    </button>
+                  ) : (
+                    <span className="px-3 py-1.5 rounded-full bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30 text-xs font-bold uppercase tracking-wider">
+                      Currently Active
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPreviewHeroModal(null)}
+                    className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Simulated Landing Page Hero */}
+              <div className="relative aspect-[16/9] md:aspect-[21/9] w-full bg-black overflow-hidden flex flex-col items-center justify-center text-center p-6 select-none">
+                {renderMedia(previewHeroModal.url, "absolute inset-0 w-full h-full object-cover")}
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/30 pointer-events-none" />
+
+                <div className="relative z-10 max-w-2xl mx-auto flex flex-col items-center gap-3">
+                  <h2 className="font-bold font-[Cinzel] tracking-[0.015em] leading-tight text-white drop-shadow-[0_2px_15px_rgba(0,0,0,0.9)]">
+                    <span className="block text-2xl sm:text-4xl md:text-5xl">Celebrate Your</span>
+                    <span className="block text-2xl sm:text-4xl md:text-5xl text-[#D4AF37]">Simcha.</span>
+                    <span className="block text-2xl sm:text-4xl md:text-5xl">Book Perfection.</span>
+                  </h2>
+                  <p className="text-zinc-200 text-xs sm:text-sm font-light max-w-md drop-shadow">
+                    From world-class kosher caterers to soulful bands, create your complete simcha in one place.
+                  </p>
+                  <div className="mt-4 px-6 py-3 rounded-full bg-black/80 border border-[#D4AF37]/40 text-zinc-300 text-xs font-mono flex items-center gap-3 shadow-2xl">
+                    <Calendar className="w-4 h-4 text-[#D4AF37]" />
+                    <span>Search by vendor, venue, or event date...</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 bg-black/60 border-t border-white/5 flex items-center justify-between text-xs text-zinc-400">
+                <span className="truncate max-w-md font-mono text-[11px] text-zinc-500">
+                  {previewHeroModal.url}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewHeroModal(null)}
+                  className="px-4 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-white font-bold text-xs cursor-pointer"
+                >
+                  Close Preview
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -38,7 +38,7 @@ import PaymentSuccess from './components/PaymentSuccess';
 import { ThemeModeSwitch } from './components/ThemeModeSwitch';
 import { SearchDateCalendar } from './components/SearchDateCalendar';
 import { VENDORS as INITIAL_VENDORS, MOCK_BOOKINGS } from './services/mockData';
-import { Vendor, VendorCategory, CartItem, Booking, Review, Post, Message, UserAccount, SelectedService } from './types';
+import { Vendor, VendorCategory, CartItem, Booking, Review, Post, Message, UserAccount, SelectedService, HeroImage } from './types';
 
 // Helper to strip undefined values for Firestore
 const clean = (obj: any) => {
@@ -227,9 +227,11 @@ const FixedGoldScrollbar: React.FC = () => {
       const currentScrollY = document.body.style.position === 'fixed' 
         ? Math.abs(parseInt(document.body.style.top || '0')) 
         : window.scrollY;
-      setScrollTop(currentScrollY);
-      setScrollHeight(document.documentElement.scrollHeight);
-      setClientHeight(window.innerHeight);
+      const sh = document.documentElement.scrollHeight;
+      const ch = window.innerHeight;
+      setScrollTop(prev => (prev === currentScrollY ? prev : currentScrollY));
+      setScrollHeight(prev => (prev === sh ? prev : sh));
+      setClientHeight(prev => (prev === ch ? prev : ch));
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     handleScroll();
@@ -1072,6 +1074,44 @@ const INITIAL_CATEGORY_IMAGES: Record<string, string> = {
   [VendorCategory.TRANSPORTATION]: "https://images.unsplash.com/photo-1563297775-81676646bc5f?auto=format&fit=crop&q=80&w=600",
 };
 
+export const DEFAULT_HERO_IMAGES: HeroImage[] = [
+  {
+    id: 'hero-chuppah-canopy',
+    name: 'Traditional Chuppah Canopy',
+    url: 'https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80',
+    uploadedAt: '2026-01-01T00:00:00.000Z',
+    isDefault: true,
+  },
+  {
+    id: 'hero-grand-hall',
+    name: 'Grand Celebration Hall',
+    url: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=1950',
+    uploadedAt: '2026-01-02T00:00:00.000Z',
+    isDefault: true,
+  },
+  {
+    id: 'hero-simcha-garden',
+    name: 'Enchanted Simcha Garden',
+    url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=1950',
+    uploadedAt: '2026-01-03T00:00:00.000Z',
+    isDefault: true,
+  },
+  {
+    id: 'hero-dance-lights',
+    name: 'Celebration Dance & Lights',
+    url: 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=1950',
+    uploadedAt: '2026-01-04T00:00:00.000Z',
+    isDefault: true,
+  },
+  {
+    id: 'hero-stone-courtyard',
+    name: 'Jerusalem Stone Courtyard',
+    url: 'https://images.unsplash.com/photo-1544077960-604201fe74bc?auto=format&fit=crop&q=80&w=1950',
+    uploadedAt: '2026-01-05T00:00:00.000Z',
+    isDefault: true,
+  },
+];
+
 enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -1520,6 +1560,7 @@ function App() {
   const [categorySubCategories, setCategorySubCategories] = useState<Record<string, Record<string, string[]>>>({});
   const [subCategoryImages, setSubCategoryImages] = useState<Record<string, string>>({});
   const [heroBackgroundUrl, setHeroBackgroundUrl] = useState<string>("https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80");
+  const [heroImages, setHeroImages] = useState<HeroImage[]>(DEFAULT_HERO_IMAGES);
   const [maxSearchDates, setMaxSearchDates] = useState<number>(4);
   const [searchDateResetHours, setSearchDateResetHours] = useState<number>(24);
   const [searchDateResetNonce, setSearchDateResetNonce] = useState<number>(0);
@@ -1654,8 +1695,10 @@ function App() {
     } else if (view === 'client-portal') {
       setPortalTab('client');
       setView('portal');
+    } else if (view === 'admin' && !isInitializing && !isRoleLoading && !isAdmin && userRole !== 'admin') {
+      setView('marketplace');
     }
-  }, [view]);
+  }, [view, isInitializing, isRoleLoading, isAdmin, userRole]);
 
   // Firestore Sync - Global Data
   useEffect(() => {
@@ -1692,6 +1735,20 @@ function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.heroBackgroundUrl) setHeroBackgroundUrl(data.heroBackgroundUrl);
+        if (Array.isArray(data.heroImages) && data.heroImages.length > 0) {
+          setHeroImages(data.heroImages);
+        } else {
+          const initial = [...DEFAULT_HERO_IMAGES];
+          if (data.heroBackgroundUrl && !initial.some(h => h.url === data.heroBackgroundUrl)) {
+            initial.unshift({
+              id: `hero-custom-${Date.now()}`,
+              name: 'Custom Active Background',
+              url: data.heroBackgroundUrl,
+              uploadedAt: new Date().toISOString(),
+            });
+          }
+          setHeroImages(initial);
+        }
         if (typeof data.maxSearchDates === 'number' && data.maxSearchDates >= 1) setMaxSearchDates(data.maxSearchDates);
         if (typeof data.searchDateResetHours === 'number' && data.searchDateResetHours >= 0) setSearchDateResetHours(data.searchDateResetHours);
         if (typeof data.searchDateResetNonce === 'number') setSearchDateResetNonce(data.searchDateResetNonce);
@@ -1703,6 +1760,7 @@ function App() {
           categorySubCategories: {},
           subCategoryImages: {},
           heroBackgroundUrl: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80",
+          heroImages: DEFAULT_HERO_IMAGES,
           maxSearchDates: 4,
           searchDateResetHours: 24,
           searchDateResetNonce: 0
@@ -1811,9 +1869,9 @@ function App() {
   // Firestore Sync - User Data
   useEffect(() => {
     if (!fbUser || !userRole) {
-      setBookings([]);
-      setMessages([]);
-      setCart([]);
+      setBookings(prev => (prev.length === 0 ? prev : []));
+      setMessages(prev => (prev.length === 0 ? prev : []));
+      setCart(prev => (prev.length === 0 ? prev : []));
       return;
     }
     if (isSignInFlipping) return;
@@ -2522,6 +2580,19 @@ function App() {
   const [isAdminChatOpen, setIsAdminChatOpen] = useState(false);
   const [isPortalChatActive, setIsPortalChatActive] = useState(false);
   const [adminInquiryText, setAdminInquiryText] = useState('');
+
+  const currentAuthenticatedUser = useMemo<UserAccount>(() => ({
+    id: fbUser?.uid || '',
+    name: userDocData?.name || fbUser?.displayName || fbUser?.email?.split('@')[0] || 'Guest',
+    username: fbUser?.email || '',
+    photoURL: userDocData?.photoURL || fbUser?.photoURL || '',
+    photoStoragePath: userDocData?.photoStoragePath || ''
+  }), [fbUser?.uid, fbUser?.displayName, fbUser?.email, fbUser?.photoURL, userDocData?.name, userDocData?.photoURL, userDocData?.photoStoragePath]);
+
+  const combinedChatModalMessages = useMemo(
+    () => (chatThreadMessages.length > 0 ? [...messages, ...chatThreadMessages] : messages),
+    [messages, chatThreadMessages]
+  );
 
   const handleSendAdminInquiry = async () => {
     if (!adminInquiryText.trim() || !fbUser) return;
@@ -3555,12 +3626,53 @@ function App() {
 
   const handleAdminUpdateHeroBackground = async (url: string) => {
     try {
-      await updateDoc(doc(db, 'metadata', 'app_config'), {
+      setHeroBackgroundUrl(url);
+      await setDoc(doc(db, 'metadata', 'app_config'), {
         heroBackgroundUrl: url
-      });
-      showNotification('Hero background updated!');
+      }, { merge: true });
+      showNotification('Active hero background updated!');
     } catch (err) {
       console.error("Error updating hero background:", err);
+    }
+  };
+
+  const handleAdminAddHeroImage = async (newHero: HeroImage) => {
+    try {
+      const updated = [newHero, ...heroImages.filter(h => h.url !== newHero.url && h.id !== newHero.id)];
+      setHeroImages(updated);
+      setHeroBackgroundUrl(newHero.url);
+      await setDoc(doc(db, 'metadata', 'app_config'), {
+        heroBackgroundUrl: newHero.url,
+        heroImages: clean(updated)
+      }, { merge: true });
+      showNotification('Hero background uploaded, added to library, and activated!');
+    } catch (err) {
+      console.error("Error adding hero image:", err);
+    }
+  };
+
+  const handleAdminDeleteHeroImage = async (id: string) => {
+    try {
+      const updated = heroImages.filter(h => h.id !== id);
+      setHeroImages(updated);
+      await setDoc(doc(db, 'metadata', 'app_config'), {
+        heroImages: clean(updated)
+      }, { merge: true });
+      showNotification('Hero image removed from library.');
+    } catch (err) {
+      console.error("Error removing hero image:", err);
+    }
+  };
+
+  const handleAdminUpdateHeroImages = async (newImages: HeroImage[]) => {
+    try {
+      setHeroImages(newImages);
+      await setDoc(doc(db, 'metadata', 'app_config'), {
+        heroImages: clean(newImages)
+      }, { merge: true });
+      showNotification('Hero images library updated.');
+    } catch (err) {
+      console.error("Error updating hero images:", err);
     }
   };
 
@@ -4369,20 +4481,8 @@ function App() {
     </div>
   ) : null;
 
-  const currentAuthenticatedUser: UserAccount = {
-    id: fbUser?.uid || '',
-    name: userDocData?.name || fbUser?.displayName || fbUser?.email?.split('@')[0] || 'Guest',
-    username: fbUser?.email || '',
-    photoURL: userDocData?.photoURL || fbUser?.photoURL || '',
-    photoStoragePath: userDocData?.photoStoragePath || ''
-  };
-
   const renderActiveView = () => {
-    if (view === 'admin') {
-      if (!isAdmin && userRole !== 'admin') {
-        setView('marketplace');
-        return null;
-      }
+    if (view === 'admin' && (isAdmin || userRole === 'admin')) {
       return (
         <motion.div 
           initial={{ opacity: 0, y: 30 }}
@@ -4414,6 +4514,10 @@ function App() {
             onUpdateSubCategoryImage={handleAdminUpdateSubCategoryImage}
             heroBackgroundUrl={heroBackgroundUrl}
             onUpdateHeroBackground={handleAdminUpdateHeroBackground}
+            heroImages={heroImages}
+            onAddHeroImage={handleAdminAddHeroImage}
+            onDeleteHeroImage={handleAdminDeleteHeroImage}
+            onUpdateHeroImages={handleAdminUpdateHeroImages}
             messages={messages.filter(
               m =>
                 m.isAdminInquiry ||
@@ -4650,15 +4754,15 @@ function App() {
         className="relative z-20 flex-1 flex flex-col pb-36 md:pb-0 will-change-transform"
       >
         <section className="simcha-hero-section relative -mt-[62px] sm:-mt-[68px] bg-black text-white z-20 shadow-none" aria-labelledby="hero-title">
-          <div className="absolute inset-0 overflow-hidden pointer-events-none z-0" aria-hidden="true">
+          <div className="simcha-hero-media-wrap absolute inset-0 overflow-hidden pointer-events-none z-0" aria-hidden="true">
             <motion.div
               className="absolute inset-0 z-0 will-change-transform transform-gpu"
               style={{ scale: heroBgScale }}
             >
-              {renderMedia(heroBackgroundUrl, "simcha-hero-media w-full h-full object-cover opacity-80", undefined, true, true)}
+              {renderMedia(heroBackgroundUrl, "simcha-hero-media w-full h-full object-cover opacity-100", undefined, true, true)}
             </motion.div>
           </div>
-          <div className="absolute inset-x-0 top-0 -bottom-1 pointer-events-none z-[1] bg-gradient-to-t from-black via-black/60 to-transparent simcha-image-fader-hero" aria-hidden="true"></div>
+          <div className="absolute inset-x-0 top-0 -bottom-1 pointer-events-none z-[1] simcha-image-fader-hero" aria-hidden="true"></div>
           <div className="relative z-10 max-w-7xl mx-auto px-4 pt-[134px] sm:pt-[142px] pb-[64px] sm:pb-[72px] md:pt-[186px] md:pb-28 text-center">
             <motion.h2
               id="hero-title"
@@ -5300,7 +5404,7 @@ function App() {
         isAdminMode={isAdminChatOpen}
         conversationIdOverride={chatConversationId}
         threadMessages={chatThreadMessages}
-        messages={chatThreadMessages.length > 0 ? [...messages, ...chatThreadMessages] : messages} 
+        messages={combinedChatModalMessages} 
         user={currentAuthenticatedUser} 
         onSendMessage={handleSendMessage} 
         onClose={() => { setChatVendor(null); setChatConversationId(undefined); setChatThreadMessages([]); setIsAdminChatOpen(false); }} 
