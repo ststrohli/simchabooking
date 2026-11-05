@@ -13,7 +13,7 @@ interface BottomNavProps {
 const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isVendorView }) => {
   const tabs = isVendorView ? [
     { id: 'home', label: 'Home', icon: LayoutDashboard },
-    { id: 'bookings', label: 'Requests', icon: BookText },
+    { id: 'bookings', label: 'Bookings', icon: BookText },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
     { id: 'chat', label: 'Chats', icon: MessageCircle },
     { id: 'profile', label: 'Profile', icon: User },

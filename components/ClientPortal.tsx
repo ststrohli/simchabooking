@@ -194,6 +194,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   };
 
   const [selectedEventCategory, setSelectedEventCategory] = useState<string>('All');
+  const [locallyReadMsgIds, setLocallyReadMsgIds] = useState<Set<string>>(new Set());
 
   const clientBookings = useMemo(() => {
     const sorted = bookings
@@ -704,12 +705,10 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
         {activeTab === 'events' && (
           <div className="space-y-3 animate-in slide-in-from-bottom-5 duration-500 max-w-4xl mx-auto w-full">
-            {/* Compact Horizontally Slidable Pill Category Filter with Edge Fades */}
-            <div className="relative w-full overflow-hidden">
-              <div className="simcha-pill-fade-left pointer-events-none absolute inset-y-0 left-0 w-7 z-10" />
-              <div className="simcha-pill-fade-right pointer-events-none absolute inset-y-0 right-0 w-7 z-10" />
+            {/* Compact Horizontally Slidable Centered Pill Category Filter (Edge-to-Edge with no side cutoff) */}
+            <div className="w-[calc(100%+2rem)] -mx-4 md:w-[calc(100%+5rem)] md:-mx-10 overflow-x-auto no-scrollbar py-1.5 touch-pan-x select-none">
               <div
-                className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-2 touch-pan-x select-none"
+                className="flex items-center gap-2 px-4 md:px-10 w-max mx-auto"
                 role="tablist"
                 aria-label="Filter booked events by category"
               >
@@ -865,7 +864,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
               </div>
             ) : (
               chatThreads.map(([vendorId, data], idx) => {
-                const unreadInThread = data.messages.filter(m => m.receiverId === user.id && !m.isRead).length;
+                const unreadInThread = data.messages.filter(m => m.receiverId === user.id && !m.isRead && !locallyReadMsgIds.has(m.id)).length;
                 const vendorPhoto = data.vendor.image;
                 const initials = getVendorInitials(data.vendor.name);
                 const lastMsg = data.lastMessage;
@@ -885,8 +884,23 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
                 const handleOpenThread = () => {
                   const conId = lastMsg.conversationId || [user.id, vendorId].sort().filter(Boolean).join('_');
-                  if (conId && user.id) {
-                    markChatAsRead(conId, user.id).catch(() => {});
+                  const msgIds = data.messages.map(m => m.id).filter(Boolean);
+                  if (msgIds.length > 0) {
+                    setLocallyReadMsgIds(prev => {
+                      const next = new Set(prev);
+                      msgIds.forEach(id => next.add(id));
+                      return next;
+                    });
+                  }
+                  if (user.id) {
+                    const uniqueConIds = new Set<string>();
+                    if (conId) uniqueConIds.add(conId);
+                    data.messages.forEach(m => {
+                      if (m.conversationId) uniqueConIds.add(m.conversationId);
+                    });
+                    uniqueConIds.forEach(cid => {
+                      markChatAsRead(cid, user.id, [user.username].filter(Boolean)).catch(() => {});
+                    });
                   }
                   if (vendorId === 'admin' && onOpenAdminChat) {
                     onOpenAdminChat(conId, data.messages);

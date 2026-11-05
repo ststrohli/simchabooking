@@ -707,9 +707,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     </div>
   );
 
-  // Search & Filters for Bookings List (Default to 'pending' = New Requests)
+  // Search & Filters for Bookings List (Default to 'pending' = New Bookings)
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'confirmed' | 'cancelled'>('pending');
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'offers' | 'confirmed' | 'cancelled'>('pending');
   const [dateFilter, setDateFilter] = useState('');
   const [isRequestCalendarOpen, setIsRequestCalendarOpen] = useState(false);
   const [requestCalendarMonth, setRequestCalendarMonth] = useState<Date>(() => new Date());
@@ -940,7 +940,13 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             b.clientName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             b.eventName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             b.contactEmail?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = b.status === statusFilter;
+      const hasOffer = Boolean(b.isOffer || b.offeredPrice || b.notes?.includes('OFFERED PRICE:'));
+      const matchesStatus =
+        statusFilter === 'offers'
+          ? hasOffer && b.status !== 'cancelled'
+          : statusFilter === 'pending'
+          ? b.status === 'pending' && !hasOffer
+          : b.status === statusFilter;
       const matchesDate = !dateFilter || b.date === dateFilter;
       return matchesSearch && matchesStatus && matchesDate;
     });
@@ -1043,6 +1049,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
   // Message State
   const [selectedThreadEmail, setSelectedThreadEmail] = useState<string | null>(null);
+  const [locallyReadVendorMsgIds, setLocallyReadVendorMsgIds] = useState<Set<string>>(new Set());
   const [selectedThreadContext, setSelectedThreadContext] = useState<{
     key: string;
     clientUid: string;
@@ -2071,7 +2078,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       id: Math.random().toString(36).substr(2, 9),
       name: newServiceName.trim(),
       price: parseFloat(newServicePrice),
-      unit: isLoc ? 'location' : newServiceUnit.trim().slice(0, 28),
+      unit: isLoc ? 'location' : newServiceUnit.trim().slice(0, 80),
       categoryType: newServiceCategoryType,
       allowQuantity: newServiceCategoryType === 'amenities' ? newServiceAllowQty : false,
       defaultHours: isLoc ? Math.max(1, parseInt(newServiceDefaultHours) || 3) : undefined,
@@ -2960,8 +2967,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         </div>
         <nav aria-label="Vendor Portal Navigation" className="flex-1 p-4 space-y-1.5 overflow-y-auto">
           <NavItem id="overview" icon={LayoutDashboard} label="Dashboard" />
-          <NavItem id="bookings" icon={Users} label="Requests" badge={pendingRequests} />
-          <NavItem id="messages" icon={MessageSquare} label="Messages" badge={messages.filter(m => m.receiverId === vendor.id && !m.isRead).length || undefined} />
+          <NavItem id="bookings" icon={Users} label="Bookings" badge={pendingRequests} />
+          <NavItem id="messages" icon={MessageSquare} label="Messages" badge={messages.filter(m => m.receiverId === vendor.id && !m.isRead && !locallyReadVendorMsgIds.has(m.id)).length || undefined} />
           <NavItem id="calendar" icon={CalendarDays} label="Calendar" />
           <NavItem id="profile" icon={Settings} label="Business Profile" />
         </nav>
@@ -2975,7 +2982,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         <div className="px-4 pt-9 pb-1 md:px-10 md:pt-10 md:pb-2">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-lg md:text-2xl font-bold font-[Cinzel] text-white capitalize tracking-tight leading-none">{activeTab === 'bookings' ? 'Requests' : activeTab}</h1>
+              <h1 className="text-lg md:text-2xl font-bold font-[Cinzel] text-white capitalize tracking-tight leading-none">{activeTab === 'bookings' ? 'Bookings' : activeTab}</h1>
               <p className="text-[#D4AF37]/60 text-[9px] font-black uppercase tracking-[0.4em] mt-1">{vendor.name}</p>
             </div>
             <div className="flex items-center gap-4">
@@ -3336,20 +3343,19 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             };
 
             return (
-              <div className="space-y-3 animate-in slide-in-from-bottom-5 duration-500 max-w-4xl mx-auto w-full">
-                {/* Compact Filter Row below Client/Vendor switch: New Requests, Confirmed, Canceled + Small Date Calendar Button */}
-                <div className="relative w-full overflow-hidden">
-                  <div className="simcha-pill-fade-left pointer-events-none absolute inset-y-0 left-0 w-5 z-10" />
-                  <div className="simcha-pill-fade-right pointer-events-none absolute inset-y-0 right-0 w-5 z-10" />
+              <div className="space-y-4 animate-in slide-in-from-bottom-5 duration-500 max-w-3xl mx-auto w-full flex flex-col items-center">
+                {/* Edge-to-Edge Centered Compact Filter Row: New, Offers, Confirmed, Cancelled + Date Calendar Button (No side cutoff) */}
+                <div className="w-[calc(100%+2rem)] -mx-4 md:w-[calc(100%+5rem)] md:-mx-10 overflow-x-auto no-scrollbar py-1.5 touch-pan-x select-none">
                   <div
-                    className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-1 px-1 touch-pan-x select-none"
+                    className="flex items-center gap-1.5 sm:gap-2 px-4 md:px-10 w-max mx-auto"
                     role="tablist"
-                    aria-label="Filter booking requests"
+                    aria-label="Filter bookings"
                   >
                     {([
-                      { id: 'pending' as const, label: 'Request' },
+                      { id: 'pending' as const, label: 'New' },
+                      { id: 'offers' as const, label: 'Offers' },
                       { id: 'confirmed' as const, label: 'Confirmed' },
-                      { id: 'cancelled' as const, label: 'Canceled' }
+                      { id: 'cancelled' as const, label: 'Cancelled' }
                     ]).map((tab) => {
                       const isActive = statusFilter === tab.id;
                       return (
@@ -3359,7 +3365,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           role="tab"
                           aria-selected={isActive}
                           onClick={() => setStatusFilter(tab.id)}
-                          className={`shrink-0 h-7 px-2.5 sm:px-3.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer border flex items-center justify-center whitespace-nowrap ${
+                          className={`shrink-0 h-7 px-3 sm:px-3.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer border flex items-center justify-center whitespace-nowrap ${
                             isActive
                               ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-[0_0_12px_rgba(212,175,55,0.35)]'
                               : 'bg-black/70 text-zinc-300 border-[#D4AF37]/25 hover:border-[#D4AF37]/60 hover:text-white'
@@ -3576,23 +3582,24 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     document.body
                   )}
 
-                {/* Simplified Full-Width Pill-Shaped Requests List */}
-                <div className="space-y-3">
+                {/* Centered Pill-Shaped Bookings List */}
+                <div className="space-y-3 w-full max-w-3xl mx-auto">
                   {filteredBookings.length === 0 ? (
-                    <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
+                    <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center w-full">
                       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">
                         {statusFilter === 'pending'
-                          ? 'No new requests found'
+                          ? 'No new bookings found'
+                          : statusFilter === 'offers'
+                          ? 'No client offers found'
                           : statusFilter === 'confirmed'
-                          ? 'No confirmed requests found'
-                          : 'No canceled requests found'}
+                          ? 'No confirmed bookings found'
+                          : 'No cancelled bookings found'}
                       </p>
                     </div>
                   ) : (
                       filteredBookings.map((b, idx) => {
                         const clientPhoto = getClientPhoto(b);
                         const initials = getClientInitials(b.clientName);
-                        const isOffer = Boolean(b.isOffer || b.notes?.includes('OFFERED PRICE:'));
 
                         return (
                           <div
@@ -3643,14 +3650,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                 <span className="font-bold text-sm sm:text-base text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
                                   {b.clientName}
                                 </span>
-                                {idx === 0 && (
+                                {idx === 0 && b.status === 'pending' && (
                                   <span className="bg-[#D4AF37] text-black text-[8px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest shrink-0 shadow-sm">
                                     New
-                                  </span>
-                                )}
-                                {isOffer && (
-                                  <span className="simcha-event-pill text-[#D4AF37] text-[8px] font-black px-2.5 py-0.5 rounded-full border border-[#D4AF37]/50 uppercase tracking-widest shrink-0">
-                                    Offer • ${b.amount.toLocaleString()}
                                   </span>
                                 )}
                               </div>
@@ -3705,7 +3707,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                 </div>
               ) : (
                 messageThreads.map(([threadKey, data], idx) => {
-                  const unreadInThread = data.messages.filter(m => m.receiverId === vendor.id && !m.isRead).length;
+                  const unreadInThread = data.messages.filter(m => m.receiverId === vendor.id && !m.isRead && !locallyReadVendorMsgIds.has(m.id)).length;
                   const clientPhoto = getThreadClientPhoto(data.email || threadKey, data.clientUid);
                   const initials = getClientInitials(data.name);
                   const lastMsg = data.lastMessage;
@@ -3716,8 +3718,26 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
                   const handleOpenClientThread = () => {
                     const conId = data.conversationId || lastMsg.conversationId || [vendor.id, data.clientUid].sort().filter(Boolean).join('_');
-                    if (conId && vendor.id) {
-                      markChatAsRead(conId, vendor.id).catch(() => {});
+                    const msgIds = data.messages.map(m => m.id).filter(Boolean);
+                    if (msgIds.length > 0) {
+                      setLocallyReadVendorMsgIds(prev => {
+                        const next = new Set(prev);
+                        msgIds.forEach(id => next.add(id));
+                        return next;
+                      });
+                      setLiveVendorMessages(prev =>
+                        prev.map(m => (msgIds.includes(m.id) ? { ...m, isRead: true } : m))
+                      );
+                    }
+                    if (vendor.id) {
+                      const uniqueConIds = new Set<string>();
+                      if (conId) uniqueConIds.add(conId);
+                      data.messages.forEach(m => {
+                        if (m.conversationId) uniqueConIds.add(m.conversationId);
+                      });
+                      uniqueConIds.forEach(cid => {
+                        markChatAsRead(cid, vendor.id, [auth.currentUser?.uid || '', vendor.contactEmail || ''].filter(Boolean)).catch(() => {});
+                      });
                     }
                     setSelectedThreadContext({
                       key: threadKey,
@@ -3895,6 +3915,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                   <ChatModal
                     isOpen={true}
                     vendor={vendor}
+                    user={{ id: vendor.id, name: vendor.name, username: vendor.contactEmail || '' }}
                     isVendorReplying={true}
                     onClose={() => {
                       setSelectedThreadEmail(null);
@@ -4263,34 +4284,35 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                </div>
 
                 {/* Services & Packaging */}
-               <div className="bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden">
+               <div className="bg-[#111] rounded-3xl border-2 border-[#D4AF37]/35 shadow-2xl overflow-hidden">
                   <div 
                     onClick={() => toggleSection('services')}
-                    className="px-5 py-6 sm:p-8 border-b border-white/5 bg-black/40 flex justify-between items-center cursor-pointer group"
+                    className="px-5 py-6 sm:p-8 border-b-2 border-[#D4AF37]/20 bg-black/60 flex justify-between items-center cursor-pointer group"
                   >
                     <div className="text-left">
                       <h3 className="text-lg sm:text-xl font-bold font-[Cinzel] text-[#D4AF37]">Services & Pricing Packages</h3>
-                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Define specific offerings for clients to select</p>
+                      <p className="text-[10px] text-zinc-300 font-bold uppercase tracking-widest mt-1">Simple, outlined setup for Locations, Add-ons & Photos</p>
                     </div>
                     <div className="flex items-center gap-3">
                        <button 
+                         type="button"
                          onClick={(e) => {
                            e.stopPropagation();
                            if (collapsedSections['services']) toggleSection('services');
                            setShowAddForm(!showAddForm);
                          }}
                          aria-label="Toggle add service form"
-                         className={`p-2.5 sm:p-3 rounded-full transition-all border ${showAddForm ? 'bg-zinc-400/10 text-zinc-400 border-zinc-400/20' : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20 hover:bg-[#D4AF37] hover:text-black'}`}
+                         className={`px-4 py-2 rounded-full transition-all border-2 font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 cursor-pointer ${showAddForm ? 'bg-zinc-900 text-zinc-200 border-zinc-500' : 'bg-[#D4AF37] text-black border-[#D4AF37] hover:bg-[#E5C76B]'}`}
                        >
-                         {showAddForm ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                         {showAddForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                         <span>{showAddForm ? 'Close' : 'New Option'}</span>
                        </button>
-                       <ChevronRight className={`w-6 h-6 text-zinc-400 transition-transform ${collapsedSections['services'] ? '' : 'rotate-90'}`} />
+                       <ChevronRight className={`w-6 h-6 text-[#D4AF37] transition-transform ${collapsedSections['services'] ? '' : 'rotate-90'}`} />
                     </div>
                   </div>
                   
                    {!collapsedSections['services'] && (
-                    <div className="p-3.5 sm:p-6 md:p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
-                    {/* Wide, Uncompressed Selection Sections (Locations & Add-ons) with Inline Pop-Down Add Form */}
+                    <div className="p-4 sm:p-6 md:p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
                     {(() => {
                       const allServices = editForm.services || [];
                       const inferCat = (s: VendorService): ServiceCategoryType => {
@@ -4314,8 +4336,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       }[] = [
                         {
                           type: 'location',
-                          title: 'Locations',
-                          subtitle: 'Locations, default hours & extra hourly rate (Client selects 1)',
+                          title: 'Locations & Base Packages',
+                          subtitle: 'Client selects 1 location and can add extra hours',
                           defaultUnit: 'location',
                           icon: MapPin,
                           items: allServices.filter(s => inferCat(s) === 'location')
@@ -4323,7 +4345,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         {
                           type: 'amenities',
                           title: 'Add-ons & Extras',
-                          subtitle: 'Lighting, percussion, extra speakers, mics & custom add-ons',
+                          subtitle: 'Client can select add-ons — upload a photo & description to showcase at the top of the booking modal',
                           defaultUnit: '',
                           icon: Layers,
                           items: allServices.filter(s => inferCat(s) === 'amenities')
@@ -4338,18 +4360,18 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             return (
                               <div
                                 key={box.type}
-                                className="w-full space-y-4"
+                                className="w-full rounded-3xl border-2 border-[#D4AF37]/35 bg-black/50 p-4 sm:p-6 space-y-5 shadow-xl"
                               >
-                                <div className="flex items-center justify-between border-b border-[#D4AF37]/20 pb-3">
+                                <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-[#D4AF37]/25 pb-4">
                                   <div className="flex items-center gap-3 text-left">
-                                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37] shrink-0">
-                                      <BoxIcon className="w-4 h-4" />
+                                    <div className="w-10 h-10 rounded-2xl bg-[#D4AF37]/15 border-2 border-[#D4AF37]/50 flex items-center justify-center text-[#D4AF37] shrink-0">
+                                      <BoxIcon className="w-5 h-5" />
                                     </div>
                                     <div>
-                                      <h4 className="text-xs sm:text-sm font-black uppercase tracking-widest text-[#D4AF37] font-[Cinzel]">
+                                      <h4 className="text-sm sm:text-base font-black uppercase tracking-widest text-[#D4AF37] font-[Cinzel]">
                                         {box.title}
                                       </h4>
-                                      <p className="text-[10px] text-zinc-400">{box.subtitle}</p>
+                                      <p className="text-[11px] text-zinc-300 font-medium mt-0.5">{box.subtitle}</p>
                                     </div>
                                   </div>
                                   <button
@@ -4365,243 +4387,336 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                         setNewServiceAllowQty(false);
                                         setNewServiceDefaultHours('3');
                                         setNewServiceHourlyRate('100');
+                                        setNewServiceImageUrl('');
                                         setShowAddForm(true);
                                       }
                                     }}
-                                    className={`px-3.5 py-2 rounded-full border transition-all shrink-0 cursor-pointer flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest ${
+                                    className={`px-4 py-2.5 rounded-full border-2 transition-all shrink-0 cursor-pointer flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest shadow-md ${
                                       isAddingHere
-                                        ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
-                                        : 'bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border-[#D4AF37]/30'
+                                        ? 'bg-zinc-900 text-zinc-200 border-zinc-400'
+                                        : 'bg-[#D4AF37] hover:bg-[#E5C76B] text-black border-[#D4AF37]'
                                     }`}
-                                    title={isAddingHere ? 'Close Form' : `Add to ${box.title}`}
                                   >
-                                    {isAddingHere ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                                    <span>{isAddingHere ? 'Close' : 'Add'}</span>
+                                    {isAddingHere ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
+                                    <span>{isAddingHere ? 'Cancel' : `+ Add ${box.type === 'location' ? 'Location' : 'Add-on'}`}</span>
                                   </button>
                                 </div>
 
-                                {/* Inline Pop-Down Add Form right below the header */}
+                                {/* Clearly Outlined Inline Add Form */}
                                 {isAddingHere && (
-                                  <div className="bg-black/90 p-4 sm:p-5 rounded-3xl border border-[#D4AF37]/40 space-y-4 text-left shadow-xl animate-in slide-in-from-top-2 duration-200">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] flex items-center gap-1.5">
-                                        <Plus className="w-3.5 h-3.5" />
-                                        Add {box.type === 'location' ? 'Location' : 'Add-on / Extra'}
+                                  <div className="bg-[#0a0a0a] p-4 sm:p-6 rounded-2xl border-2 border-[#D4AF37] space-y-5 text-left shadow-2xl animate-in slide-in-from-top-2 duration-200">
+                                    <div className="flex items-center justify-between border-b border-[#D4AF37]/25 pb-3">
+                                      <span className="text-xs font-black uppercase tracking-widest text-[#D4AF37] flex items-center gap-2">
+                                        <Plus className="w-4 h-4" />
+                                        New {box.type === 'location' ? 'Location Package' : 'Add-on / Extra'}
                                       </span>
                                       <button
                                         type="button"
                                         onClick={() => setShowAddForm(false)}
-                                        className="text-zinc-400 hover:text-white p-1 rounded-full transition-colors"
-                                        aria-label="Cancel adding option"
+                                        className="text-zinc-300 hover:text-white px-2.5 py-1 rounded-full border border-white/20 text-[10px] font-bold uppercase tracking-wider cursor-pointer"
                                       >
-                                        <X className="w-4 h-4" />
+                                        Close
                                       </button>
                                     </div>
 
-                                    <div className="space-y-1.5">
-                                      <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block pl-2">
-                                        {box.type === 'location' ? 'Location Name' : 'Add-on / Extra Name'}
-                                      </label>
-                                      <input
-                                        type="text"
-                                        autoFocus
-                                        className="w-full bg-black border border-white/15 rounded-full px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white"
-                                        placeholder={
-                                          box.type === 'location'
-                                            ? 'e.g. Lakewood, Brooklyn, Monsey...'
-                                            : 'e.g. Live Percussionist, Extra Speakers, Lighting...'
-                                        }
-                                        value={newServiceName}
-                                        onChange={e => setNewServiceName(e.target.value)}
-                                        onKeyDown={e => {
-                                          if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            handleAddService();
-                                          }
-                                        }}
-                                      />
-                                    </div>
-
                                     {box.type === 'location' ? (
-                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
+                                            1. Location Name
+                                          </label>
+                                          <input
+                                            type="text"
+                                            autoFocus
+                                            className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl px-3.5 text-sm font-bold text-white outline-none"
+                                            placeholder="e.g. Lakewood, Brooklyn"
+                                            value={newServiceName}
+                                            onChange={e => setNewServiceName(e.target.value)}
+                                          />
+                                        </div>
+
                                         <div className="space-y-1.5">
-                                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block pl-2">Base Price ($)</label>
+                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
+                                            2. Base Price ($)
+                                          </label>
                                           <div className="relative">
-                                            <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
                                             <input
                                               type="number"
-                                              className="w-full bg-black border border-white/15 rounded-full pl-9 pr-4 py-3 text-sm font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
+                                              className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl pl-8 pr-3 text-sm font-bold text-[#D4AF37] outline-none"
                                               placeholder="1500"
                                               value={newServicePrice}
                                               onChange={e => setNewServicePrice(e.target.value)}
-                                              onKeyDown={e => {
-                                                if (e.key === 'Enter') {
-                                                  e.preventDefault();
-                                                  handleAddService();
-                                                }
-                                              }}
                                             />
                                           </div>
                                         </div>
 
                                         <div className="space-y-1.5">
-                                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block pl-2">Default Hours</label>
+                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
+                                            3. Included Hours
+                                          </label>
                                           <input
                                             type="number"
                                             min="1"
-                                            className="w-full bg-black border border-white/15 rounded-full px-4 py-3 text-sm font-bold text-white focus:border-[#D4AF37] outline-none"
+                                            className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl px-3.5 text-sm font-bold text-white outline-none"
                                             placeholder="3"
                                             value={newServiceDefaultHours}
                                             onChange={e => setNewServiceDefaultHours(e.target.value)}
-                                            onKeyDown={e => {
-                                              if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                handleAddService();
-                                              }
-                                            }}
                                           />
                                         </div>
 
                                         <div className="space-y-1.5">
-                                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block pl-2">+$/Extra Hr</label>
+                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
+                                            4. Extra Hour ($/hr)
+                                          </label>
                                           <div className="relative">
-                                            <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
                                             <input
                                               type="number"
                                               min="0"
-                                              className="w-full bg-black border border-white/15 rounded-full pl-9 pr-4 py-3 text-sm font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
+                                              className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl pl-8 pr-3 text-sm font-bold text-[#D4AF37] outline-none"
                                               placeholder="100"
                                               value={newServiceHourlyRate}
                                               onChange={e => setNewServiceHourlyRate(e.target.value)}
-                                              onKeyDown={e => {
-                                                if (e.key === 'Enter') {
-                                                  e.preventDefault();
-                                                  handleAddService();
-                                                }
-                                              }}
                                             />
                                           </div>
                                         </div>
                                       </div>
                                     ) : (
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div className="space-y-1.5">
-                                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block pl-2">Price ($)</label>
+                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
+                                            1. Add-on Name
+                                          </label>
+                                          <input
+                                            type="text"
+                                            autoFocus
+                                            className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl px-3.5 text-sm font-bold text-white outline-none"
+                                            placeholder="e.g. Percussion, Lighting, Extra Singer"
+                                            value={newServiceName}
+                                            onChange={e => setNewServiceName(e.target.value)}
+                                          />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
+                                            2. Price ($)
+                                          </label>
                                           <div className="relative">
-                                            <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
                                             <input
                                               type="number"
-                                              className="w-full bg-black border border-white/15 rounded-full pl-9 pr-4 py-3 text-sm font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none"
+                                              className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl pl-8 pr-3 text-sm font-bold text-[#D4AF37] outline-none"
                                               placeholder="500"
                                               value={newServicePrice}
                                               onChange={e => setNewServicePrice(e.target.value)}
-                                              onKeyDown={e => {
-                                                if (e.key === 'Enter') {
-                                                  e.preventDefault();
-                                                  handleAddService();
-                                                }
-                                              }}
                                             />
                                           </div>
                                         </div>
 
-                                        <div className="space-y-1.5">
-                                          <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block pl-2">Short Note / Info (Compact)</label>
+                                        <div className="space-y-1.5 sm:col-span-2">
+                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
+                                            3. Photo Caption / Description (Shown in gold on top of photo when selected)
+                                          </label>
                                           <input
                                             type="text"
-                                            maxLength={28}
-                                            className="w-full bg-black border border-white/15 rounded-full px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white"
-                                            placeholder="e.g. Plays & sings, 2 mics..."
+                                            maxLength={80}
+                                            className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl px-3.5 text-sm font-semibold text-white outline-none"
+                                            placeholder="e.g. Percussion play & sing • 3 hours"
                                             value={newServiceUnit}
                                             onChange={e => setNewServiceUnit(e.target.value)}
-                                            onKeyDown={e => {
-                                              if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                handleAddService();
-                                              }
-                                            }}
                                           />
                                         </div>
                                       </div>
                                     )}
 
-                                    {box.type === 'amenities' && (
-                                      <button
-                                        type="button"
-                                        onClick={() => setNewServiceAllowQty(!newServiceAllowQty)}
-                                        className={`flex items-center justify-between w-full px-4 py-3 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all cursor-pointer ${
-                                          newServiceAllowQty
-                                            ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
-                                            : 'bg-black text-zinc-400 border-white/10 hover:border-[#D4AF37]/50'
-                                        }`}
-                                      >
-                                        <span className="flex items-center gap-2">
-                                          {newServiceAllowQty ? <CheckCircle className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
-                                          Enable Quantity (+ / -) Selection
+                                    {/* Evenly Laid Out Photo Upload + Quantity Row */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                                      <div className="space-y-1.5">
+                                        <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
+                                          {box.type === 'location' ? '5. Optional Location Photo' : '4. Add-on Showcase Photo'}
                                         </span>
-                                        <span>{newServiceAllowQty ? 'ON' : 'OFF'}</span>
-                                      </button>
-                                    )}
+                                        <div className="flex items-center gap-3">
+                                          <label className="flex-1 h-12 px-4 rounded-xl border-2 border-dashed border-[#D4AF37]/60 hover:border-[#D4AF37] bg-black/80 hover:bg-[#D4AF37]/10 text-[#D4AF37] font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer transition-all">
+                                            {isUploadingNewServiceImage ? (
+                                              <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                <span>Uploading {Math.round(uploadProgresses['newService'] || 0)}%</span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Camera className="w-4 h-4" />
+                                                <span>{newServiceImageUrl ? 'Change Photo' : 'Upload Photo'}</span>
+                                              </>
+                                            )}
+                                            <input
+                                              type="file"
+                                              accept="image/*"
+                                              className="hidden"
+                                              onChange={handleNewServiceImageUpload}
+                                            />
+                                          </label>
+                                          {newServiceImageUrl && (
+                                            <div className="relative w-12 h-12 rounded-xl overflow-hidden border-2 border-[#D4AF37] shrink-0 group">
+                                              <img src={newServiceImageUrl} alt="Preview" className="w-full h-full object-cover" />
+                                              <button
+                                                type="button"
+                                                onClick={() => setNewServiceImageUrl('')}
+                                                className="absolute inset-0 bg-black/70 text-red-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                                title="Remove photo"
+                                              >
+                                                <Trash2 className="w-4 h-4" />
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
 
-                                    <div className="flex gap-3 pt-1">
+                                      {box.type === 'amenities' && (
+                                        <div className="space-y-1.5">
+                                          <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
+                                            5. Quantity Control (+ / -)
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setNewServiceAllowQty(!newServiceAllowQty)}
+                                            className={`flex items-center justify-between w-full h-12 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all cursor-pointer ${
+                                              newServiceAllowQty
+                                                ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                                                : 'bg-black text-zinc-200 border-[#D4AF37]/40 hover:border-[#D4AF37]'
+                                            }`}
+                                          >
+                                            <span className="flex items-center gap-2">
+                                              {newServiceAllowQty ? <CheckCircle className="w-4 h-4" /> : <Layers className="w-4 h-4 text-[#D4AF37]" />}
+                                              Allow Client to Pick Quantity
+                                            </span>
+                                            <span className="px-2 py-0.5 rounded-full bg-black/20">{newServiceAllowQty ? 'ON' : 'OFF'}</span>
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="flex gap-3 pt-2 border-t border-[#D4AF37]/20">
                                       <button
                                         type="button"
                                         onClick={() => setShowAddForm(false)}
-                                        className="flex-1 bg-white/5 hover:bg-white/10 text-zinc-400 py-3 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all cursor-pointer"
+                                        className="flex-1 h-11 bg-black hover:bg-zinc-900 text-zinc-200 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 border-zinc-600 transition-all cursor-pointer"
                                       >
                                         Cancel
                                       </button>
                                       <button
                                         type="button"
                                         onClick={handleAddService}
-                                        className="flex-[2] bg-[#D4AF37] hover:bg-[#E5C76B] text-black py-3 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-[#D4AF37]/10 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                        disabled={isUploadingNewServiceImage}
+                                        className="flex-[2] h-11 bg-[#D4AF37] hover:bg-[#E5C76B] text-black rounded-xl text-[10px] font-black uppercase tracking-widest border-2 border-[#D4AF37] shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                                       >
-                                        <Plus className="w-4 h-4" /> Save Option
+                                        <Check className="w-4 h-4 stroke-[3]" /> Save {box.type === 'location' ? 'Location' : 'Add-on'}
                                       </button>
                                     </div>
                                   </div>
                                 )}
 
                                 {box.items.length > 0 ? (
-                                  <div className="space-y-3.5 w-full">
+                                  <div className="grid grid-cols-1 gap-4 w-full">
                                     {box.items.map((service) => {
-                                      const cleanNote = (service.unit && !['item', 'location', 'hour', 'hours'].includes(service.unit.toLowerCase())) ? service.unit : '';
+                                      const cleanNote = (service.unit && !['item', 'location', 'hour', 'hours', 'service', 'package'].includes(service.unit.toLowerCase())) ? service.unit : '';
+                                      const serviceImg = previewUrls[service.id] || service.image;
+                                      const isUploadingThis = uploadProgresses[service.id] !== undefined;
+
                                       return (
                                         <div
                                           key={service.id}
-                                          className="w-full bg-black/80 border border-white/10 hover:border-[#D4AF37]/40 rounded-3xl p-4 sm:p-5 space-y-3.5 transition-all"
+                                          className="w-full bg-[#0b0b0b] border-2 border-[#D4AF37]/40 hover:border-[#D4AF37] rounded-2xl p-4 sm:p-5 space-y-4 transition-all shadow-lg"
                                         >
-                                          <div className="flex items-center gap-3 w-full">
-                                            <div className="w-6 h-6 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37] flex items-center justify-center shrink-0">
-                                              <Check className="w-3.5 h-3.5 text-[#D4AF37]" />
+                                          {/* Top Row: Photo Upload Box + Option Name + Delete Button */}
+                                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full">
+                                            {/* Outlined Photo Thumbnail / Upload Button */}
+                                            <div className="flex items-center gap-2.5 shrink-0">
+                                              <label
+                                                className="relative w-14 h-14 rounded-xl border-2 border-[#D4AF37]/60 hover:border-[#D4AF37] bg-black flex flex-col items-center justify-center overflow-hidden cursor-pointer group/img shrink-0 transition-all"
+                                                title="Upload or change photo for this option"
+                                              >
+                                                {serviceImg ? (
+                                                  <>
+                                                    <img src={serviceImg} alt={service.name} className="w-full h-full object-cover" />
+                                                    <div className="absolute inset-0 bg-black/65 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-opacity">
+                                                      <Camera className="w-4 h-4 text-[#D4AF37]" />
+                                                    </div>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <Camera className="w-4 h-4 text-[#D4AF37]" />
+                                                    <span className="text-[8px] font-black uppercase tracking-wider text-[#D4AF37] mt-0.5">Photo</span>
+                                                  </>
+                                                )}
+                                                {isUploadingThis && (
+                                                  <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
+                                                    <Loader2 className="w-4 h-4 text-[#D4AF37] animate-spin" />
+                                                  </div>
+                                                )}
+                                                <input
+                                                  type="file"
+                                                  accept="image/*"
+                                                  className="hidden"
+                                                  onChange={(e) => handleServiceImageUpload(service.id, e)}
+                                                />
+                                              </label>
+                                              {serviceImg && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setPreviewUrls(prev => {
+                                                      const next = { ...prev };
+                                                      delete next[service.id];
+                                                      return next;
+                                                    });
+                                                    handleUpdateService(service.id, { image: '' }, true);
+                                                  }}
+                                                  className="px-2.5 py-1.5 rounded-lg bg-black border-2 border-red-500/40 hover:border-red-500 text-red-400 text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all"
+                                                  title="Remove photo"
+                                                >
+                                                  Remove Photo
+                                                </button>
+                                              )}
                                             </div>
-                                            <input
-                                              type="text"
-                                              className="flex-1 min-w-0 bg-black border border-white/15 focus:border-[#D4AF37] rounded-full text-sm font-bold text-zinc-100 outline-none px-4 py-2.5"
-                                              value={service.name}
-                                              onChange={e => handleUpdateService(service.id, { name: e.target.value })}
-                                              onBlur={flushAutoSave}
-                                              placeholder="Option Name"
-                                            />
-                                            <button
-                                              type="button"
-                                              onClick={() => handleRemoveService(service.id)}
-                                              className="p-2.5 text-zinc-400 hover:text-red-400 bg-black border border-white/15 hover:border-red-500/40 rounded-full transition-colors shrink-0 cursor-pointer"
-                                              title="Delete Option"
-                                            >
-                                              <Trash2 className="w-4 h-4" />
-                                            </button>
+
+                                            <div className="flex-1 min-w-0">
+                                              <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">
+                                                {box.type === 'location' ? 'Location Name' : 'Add-on Name'}
+                                              </span>
+                                              <input
+                                                type="text"
+                                                className="w-full h-11 bg-black border-2 border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-xl text-sm font-bold text-zinc-100 outline-none px-3.5"
+                                                value={service.name}
+                                                onChange={e => handleUpdateService(service.id, { name: e.target.value })}
+                                                onBlur={flushAutoSave}
+                                                placeholder="Option Name"
+                                              />
+                                            </div>
+
+                                            <div className="flex sm:flex-col justify-end sm:pt-4 shrink-0">
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoveService(service.id)}
+                                                className="h-11 px-3.5 text-red-400 hover:bg-red-500 hover:text-white bg-black border-2 border-red-500/45 hover:border-red-500 rounded-xl transition-all shrink-0 cursor-pointer flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-wider"
+                                                title="Delete Option"
+                                              >
+                                                <Trash2 className="w-4 h-4" />
+                                                <span className="sm:hidden">Delete</span>
+                                              </button>
+                                            </div>
                                           </div>
 
+                                          {/* Bottom Even Grid Row */}
                                           {box.type === 'location' ? (
-                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full pt-1">
                                               <div>
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block mb-1.5 pl-3">Base Price ($)</span>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">Base Price ($)</span>
                                                 <div className="relative">
-                                                  <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                                                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
                                                   <input
                                                     type="number"
-                                                    className="w-full bg-black border border-white/15 rounded-full pl-9 pr-4 py-2.5 text-sm font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none tabular-nums"
+                                                    className="w-full h-11 bg-black border-2 border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-xl pl-8 pr-3 text-sm font-bold text-[#D4AF37] outline-none tabular-nums"
                                                     value={service.price}
                                                     onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
                                                     onBlur={flushAutoSave}
@@ -4609,24 +4724,24 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                                 </div>
                                               </div>
                                               <div>
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block mb-1.5 pl-3">Default Hours</span>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">Included Hours</span>
                                                 <input
                                                   type="number"
                                                   min="1"
-                                                  className="w-full bg-black border border-white/15 rounded-full px-4 py-2.5 text-sm font-bold text-zinc-100 focus:border-[#D4AF37] outline-none text-center tabular-nums"
+                                                  className="w-full h-11 bg-black border-2 border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-xl px-3.5 text-sm font-bold text-zinc-100 outline-none text-center tabular-nums"
                                                   value={service.defaultHours ?? 3}
                                                   onChange={e => handleUpdateService(service.id, { defaultHours: Math.max(1, parseInt(e.target.value) || 1) })}
                                                   onBlur={flushAutoSave}
                                                 />
                                               </div>
                                               <div>
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block mb-1.5 pl-3">+$/Extra Hr</span>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">Extra Hour ($/hr)</span>
                                                 <div className="relative">
-                                                  <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                                                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
                                                   <input
                                                     type="number"
                                                     min="0"
-                                                    className="w-full bg-black border border-white/15 rounded-full pl-9 pr-4 py-2.5 text-sm font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none tabular-nums"
+                                                    className="w-full h-11 bg-black border-2 border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-xl pl-8 pr-3 text-sm font-bold text-[#D4AF37] outline-none tabular-nums"
                                                     value={service.hourlyRate ?? 100}
                                                     onChange={e => handleUpdateService(service.id, { hourlyRate: Math.max(0, parseFloat(e.target.value) || 0) })}
                                                     onBlur={flushAutoSave}
@@ -4635,44 +4750,44 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                               </div>
                                             </div>
                                           ) : (
-                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+                                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 w-full pt-1">
                                               <div>
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block mb-1.5 pl-3">Price ($)</span>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">Price ($)</span>
                                                 <div className="relative">
-                                                  <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                                                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
                                                   <input
                                                     type="number"
-                                                    className="w-full bg-black border border-white/15 rounded-full pl-9 pr-4 py-2.5 text-sm font-bold text-[#D4AF37] focus:border-[#D4AF37] outline-none tabular-nums"
+                                                    className="w-full h-11 bg-black border-2 border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-xl pl-8 pr-3 text-sm font-bold text-[#D4AF37] outline-none tabular-nums"
                                                     value={service.price}
                                                     onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
                                                     onBlur={flushAutoSave}
                                                   />
                                                 </div>
                                               </div>
-                                              <div>
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block mb-1.5 pl-3">Short Note / Info</span>
+                                              <div className="sm:col-span-2">
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">Photo Description (Shown on photo)</span>
                                                 <input
                                                   type="text"
-                                                  maxLength={28}
-                                                  placeholder="e.g. Plays & sings"
-                                                  className="w-full bg-black border border-white/15 rounded-full px-4 py-2.5 text-sm font-semibold text-zinc-200 focus:border-[#D4AF37] outline-none"
+                                                  maxLength={80}
+                                                  placeholder="e.g. Percussion play & sing • 3 hours"
+                                                  className="w-full h-11 bg-black border-2 border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-xl px-3.5 text-sm font-semibold text-zinc-100 outline-none"
                                                   value={cleanNote}
-                                                  onChange={e => handleUpdateService(service.id, { unit: e.target.value.slice(0, 28) })}
+                                                  onChange={e => handleUpdateService(service.id, { unit: e.target.value.slice(0, 80) })}
                                                   onBlur={flushAutoSave}
                                                 />
                                               </div>
                                               <div>
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block mb-1.5 pl-3">Multiple (+ / -)</span>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">Quantity (+ / -)</span>
                                                 <button
                                                   type="button"
                                                   onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity }, true)}
-                                                  className={`w-full px-4 py-2.5 rounded-full text-xs font-black uppercase tracking-wider border transition-all truncate cursor-pointer ${
+                                                  className={`w-full h-11 px-3.5 rounded-xl text-xs font-black uppercase tracking-wider border-2 transition-all truncate cursor-pointer ${
                                                     service.allowQuantity
-                                                      ? 'text-[#D4AF37] border-[#D4AF37]/40 bg-[#D4AF37]/10'
-                                                      : 'text-zinc-400 border-white/15 hover:text-zinc-200'
+                                                      ? 'text-black border-[#D4AF37] bg-[#D4AF37]'
+                                                      : 'text-zinc-200 bg-black border-[#D4AF37]/35 hover:border-[#D4AF37]'
                                                   }`}
                                                 >
-                                                  {service.allowQuantity ? 'Qty: On' : 'Single'}
+                                                  {service.allowQuantity ? 'Multiple: ON' : 'Single Only'}
                                                 </button>
                                               </div>
                                             </div>
@@ -4682,8 +4797,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                     })}
                                   </div>
                                 ) : !isAddingHere ? (
-                                  <div className="py-8 text-center border border-dashed border-white/10 rounded-3xl">
-                                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">No {box.type === 'location' ? 'location' : 'add-on'} options yet</p>
+                                  <div className="py-8 text-center border-2 border-dashed border-[#D4AF37]/30 rounded-2xl bg-black/40">
+                                    <p className="text-xs text-zinc-300 font-bold uppercase tracking-widest">No {box.type === 'location' ? 'location' : 'add-on'} options yet</p>
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -4694,11 +4809,12 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                         setNewServiceAllowQty(false);
                                         setNewServiceDefaultHours('3');
                                         setNewServiceHourlyRate('100');
+                                        setNewServiceImageUrl('');
                                         setShowAddForm(true);
                                       }}
-                                      className="mt-2 px-4 py-2 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[10px] font-black text-[#D4AF37] uppercase tracking-widest hover:bg-[#D4AF37] hover:text-black transition-all cursor-pointer"
+                                      className="mt-3 px-5 py-2.5 rounded-full bg-[#D4AF37] border-2 border-[#D4AF37] text-[10px] font-black text-black uppercase tracking-widest hover:bg-[#E5C76B] transition-all cursor-pointer shadow-md"
                                     >
-                                      + Add {box.type === 'location' ? 'location' : 'add-on'} option
+                                      + Add {box.type === 'location' ? 'Location' : 'Add-on'} Option
                                     </button>
                                   </div>
                                 ) : null}

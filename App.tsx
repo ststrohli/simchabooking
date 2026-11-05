@@ -171,7 +171,7 @@ const AnimatedRoleSwitcher: React.FC<{
   return (
     <motion.nav
       aria-label="Account Role Switcher"
-      className="fixed top-[68px] sm:top-[74px] left-2 sm:left-[10px] z-50 flex items-center pointer-events-auto will-change-transform transform-gpu"
+      className="fixed top-[67px] sm:top-[73px] left-1.5 sm:left-2 z-50 flex items-center pointer-events-auto will-change-transform transform-gpu"
     >
       <div className="simcha-switch-track relative flex items-center gap-[3px] h-[28px] sm:h-[30px] bg-zinc-950/95 border border-[#D4AF37]/45 backdrop-blur-xl rounded-full p-[3px] shadow-[0_6px_16px_rgba(0,0,0,0.9),0_0_10px_rgba(212,175,55,0.2)] text-[9.5px] sm:text-[10px] tracking-normal uppercase font-extrabold leading-none">
         <motion.div
@@ -562,12 +562,12 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-signup-title"
-      className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu absolute inset-0 z-30 bg-black/75 backdrop-blur-sm flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
+      className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu absolute inset-x-0 bottom-0 top-7 z-30 bg-black/75 backdrop-blur-sm flex flex-col justify-end items-center p-0 overflow-hidden rounded-t-[2.5rem] ${isDismissing ? 'pointer-events-none' : ''}`}
     >
       <motion.div
         {...dragModalProps}
         transition={AUTH_MODAL_TRANSITION}
-        className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu bg-[#111] w-full sm:w-full sm:max-w-xl h-[calc(93dvh+2.5rem)] pb-[2.5rem] sm:h-auto sm:pb-0 sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-[2.5rem] sm:rounded-2xl border-2 sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 ${isDismissing ? 'pointer-events-none' : ''}`}
+        className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu bg-[#111] w-full h-full pb-[2.5rem] sm:pb-0 rounded-t-[2.5rem] rounded-b-[2.5rem] border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 ${isDismissing ? 'pointer-events-none' : ''}`}
       >
         {/* Top bar drag indicator positioned across the top edge, leaving top-right corner clear for X button */}
         <div
@@ -828,19 +828,18 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
   const handleSignInDismissStart = useCallback(() => {
     isSignInDismissingRef.current = true;
     document.body.style.overflow = '';
-    if (isNestedSignUpDismissing) {
-      onCloseSignUp();
-    }
-  }, [isNestedSignUpDismissing, onCloseSignUp]);
+    onCloseSignUp();
+  }, [onCloseSignUp]);
 
   const handleSignInFinishClose = useCallback(() => {
+    onCloseSignUp();
     onClose(openId);
-  }, [onClose, openId]);
+  }, [onClose, onCloseSignUp, openId]);
 
   const isSignInInteractive = !isSignUpOpen || isNestedSignUpDismissing;
   const { backdropOpacity, isDismissing, dragModalProps, dragHandleProps, dismissWithSlideOut } = useModalDragDismiss(
     handleSignInFinishClose,
-    isSignInInteractive,
+    !isLoading,
     handleSignInDismissStart
   );
 
@@ -856,13 +855,14 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
       <motion.div
         {...dragModalProps}
         transition={AUTH_MODAL_TRANSITION}
-        className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu bg-[#111] w-full sm:max-w-xl h-[calc(96dvh+2.5rem)] -mb-[2.5rem] pb-[2.5rem] sm:h-auto sm:mb-0 sm:pb-0 sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-[2.5rem] sm:rounded-3xl border-2 sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 ${isDismissing ? 'pointer-events-none' : ''}`}
+        className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu bg-[#111] w-full sm:max-w-xl h-[calc(96dvh+2.5rem)] -mb-[2.5rem] pb-[2.5rem] sm:h-[88vh] sm:mb-0 sm:pb-0 sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-[2.5rem] sm:rounded-[2.5rem] border-2 sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 ${isDismissing ? 'pointer-events-none' : ''}`}
       >
-        {/* Top bar drag area with centered drag indicator pill, leaving top-right corner clear for X button */}
+        {/* Top bar drag area with centered gold drag indicator pill — stays exposed above nested SignUpModal so dragging it dismisses both modals at once */}
         <div
           {...dragHandleProps}
           data-drag-handle="true"
-          className="absolute top-0 left-0 right-14 z-30 pt-1.5 pb-4 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+          title={isSignUpOpen ? "Drag down to close both windows" : "Drag down to close"}
+          className="absolute top-0 left-0 right-14 z-[70] pt-1.5 pb-2 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
         >
           <div className="pl-14">
             <ModalDragIndicator />
@@ -3026,7 +3026,9 @@ function App() {
           selectedServices: item.selectedServices || [],
           eventLocation: item.eventLocation || '',
           eventTime: item.eventTime || '',
-          notes: item.notes || '',
+          notes: item.isOffer && (item.offeredPrice || item.amount) && !item.notes?.includes('OFFERED PRICE:')
+            ? `OFFERED PRICE: $${item.offeredPrice || item.amount}. ${item.notes || ''}`.trim()
+            : (item.notes || ''),
           isOffer: !!item.isOffer || !!item.notes?.includes('OFFERED PRICE:'),
           offeredPrice: item.offeredPrice,
           createdAt: itemCreatedAt || nowIso
@@ -4754,7 +4756,7 @@ function App() {
         className="relative z-20 flex-1 flex flex-col pb-36 md:pb-0 will-change-transform"
       >
         <section className="simcha-hero-section relative bg-black text-white z-20 shadow-none overflow-hidden" aria-labelledby="hero-title">
-          <div className="simcha-hero-media-wrap absolute top-0 bottom-0 -left-[2px] -right-[2px] rounded-t-[16px] sm:rounded-t-[20px] overflow-hidden pointer-events-none z-0" aria-hidden="true">
+          <div className="simcha-hero-media-wrap absolute top-0 bottom-0 left-0 right-0 rounded-t-[20px] sm:rounded-t-[22px] overflow-hidden pointer-events-none z-0" aria-hidden="true">
             <motion.div
               className="absolute inset-0 z-0 will-change-transform transform-gpu"
               style={{ scale: heroBgScale }}
@@ -4762,7 +4764,7 @@ function App() {
               {renderMedia(heroBackgroundUrl, "simcha-hero-media w-full h-full object-cover opacity-100", undefined, true, true)}
             </motion.div>
           </div>
-          <div className="absolute top-0 -bottom-1 -left-[2px] -right-[2px] rounded-t-[16px] sm:rounded-t-[20px] pointer-events-none z-[1] simcha-image-fader-hero" aria-hidden="true"></div>
+          <div className="absolute top-0 -bottom-1 left-0 right-0 rounded-t-[20px] sm:rounded-t-[22px] pointer-events-none z-[1] simcha-image-fader-hero" aria-hidden="true"></div>
           <div className="relative z-10 max-w-7xl mx-auto px-4 pt-[72px] sm:pt-[74px] pb-[64px] sm:pb-[72px] md:pt-[118px] md:pb-28 text-center">
             <motion.h2
               id="hero-title"
@@ -5181,7 +5183,7 @@ function App() {
 
       <motion.aside
         aria-label="Support Assistance"
-        className="fixed top-[68px] sm:top-[74px] right-2 sm:right-[10px] z-50 flex items-center pointer-events-auto will-change-transform transform-gpu"
+        className="fixed top-[67px] sm:top-[73px] right-1.5 sm:right-2 z-50 flex items-center pointer-events-auto will-change-transform transform-gpu"
       >
         <motion.button 
           whileHover={{ scale: 1.05 }}
@@ -5247,10 +5249,10 @@ function App() {
             </div>
           </div>
         </div>
-        <div className="simcha-header-arch-wrap absolute inset-x-0 top-full h-[16px] sm:h-[20px] overflow-hidden pointer-events-none z-10" aria-hidden="true">
-          <div className="simcha-header-corner-triangle-left absolute top-0 -left-[2px] w-[16px] h-[16px] sm:w-[20px] sm:h-[20px]" />
-          <div className="simcha-header-corner-triangle-right absolute top-0 -right-[2px] w-[16px] h-[16px] sm:w-[20px] sm:h-[20px]" />
-          <div className="simcha-header-arch-line absolute top-0 -left-[2px] -right-[2px] z-10 h-[36px] rounded-t-[16px] sm:rounded-t-[20px]" />
+        <div className="simcha-header-arch-wrap absolute inset-x-0 top-full h-[20px] sm:h-[22px] overflow-hidden pointer-events-none z-10" aria-hidden="true">
+          <div className="simcha-header-corner-triangle-left absolute top-0 left-0 w-[20px] h-[20px] sm:w-[22px] sm:h-[22px]" />
+          <div className="simcha-header-corner-triangle-right absolute top-0 right-0 w-[20px] h-[20px] sm:w-[22px] sm:h-[22px]" />
+          <div className="simcha-header-arch-line absolute top-0 -left-[1.5px] -right-[1.5px] z-10 h-[24px] sm:h-[26px] rounded-t-[20px] sm:rounded-t-[22px]" />
         </div>
       </header>
       {renderActiveView()}

@@ -280,7 +280,7 @@ export const ModalDragIndicator: React.FC<{ className?: string }> = React.memo((
     role="button"
     tabIndex={-1}
   >
-    <div className="simcha-drag-pill w-10 h-1.5 rounded-full bg-white/65 group-hover:bg-[#D4AF37] group-active:bg-[#D4AF37] backdrop-blur-sm shadow-[0_1px_4px_rgba(0,0,0,0.85)] transition-colors" />
+    <div className="simcha-drag-pill w-14 h-1 rounded-full bg-[#D4AF37] group-hover:bg-[#E5C76B] group-active:scale-x-105 transition-all duration-200" />
   </div>
 ));
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { X, Star, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, CheckCircle, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { Vendor, SelectedService, VendorCategory, VendorService, ServiceCategoryType } from '../types';
 import LocationAutocomplete from './LocationAutocomplete';
@@ -432,12 +432,15 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     }
   }, [isOpen, vendor]);
 
+  const [activeShowcaseServiceId, setActiveShowcaseServiceId] = useState<string | null>(null);
+
   useEffect(() => {
     if (isOpen) {
         setIsOfferMode(false);
         setOfferedPrice('');
         setLocationHours({});
         setHourPopups({});
+        setActiveShowcaseServiceId(null);
         if (initialDetails) {
             setFormData({ 
               eventName: initialDetails.eventName || '', 
@@ -580,10 +583,28 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
           ? prev.filter(id => !conflictingIds.includes(id))
           : prev;
 
-        return [...filteredPrev, serviceId];
+        const nextIds = [...filteredPrev, serviceId];
+        if (targetService?.image) {
+          setActiveShowcaseServiceId(serviceId);
+        }
+        return nextIds;
       }
     });
   }, [vendor?.services]);
+
+  const selectedServicesWithPhotos = useMemo(() => {
+    if (!vendor?.services) return [];
+    return vendor.services.filter(s => selectedServiceIds.includes(s.id) && Boolean(s.image));
+  }, [vendor?.services, selectedServiceIds]);
+
+  const activePhotoService = useMemo(() => {
+    if (selectedServicesWithPhotos.length === 0) return null;
+    if (activeShowcaseServiceId) {
+      const found = selectedServicesWithPhotos.find(s => s.id === activeShowcaseServiceId);
+      if (found) return found;
+    }
+    return selectedServicesWithPhotos[selectedServicesWithPhotos.length - 1];
+  }, [selectedServicesWithPhotos, activeShowcaseServiceId]);
 
   const handleQuantityChange = useCallback((serviceId: string, val: string) => {
     const num = parseInt(val) || 0;
@@ -983,7 +1004,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     <motion.div 
       style={{ opacity: backdropOpacity }}
       transition={MODAL_TRANSITION}
-      className={`${isNested ? "absolute inset-0 z-30 bg-black/75 backdrop-blur-sm flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 overflow-hidden" : "fixed inset-0 z-[160] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden"} ${isDismissing ? 'pointer-events-none' : ''}`} 
+      className={`${isNested ? "absolute inset-x-0 bottom-0 top-7 z-30 bg-black/75 backdrop-blur-sm flex flex-col justify-end items-center p-0 overflow-hidden rounded-t-[2.5rem]" : "fixed inset-0 z-[160] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden"} ${isDismissing ? 'pointer-events-none' : ''}`} 
       role="dialog" 
       aria-modal="true" 
       aria-labelledby="modal-title"
@@ -1004,7 +1025,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
           key="booking-success"
           {...dragModalProps}
           transition={MODAL_TRANSITION}
-          className={`bg-[#0a0a0a] w-full sm:max-w-md h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 relative overflow-hidden shadow-2xl flex flex-col mt-auto sm:mt-0 p-6 md:p-10 text-center transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+          className={`bg-[#0a0a0a] w-full ${isNested ? 'h-full sm:max-w-full rounded-t-[2.5rem] rounded-b-none' : 'sm:max-w-md h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl'} border-t-2 border-r border-l sm:border border-[#D4AF37]/30 relative overflow-hidden shadow-2xl flex flex-col mt-auto sm:mt-0 p-6 md:p-10 text-center transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
         >
           {/* Top bar drag handle on success view, leaving top-right corner clear for X button */}
           <div 
@@ -1090,7 +1111,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className={`bg-[#0a0a0a] w-full sm:w-full sm:max-w-xl h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+        className={`bg-[#0a0a0a] w-full ${isNested ? 'h-full sm:max-w-full rounded-t-[2.5rem] rounded-b-none' : 'sm:w-full sm:max-w-xl h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl'} border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
       >
         {/* Top bar drag indicator positioned across the top edge, leaving top-right corner clear for X button */}
         <div 
@@ -1113,6 +1134,82 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
         >
           <X className="w-4 h-4" />
         </button>
+
+        {/* Top Add-on Photo Showcase Banner (fades in smoothly when a selected add-on has a picture) */}
+        <AnimatePresence initial={false}>
+          {activePhotoService && activePhotoService.image && (() => {
+            const rawBannerNote = (activePhotoService.unit || '').trim();
+            const bannerNote = rawBannerNote && !['item', 'location', 'hour', 'hours', 'service', 'package'].includes(rawBannerNote.toLowerCase())
+              ? rawBannerNote
+              : '';
+            return (
+              <motion.div
+                key="booking-addon-photo-banner"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                className="relative w-full shrink-0 overflow-hidden bg-black border-b border-[#D4AF37]/25"
+              >
+                <div className="relative w-full h-44 sm:h-52 overflow-hidden">
+                  <motion.img
+                    key={activePhotoService.image}
+                    src={activePhotoService.image}
+                    alt={activePhotoService.name}
+                    initial={{ opacity: 0, scale: 1.03 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.4, ease: 'easeOut' }}
+                    className="w-full h-full object-cover object-center select-none"
+                  />
+                  {/* Mode-aware bottom fade so gold description stands out cleanly in both Dark Mode & Light Mode */}
+                  <div className="pointer-events-none absolute inset-0 simcha-addon-banner-fader" />
+
+                  {/* Selected Add-on Name & Description on the Photo Fade in Gold */}
+                  <div className="absolute inset-x-0 bottom-0 z-10 px-6 pb-3.5 pt-8 flex flex-col items-start justify-end">
+                    <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4AF37] block">
+                          {activePhotoService.name}
+                        </span>
+                        {bannerNote ? (
+                          <p className="text-xs sm:text-sm font-extrabold text-[#D4AF37] tracking-wide mt-0.5 leading-snug drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]">
+                            {bannerNote}
+                          </p>
+                        ) : (
+                          <p className="text-xs font-bold text-[#D4AF37] tracking-wide mt-0.5">
+                            ${activePhotoService.price.toLocaleString()} Selected Option
+                          </p>
+                        )}
+                      </div>
+
+                      {selectedServicesWithPhotos.length > 1 && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {selectedServicesWithPhotos.map((svc) => {
+                            const isCurrent = svc.id === activePhotoService.id;
+                            return (
+                              <button
+                                key={svc.id}
+                                type="button"
+                                onClick={() => setActiveShowcaseServiceId(svc.id)}
+                                className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border transition-all cursor-pointer ${
+                                  isCurrent
+                                    ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                                    : 'bg-black/70 text-[#D4AF37] border-[#D4AF37]/40 hover:border-[#D4AF37]'
+                                }`}
+                              >
+                                {svc.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })()}
+        </AnimatePresence>
 
         <div 
           {...dragHandleProps}
@@ -1303,7 +1400,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                       : 'bg-black/60 border-[#D4AF37]/15 hover:border-[#D4AF37]/45'
                                   }`}
                                 >
-                                  {/* Left: Checkbox + Name + Optional Short Note */}
+                                  {/* Left: Checkbox + Name + Photo Icon Indicator */}
                                   <div className={`flex items-center gap-2 min-w-0 ${(isLocationGroup || canMultiple) ? 'max-w-[42%] sm:max-w-[44%]' : 'flex-1 pr-2'}`}>
                                     <div
                                       className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
@@ -1317,7 +1414,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                     <span className="text-xs sm:text-[13px] font-bold text-white truncate">
                                       {service.name}
                                     </span>
-                                    {shortNote && (
+                                    {!service.image && shortNote && (
                                       <span className="text-[9px] sm:text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-2 py-0.5 rounded-full shrink-0 truncate max-w-[90px] sm:max-w-[130px]">
                                         {shortNote}
                                       </span>

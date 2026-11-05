@@ -269,28 +269,32 @@ export function subscribeToUserInbox(userId: string, callback: (conversations: a
  * from the other party, records last_read_by / last_read_at_iso on the parent conversation doc,
  * and resets unread_count to 0 on their specific members/{userId} document.
  */
-export async function markChatAsRead(conversationId: string, userId: string) {
+export async function markChatAsRead(conversationId: string, userId: string, additionalReaderIds: string[] = []) {
   if (!conversationId || !userId) return;
 
   const conDocRef = doc(db, 'conversations', conversationId);
   const messagesColRef = collection(conDocRef, 'messages');
+  const readerIdsSet = new Set([userId, ...additionalReaderIds].filter(Boolean));
 
   try {
-    const q = query(messagesColRef, limit(50));
+    const q = query(messagesColRef, limit(100));
     const snapshot = await getDocsSafe(q);
 
     const batch = writeBatch(db);
     const timestamp = serverTimestamp();
     const nowIso = new Date().toISOString();
     let hasIncomingMessages = false;
+    let updatedMessagesCount = 0;
 
     snapshot.docs.forEach((msgDoc) => {
       const data = msgDoc.data();
       const readBy = data.read_by || {};
       const msgSenderId = data.sender_id || data.senderId || '';
+      const msgReceiverId = data.receiver_id || data.receiverId || '';
 
-      // Only mark messages sent by the OTHER party as read when userId opens the conversation
-      if (msgSenderId && msgSenderId !== userId) {
+      // Mark messages sent by the OTHER party (or addressed to any of readerIdsSet) as read
+      const isIncoming = (msgSenderId && !readerIdsSet.has(msgSenderId)) || (msgReceiverId && readerIdsSet.has(msgReceiverId));
+      if (isIncoming) {
         hasIncomingMessages = true;
         if (!readBy[userId] || !data.isRead) {
           batch.update(msgDoc.ref, {
@@ -298,32 +302,41 @@ export async function markChatAsRead(conversationId: string, userId: string) {
             isRead: true,
             readAt: nowIso,
           });
+          updatedMessagesCount++;
         }
       }
     });
 
-    // Update parent conversation read-receipt metadata so the sender's listener sees it immediately
-    const convoReadUpdate: Record<string, any> = {
-      last_read_by: {
-        [userId]: timestamp,
-      },
-      last_read_at_iso: {
-        [userId]: nowIso,
-      },
-    };
-    if (hasIncomingMessages) {
-      convoReadUpdate.last_message_read = true;
+    if (updatedMessagesCount > 0) {
+      await batch.commit();
     }
-    batch.set(conDocRef, convoReadUpdate, { merge: true });
 
-    // Reset unread_count to 0 on their members/{userId} doc
-    const memberDocRef = doc(conDocRef, 'members', userId);
-    batch.set(memberDocRef, {
-      unread_count: 0,
-      last_read_at: timestamp
-    }, { merge: true });
+    // Update parent conversation and member metadata separately so any rule restriction on subdocs never blocks message isRead updates
+    try {
+      const metaBatch = writeBatch(db);
+      const convoReadUpdate: Record<string, any> = {
+        last_read_by: {
+          [userId]: timestamp,
+        },
+        last_read_at_iso: {
+          [userId]: nowIso,
+        },
+      };
+      if (hasIncomingMessages) {
+        convoReadUpdate.last_message_read = true;
+      }
+      metaBatch.set(conDocRef, convoReadUpdate, { merge: true });
 
-    await batch.commit();
+      const memberDocRef = doc(conDocRef, 'members', userId);
+      metaBatch.set(memberDocRef, {
+        unread_count: 0,
+        last_read_at: timestamp
+      }, { merge: true });
+
+      await metaBatch.commit();
+    } catch (metaErr) {
+      // Non-fatal metadata update
+    }
   } catch (err) {
     console.warn("Failed to mark chat as read in transaction/batch:", err);
   }
