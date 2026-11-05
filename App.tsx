@@ -562,7 +562,7 @@ const AuthSignUpModal: React.FC<AuthSignUpModalProps> = React.memo(({
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-signup-title"
-      className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu absolute inset-x-0 bottom-0 top-7 z-30 bg-black/75 backdrop-blur-sm flex flex-col justify-end items-center p-0 overflow-hidden rounded-t-[2.5rem] ${isDismissing ? 'pointer-events-none' : ''}`}
+      className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu absolute inset-x-0 bottom-0 top-7 z-30 bg-transparent flex flex-col justify-end items-center p-0 overflow-hidden rounded-t-[2.5rem] ${isDismissing ? 'pointer-events-none' : ''}`}
     >
       <motion.div
         {...dragModalProps}
@@ -828,8 +828,7 @@ const AuthSignInModal: React.FC<AuthSignInModalProps> = React.memo(({
   const handleSignInDismissStart = useCallback(() => {
     isSignInDismissingRef.current = true;
     document.body.style.overflow = '';
-    onCloseSignUp();
-  }, [onCloseSignUp]);
+  }, []);
 
   const handleSignInFinishClose = useCallback(() => {
     onCloseSignUp();

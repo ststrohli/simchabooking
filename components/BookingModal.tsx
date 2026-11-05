@@ -22,7 +22,7 @@ const inferServiceCategory = (service: VendorService): ServiceCategoryType => {
   return 'amenities';
 };
 
-const MODAL_TRANSITION = { duration: 1, ease: [0.25, 1, 0.5, 1] as const };
+const MODAL_TRANSITION = { duration: 1.15, ease: [0.25, 0.85, 0.35, 1] as const };
 
 const FloatingInput: React.FC<{
   id: string;
@@ -1004,7 +1004,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     <motion.div 
       style={{ opacity: backdropOpacity }}
       transition={MODAL_TRANSITION}
-      className={`${isNested ? "absolute inset-x-0 bottom-0 top-7 z-30 bg-black/75 backdrop-blur-sm flex flex-col justify-end items-center p-0 overflow-hidden rounded-t-[2.5rem]" : "fixed inset-0 z-[160] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden"} ${isDismissing ? 'pointer-events-none' : ''}`} 
+      className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu ${isNested ? "absolute inset-x-0 bottom-0 top-7 z-30 bg-transparent flex flex-col justify-end items-center p-0 overflow-hidden rounded-t-[2.5rem]" : "fixed inset-0 z-[160] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden"} ${isDismissing ? 'pointer-events-none' : ''}`} 
       role="dialog" 
       aria-modal="true" 
       aria-labelledby="modal-title"
@@ -1025,7 +1025,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
           key="booking-success"
           {...dragModalProps}
           transition={MODAL_TRANSITION}
-          className={`bg-[#0a0a0a] w-full ${isNested ? 'h-full sm:max-w-full rounded-t-[2.5rem] rounded-b-none' : 'sm:max-w-md h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl'} border-t-2 border-r border-l sm:border border-[#D4AF37]/30 relative overflow-hidden shadow-2xl flex flex-col mt-auto sm:mt-0 p-6 md:p-10 text-center transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+          className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu bg-[#111] w-full ${isNested ? 'h-full sm:max-w-full rounded-t-[2.5rem] rounded-b-none' : 'sm:max-w-md h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl'} border-t-2 border-r border-l sm:border border-[#D4AF37]/30 relative overflow-hidden shadow-2xl flex flex-col mt-auto sm:mt-0 p-6 md:p-10 text-center ${isDismissing ? 'pointer-events-none' : ''}`}
         >
           {/* Top bar drag handle on success view, leaving top-right corner clear for X button */}
           <div 
@@ -1111,7 +1111,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className={`bg-[#0a0a0a] w-full ${isNested ? 'h-full sm:max-w-full rounded-t-[2.5rem] rounded-b-none' : 'sm:w-full sm:max-w-xl h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl'} border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+        className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu bg-[#111] w-full ${isNested ? 'h-full sm:max-w-full rounded-t-[2.5rem] rounded-b-none' : 'sm:w-full sm:max-w-xl h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-2xl'} border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 ${isDismissing ? 'pointer-events-none' : ''}`}
       >
         {/* Top bar drag indicator positioned across the top edge, leaving top-right corner clear for X button */}
         <div 

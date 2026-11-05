@@ -54,7 +54,7 @@ const renderMedia = (url: string | undefined | null, className: string, defaultC
   return <img src={url} className={className} alt="" />;
 };
 
-const EVENT_MODAL_TRANSITION = { duration: 1, ease: [0.25, 1, 0.5, 1] as const };
+const EVENT_MODAL_TRANSITION = { duration: 1.15, ease: [0.25, 0.85, 0.35, 1] as const };
 
 const VendorEventScopeModal: React.FC<{
   selectedCalendarEvent: {
@@ -373,8 +373,139 @@ const VendorEventScopeModal: React.FC<{
   );
 };
 
+type ProfileSettingModalType = 'basic' | 'locations' | 'addons' | 'media' | 'offers' | 'privacy' | 'email' | null;
+
+const VendorSettingSheetModal: React.FC<{
+  title: string;
+  subtitle: string;
+  badgeText?: string;
+  icon: any;
+  onClose: () => void;
+  headerRight?: React.ReactNode;
+  children: React.ReactNode;
+}> = ({
+  title,
+  subtitle,
+  badgeText = 'Vendor Settings',
+  icon: Icon,
+  onClose,
+  headerRight,
+  children,
+}) => {
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
+  const { backdropOpacity, isDismissing, dragModalProps, dragHandleProps, dismissWithSlideOut } = useModalDragDismiss(
+    onClose,
+    true
+  );
+
+  useEffect(() => {
+    if (isDismissing) {
+      document.body.style.overflow = '';
+    }
+  }, [isDismissing]);
+
+  const modalNode = (
+    <motion.div
+      style={{ opacity: backdropOpacity }}
+      transition={EVENT_MODAL_TRANSITION}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu fixed inset-0 z-[160] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) dismissWithSlideOut();
+      }}
+    >
+      <motion.div
+        {...dragModalProps}
+        transition={EVENT_MODAL_TRANSITION}
+        className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu bg-[#111] w-full sm:w-full sm:max-w-xl h-[92dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-[2.5rem] border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 ${isDismissing ? 'pointer-events-none' : ''}`}
+      >
+        {/* Top bar drag indicator positioned across the top edge, leaving top-right corner clear for X button */}
+        <div
+          {...dragHandleProps}
+          data-drag-handle="true"
+          className="absolute top-0 left-0 right-14 z-30 pt-1.5 pb-4 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+        >
+          <div className="pl-14">
+            <ModalDragIndicator />
+          </div>
+        </div>
+
+        {/* Floating X Close Button matching BookingModal & QuickViewModal */}
+        <button
+          type="button"
+          onClick={() => dismissWithSlideOut()}
+          aria-label="Close"
+          className="absolute top-4 right-4 z-[120] w-8 h-8 flex items-center justify-center bg-[#1a1a1a] hover:bg-[#262626] border border-[#D4AF37]/40 rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] shadow-xl cursor-pointer"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Sheet Header */}
+        <div
+          {...dragHandleProps}
+          data-drag-handle="true"
+          className="px-5 sm:px-6 pt-8 pb-4 border-b border-white/10 flex items-center justify-between gap-3 bg-black/50 pr-14 cursor-grab active:cursor-grabbing select-none"
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-11 h-11 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] shrink-0 shadow-inner">
+              <Icon className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-[0.2em] bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
+                  {badgeText}
+                </span>
+              </div>
+              <h2 className="text-base sm:text-lg font-bold font-[Cinzel] text-white leading-tight truncate mt-1">
+                {title}
+              </h2>
+              <p className="text-[11px] text-zinc-400 font-medium truncate mt-0.5">{subtitle}</p>
+            </div>
+          </div>
+          {headerRight && (
+            <div className="shrink-0" onPointerDown={(e) => e.stopPropagation()}>
+              {headerRight}
+            </div>
+          )}
+        </div>
+
+        {/* Scrollable Sheet Body */}
+        <div data-modal-scroll className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 custom-scrollbar">
+          {children}
+        </div>
+
+        {/* Sleek Pill Footer Bar */}
+        <div className="px-5 py-3.5 bg-black border-t border-white/10 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+            <span className="w-2 h-2 rounded-full bg-[#D4AF37]" />
+            <span>Auto-Save Enabled</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => dismissWithSlideOut()}
+            className="h-10 px-8 bg-[#D4AF37] hover:bg-[#E5C76B] active:scale-95 text-black rounded-full font-black text-[10px] uppercase tracking-[0.2em] border border-[#D4AF37] transition-all flex items-center justify-center cursor-pointer shadow-lg"
+          >
+            Done
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+
+  return typeof document !== 'undefined' ? createPortal(modalNode, document.body) : modalNode;
+};
+
 const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages, onUpdateVendor, onUpdateBookingStatus, onReplyMessage, showNotification, onLogout, onSwitchToClientView, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'history' | 'calendar' | 'profile' | 'messages'>(initialTab as any || 'overview');
+  const [activeProfileSettingModal, setActiveProfileSettingModal] = useState<ProfileSettingModalType>(null);
   
   const onTabChangeRef = useRef(onTabChange);
   useEffect(() => {
@@ -1545,9 +1676,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
   useEffect(() => {
     if (onActiveChatChangeRef.current) {
-      onActiveChatChangeRef.current((!!selectedThreadEmail && activeTab === 'messages') || !!selectedCalendarEvent);
+      onActiveChatChangeRef.current((!!selectedThreadEmail && activeTab === 'messages') || !!selectedCalendarEvent || !!activeProfileSettingModal);
     }
-  }, [selectedThreadEmail, activeTab, selectedCalendarEvent]);
+  }, [selectedThreadEmail, activeTab, selectedCalendarEvent, activeProfileSettingModal]);
 
   const handleSendTestEmail = async () => {
     if (!testEmail || !testEmail.includes('@')) {
@@ -3915,7 +4046,6 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                   <ChatModal
                     isOpen={true}
                     vendor={vendor}
-                    user={{ id: vendor.id, name: vendor.name, username: vendor.contactEmail || '' }}
                     isVendorReplying={true}
                     onClose={() => {
                       setSelectedThreadEmail(null);
@@ -4038,96 +4168,1050 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             </div>
           )}
 
-          {activeTab === 'profile' && (
-            <div className="animate-in fade-in duration-500 max-w-4xl mx-auto pb-20 space-y-10">
-               {onToggleThemeMode && (
-                 <div className="flex flex-col items-center justify-center gap-2.5 py-1 text-center w-full">
-                   <span className="text-xs font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.2em] text-center">App Preference</span>
-                   <div className="flex items-center justify-center w-full">
-                     <ThemeModeSwitch
-                       themeMode={themeMode}
-                       onToggleThemeMode={onToggleThemeMode}
-                     />
-                   </div>
-                 </div>
-               )}
+          {activeTab === 'profile' && (() => {
+            const allServices = editForm.services || [];
+            const inferCat = (s: VendorService): ServiceCategoryType => {
+              if (s.categoryType === 'location') return 'location';
+              if (s.categoryType === 'amenities') return 'amenities';
+              if (s.categoryType === 'hours') return 'hours';
+              const text = `${s.name} ${s.unit || ''}`.toLowerCase();
+              if (/\b(location|lakewood|brooklyn|monsey|boro park|williamsburg|five towns|queens|manhattan|staten island|new jersey|ny|nj|travel|destination|area|local|out of town|out of state|long island|westchester|miami|florida|ballroom|terrace|boroughs|metro)\b/.test(text)) {
+                return 'location';
+              }
+              return 'amenities';
+            };
+            const locationItems = allServices.filter(s => inferCat(s) === 'location');
+            const addonItems = allServices.filter(s => inferCat(s) === 'amenities');
+            const galleryCount = editForm.gallery?.length || 0;
 
-               {/* Offer System Section */}
-               <div className="bg-[#111] rounded-3xl border border-[#D4AF37]/20 shadow-2xl overflow-hidden">
-                  <button 
-                    onClick={() => toggleSection('offers')}
-                    className="w-full p-8 border-b border-white/5 bg-black/40 flex justify-between items-center group"
-                  >
-                    <div className="text-left">
-                      <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Offer System</h3>
-                      <p className="text-[10px] text-zinc-300 font-bold uppercase tracking-widest mt-1">Control how clients can negotiate pricing</p>
+            const SettingRow = ({
+              icon: RowIcon,
+              title,
+              subtitle,
+              badge,
+              badgeActive = false,
+              onClick,
+              rightNode,
+            }: {
+              icon: any;
+              title: string;
+              subtitle: string;
+              badge?: string;
+              badgeActive?: boolean;
+              onClick?: () => void;
+              rightNode?: React.ReactNode;
+            }) => {
+              const Wrapper: any = onClick ? 'button' : 'div';
+              return (
+                <Wrapper
+                  type={onClick ? 'button' : undefined}
+                  onClick={onClick}
+                  className={`w-full px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3.5 text-left transition-all ${
+                    onClick ? 'hover:bg-white/[0.04] active:scale-[0.995] cursor-pointer group' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                    <div className="w-10 h-10 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/35 flex items-center justify-center text-[#D4AF37] shrink-0 transition-transform group-hover:scale-105">
+                      <RowIcon className="w-4.5 h-4.5" />
                     </div>
-                    <div className="flex items-center gap-4">
-                       <DollarSign className={`w-8 h-8 transition-all ${editForm.allowOffers ? 'text-[#D4AF37]' : 'text-zinc-600'}`} />
-                       <ChevronRight className={`w-6 h-6 text-zinc-300 transition-transform ${collapsedSections['offers'] ? 'rotate-90' : ''}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-bold text-white leading-snug truncate">{title}</div>
+                      <div className="text-[11px] text-zinc-400 font-medium leading-snug truncate mt-0.5">{subtitle}</div>
                     </div>
-                  </button>
-                  
-                  {!collapsedSections['offers'] && (
-                    <div className="p-8 animate-in slide-in-from-top-2 duration-300">
-                      <div className="bg-black/40 rounded-2xl border border-white/5 p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                        <div className="space-y-1 max-w-md text-left">
-                          <h4 className="text-sm font-bold text-white">Enable "Make an Offer"</h4>
-                          <p className="text-xs text-zinc-300 leading-relaxed">
-                            When enabled, clients can propose a specific price for your services. You will be notified of all offers and can choose to accept or decline them.
-                          </p>
+                  </div>
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    {rightNode ? (
+                      rightNode
+                    ) : (
+                      <>
+                        {badge && (
+                          <span
+                            className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                              badgeActive
+                                ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-sm'
+                                : 'bg-black/60 text-zinc-300 border-white/10 group-hover:border-[#D4AF37]/40'
+                            }`}
+                          >
+                            {badge}
+                          </span>
+                        )}
+                        <div className="w-7 h-7 rounded-full bg-black/50 border border-white/10 group-hover:border-[#D4AF37]/40 flex items-center justify-center text-zinc-400 group-hover:text-[#D4AF37] transition-all">
+                          <ChevronRight className="w-4 h-4" />
                         </div>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            applyImmediateVendorUpdate(prev => ({ ...prev, allowOffers: !prev.allowOffers }));
-                          }}
-                          className={`w-full md:w-auto px-10 py-4 rounded-full text-xs font-black uppercase tracking-[0.2em] transition-all border ${editForm.allowOffers ? 'bg-[#D4AF37] text-white border-[#D4AF37] shadow-xl shadow-[#D4AF37]/10' : 'bg-black text-zinc-300 border-white/10 hover:border-[#D4AF37]/40'}`}
+                      </>
+                    )}
+                  </div>
+                </Wrapper>
+              );
+            };
+
+            const renderServicesManager = (activeCategory: 'location' | 'amenities') => {
+              const items = activeCategory === 'location' ? locationItems : addonItems;
+              const isAddingHere = showAddForm && newServiceCategoryType === activeCategory;
+
+              return (
+                <div className="space-y-4">
+                  {/* Category Pill Switcher + Add Option Pill */}
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 bg-black/60 p-2 rounded-full border border-[#D4AF37]/25">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddForm(false);
+                          setActiveProfileSettingModal('locations');
+                        }}
+                        className={`h-9 px-4 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 cursor-pointer ${
+                          activeCategory === 'location'
+                            ? 'bg-[#D4AF37] text-black shadow-md'
+                            : 'text-zinc-300 hover:text-white'
+                        }`}
+                      >
+                        <MapPin className="w-3.5 h-3.5" />
+                        <span>Locations ({locationItems.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddForm(false);
+                          setActiveProfileSettingModal('addons');
+                        }}
+                        className={`h-9 px-4 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 cursor-pointer ${
+                          activeCategory === 'amenities'
+                            ? 'bg-[#D4AF37] text-black shadow-md'
+                            : 'text-zinc-300 hover:text-white'
+                        }`}
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>Add-ons ({addonItems.length})</span>
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isAddingHere) {
+                          setShowAddForm(false);
+                        } else {
+                          setNewServiceCategoryType(activeCategory);
+                          setNewServiceUnit('');
+                          setNewServiceName('');
+                          setNewServicePrice('');
+                          setNewServiceAllowQty(false);
+                          setNewServiceDefaultHours('3');
+                          setNewServiceHourlyRate('100');
+                          setNewServiceImageUrl('');
+                          setShowAddForm(true);
+                        }
+                      }}
+                      className={`h-9 px-4 rounded-full border transition-all cursor-pointer flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest ${
+                        isAddingHere
+                          ? 'bg-zinc-900 text-zinc-200 border-zinc-500'
+                          : 'bg-[#D4AF37]/15 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border-[#D4AF37]/50'
+                      }`}
+                    >
+                      {isAddingHere ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
+                      <span>{isAddingHere ? 'Cancel' : `New ${activeCategory === 'location' ? 'Location' : 'Add-on'}`}</span>
+                    </button>
+                  </div>
+
+                  {/* Inline Post-Shaped New Item Form */}
+                  {isAddingHere && (
+                    <div className="bg-black/80 p-4 sm:p-5 rounded-[1.75rem] border-2 border-[#D4AF37] space-y-4 text-left shadow-2xl">
+                      <div className="flex items-center justify-between border-b border-[#D4AF37]/20 pb-2.5">
+                        <span className="text-[11px] font-black uppercase tracking-widest text-[#D4AF37] flex items-center gap-2">
+                          <Plus className="w-4 h-4" />
+                          Add New {activeCategory === 'location' ? 'Location Package' : 'Add-on / Extra'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddForm(false)}
+                          className="text-zinc-300 hover:text-white px-3 py-1 rounded-full border border-white/15 text-[9px] font-black uppercase tracking-widest cursor-pointer"
                         >
-                          {editForm.allowOffers ? (
-                            <span className="flex items-center justify-center gap-2"><CheckCircle className="w-4 h-4" /> Offers Active</span>
-                          ) : (
-                            <span className="flex items-center justify-center gap-2"><XCircle className="w-4 h-4" /> Offers Disabled</span>
+                          Close
+                        </button>
+                      </div>
+
+                      {activeCategory === 'location' ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                          <div className="space-y-1.5 sm:col-span-2">
+                            <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest block pl-2">
+                              Location / Area Name
+                            </label>
+                            <input
+                              type="text"
+                              autoFocus
+                              className="w-full h-11 bg-[#111] border border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-full px-4 text-sm font-bold text-white outline-none"
+                              placeholder="e.g. Lakewood, Brooklyn, Monsey"
+                              value={newServiceName}
+                              onChange={e => setNewServiceName(e.target.value)}
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest block pl-2">
+                              Base Price ($)
+                            </label>
+                            <div className="relative">
+                              <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                              <input
+                                type="number"
+                                className="w-full h-11 bg-[#111] border border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-full pl-9 pr-4 text-sm font-bold text-[#D4AF37] outline-none"
+                                placeholder="1500"
+                                value={newServicePrice}
+                                onChange={e => setNewServicePrice(e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <div className="space-y-1.5">
+                              <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest block pl-2">
+                                Included Hrs
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                className="w-full h-11 bg-[#111] border border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-full px-4 text-sm font-bold text-white outline-none text-center"
+                                placeholder="3"
+                                value={newServiceDefaultHours}
+                                onChange={e => setNewServiceDefaultHours(e.target.value)}
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest block pl-2">
+                                Extra ($/hr)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                className="w-full h-11 bg-[#111] border border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-full px-4 text-sm font-bold text-[#D4AF37] outline-none text-center"
+                                placeholder="100"
+                                value={newServiceHourlyRate}
+                                onChange={e => setNewServiceHourlyRate(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest block pl-2">
+                              Add-on Name
+                            </label>
+                            <input
+                              type="text"
+                              autoFocus
+                              className="w-full h-11 bg-[#111] border border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-full px-4 text-sm font-bold text-white outline-none"
+                              placeholder="e.g. Percussion, Lighting, Extra Singer"
+                              value={newServiceName}
+                              onChange={e => setNewServiceName(e.target.value)}
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest block pl-2">
+                              Price ($)
+                            </label>
+                            <div className="relative">
+                              <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                              <input
+                                type="number"
+                                className="w-full h-11 bg-[#111] border border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-full pl-9 pr-4 text-sm font-bold text-[#D4AF37] outline-none"
+                                placeholder="500"
+                                value={newServicePrice}
+                                onChange={e => setNewServicePrice(e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5 sm:col-span-2">
+                            <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest block pl-2">
+                              Photo Caption / Description (Shown in gold when selected)
+                            </label>
+                            <input
+                              type="text"
+                              maxLength={80}
+                              className="w-full h-11 bg-[#111] border border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-full px-4 text-sm font-semibold text-white outline-none"
+                              placeholder="e.g. Percussion play & sing • 3 hours"
+                              value={newServiceUnit}
+                              onChange={e => setNewServiceUnit(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Photo Upload + Quantity Pill Controls */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div className="flex items-center gap-2.5">
+                          <label className="flex-1 h-11 px-4 rounded-full border border-dashed border-[#D4AF37]/60 hover:border-[#D4AF37] bg-[#111] hover:bg-[#D4AF37]/10 text-[#D4AF37] font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer transition-all">
+                            {isUploadingNewServiceImage ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Uploading {Math.round(uploadProgresses['newService'] || 0)}%</span>
+                              </>
+                            ) : (
+                              <>
+                                <Camera className="w-4 h-4" />
+                                <span>{newServiceImageUrl ? 'Change Photo' : 'Optional Photo'}</span>
+                              </>
+                            )}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleNewServiceImageUpload}
+                            />
+                          </label>
+                          {newServiceImageUrl && (
+                            <div className="relative w-11 h-11 rounded-full overflow-hidden border-2 border-[#D4AF37] shrink-0 group">
+                              <img src={newServiceImageUrl} alt="Preview" className="w-full h-full object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => setNewServiceImageUrl('')}
+                                className="absolute inset-0 bg-black/75 text-red-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                title="Remove photo"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           )}
+                        </div>
+
+                        {activeCategory === 'amenities' && (
+                          <button
+                            type="button"
+                            onClick={() => setNewServiceAllowQty(!newServiceAllowQty)}
+                            className={`flex items-center justify-between w-full h-11 px-4 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all cursor-pointer ${
+                              newServiceAllowQty
+                                ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                                : 'bg-[#111] text-zinc-200 border-[#D4AF37]/40 hover:border-[#D4AF37]'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              {newServiceAllowQty ? <CheckCircle className="w-4 h-4" /> : <Layers className="w-4 h-4 text-[#D4AF37]" />}
+                              <span>Quantity (+ / -)</span>
+                            </span>
+                            <span className="px-2.5 py-0.5 rounded-full bg-black/20">{newServiceAllowQty ? 'ON' : 'OFF'}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2.5 pt-2 border-t border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddForm(false)}
+                          className="flex-1 h-10 bg-[#111] hover:bg-zinc-900 text-zinc-300 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/15 transition-all cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAddService}
+                          disabled={isUploadingNewServiceImage}
+                          className="flex-[2] h-10 bg-[#D4AF37] hover:bg-[#E5C76B] text-black rounded-full text-[10px] font-black uppercase tracking-widest border border-[#D4AF37] shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          <Check className="w-4 h-4 stroke-[3]" /> Save {activeCategory === 'location' ? 'Location' : 'Add-on'}
                         </button>
                       </div>
                     </div>
                   )}
-               </div>
 
-               {/* Anti-Spying Privacy Lock Section */}
-               <div className="bg-[#111] rounded-3xl border border-[#D4AF37]/20 shadow-2xl overflow-hidden">
-                  <button 
-                    onClick={() => toggleSection('privacy')}
-                    className="w-full p-8 border-b border-white/5 bg-black/40 flex justify-between items-center group cursor-pointer"
+                  {/* Existing Services List */}
+                  {items.length > 0 ? (
+                    <div className="space-y-3">
+                      {items.map((service) => {
+                        const cleanNote = (service.unit && !['item', 'location', 'hour', 'hours', 'service', 'package'].includes(service.unit.toLowerCase())) ? service.unit : '';
+                        const serviceImg = previewUrls[service.id] || service.image;
+                        const isUploadingThis = uploadProgresses[service.id] !== undefined;
+
+                        return (
+                          <div
+                            key={service.id}
+                            className="w-full bg-black/60 border border-[#D4AF37]/30 hover:border-[#D4AF37]/70 rounded-[1.75rem] p-4 space-y-3.5 transition-all shadow-lg"
+                          >
+                            {/* Top Row: Circular Photo + Post-Shaped Name Input + Pill Delete */}
+                            <div className="flex items-center gap-3 w-full">
+                              <label
+                                className="relative w-12 h-12 rounded-full border-2 border-[#D4AF37]/50 hover:border-[#D4AF37] bg-[#111] flex flex-col items-center justify-center overflow-hidden cursor-pointer group/img shrink-0 transition-all"
+                                title="Upload or change photo"
+                              >
+                                {serviceImg ? (
+                                  <>
+                                    <img src={serviceImg} alt={service.name} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/65 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-opacity">
+                                      <Camera className="w-4 h-4 text-[#D4AF37]" />
+                                    </div>
+                                  </>
+                                ) : (
+                                  <Camera className="w-4 h-4 text-[#D4AF37]" />
+                                )}
+                                {isUploadingThis && (
+                                  <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
+                                    <Loader2 className="w-4 h-4 text-[#D4AF37] animate-spin" />
+                                  </div>
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => handleServiceImageUpload(service.id, e)}
+                                />
+                              </label>
+
+                              <div className="flex-1 min-w-0">
+                                <input
+                                  type="text"
+                                  className="w-full h-10 bg-[#111] border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full text-sm font-bold text-white outline-none px-4"
+                                  value={service.name}
+                                  onChange={e => handleUpdateService(service.id, { name: e.target.value })}
+                                  onBlur={flushAutoSave}
+                                  placeholder={activeCategory === 'location' ? 'Location Name' : 'Add-on Name'}
+                                />
+                              </div>
+
+                              {serviceImg && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPreviewUrls(prev => {
+                                      const next = { ...prev };
+                                      delete next[service.id];
+                                      return next;
+                                    });
+                                    handleUpdateService(service.id, { image: '' }, true);
+                                  }}
+                                  className="h-10 px-3 rounded-full bg-[#111] border border-white/15 hover:border-red-500/60 text-zinc-400 hover:text-red-400 text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all shrink-0"
+                                  title="Clear photo"
+                                >
+                                  Clear Pic
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveService(service.id)}
+                                className="w-10 h-10 text-red-400 hover:bg-red-500 hover:text-white bg-[#111] border border-red-500/40 hover:border-red-500 rounded-full transition-all shrink-0 cursor-pointer flex items-center justify-center"
+                                title="Delete Option"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {/* Bottom Even Pill Grid */}
+                            {activeCategory === 'location' ? (
+                              <div className="grid grid-cols-3 gap-2.5 w-full">
+                                <div>
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1 pl-2">Base Price ($)</span>
+                                  <div className="relative">
+                                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#D4AF37]" />
+                                    <input
+                                      type="number"
+                                      className="w-full h-10 bg-[#111] border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full pl-7 pr-3 text-xs sm:text-sm font-bold text-[#D4AF37] outline-none tabular-nums"
+                                      value={service.price}
+                                      onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
+                                      onBlur={flushAutoSave}
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1 pl-2">Included Hrs</span>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    className="w-full h-10 bg-[#111] border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-3 text-xs sm:text-sm font-bold text-white outline-none text-center tabular-nums"
+                                    value={service.defaultHours ?? 3}
+                                    onChange={e => handleUpdateService(service.id, { defaultHours: Math.max(1, parseInt(e.target.value) || 1) })}
+                                    onBlur={flushAutoSave}
+                                  />
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1 pl-2">Extra ($/hr)</span>
+                                  <div className="relative">
+                                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#D4AF37]" />
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      className="w-full h-10 bg-[#111] border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full pl-7 pr-3 text-xs sm:text-sm font-bold text-[#D4AF37] outline-none tabular-nums"
+                                      value={service.hourlyRate ?? 100}
+                                      onChange={e => handleUpdateService(service.id, { hourlyRate: Math.max(0, parseFloat(e.target.value) || 0) })}
+                                      onBlur={flushAutoSave}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full">
+                                <div>
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1 pl-2">Price ($)</span>
+                                  <div className="relative">
+                                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#D4AF37]" />
+                                    <input
+                                      type="number"
+                                      className="w-full h-10 bg-[#111] border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full pl-7 pr-3 text-xs sm:text-sm font-bold text-[#D4AF37] outline-none tabular-nums"
+                                      value={service.price}
+                                      onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
+                                      onBlur={flushAutoSave}
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1 pl-2">Photo Caption</span>
+                                  <input
+                                    type="text"
+                                    maxLength={80}
+                                    placeholder="e.g. Play & sing • 3 hrs"
+                                    className="w-full h-10 bg-[#111] border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-3.5 text-xs font-semibold text-white outline-none"
+                                    value={cleanNote}
+                                    onChange={e => handleUpdateService(service.id, { unit: e.target.value.slice(0, 80) })}
+                                    onBlur={flushAutoSave}
+                                  />
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1 pl-2">Quantity Control</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity }, true)}
+                                    className={`w-full h-10 px-3.5 rounded-full text-[10px] font-black uppercase tracking-wider border transition-all truncate cursor-pointer ${
+                                      service.allowQuantity
+                                        ? 'text-black border-[#D4AF37] bg-[#D4AF37]'
+                                        : 'text-zinc-200 bg-[#111] border-[#D4AF37]/30 hover:border-[#D4AF37]'
+                                    }`}
+                                  >
+                                    {service.allowQuantity ? 'Multiple: ON' : 'Single Only'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : !isAddingHere ? (
+                    <div className="py-10 text-center border border-dashed border-[#D4AF37]/30 rounded-[1.75rem] bg-black/40 space-y-3">
+                      <p className="text-xs text-zinc-300 font-bold uppercase tracking-widest">
+                        No {activeCategory === 'location' ? 'location packages' : 'add-on extras'} configured yet
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewServiceCategoryType(activeCategory);
+                          setNewServiceUnit('');
+                          setNewServiceName('');
+                          setNewServicePrice('');
+                          setNewServiceAllowQty(false);
+                          setNewServiceDefaultHours('3');
+                          setNewServiceHourlyRate('100');
+                          setNewServiceImageUrl('');
+                          setShowAddForm(true);
+                        }}
+                        className="px-6 py-2.5 rounded-full bg-[#D4AF37] border border-[#D4AF37] text-[10px] font-black text-black uppercase tracking-widest hover:bg-[#E5C76B] transition-all cursor-pointer shadow-md"
+                      >
+                        + Add {activeCategory === 'location' ? 'Location Package' : 'Add-on Option'}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            };
+
+            return (
+              <div className="animate-in fade-in duration-500 max-w-2xl mx-auto pb-24 space-y-5">
+                {/* Hidden File Inputs so uploads work from any modal or header */}
+                <input
+                  type="file"
+                  ref={logoFileInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                />
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  onChange={handleMediaUpload}
+                />
+
+                {/* Top Compact Vendor Account Identity Card (Phone System Settings Apple-ID Style) */}
+                <div
+                  onClick={() => setActiveProfileSettingModal('basic')}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setActiveProfileSettingModal('basic');
+                    }
+                  }}
+                  className="bg-[#111] rounded-[2rem] border border-[#D4AF37]/30 shadow-2xl p-4 sm:p-5 flex items-center justify-between gap-4 hover:border-[#D4AF37]/60 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        logoFileInputRef.current?.click();
+                      }}
+                      className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden bg-black border-2 border-[#D4AF37]/50 shrink-0 shadow-lg group/avatar"
+                      title="Tap to change portrait"
+                    >
+                      <img src={editForm.image} className="w-full h-full object-cover" alt={editForm.name} />
+                      {typeof uploadProgresses['logo'] === 'number' ? (
+                        <div className="absolute inset-0 bg-black/75 flex items-center justify-center">
+                          <Loader2 className="w-5 h-5 text-[#D4AF37] animate-spin" />
+                        </div>
+                      ) : (
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center">
+                          <Camera className="w-4 h-4 text-[#D4AF37]" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1 text-left">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-[0.2em] bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
+                          <ShieldCheck className="w-2.5 h-2.5" /> Vendor Station
+                        </span>
+                      </div>
+                      <h2 className="text-base sm:text-lg font-bold font-[Cinzel] text-white truncate mt-1">
+                        {editForm.name || 'Vendor Business'}
+                      </h2>
+                      <p className="text-[11px] text-zinc-400 font-medium truncate">
+                        {editForm.contactEmail || 'No public email set'} {editForm.location ? `• ${editForm.location}` : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="hidden sm:inline-flex px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-black/60 text-[#D4AF37] border border-[#D4AF37]/30 group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                      Edit Profile
+                    </span>
+                    <div className="w-8 h-8 rounded-full bg-black/60 border border-white/10 group-hover:border-[#D4AF37]/50 flex items-center justify-center text-[#D4AF37] transition-all">
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* GROUP 1: STOREFRONT & PACKAGES */}
+                <div className="space-y-2">
+                  <div className="px-4 flex items-center justify-between">
+                    <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                      Storefront & Pricing
+                    </span>
+                    <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                      Tap to configure
+                    </span>
+                  </div>
+                  <div className="bg-[#111] rounded-[2rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
+                    <SettingRow
+                      icon={User}
+                      title="Business Identity & Bio"
+                      subtitle="Trading name, portrait, contact email, location & bio"
+                      badge={editForm.location ? editForm.location.split(',')[0] : 'Edit'}
+                      onClick={() => setActiveProfileSettingModal('basic')}
+                    />
+                    <SettingRow
+                      icon={MapPin}
+                      title="Locations & Base Packages"
+                      subtitle="Service areas, base rates, included hours & overtime"
+                      badge={`${locationItems.length} ${locationItems.length === 1 ? 'Location' : 'Locations'}`}
+                      badgeActive={locationItems.length > 0}
+                      onClick={() => {
+                        setShowAddForm(false);
+                        setActiveProfileSettingModal('locations');
+                      }}
+                    />
+                    <SettingRow
+                      icon={Layers}
+                      title="Add-ons & Extras"
+                      subtitle="Optional upgrades, showcase photos & quantity controls"
+                      badge={`${addonItems.length} ${addonItems.length === 1 ? 'Add-on' : 'Add-ons'}`}
+                      badgeActive={addonItems.length > 0}
+                      onClick={() => {
+                        setShowAddForm(false);
+                        setActiveProfileSettingModal('addons');
+                      }}
+                    />
+                    <SettingRow
+                      icon={Film}
+                      title="Photos & Video Showcase"
+                      subtitle="Manage portfolio images & videos on your card"
+                      badge={`${galleryCount} ${galleryCount === 1 ? 'Item' : 'Items'}`}
+                      badgeActive={galleryCount > 0}
+                      onClick={() => setActiveProfileSettingModal('media')}
+                    />
+                  </div>
+                </div>
+
+                {/* GROUP 2: BOOKING RULES & PRIVACY */}
+                <div className="space-y-2">
+                  <div className="px-4 flex items-center justify-between">
+                    <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                      Booking Rules & Privacy
+                    </span>
+                  </div>
+                  <div className="bg-[#111] rounded-[2rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
+                    <SettingRow
+                      icon={DollarSign}
+                      title="Client Offer System"
+                      subtitle="Control whether clients can propose custom price offers"
+                      badge={editForm.allowOffers ? 'Active' : 'Disabled'}
+                      badgeActive={Boolean(editForm.allowOffers)}
+                      onClick={() => setActiveProfileSettingModal('offers')}
+                    />
+                    <SettingRow
+                      icon={editForm.enableDateCheckLimit !== false ? Lock : Unlock}
+                      title="Availability Privacy Lock"
+                      subtitle="Anti-spying date check limit & cooldown reset period"
+                      badge={
+                        editForm.enableDateCheckLimit !== false
+                          ? `${editForm.maxDateChecks ?? 5} / ${editForm.dateCheckResetHours ?? 24}h`
+                          : 'Unlimited'
+                      }
+                      badgeActive={editForm.enableDateCheckLimit !== false}
+                      onClick={() => setActiveProfileSettingModal('privacy')}
+                    />
+                  </div>
+                </div>
+
+                {/* GROUP 3: SYSTEM & PREFERENCES */}
+                <div className="space-y-2">
+                  <div className="px-4 flex items-center justify-between">
+                    <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                      System & Preferences
+                    </span>
+                  </div>
+                  <div className="bg-[#111] rounded-[2rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
+                    {onToggleThemeMode && (
+                      <SettingRow
+                        icon={Eye}
+                        title="Display Appearance"
+                        subtitle="Switch between luxury dark and light mode"
+                        rightNode={
+                          <ThemeModeSwitch
+                            themeMode={themeMode}
+                            onToggleThemeMode={onToggleThemeMode}
+                          />
+                        }
+                      />
+                    )}
+                    <SettingRow
+                      icon={Mail}
+                      title="Email Delivery Debugger"
+                      subtitle="Send a test email to verify automated notifications"
+                      badge="Test SMTP"
+                      onClick={() => setActiveProfileSettingModal('email')}
+                    />
+                    <SettingRow
+                      icon={LogOut}
+                      title="Sign Out of Vendor Station"
+                      subtitle="Safely terminate your active vendor portal session"
+                      badge="Sign Out"
+                      onClick={onLogout}
+                    />
+                  </div>
+                </div>
+
+                {/* BOTTOM DRAG-DISMISS SETTING SHEETS (Exact Same Animation & Drag Indicator) */}
+                {activeProfileSettingModal === 'basic' && (
+                  <VendorSettingSheetModal
+                    title="Business Identity & Bio"
+                    subtitle="Manage your public vendor profile & service area"
+                    badgeText="Storefront Identity"
+                    icon={User}
+                    onClose={() => {
+                      flushAutoSave();
+                      setActiveProfileSettingModal(null);
+                    }}
                   >
-                    <div className="text-left">
-                      <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Privacy Lock Settings</h3>
-                      <p className="text-[10px] text-zinc-300 font-bold uppercase tracking-widest mt-1">Protect your availability calendar from competitor spying</p>
+                    {/* Compact Post-Shaped Portrait Row */}
+                    <div className="bg-black/60 rounded-[1.75rem] border border-[#D4AF37]/30 p-4 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="relative w-16 h-16 rounded-full overflow-hidden bg-black border-2 border-[#D4AF37]/50 shrink-0 shadow-lg">
+                          <img src={editForm.image} className="w-full h-full object-cover" alt="" />
+                          {typeof uploadProgresses['logo'] === 'number' && (
+                            <div className="absolute inset-0 bg-black/75 flex items-center justify-center">
+                              <span className="text-[10px] font-black text-[#D4AF37]">
+                                {Math.round(uploadProgresses['logo'])}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 text-left">
+                          <h4 className="text-sm font-bold text-white truncate">Profile Portrait</h4>
+                          <p className="text-[11px] text-zinc-400 leading-snug">
+                            Displayed on your vendor card and chat header
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => logoFileInputRef.current?.click()}
+                        disabled={isUploadingLogo}
+                        className="h-10 px-4 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 shrink-0 cursor-pointer transition-all shadow-md"
+                      >
+                        {isUploadingLogo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                        <span>Change</span>
+                      </button>
                     </div>
-                    <div className="flex items-center gap-4">
-                       {editForm.enableDateCheckLimit !== false ? (
-                         <Lock className="w-8 h-8 transition-all text-[#D4AF37]" />
-                       ) : (
-                         <Unlock className="w-8 h-8 transition-all text-zinc-600" />
-                       )}
-                       <ChevronRight className={`w-6 h-6 text-zinc-300 transition-transform ${collapsedSections['privacy'] ? 'rotate-90' : ''}`} />
+
+                    {/* Even Post-Shaped Input Fields */}
+                    <div className="bg-black/50 rounded-[1.75rem] border border-white/10 p-4 sm:p-5 space-y-4 text-left">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em] pl-2 block">
+                          Business Trading Name
+                        </label>
+                        <input
+                          type="text"
+                          className="w-full h-11 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-sm font-bold text-white outline-none transition-all"
+                          value={editForm.name}
+                          onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, name: e.target.value }))}
+                          onBlur={flushAutoSave}
+                          placeholder="e.g. Classic Jewish Catering"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em] pl-2 block">
+                          Public Contact Email
+                        </label>
+                        <input
+                          type="email"
+                          className="w-full h-11 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-sm font-bold text-white outline-none transition-all"
+                          value={editForm.contactEmail}
+                          onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, contactEmail: e.target.value }))}
+                          onBlur={flushAutoSave}
+                          placeholder="hello@business.com"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em] pl-2 block">
+                          Location / Base Service Area
+                        </label>
+                        <LocationAutocomplete
+                          id="vendor-profile-location"
+                          floating={false}
+                          placeholder="e.g. Brooklyn, NY or Lakewood, NJ..."
+                          value={editForm.location || ''}
+                          onChange={(val) => applyAutoSaveVendorUpdate(prev => ({ ...prev, location: val }))}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em] pl-2 block">
+                          Business Biography & Description
+                        </label>
+                        <textarea
+                          rows={4}
+                          className="w-full bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-[1.5rem] p-4 text-sm outline-none resize-none text-zinc-200 leading-relaxed transition-all"
+                          value={editForm.description}
+                          onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, description: e.target.value }))}
+                          onBlur={flushAutoSave}
+                          placeholder="Tell clients about your services, style, and experience..."
+                        />
+                      </div>
                     </div>
-                  </button>
-                  
-                  {!collapsedSections['privacy'] && (
-                    <div className="p-8 space-y-6 animate-in slide-in-from-top-2 duration-300">
-                      <div className="bg-black/40 rounded-2xl border border-white/5 p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                        <div className="space-y-1 max-w-md text-left">
-                          <h4 className="text-sm font-bold text-white">Date Check Limit</h4>
-                          <p className="text-xs text-zinc-300 leading-relaxed">
-                            When enabled, clients are limited to a set number of date availability checks before a cooldown reset. Turn this off to allow unlimited date checks on your booking calendar.
+                  </VendorSettingSheetModal>
+                )}
+
+                {activeProfileSettingModal === 'locations' && (
+                  <VendorSettingSheetModal
+                    title="Locations & Base Packages"
+                    subtitle="Client selects 1 location and can add extra hours"
+                    badgeText="Pricing & Areas"
+                    icon={MapPin}
+                    onClose={() => {
+                      flushAutoSave();
+                      setShowAddForm(false);
+                      setActiveProfileSettingModal(null);
+                    }}
+                  >
+                    {renderServicesManager('location')}
+                  </VendorSettingSheetModal>
+                )}
+
+                {activeProfileSettingModal === 'addons' && (
+                  <VendorSettingSheetModal
+                    title="Add-ons & Extras"
+                    subtitle="Optional upgrades & showcase photos on your booking sheet"
+                    badgeText="Upgrades & Extras"
+                    icon={Layers}
+                    onClose={() => {
+                      flushAutoSave();
+                      setShowAddForm(false);
+                      setActiveProfileSettingModal(null);
+                    }}
+                  >
+                    {renderServicesManager('amenities')}
+                  </VendorSettingSheetModal>
+                )}
+
+                {activeProfileSettingModal === 'media' && (
+                  <VendorSettingSheetModal
+                    title="Photos & Video Showcase"
+                    subtitle="Manage portfolio media displayed on your vendor card"
+                    badgeText="Media Gallery"
+                    icon={Film}
+                    onClose={() => setActiveProfileSettingModal(null)}
+                  >
+                    {/* Even Pill Upload Controls */}
+                    <div className="flex flex-wrap items-center justify-between gap-2.5 bg-black/60 p-2.5 rounded-full border border-[#D4AF37]/30">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (fileInputRef.current) {
+                            fileInputRef.current.accept = 'image/*';
+                            fileInputRef.current.click();
+                          }
+                        }}
+                        className="flex-1 h-10 px-4 rounded-full bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase tracking-widest border border-white/15 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                      >
+                        <ImageIcon className="w-4 h-4 text-[#D4AF37]" />
+                        <span>Add Photo</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (fileInputRef.current) {
+                            fileInputRef.current.accept = 'video/*';
+                            fileInputRef.current.click();
+                          }
+                        }}
+                        className="flex-1 h-10 px-4 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black text-[10px] font-black uppercase tracking-widest border border-[#D4AF37] flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md"
+                      >
+                        <Film className="w-4 h-4" />
+                        <span>Upload Video</span>
+                      </button>
+                    </div>
+
+                    {typeof uploadProgresses['gallery'] === 'number' && (
+                      <div className="flex items-center justify-center gap-3 text-[#D4AF37] text-[10px] font-black uppercase tracking-widest bg-black/60 border border-[#D4AF37]/30 px-4 py-2.5 rounded-full">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Uploading Media: {Math.round(uploadProgresses['gallery'])}%</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
+                      {editForm.gallery?.map((url, idx) => {
+                        const isVid = isVideo(url);
+                        return (
+                          <div
+                            key={idx}
+                            className="relative aspect-square bg-black rounded-[1.5rem] overflow-hidden border border-[#D4AF37]/25 group shadow-xl"
+                          >
+                            <div
+                              onClick={() => setFullscreenMedia({ url, type: isVid ? 'video' : 'image' })}
+                              className="w-full h-full cursor-pointer relative"
+                            >
+                              {isVid ? (
+                                <video autoPlay muted loop playsInline src={url} className="w-full h-full object-cover" />
+                              ) : (
+                                <img src={url} className="w-full h-full object-cover" alt="" />
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveMedia(idx);
+                              }}
+                              className="absolute top-2.5 right-2.5 w-8 h-8 bg-black/80 hover:bg-red-600 text-white rounded-full border border-white/20 flex items-center justify-center transition-all shadow-lg cursor-pointer z-10"
+                              title="Remove media"
+                              aria-label="Remove media"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            {isVid && (
+                              <div className="absolute bottom-2.5 left-2.5 bg-black/80 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[8px] font-black text-[#D4AF37] border border-[#D4AF37]/30 flex items-center gap-1">
+                                <Video className="w-2.5 h-2.5" /> VIDEO
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {(!editForm.gallery || editForm.gallery.length === 0) && (
+                        <div className="col-span-full py-12 text-center border border-dashed border-[#D4AF37]/30 rounded-[1.75rem] bg-black/40">
+                          <ImageIcon className="w-10 h-10 mx-auto mb-2 text-[#D4AF37]/40" />
+                          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                            Your showcase gallery is currently empty
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </VendorSettingSheetModal>
+                )}
+
+                {activeProfileSettingModal === 'offers' && (
+                  <VendorSettingSheetModal
+                    title="Client Offer System"
+                    subtitle="Control how clients can negotiate pricing on your listing"
+                    badgeText="Negotiation Rules"
+                    icon={DollarSign}
+                    onClose={() => setActiveProfileSettingModal(null)}
+                  >
+                    <div className="bg-black/60 rounded-[1.75rem] border border-[#D4AF37]/30 p-5 space-y-5 text-left">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-bold text-white">Enable "Make an Offer"</h4>
+                          <p className="text-xs text-zinc-400 leading-relaxed">
+                            Allow clients to propose a custom price when requesting a booking date.
                           </p>
                         </div>
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
+                          onClick={() => {
+                            applyImmediateVendorUpdate(prev => ({ ...prev, allowOffers: !prev.allowOffers }));
+                          }}
+                          className={`h-11 px-6 rounded-full text-[10px] font-black uppercase tracking-[0.2em] transition-all border shrink-0 cursor-pointer flex items-center gap-2 ${
+                            editForm.allowOffers
+                              ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-lg shadow-[#D4AF37]/15'
+                              : 'bg-black text-zinc-300 border-white/15 hover:border-[#D4AF37]/40'
+                          }`}
+                        >
+                          {editForm.allowOffers ? (
+                            <>
+                              <CheckCircle className="w-4 h-4" />
+                              <span>Active</span>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="w-4 h-4" />
+                              <span>Disabled</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-[#111] border border-white/5 text-xs text-zinc-300 leading-relaxed">
+                        When enabled, a <span className="text-[#D4AF37] font-bold">Make an Offer</span> option appears in your booking sheet. You receive instant notifications for every offer and can accept, decline, or send a counter-offer.
+                      </div>
+                    </div>
+                  </VendorSettingSheetModal>
+                )}
+
+                {activeProfileSettingModal === 'privacy' && (
+                  <VendorSettingSheetModal
+                    title="Availability Privacy Lock"
+                    subtitle="Protect your calendar from competitor date spying"
+                    badgeText="Privacy & Security"
+                    icon={editForm.enableDateCheckLimit !== false ? Lock : Unlock}
+                    onClose={() => {
+                      flushAutoSave();
+                      setActiveProfileSettingModal(null);
+                    }}
+                  >
+                    <div className="bg-black/60 rounded-[1.75rem] border border-[#D4AF37]/30 p-5 space-y-5 text-left">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-bold text-white">Date Check Limit</h4>
+                          <p className="text-xs text-zinc-400 leading-relaxed">
+                            Limit how many dates a visitor can check before a cooldown reset.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
                             const nextEnabled = editForm.enableDateCheckLimit === false;
                             applyImmediateVendorUpdate(prev => ({ ...prev, enableDateCheckLimit: nextEnabled }));
                             showNotification(
@@ -4135,858 +5219,128 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               'info'
                             );
                           }}
-                          className={`w-full md:w-auto px-10 py-4 rounded-full text-xs font-black uppercase tracking-[0.2em] transition-all border cursor-pointer ${
+                          className={`h-11 px-6 rounded-full text-[10px] font-black uppercase tracking-[0.2em] transition-all border shrink-0 cursor-pointer flex items-center gap-2 ${
                             editForm.enableDateCheckLimit !== false
-                              ? 'bg-[#D4AF37] text-white border-[#D4AF37] shadow-xl shadow-[#D4AF37]/10'
-                              : 'bg-black text-zinc-300 border-white/10 hover:border-[#D4AF37]/40'
+                              ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-lg shadow-[#D4AF37]/15'
+                              : 'bg-black text-zinc-300 border-white/15 hover:border-[#D4AF37]/40'
                           }`}
                         >
                           {editForm.enableDateCheckLimit !== false ? (
-                            <span className="flex items-center justify-center gap-2"><CheckCircle className="w-4 h-4" /> Date Check Active</span>
+                            <>
+                              <CheckCircle className="w-4 h-4" />
+                              <span>Active</span>
+                            </>
                           ) : (
-                            <span className="flex items-center justify-center gap-2"><XCircle className="w-4 h-4" /> Date Check Off</span>
+                            <>
+                              <XCircle className="w-4 h-4" />
+                              <span>Off</span>
+                            </>
                           )}
                         </button>
                       </div>
 
-                      <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 transition-opacity duration-200 ${editForm.enableDateCheckLimit === false ? 'opacity-40 pointer-events-none select-none' : ''}`}>
-                        <div className="space-y-3 text-left">
-                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Max Date Checks Allowed</label>
-                          <input 
-                            type="number" 
+                      <div
+                        className={`grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-white/10 transition-opacity ${
+                          editForm.enableDateCheckLimit === false ? 'opacity-40 pointer-events-none select-none' : ''
+                        }`}
+                      >
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em] pl-2 block">
+                            Max Date Checks Allowed
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
                             disabled={editForm.enableDateCheckLimit === false}
-                            className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white transition-all" 
-                            style={{appearance: 'textfield'}}
+                            className="w-full h-11 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-sm font-bold text-white outline-none transition-all"
                             value={editForm.maxDateChecks ?? 5}
                             onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, maxDateChecks: parseInt(e.target.value) || 0 }))}
                             onBlur={flushAutoSave}
                             placeholder="5"
-                            min="1"
                           />
-                          <p className="text-[9px] text-zinc-300">Maximum date checking attempts allowed per client before blocking them.</p>
+                          <p className="text-[10px] text-zinc-400 pl-2">Checks allowed per client before lock.</p>
                         </div>
-                        
-                        <div className="space-y-3 text-left">
-                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Reset Period (in hours)</label>
-                          <input 
-                            type="number" 
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em] pl-2 block">
+                            Reset Period (Hours)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
                             disabled={editForm.enableDateCheckLimit === false}
-                            className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white transition-all" 
-                            style={{appearance: 'textfield'}}
+                            className="w-full h-11 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-sm font-bold text-white outline-none transition-all"
                             value={editForm.dateCheckResetHours ?? 24}
                             onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, dateCheckResetHours: parseInt(e.target.value) || 0 }))}
                             onBlur={flushAutoSave}
                             placeholder="24"
-                            min="1"
                           />
-                          <p className="text-[9px] text-zinc-300">How long (in hours) before the check attempts reset for a user.</p>
+                          <p className="text-[10px] text-zinc-400 pl-2">Hours until check counter resets.</p>
                         </div>
                       </div>
                     </div>
-                  )}
-               </div>
+                  </VendorSettingSheetModal>
+                )}
 
-               {/* Basic Information */}
-               <div className="bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden">
-                  <button 
-                    onClick={() => toggleSection('basic')}
-                    className="w-full p-8 border-b border-white/5 bg-black/40 flex justify-between items-center group cursor-pointer"
+                {activeProfileSettingModal === 'email' && (
+                  <VendorSettingSheetModal
+                    title="Email Delivery Debugger"
+                    subtitle="Test your SMTP configuration & notification delivery"
+                    badgeText="System Diagnostics"
+                    icon={Mail}
+                    onClose={() => setActiveProfileSettingModal(null)}
                   >
-                    <div className="text-left">
-                      <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">General Settings</h3>
-                      <p className="text-[10px] text-zinc-300 font-bold uppercase tracking-widest mt-1">Manage your basic public business information</p>
-                    </div>
-                    <ChevronRight className={`w-6 h-6 text-zinc-300 transition-transform ${collapsedSections['basic'] ? '' : 'rotate-90'}`} />
-                  </button>
-                  
-                  {!collapsedSections['basic'] && (
-                    <div className="p-8 space-y-10 animate-in slide-in-from-top-2 duration-300">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                       <div className="md:col-span-1 space-y-4">
-                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Business Image</label>
-                          <div className="relative group aspect-square rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl">
-                             <img src={editForm.image} className="w-full h-full object-cover" alt="" />
-                             {typeof uploadProgresses['logo'] === 'number' && (
-                               <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
-                                 <div className="w-12 h-12 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_15px_rgba(212,175,55,0.3)]"></div>
-                                 <div className="text-[#D4AF37] font-bold text-xs mt-3 tracking-widest">{Math.round(uploadProgresses['logo'])}%</div>
-                               </div>
-                             )}
-                             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all flex flex-col items-center justify-center p-4">
-                                <button 
-                                  onClick={() => logoFileInputRef.current?.click()}
-                                  disabled={isUploadingLogo}
-                                  aria-label="Change Portrait"
-                                  className="bg-white text-black p-3 rounded-full hover:bg-[#D4AF37] transition-all transform scale-90 group-hover:scale-100 duration-300"
-                                >
-                                  {isUploadingLogo ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
-                                </button>
-                                <p className="text-[8px] text-white font-black uppercase tracking-widest mt-2">Change Portrait</p>
-                             </div>
-                          </div>
-                          <input 
-                             type="file" 
-                             ref={logoFileInputRef}
-                             className="hidden"
-                             accept="image/*"
-                             onChange={handleLogoUpload}
+                    <div className="bg-black/60 rounded-[1.75rem] border border-[#D4AF37]/30 p-5 space-y-4 text-left">
+                      <p className="text-xs text-zinc-300 leading-relaxed">
+                        Send a live test email to verify that booking notifications and client alerts are delivering properly.
+                      </p>
+
+                      <div className="flex flex-col sm:flex-row gap-2.5">
+                        <div className="flex-1 relative">
+                          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                          <input
+                            type="email"
+                            placeholder="recipient@example.com"
+                            className="w-full h-11 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full pl-11 pr-4 text-sm text-white outline-none transition-all"
+                            value={testEmail}
+                            onChange={(e) => setTestEmail(e.target.value)}
                           />
-                       </div>
-                       <div className="md:col-span-2 space-y-8">
-                          <div className="space-y-3">
-                            <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Business Trading Name</label>
-                            <input 
-                              type="text" 
-                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white transition-all" 
-                              value={editForm.name}
-                              onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, name: e.target.value }))}
-                              onBlur={flushAutoSave}
-                              placeholder="e.g. Classic Jewish Catering"
-                            />
-                          </div>
-                          <div className="space-y-3">
-                            <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Public Contact Email</label>
-                            <input 
-                              type="email" 
-                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-[#D4AF37] outline-none text-white transition-all" 
-                              value={editForm.contactEmail}
-                              onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, contactEmail: e.target.value }))}
-                              onBlur={flushAutoSave}
-                              placeholder="hello@business.com"
-                            />
-                          </div>
-                          <div className="space-y-3">
-                            <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Location / Base Service Area</label>
-                            <LocationAutocomplete
-                              id="vendor-profile-location"
-                              floating={false}
-                              placeholder="e.g. Brooklyn, NY or 123 Main St..."
-                              value={editForm.location || ''}
-                              onChange={(val) => applyAutoSaveVendorUpdate(prev => ({ ...prev, location: val }))}
-                            />
-                          </div>
-                       </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em]">Business Biography / description</label>
-                      <textarea 
-                        rows={4}
-                        className="w-full bg-black border border-white/10 rounded-xl px-4 py-4 text-sm focus:border-[#D4AF37] outline-none resize-none text-zinc-300 leading-relaxed transition-all" 
-                        value={editForm.description}
-                        onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, description: e.target.value }))}
-                        onBlur={flushAutoSave}
-                        placeholder="Tell clients about your services and experience..."
-                      />
-                    </div>
-                  </div>
-                )}
-               </div>
-
-                {/* Services & Packaging */}
-               <div className="bg-[#111] rounded-3xl border-2 border-[#D4AF37]/35 shadow-2xl overflow-hidden">
-                  <div 
-                    onClick={() => toggleSection('services')}
-                    className="px-5 py-6 sm:p-8 border-b-2 border-[#D4AF37]/20 bg-black/60 flex justify-between items-center cursor-pointer group"
-                  >
-                    <div className="text-left">
-                      <h3 className="text-lg sm:text-xl font-bold font-[Cinzel] text-[#D4AF37]">Services & Pricing Packages</h3>
-                      <p className="text-[10px] text-zinc-300 font-bold uppercase tracking-widest mt-1">Simple, outlined setup for Locations, Add-ons & Photos</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                       <button 
-                         type="button"
-                         onClick={(e) => {
-                           e.stopPropagation();
-                           if (collapsedSections['services']) toggleSection('services');
-                           setShowAddForm(!showAddForm);
-                         }}
-                         aria-label="Toggle add service form"
-                         className={`px-4 py-2 rounded-full transition-all border-2 font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 cursor-pointer ${showAddForm ? 'bg-zinc-900 text-zinc-200 border-zinc-500' : 'bg-[#D4AF37] text-black border-[#D4AF37] hover:bg-[#E5C76B]'}`}
-                       >
-                         {showAddForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                         <span>{showAddForm ? 'Close' : 'New Option'}</span>
-                       </button>
-                       <ChevronRight className={`w-6 h-6 text-[#D4AF37] transition-transform ${collapsedSections['services'] ? '' : 'rotate-90'}`} />
-                    </div>
-                  </div>
-                  
-                   {!collapsedSections['services'] && (
-                    <div className="p-4 sm:p-6 md:p-8 space-y-8 animate-in slide-in-from-top-2 duration-300">
-                    {(() => {
-                      const allServices = editForm.services || [];
-                      const inferCat = (s: VendorService): ServiceCategoryType => {
-                        if (s.categoryType === 'location') return 'location';
-                        if (s.categoryType === 'amenities') return 'amenities';
-                        if (s.categoryType === 'hours') return 'hours';
-                        const text = `${s.name} ${s.unit || ''}`.toLowerCase();
-                        if (/\b(location|lakewood|brooklyn|monsey|boro park|williamsburg|five towns|queens|manhattan|staten island|new jersey|ny|nj|travel|destination|area|local|out of town|out of state|long island|westchester|miami|florida|ballroom|terrace|boroughs|metro)\b/.test(text)) {
-                          return 'location';
-                        }
-                        return 'amenities';
-                      };
-
-                      const boxes: {
-                        type: ServiceCategoryType;
-                        title: string;
-                        subtitle: string;
-                        defaultUnit: string;
-                        icon: any;
-                        items: VendorService[];
-                      }[] = [
-                        {
-                          type: 'location',
-                          title: 'Locations & Base Packages',
-                          subtitle: 'Client selects 1 location and can add extra hours',
-                          defaultUnit: 'location',
-                          icon: MapPin,
-                          items: allServices.filter(s => inferCat(s) === 'location')
-                        },
-                        {
-                          type: 'amenities',
-                          title: 'Add-ons & Extras',
-                          subtitle: 'Client can select add-ons — upload a photo & description to showcase at the top of the booking modal',
-                          defaultUnit: '',
-                          icon: Layers,
-                          items: allServices.filter(s => inferCat(s) === 'amenities')
-                        }
-                      ];
-
-                      return (
-                        <div className="space-y-8 w-full">
-                          {boxes.map((box) => {
-                            const BoxIcon = box.icon;
-                            const isAddingHere = showAddForm && newServiceCategoryType === box.type;
-                            return (
-                              <div
-                                key={box.type}
-                                className="w-full rounded-3xl border-2 border-[#D4AF37]/35 bg-black/50 p-4 sm:p-6 space-y-5 shadow-xl"
-                              >
-                                <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-[#D4AF37]/25 pb-4">
-                                  <div className="flex items-center gap-3 text-left">
-                                    <div className="w-10 h-10 rounded-2xl bg-[#D4AF37]/15 border-2 border-[#D4AF37]/50 flex items-center justify-center text-[#D4AF37] shrink-0">
-                                      <BoxIcon className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                      <h4 className="text-sm sm:text-base font-black uppercase tracking-widest text-[#D4AF37] font-[Cinzel]">
-                                        {box.title}
-                                      </h4>
-                                      <p className="text-[11px] text-zinc-300 font-medium mt-0.5">{box.subtitle}</p>
-                                    </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (isAddingHere) {
-                                        setShowAddForm(false);
-                                      } else {
-                                        setNewServiceCategoryType(box.type);
-                                        setNewServiceUnit('');
-                                        setNewServiceName('');
-                                        setNewServicePrice('');
-                                        setNewServiceAllowQty(false);
-                                        setNewServiceDefaultHours('3');
-                                        setNewServiceHourlyRate('100');
-                                        setNewServiceImageUrl('');
-                                        setShowAddForm(true);
-                                      }
-                                    }}
-                                    className={`px-4 py-2.5 rounded-full border-2 transition-all shrink-0 cursor-pointer flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest shadow-md ${
-                                      isAddingHere
-                                        ? 'bg-zinc-900 text-zinc-200 border-zinc-400'
-                                        : 'bg-[#D4AF37] hover:bg-[#E5C76B] text-black border-[#D4AF37]'
-                                    }`}
-                                  >
-                                    {isAddingHere ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
-                                    <span>{isAddingHere ? 'Cancel' : `+ Add ${box.type === 'location' ? 'Location' : 'Add-on'}`}</span>
-                                  </button>
-                                </div>
-
-                                {/* Clearly Outlined Inline Add Form */}
-                                {isAddingHere && (
-                                  <div className="bg-[#0a0a0a] p-4 sm:p-6 rounded-2xl border-2 border-[#D4AF37] space-y-5 text-left shadow-2xl animate-in slide-in-from-top-2 duration-200">
-                                    <div className="flex items-center justify-between border-b border-[#D4AF37]/25 pb-3">
-                                      <span className="text-xs font-black uppercase tracking-widest text-[#D4AF37] flex items-center gap-2">
-                                        <Plus className="w-4 h-4" />
-                                        New {box.type === 'location' ? 'Location Package' : 'Add-on / Extra'}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => setShowAddForm(false)}
-                                        className="text-zinc-300 hover:text-white px-2.5 py-1 rounded-full border border-white/20 text-[10px] font-bold uppercase tracking-wider cursor-pointer"
-                                      >
-                                        Close
-                                      </button>
-                                    </div>
-
-                                    {box.type === 'location' ? (
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
-                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
-                                            1. Location Name
-                                          </label>
-                                          <input
-                                            type="text"
-                                            autoFocus
-                                            className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl px-3.5 text-sm font-bold text-white outline-none"
-                                            placeholder="e.g. Lakewood, Brooklyn"
-                                            value={newServiceName}
-                                            onChange={e => setNewServiceName(e.target.value)}
-                                          />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
-                                            2. Base Price ($)
-                                          </label>
-                                          <div className="relative">
-                                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
-                                            <input
-                                              type="number"
-                                              className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl pl-8 pr-3 text-sm font-bold text-[#D4AF37] outline-none"
-                                              placeholder="1500"
-                                              value={newServicePrice}
-                                              onChange={e => setNewServicePrice(e.target.value)}
-                                            />
-                                          </div>
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
-                                            3. Included Hours
-                                          </label>
-                                          <input
-                                            type="number"
-                                            min="1"
-                                            className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl px-3.5 text-sm font-bold text-white outline-none"
-                                            placeholder="3"
-                                            value={newServiceDefaultHours}
-                                            onChange={e => setNewServiceDefaultHours(e.target.value)}
-                                          />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
-                                            4. Extra Hour ($/hr)
-                                          </label>
-                                          <div className="relative">
-                                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
-                                            <input
-                                              type="number"
-                                              min="0"
-                                              className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl pl-8 pr-3 text-sm font-bold text-[#D4AF37] outline-none"
-                                              placeholder="100"
-                                              value={newServiceHourlyRate}
-                                              onChange={e => setNewServiceHourlyRate(e.target.value)}
-                                            />
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
-                                            1. Add-on Name
-                                          </label>
-                                          <input
-                                            type="text"
-                                            autoFocus
-                                            className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl px-3.5 text-sm font-bold text-white outline-none"
-                                            placeholder="e.g. Percussion, Lighting, Extra Singer"
-                                            value={newServiceName}
-                                            onChange={e => setNewServiceName(e.target.value)}
-                                          />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
-                                            2. Price ($)
-                                          </label>
-                                          <div className="relative">
-                                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
-                                            <input
-                                              type="number"
-                                              className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl pl-8 pr-3 text-sm font-bold text-[#D4AF37] outline-none"
-                                              placeholder="500"
-                                              value={newServicePrice}
-                                              onChange={e => setNewServicePrice(e.target.value)}
-                                            />
-                                          </div>
-                                        </div>
-
-                                        <div className="space-y-1.5 sm:col-span-2">
-                                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
-                                            3. Photo Caption / Description (Shown in gold on top of photo when selected)
-                                          </label>
-                                          <input
-                                            type="text"
-                                            maxLength={80}
-                                            className="w-full h-11 bg-black border-2 border-[#D4AF37]/45 focus:border-[#D4AF37] rounded-xl px-3.5 text-sm font-semibold text-white outline-none"
-                                            placeholder="e.g. Percussion play & sing • 3 hours"
-                                            value={newServiceUnit}
-                                            onChange={e => setNewServiceUnit(e.target.value)}
-                                          />
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Evenly Laid Out Photo Upload + Quantity Row */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                                      <div className="space-y-1.5">
-                                        <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
-                                          {box.type === 'location' ? '5. Optional Location Photo' : '4. Add-on Showcase Photo'}
-                                        </span>
-                                        <div className="flex items-center gap-3">
-                                          <label className="flex-1 h-12 px-4 rounded-xl border-2 border-dashed border-[#D4AF37]/60 hover:border-[#D4AF37] bg-black/80 hover:bg-[#D4AF37]/10 text-[#D4AF37] font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer transition-all">
-                                            {isUploadingNewServiceImage ? (
-                                              <>
-                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                                <span>Uploading {Math.round(uploadProgresses['newService'] || 0)}%</span>
-                                              </>
-                                            ) : (
-                                              <>
-                                                <Camera className="w-4 h-4" />
-                                                <span>{newServiceImageUrl ? 'Change Photo' : 'Upload Photo'}</span>
-                                              </>
-                                            )}
-                                            <input
-                                              type="file"
-                                              accept="image/*"
-                                              className="hidden"
-                                              onChange={handleNewServiceImageUpload}
-                                            />
-                                          </label>
-                                          {newServiceImageUrl && (
-                                            <div className="relative w-12 h-12 rounded-xl overflow-hidden border-2 border-[#D4AF37] shrink-0 group">
-                                              <img src={newServiceImageUrl} alt="Preview" className="w-full h-full object-cover" />
-                                              <button
-                                                type="button"
-                                                onClick={() => setNewServiceImageUrl('')}
-                                                className="absolute inset-0 bg-black/70 text-red-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                                                title="Remove photo"
-                                              >
-                                                <Trash2 className="w-4 h-4" />
-                                              </button>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      {box.type === 'amenities' && (
-                                        <div className="space-y-1.5">
-                                          <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest block">
-                                            5. Quantity Control (+ / -)
-                                          </span>
-                                          <button
-                                            type="button"
-                                            onClick={() => setNewServiceAllowQty(!newServiceAllowQty)}
-                                            className={`flex items-center justify-between w-full h-12 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all cursor-pointer ${
-                                              newServiceAllowQty
-                                                ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
-                                                : 'bg-black text-zinc-200 border-[#D4AF37]/40 hover:border-[#D4AF37]'
-                                            }`}
-                                          >
-                                            <span className="flex items-center gap-2">
-                                              {newServiceAllowQty ? <CheckCircle className="w-4 h-4" /> : <Layers className="w-4 h-4 text-[#D4AF37]" />}
-                                              Allow Client to Pick Quantity
-                                            </span>
-                                            <span className="px-2 py-0.5 rounded-full bg-black/20">{newServiceAllowQty ? 'ON' : 'OFF'}</span>
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    <div className="flex gap-3 pt-2 border-t border-[#D4AF37]/20">
-                                      <button
-                                        type="button"
-                                        onClick={() => setShowAddForm(false)}
-                                        className="flex-1 h-11 bg-black hover:bg-zinc-900 text-zinc-200 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 border-zinc-600 transition-all cursor-pointer"
-                                      >
-                                        Cancel
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={handleAddService}
-                                        disabled={isUploadingNewServiceImage}
-                                        className="flex-[2] h-11 bg-[#D4AF37] hover:bg-[#E5C76B] text-black rounded-xl text-[10px] font-black uppercase tracking-widest border-2 border-[#D4AF37] shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                                      >
-                                        <Check className="w-4 h-4 stroke-[3]" /> Save {box.type === 'location' ? 'Location' : 'Add-on'}
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {box.items.length > 0 ? (
-                                  <div className="grid grid-cols-1 gap-4 w-full">
-                                    {box.items.map((service) => {
-                                      const cleanNote = (service.unit && !['item', 'location', 'hour', 'hours', 'service', 'package'].includes(service.unit.toLowerCase())) ? service.unit : '';
-                                      const serviceImg = previewUrls[service.id] || service.image;
-                                      const isUploadingThis = uploadProgresses[service.id] !== undefined;
-
-                                      return (
-                                        <div
-                                          key={service.id}
-                                          className="w-full bg-[#0b0b0b] border-2 border-[#D4AF37]/40 hover:border-[#D4AF37] rounded-2xl p-4 sm:p-5 space-y-4 transition-all shadow-lg"
-                                        >
-                                          {/* Top Row: Photo Upload Box + Option Name + Delete Button */}
-                                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full">
-                                            {/* Outlined Photo Thumbnail / Upload Button */}
-                                            <div className="flex items-center gap-2.5 shrink-0">
-                                              <label
-                                                className="relative w-14 h-14 rounded-xl border-2 border-[#D4AF37]/60 hover:border-[#D4AF37] bg-black flex flex-col items-center justify-center overflow-hidden cursor-pointer group/img shrink-0 transition-all"
-                                                title="Upload or change photo for this option"
-                                              >
-                                                {serviceImg ? (
-                                                  <>
-                                                    <img src={serviceImg} alt={service.name} className="w-full h-full object-cover" />
-                                                    <div className="absolute inset-0 bg-black/65 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-opacity">
-                                                      <Camera className="w-4 h-4 text-[#D4AF37]" />
-                                                    </div>
-                                                  </>
-                                                ) : (
-                                                  <>
-                                                    <Camera className="w-4 h-4 text-[#D4AF37]" />
-                                                    <span className="text-[8px] font-black uppercase tracking-wider text-[#D4AF37] mt-0.5">Photo</span>
-                                                  </>
-                                                )}
-                                                {isUploadingThis && (
-                                                  <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
-                                                    <Loader2 className="w-4 h-4 text-[#D4AF37] animate-spin" />
-                                                  </div>
-                                                )}
-                                                <input
-                                                  type="file"
-                                                  accept="image/*"
-                                                  className="hidden"
-                                                  onChange={(e) => handleServiceImageUpload(service.id, e)}
-                                                />
-                                              </label>
-                                              {serviceImg && (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    setPreviewUrls(prev => {
-                                                      const next = { ...prev };
-                                                      delete next[service.id];
-                                                      return next;
-                                                    });
-                                                    handleUpdateService(service.id, { image: '' }, true);
-                                                  }}
-                                                  className="px-2.5 py-1.5 rounded-lg bg-black border-2 border-red-500/40 hover:border-red-500 text-red-400 text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all"
-                                                  title="Remove photo"
-                                                >
-                                                  Remove Photo
-                                                </button>
-                                              )}
-                                            </div>
-
-                                            <div className="flex-1 min-w-0">
-                                              <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">
-                                                {box.type === 'location' ? 'Location Name' : 'Add-on Name'}
-                                              </span>
-                                              <input
-                                                type="text"
-                                                className="w-full h-11 bg-black border-2 border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-xl text-sm font-bold text-zinc-100 outline-none px-3.5"
-                                                value={service.name}
-                                                onChange={e => handleUpdateService(service.id, { name: e.target.value })}
-                                                onBlur={flushAutoSave}
-                                                placeholder="Option Name"
-                                              />
-                                            </div>
-
-                                            <div className="flex sm:flex-col justify-end sm:pt-4 shrink-0">
-                                              <button
-                                                type="button"
-                                                onClick={() => handleRemoveService(service.id)}
-                                                className="h-11 px-3.5 text-red-400 hover:bg-red-500 hover:text-white bg-black border-2 border-red-500/45 hover:border-red-500 rounded-xl transition-all shrink-0 cursor-pointer flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-wider"
-                                                title="Delete Option"
-                                              >
-                                                <Trash2 className="w-4 h-4" />
-                                                <span className="sm:hidden">Delete</span>
-                                              </button>
-                                            </div>
-                                          </div>
-
-                                          {/* Bottom Even Grid Row */}
-                                          {box.type === 'location' ? (
-                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full pt-1">
-                                              <div>
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">Base Price ($)</span>
-                                                <div className="relative">
-                                                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
-                                                  <input
-                                                    type="number"
-                                                    className="w-full h-11 bg-black border-2 border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-xl pl-8 pr-3 text-sm font-bold text-[#D4AF37] outline-none tabular-nums"
-                                                    value={service.price}
-                                                    onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
-                                                    onBlur={flushAutoSave}
-                                                  />
-                                                </div>
-                                              </div>
-                                              <div>
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">Included Hours</span>
-                                                <input
-                                                  type="number"
-                                                  min="1"
-                                                  className="w-full h-11 bg-black border-2 border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-xl px-3.5 text-sm font-bold text-zinc-100 outline-none text-center tabular-nums"
-                                                  value={service.defaultHours ?? 3}
-                                                  onChange={e => handleUpdateService(service.id, { defaultHours: Math.max(1, parseInt(e.target.value) || 1) })}
-                                                  onBlur={flushAutoSave}
-                                                />
-                                              </div>
-                                              <div>
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">Extra Hour ($/hr)</span>
-                                                <div className="relative">
-                                                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
-                                                  <input
-                                                    type="number"
-                                                    min="0"
-                                                    className="w-full h-11 bg-black border-2 border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-xl pl-8 pr-3 text-sm font-bold text-[#D4AF37] outline-none tabular-nums"
-                                                    value={service.hourlyRate ?? 100}
-                                                    onChange={e => handleUpdateService(service.id, { hourlyRate: Math.max(0, parseFloat(e.target.value) || 0) })}
-                                                    onBlur={flushAutoSave}
-                                                  />
-                                                </div>
-                                              </div>
-                                            </div>
-                                          ) : (
-                                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 w-full pt-1">
-                                              <div>
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">Price ($)</span>
-                                                <div className="relative">
-                                                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
-                                                  <input
-                                                    type="number"
-                                                    className="w-full h-11 bg-black border-2 border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-xl pl-8 pr-3 text-sm font-bold text-[#D4AF37] outline-none tabular-nums"
-                                                    value={service.price}
-                                                    onChange={e => handleUpdateService(service.id, { price: parseFloat(e.target.value) || 0 })}
-                                                    onBlur={flushAutoSave}
-                                                  />
-                                                </div>
-                                              </div>
-                                              <div className="sm:col-span-2">
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">Photo Description (Shown on photo)</span>
-                                                <input
-                                                  type="text"
-                                                  maxLength={80}
-                                                  placeholder="e.g. Percussion play & sing • 3 hours"
-                                                  className="w-full h-11 bg-black border-2 border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-xl px-3.5 text-sm font-semibold text-zinc-100 outline-none"
-                                                  value={cleanNote}
-                                                  onChange={e => handleUpdateService(service.id, { unit: e.target.value.slice(0, 80) })}
-                                                  onBlur={flushAutoSave}
-                                                />
-                                              </div>
-                                              <div>
-                                                <span className="text-[9px] font-black uppercase tracking-wider text-[#D4AF37] block mb-1">Quantity (+ / -)</span>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleUpdateService(service.id, { allowQuantity: !service.allowQuantity }, true)}
-                                                  className={`w-full h-11 px-3.5 rounded-xl text-xs font-black uppercase tracking-wider border-2 transition-all truncate cursor-pointer ${
-                                                    service.allowQuantity
-                                                      ? 'text-black border-[#D4AF37] bg-[#D4AF37]'
-                                                      : 'text-zinc-200 bg-black border-[#D4AF37]/35 hover:border-[#D4AF37]'
-                                                  }`}
-                                                >
-                                                  {service.allowQuantity ? 'Multiple: ON' : 'Single Only'}
-                                                </button>
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : !isAddingHere ? (
-                                  <div className="py-8 text-center border-2 border-dashed border-[#D4AF37]/30 rounded-2xl bg-black/40">
-                                    <p className="text-xs text-zinc-300 font-bold uppercase tracking-widest">No {box.type === 'location' ? 'location' : 'add-on'} options yet</p>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setNewServiceCategoryType(box.type);
-                                        setNewServiceUnit('');
-                                        setNewServiceName('');
-                                        setNewServicePrice('');
-                                        setNewServiceAllowQty(false);
-                                        setNewServiceDefaultHours('3');
-                                        setNewServiceHourlyRate('100');
-                                        setNewServiceImageUrl('');
-                                        setShowAddForm(true);
-                                      }}
-                                      className="mt-3 px-5 py-2.5 rounded-full bg-[#D4AF37] border-2 border-[#D4AF37] text-[10px] font-black text-black uppercase tracking-widest hover:bg-[#E5C76B] transition-all cursor-pointer shadow-md"
-                                    >
-                                      + Add {box.type === 'location' ? 'Location' : 'Add-on'} Option
-                                    </button>
-                                  </div>
-                                ) : null}
-                              </div>
-                            );
-                          })}
                         </div>
-                      );
-                    })()}
-                  </div>
-                )}
-               </div>
+                        <button
+                          type="button"
+                          onClick={handleSendTestEmail}
+                          disabled={isSendingTest}
+                          className="h-11 px-6 bg-[#D4AF37] hover:bg-[#E5C76B] text-black rounded-full font-black text-[10px] uppercase tracking-widest border border-[#D4AF37] transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shrink-0"
+                        >
+                          {isSendingTest ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                          <span>{isSendingTest ? 'Sending...' : 'Send Test'}</span>
+                        </button>
+                      </div>
 
-               {/* Media Showcase */}
-               <div className="bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden">
-                  <button 
-                    onClick={() => toggleSection('media')}
-                    className="w-full p-8 border-b border-white/5 bg-black/40 flex justify-between items-center group cursor-pointer"
-                  >
-                    <div className="text-left">
-                      <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Media Showcase</h3>
-                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Manage images and videos appearing on your card</p>
-                    </div>
-                    <ChevronRight className={`w-6 h-6 text-zinc-400 transition-transform ${collapsedSections['media'] ? '' : 'rotate-90'}`} />
-                  </button>
-                  
-                  {!collapsedSections['media'] && (
-                    <div className="p-8 space-y-6 animate-in slide-in-from-top-2 duration-300">
-                    <div className="flex justify-end gap-3">
-                      {typeof uploadProgresses['gallery'] === 'number' && (
-                        <div className="flex items-center gap-3 text-[#D4AF37] text-[10px] font-black uppercase tracking-widest mr-auto bg-black/40 border border-[#D4AF37]/20 px-4 py-2 rounded-xl">
-                          <div className="w-4 h-4 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_5px_rgba(212,175,55,0.3)]"></div>
-                          <span>Uploading: {Math.round(uploadProgresses['gallery'])}%</span>
+                      {testEmailStatus?.success && (
+                        <div className="bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-4 py-3 rounded-full flex items-center gap-2.5">
+                          <CheckCircle className="w-4 h-4 text-[#D4AF37] shrink-0" />
+                          <p className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-widest">
+                            Test email sent! Check your inbox.
+                          </p>
                         </div>
                       )}
-                      <button 
-                        onClick={() => {
-                          if (fileInputRef.current) {
-                            fileInputRef.current.accept = "image/*";
-                            fileInputRef.current.click();
-                          }
-                        }}
-                        className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-zinc-300 px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all"
-                      >
-                        <ImageIcon className="w-4 h-4" /> Add Photo
-                      </button>
-                      <button 
-                        onClick={() => {
-                          if (fileInputRef.current) {
-                            fileInputRef.current.accept = "video/*";
-                            fileInputRef.current.click();
-                          }
-                        }}
-                        className="flex items-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-[#D4AF37]/20 transition-all"
-                      >
-                        <Film className="w-4 h-4" /> Upload Video
-                      </button>
-                      <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        className="hidden" 
-                        onChange={handleMediaUpload} 
-                      />
-                    </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                      {editForm.gallery?.map((url, idx) => {
-                        const isVid = isVideo(url);
-                        return (
-                          <div key={idx} className="relative aspect-square bg-black rounded-2xl overflow-hidden border border-white/5 group ring-1 ring-white/5 shadow-2xl">
-                            <div 
-                              onClick={() => setFullscreenMedia({ url, type: isVid ? 'video' : 'image' })}
-                              className="w-full h-full cursor-pointer relative"
-                            >
-                              {isVid ? (
-                                <video controls autoPlay muted loop playsInline src={url} className="w-full h-full object-cover" />
-                              ) : (
-                                <img src={url} className="w-full h-full object-cover" alt="" />
-                              )}
-                            </div>
-                            <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col items-center justify-center p-2 text-center pointer-events-none group-hover:pointer-events-auto">
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); handleRemoveMedia(idx); }}
-                                className="p-3 bg-zinc-800 text-white rounded-full hover:bg-zinc-700 transition-colors shadow-xl"
-                                title="Remove media"
-                                aria-label="Remove media"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                            {isVid && (
-                              <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded-md text-[8px] font-black text-[#D4AF37] border border-[#D4AF37]/30 flex items-center gap-1">
-                                <Video className="w-2.5 h-2.5" /> VIDEO
-                              </div>
-                            )}
+                      {testEmailStatus?.error && (
+                        <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-2xl flex items-start gap-2.5">
+                          <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest">Email Failed</p>
+                            <p className="text-[10px] text-zinc-300 mt-1 font-mono break-all">{testEmailStatus.error}</p>
                           </div>
-                        );
-                      })}
-                      
-                      {(!editForm.gallery || editForm.gallery.length === 0) && (
-                        <div className="col-span-full py-16 text-center border-2 border-dashed border-white/5 rounded-3xl opacity-20">
-                           <ImageIcon className="w-12 h-12 mx-auto mb-3" />
-                           <p className="text-[10px] font-black uppercase tracking-widest">Gallery is currently empty</p>
                         </div>
                       )}
                     </div>
-                  </div>
+                  </VendorSettingSheetModal>
                 )}
-               </div>
-
-               {/* Email Debug Section */}
-               <div className="bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden">
-                  <button 
-                    onClick={() => toggleSection('email')}
-                    className="w-full p-8 border-b border-white/5 bg-black/40 flex justify-between items-center group cursor-pointer"
-                  >
-                    <div className="text-left">
-                      <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Email Debugger</h3>
-                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Test your SMTP configuration</p>
-                    </div>
-                    <ChevronRight className={`w-6 h-6 text-zinc-400 transition-transform ${collapsedSections['email'] ? '' : 'rotate-90'}`} />
-                  </button>
-                  
-                  {!collapsedSections['email'] && (
-                    <div className="p-8 space-y-4 animate-in slide-in-from-top-2 duration-300">
-                    <p className="text-xs text-zinc-400 leading-relaxed">
-                      If automated emails are not sending, use this tool to trigger a manual test. 
-                      Check the server logs for detailed Nodemailer error reports.
-                    </p>
-                    
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <div className="flex-1 relative">
-                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                        <input 
-                          type="email"
-                          placeholder="recipient@example.com"
-                          className="w-full bg-black border border-white/10 rounded-xl pl-12 pr-4 py-4 text-sm focus:border-[#D4AF37] outline-none text-zinc-100 transition-all"
-                          value={testEmail}
-                          onChange={(e) => setTestEmail(e.target.value)}
-                        />
-                      </div>
-                      <button 
-                        onClick={handleSendTestEmail}
-                        disabled={isSendingTest}
-                        className="bg-white/5 hover:bg-white/10 text-white px-8 py-4 rounded-full font-black text-[10px] uppercase tracking-widest border border-white/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                      >
-                        {isSendingTest ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                        {isSendingTest ? 'Sending...' : 'Send Test'}
-                      </button>
-                    </div>
-                    
-                    {testEmailStatus?.success && (
-                      <div className="bg-[#D4AF37]/10 border border-[#D4AF37]/20 p-4 rounded-2xl flex items-center gap-3 animate-in slide-in-from-top-2 duration-300">
-                        <CheckCircle className="w-4 h-4 text-[#D4AF37]" />
-                        <p className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-widest">Test email sent! Check your inbox.</p>
-                      </div>
-                    )}
-                    
-                    {testEmailStatus?.error && (
-                      <div className="bg-zinc-400/10 border border-zinc-400/20 p-4 rounded-2xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-300">
-                        <AlertTriangle className="w-4 h-4 text-zinc-400 mt-0.5" />
-                        <div>
-                          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Email Failed</p>
-                          <p className="text-[10px] text-zinc-400 mt-1 font-mono break-all">{testEmailStatus.error}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-               </div>
-            </div>
-          )}
+              </div>
+            );
+          })()}
           
           {(activeTab === 'history') && (
             <div className="bg-[#111] p-10 rounded-3xl border border-dashed border-white/10 text-center space-y-4 animate-in fade-in duration-300">

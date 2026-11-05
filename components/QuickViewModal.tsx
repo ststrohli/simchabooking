@@ -6,7 +6,7 @@ import { MOCK_BOOKINGS } from '../services/mockData';
 import BookingModal from './BookingModal';
 import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
 
-const MODAL_TRANSITION = { duration: 1, ease: [0.25, 1, 0.5, 1] as const };
+const MODAL_TRANSITION = { duration: 1.15, ease: [0.25, 0.85, 0.35, 1] as const };
 const EMPTY_INITIAL_DETAILS = { clientName: '', contactEmail: '', eventName: '' };
 
 const formatVideoTime = (seconds: number): string => {
@@ -379,10 +379,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
   const handleQuickViewDismissStart = useCallback(() => {
     isQuickViewDismissingRef.current = true;
     document.body.style.overflow = '';
-    if (onCloseBooking) {
-      onCloseBooking();
-    }
-  }, [onCloseBooking]);
+  }, []);
 
   const defaultSelectedDate = useMemo(() => new Date().toLocaleDateString('en-CA'), []);
 
