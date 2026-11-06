@@ -41,7 +41,7 @@ const PaymentSuccess: React.FC<PaymentSuccessProps> = ({
     let isCancelled = false;
 
     const verifyPayment = async () => {
-      const minLoadingDelay = new Promise<void>((resolve) => window.setTimeout(resolve, 1850));
+      const minLoadingDelay = new Promise<void>((resolve) => window.setTimeout(resolve, 650));
 
       try {
         // Fetch booking & vendor details in parallel so we always display "$Amount Confirmed" and vendor name cleanly
@@ -120,7 +120,7 @@ const PaymentSuccess: React.FC<PaymentSuccessProps> = ({
         if (!isCancelled) {
           setStatus('success');
         }
-      }, 1850);
+      }, 650);
       return () => window.clearTimeout(timer);
     }
 

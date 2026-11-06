@@ -1418,10 +1418,27 @@ function App() {
   const heroTitleY = useTransform(scrollY, [0, 200], [0, -28]);
   const heroBgScale = useTransform(scrollY, [0, 320], [1, 1.06]);
 
-  const [view, setView] = useState<'marketplace' | 'vendor-portal' | 'admin' | 'posts' | 'client-portal' | 'payment-success' | 'verify-account' | 'portal'>('marketplace');
+  const initialUrlInfo = useMemo(() => {
+    if (typeof window === 'undefined') return { path: '/', bookingId: null, vendorId: null };
+    const path = window.location.pathname;
+    const params = new URLSearchParams(window.location.search);
+    return {
+      path,
+      bookingId: params.get('bookingId'),
+      vendorId: params.get('vendorId'),
+    };
+  }, []);
+
+  const [paymentBookingId, setPaymentBookingId] = useState<string | null>(() => initialUrlInfo.bookingId);
+  const [paymentVendorId, setPaymentVendorId] = useState<string | null>(() => initialUrlInfo.vendorId);
+  const [view, setView] = useState<'marketplace' | 'vendor-portal' | 'admin' | 'posts' | 'client-portal' | 'payment-success' | 'verify-account' | 'portal'>(() => {
+    if (initialUrlInfo.path === '/payment-success') return 'payment-success';
+    if (initialUrlInfo.path === '/verify-account') return 'verify-account';
+    return 'marketplace';
+  });
   const [portalTab, setPortalTab] = useState<'client' | 'vendor'>('client');
-  const [portalInitialTab, setPortalInitialTab] = useState<string>('overview');
-  const [activeBottomTab, setActiveBottomTab] = useState<string>('home');
+  const [portalInitialTab, setPortalInitialTab] = useState<string>(() => (initialUrlInfo.path === '/payment-success' ? 'events' : 'overview'));
+  const [activeBottomTab, setActiveBottomTab] = useState<string>(() => (initialUrlInfo.path === '/payment-success' ? 'events' : 'home'));
   const welcomeScheduled = React.useRef(false);
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
   const [userDocData, setUserDocData] = useState<any>(null);
@@ -1438,8 +1455,6 @@ function App() {
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [userRole, setUserRole] = useState<'client' | 'vendor' | 'admin' | null>(null);
   const [currentUserVendorId, setCurrentUserVendorId] = useState<string | null>(null);
-  const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
-  const [paymentVendorId, setPaymentVendorId] = useState<string | null>(null);
 
   const vendorProfileId = useMemo(() => {
     if (!fbUser) return null;
@@ -2810,12 +2825,18 @@ function App() {
         setPaymentVendorId(vId);
         setView('payment-success');
       } else {
-        setView('client-portal');
+        setPortalTab('client');
+        setPortalInitialTab('events');
+        setActiveBottomTab('events');
+        setView('portal');
         showNotification('Payment successful! Your booking is confirmed.', 'success');
       }
       window.history.replaceState({}, '', '/');
     } else if (path === '/payment-cancel') {
-      setView('client-portal');
+      setPortalTab('client');
+      setPortalInitialTab('events');
+      setActiveBottomTab('events');
+      setView('portal');
       showNotification('Payment was cancelled.', 'info');
       window.history.replaceState({}, '', '/');
     }
@@ -4464,11 +4485,51 @@ function App() {
   };
 
   if (isInitializing) {
+    const isPaymentRedirect = typeof window !== 'undefined' && window.location.pathname === '/payment-success';
     return (
-      <main className="min-h-screen bg-black flex flex-col items-center justify-center" aria-label="Loading Simcha Booking">
-        <SimchaLogo className="w-16 h-16 animate-pulse mb-8" />
-        <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
-        <span className="sr-only">Loading application...</span>
+      <main
+        className="min-h-screen bg-black flex flex-col items-center justify-center p-6 select-none"
+        aria-label="Loading Simcha Booking"
+      >
+        <div className="w-full max-w-md space-y-5 flex flex-col items-center text-center mx-auto">
+          {/* Luxury Triple-Ring Gold Animated Indicator */}
+          <div className="relative w-20 h-20 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full border-2 border-[#D4AF37]/20 animate-ping" />
+            <div className="absolute inset-1 rounded-full border-2 border-[#D4AF37]/25" />
+            <div className="absolute inset-1 rounded-full border-2 border-transparent border-t-[#D4AF37] border-r-[#D4AF37]/60 animate-spin" />
+            <div className="w-12 h-12 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center shadow-[0_0_30px_rgba(212,175,55,0.35)] p-2">
+              {isPaymentRedirect ? (
+                <ShieldCheck className="w-6 h-6 text-[#D4AF37] animate-pulse" />
+              ) : (
+                <SimchaLogo className="w-6 h-6 animate-pulse" />
+              )}
+            </div>
+          </div>
+
+          <div className="text-center space-y-1.5">
+            <p className="text-xs sm:text-sm font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.25em]">
+              {isPaymentRedirect ? 'Confirming Your Payment' : 'Simcha Celebration Concierge'}
+            </p>
+            <p className="text-[11px] text-zinc-400">
+              {isPaymentRedirect
+                ? 'Finalizing your confirmed celebration reservation...'
+                : 'Curating premier verified vendors & celebration experiences...'}
+            </p>
+          </div>
+
+          {/* Symmetrical Centered Luxury Skeleton Preview */}
+          <div className="w-full space-y-2.5 pt-2 opacity-60">
+            <div className="h-11 w-full rounded-2xl bg-white/[0.04] border border-[#D4AF37]/20 animate-pulse flex items-center px-4 gap-3">
+              <div className="w-6 h-6 rounded-full bg-[#D4AF37]/25 shrink-0" />
+              <div className="h-2.5 flex-1 rounded-full bg-white/15" />
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="h-11 rounded-2xl bg-white/[0.04] border border-white/10 animate-pulse" />
+              <div className="h-11 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/25 animate-pulse" />
+            </div>
+            <div className="h-12 w-full rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/35 animate-pulse" />
+          </div>
+        </div>
       </main>
     );
   }
