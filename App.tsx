@@ -3285,7 +3285,7 @@ function App() {
         clientName: finalClientName,
         eventName: 'Simcha Celebration',
         eventLocation: vendor.location || '',
-        eventTime: '18:00',
+        eventTime: '6:00 PM',
         contactEmail: finalContactEmail,
         selectedServices: defaultServices,
         amount: totalAmount

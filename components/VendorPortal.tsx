@@ -1461,13 +1461,30 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           let startVal: any = { date: gig.date };
           let endVal: any = { date: gig.date };
 
-          if (gig.eventTime && /^\d{2}:\d{2}/.test(gig.eventTime)) {
+          if (gig.eventTime) {
             try {
-              const [hours, minutes] = gig.eventTime.split(':');
-              const startD = new Date(`${gig.date}T${hours}:${minutes}:00`);
-              startVal = { dateTime: startD.toISOString() };
-              const endD = new Date(startD.getTime() + 4 * 60 * 60 * 1000); // 4 hours duration
-              endVal = { dateTime: endD.toISOString() };
+              const trimmed = gig.eventTime.trim();
+              let h24 = -1;
+              let mins = '00';
+              const ampm = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+              if (ampm) {
+                let h = parseInt(ampm[1], 10) % 12;
+                if (ampm[3].toUpperCase() === 'PM') h += 12;
+                h24 = h;
+                mins = ampm[2];
+              } else {
+                const m24 = trimmed.match(/^(\d{1,2}):(\d{2})/);
+                if (m24) {
+                  h24 = parseInt(m24[1], 10);
+                  mins = m24[2];
+                }
+              }
+              if (h24 >= 0 && h24 <= 23) {
+                const startD = new Date(`${gig.date}T${String(h24).padStart(2, '0')}:${mins}:00`);
+                startVal = { dateTime: startD.toISOString() };
+                const endD = new Date(startD.getTime() + 4 * 60 * 60 * 1000); // 4 hours duration
+                endVal = { dateTime: endD.toISOString() };
+              }
             } catch (e) {
               console.warn("Error parsing event time, falling back to all-day event", e);
             }
@@ -2104,13 +2121,41 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     }
   };
 
+  const parseEventTime24Parts = (timeStr?: string): { hours: string; minutes: string } | null => {
+    if (!timeStr) return null;
+    const trimmed = timeStr.trim();
+    const ampm = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (ampm) {
+      let h = parseInt(ampm[1], 10) % 12;
+      if (ampm[3].toUpperCase() === 'PM') h += 12;
+      return { hours: String(h).padStart(2, '0'), minutes: ampm[2] };
+    }
+    const m24 = trimmed.match(/^(\d{1,2}):(\d{2})/);
+    if (m24) {
+      return { hours: String(parseInt(m24[1], 10)).padStart(2, '0'), minutes: m24[2] };
+    }
+    return null;
+  };
+
+  const formatBookingTime12h = (timeStr?: string): string => {
+    if (!timeStr) return '';
+    const trimmed = timeStr.trim();
+    if (/AM|PM/i.test(trimmed)) return trimmed.toUpperCase();
+    const parts = parseEventTime24Parts(trimmed);
+    if (!parts) return trimmed;
+    const h24 = parseInt(parts.hours, 10);
+    const period = h24 >= 12 ? 'PM' : 'AM';
+    const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+    return `${h12}:${parts.minutes} ${period}`;
+  };
+
   const parseDateTimeFriendly = (dateStr: string, timeStr?: string) => {
     if (!dateStr) return 'N/A';
     
-    if (timeStr && /^\d{2}:\d{2}/.test(timeStr)) {
+    const timeParts = parseEventTime24Parts(timeStr);
+    if (timeParts) {
       try {
-        const [hours, minutes] = timeStr.split(':');
-        const d = new Date(`${dateStr}T${hours}:${minutes}:00`);
+        const d = new Date(`${dateStr}T${timeParts.hours}:${timeParts.minutes}:00`);
         if (!isNaN(d.getTime())) {
           return d.toLocaleDateString('default', { 
             weekday: 'long',
@@ -2164,10 +2209,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const handleSimchaBookingClick = (b: Booking) => {
     const startFormatted = parseDateTimeFriendly(b.date, b.eventTime);
     let endFormatted = 'Flexible';
-    if (b.eventTime && /^\d{2}:\d{2}/.test(b.eventTime)) {
+    const timeParts = parseEventTime24Parts(b.eventTime);
+    if (timeParts) {
       try {
-        const [hours, minutes] = b.eventTime.split(':');
-        const startD = new Date(`${b.date}T${hours}:${minutes}:00`);
+        const startD = new Date(`${b.date}T${timeParts.hours}:${timeParts.minutes}:00`);
         if (!isNaN(startD.getTime())) {
           const endD = new Date(startD.getTime() + 4 * 60 * 60 * 1000);
           endFormatted = endD.toLocaleDateString('default', { 
@@ -3000,7 +3045,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                  >
                    <div className="font-extrabold text-white truncate">{b.eventName || 'Event'}</div>
                    <div className="text-[8px] text-[#D4AF37] truncate font-semibold">{b.clientName}</div>
-                   {b.eventTime && <div className="text-[7px] text-zinc-400 font-mono mt-0.5">{b.eventTime}</div>}
+                   {b.eventTime && <div className="text-[7px] text-zinc-400 font-mono mt-0.5">{formatBookingTime12h(b.eventTime)}</div>}
                  </div>
                );
              })}
@@ -3102,7 +3147,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           <span className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37]">
                             {b.status === 'confirmed' ? 'Confirmed' : b.status === 'cancelled' ? 'Cancelled' : 'Pending'}
                           </span>
-                          {b.eventTime && <span className="text-[8px] font-mono text-zinc-400">• {b.eventTime}</span>}
+                          {b.eventTime && <span className="text-[8px] font-mono text-zinc-400">• {formatBookingTime12h(b.eventTime)}</span>}
                         </div>
                         <h5 className="text-xs font-bold text-white mb-0.5 group-hover/card:text-[#D4AF37] transition-colors truncate">{b.eventName}</h5>
                         <p className="text-[10px] text-zinc-400 truncate">{b.clientName}</p>
@@ -3737,7 +3782,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                     </span>
                                     {b.eventTime && (
                                       <span className="flex items-center gap-1 text-zinc-300 truncate">
-                                        <Clock className="w-2.5 h-2.5 text-[#D4AF37]" /> {b.eventTime}
+                                        <Clock className="w-2.5 h-2.5 text-[#D4AF37]" /> {formatBookingTime12h(b.eventTime)}
                                       </span>
                                     )}
                                   </div>

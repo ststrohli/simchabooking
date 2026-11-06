@@ -612,46 +612,79 @@ body.light-mode,
   ) !important;
 }
 
-/* Package box subtle image fader - Dark Mode & Light Mode */
+/* Package box subtle image fader - Dark Mode & Light Mode (way lighter so add-on pictures shine through) */
 .simcha-package-fader {
   background: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.86) 0%,
-    rgba(0, 0, 0, 0.92) 50%,
-    rgba(0, 0, 0, 0.96) 100%
+    rgba(0, 0, 0, 0.35) 0%,
+    rgba(0, 0, 0, 0.52) 55%,
+    rgba(0, 0, 0, 0.72) 100%
   );
 }
 
 .light-mode .simcha-package-fader {
   background: linear-gradient(
     to bottom,
-    rgba(255, 255, 255, 0.88) 0%,
-    rgba(255, 255, 255, 0.94) 50%,
-    rgba(255, 255, 255, 0.98) 100%
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0.55) 55%,
+    rgba(255, 255, 255, 0.78) 100%
   ) !important;
 }
 
-/* BookingModal Top Add-on Photo Banner Fader - Dark Mode & Light Mode */
+/* BookingModal Top Add-on Photo Banner Fader - Dark Mode & Light Mode (ultra-light bottom-only fade, pure white in light mode) */
 .simcha-addon-banner-fader {
   background-image: linear-gradient(
     to top,
-    #0a0a0a 0%,
-    rgba(10, 10, 10, 0.94) 24%,
-    rgba(10, 10, 10, 0.58) 56%,
-    rgba(10, 10, 10, 0.14) 84%,
-    rgba(10, 10, 10, 0) 100%
+    rgba(10, 10, 10, 0.76) 0%,
+    rgba(10, 10, 10, 0.28) 20%,
+    rgba(10, 10, 10, 0) 40%
   ) !important;
+}
+
+.light-mode .simcha-addon-banner-wrap {
+  background-color: #ffffff !important;
+  background-image: none !important;
 }
 
 .light-mode .simcha-addon-banner-fader {
   background-image: linear-gradient(
     to top,
     #ffffff 0%,
-    rgba(255, 255, 255, 0.95) 24%,
-    rgba(255, 255, 255, 0.62) 56%,
-    rgba(255, 255, 255, 0.15) 84%,
-    rgba(255, 255, 255, 0) 100%
+    rgba(255, 255, 255, 0.78) 14%,
+    rgba(255, 255, 255, 0.22) 28%,
+    rgba(255, 255, 255, 0) 42%
   ) !important;
+}
+
+.light-mode .simcha-addon-pill-btn {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  color: #9A7B1C !important;
+  border-color: rgba(212, 175, 55, 0.55) !important;
+}
+
+/* Custom 12-Hour Luxury Watch / Timepiece Selector - Light Mode */
+.light-mode .simcha-luxury-watch-card {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border-color: rgba(212, 175, 55, 0.45) !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.1), 0 0 20px rgba(212, 175, 55, 0.16) !important;
+}
+
+.light-mode .simcha-luxury-watch-dial {
+  background: radial-gradient(circle at center, #ffffff 0%, #fcfaf2 72%, #f5eedc 100%) !important;
+  border-color: rgba(212, 175, 55, 0.65) !important;
+  box-shadow: 0 8px 25px rgba(212, 175, 55, 0.18), inset 0 0 22px rgba(212, 175, 55, 0.12) !important;
+}
+
+.light-mode .simcha-watch-digital-box,
+.light-mode .simcha-watch-ampm-box,
+.light-mode .simcha-watch-preset-pill {
+  background-color: #ffffff !important;
+  border-color: rgba(212, 175, 55, 0.4) !important;
+}
+
+.light-mode .simcha-watch-numeral:not(.bg-\[\#D4AF37\]) {
+  color: #18181b !important;
 }
 
 /* Shiny Gold Date Check Limit Box & Metallic Gold Attempts Badge */

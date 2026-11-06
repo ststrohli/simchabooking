@@ -1399,7 +1399,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     if (!timestampString) return '';
     const d = new Date(timestampString);
     if (isNaN(d.getTime())) return '';
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
   };
 
   const formatConversationTime = (timestampAny: any) => {
@@ -1414,7 +1414,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     
     const now = new Date();
     if (d.toDateString() === now.toDateString()) {
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
     }
     const yesterday = new Date();
     yesterday.setDate(now.getDate() - 1);

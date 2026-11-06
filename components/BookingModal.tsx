@@ -24,6 +24,37 @@ const inferServiceCategory = (service: VendorService): ServiceCategoryType => {
 
 const MODAL_TRANSITION = { duration: 1.15, ease: [0.25, 0.85, 0.35, 1] as const };
 
+const parseTimeParts12h = (raw: string): { hour: number; minute: number; period: 'AM' | 'PM' } => {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return { hour: 6, minute: 0, period: 'PM' };
+
+  const ampmMatch = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    let h = parseInt(ampmMatch[1], 10);
+    const m = Math.min(59, Math.max(0, parseInt(ampmMatch[2], 10) || 0));
+    const period = ampmMatch[3].toUpperCase() as 'AM' | 'PM';
+    if (h < 1 || h > 12) h = 12;
+    return { hour: h, minute: m, period };
+  }
+
+  const match24 = trimmed.match(/^(\d{1,2}):(\d{2})/);
+  if (match24) {
+    const h24 = parseInt(match24[1], 10);
+    const m = Math.min(59, Math.max(0, parseInt(match24[2], 10) || 0));
+    const period: 'AM' | 'PM' = h24 >= 12 ? 'PM' : 'AM';
+    const hour12 = h24 % 12 === 0 ? 12 : h24 % 12;
+    return { hour: hour12, minute: m, period };
+  }
+
+  return { hour: 6, minute: 0, period: 'PM' };
+};
+
+const formatTime12h = (raw: string): string => {
+  if (!raw || !raw.trim()) return '';
+  const { hour, minute, period } = parseTimeParts12h(raw);
+  return `${hour}:${String(minute).padStart(2, '0')} ${period}`;
+};
+
 const FloatingInput: React.FC<{
   id: string;
   label: string;
@@ -178,6 +209,13 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
   const [currentCalendarMonth, setCurrentCalendarMonth] = useState<Date>(() => new Date());
 
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isTimePickerOpen, setIsTimePickerOpen] = useState(false);
+  const [watchDialMode, setWatchDialMode] = useState<'hour' | 'minute'>('hour');
+  const [timePopKey, setTimePopKey] = useState(0);
+  const [datePopKey, setDatePopKey] = useState(0);
+  const watchDialRef = React.useRef<HTMLDivElement>(null);
+  const isDraggingWatchRef = React.useRef(false);
+  const watchCloseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [userInteracted, setUserInteracted] = useState(false);
   const [clickedUnavailableDate, setClickedUnavailableDate] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -292,6 +330,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
         setClickedUnavailableDate(null);
         setLocalDate(dateStr);
         setIsCalendarOpen(false);
+        setDatePopKey(k => k + 1);
       }
       return;
     }
@@ -323,6 +362,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
       setClickedUnavailableDate(null);
       setLocalDate(dateStr);
       setIsCalendarOpen(false);
+      setDatePopKey(k => k + 1);
     }
     setPrivacyBlocked(checkPrivacyStatus());
   };
@@ -441,13 +481,15 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
         setLocationHours({});
         setHourPopups({});
         setActiveShowcaseServiceId(null);
+        setIsTimePickerOpen(false);
+        setWatchDialMode('hour');
         if (initialDetails) {
             setFormData({ 
               eventName: initialDetails.eventName || '', 
               clientName: initialDetails.clientName || '', 
               contactEmail: initialDetails.contactEmail || '', 
               eventLocation: initialDetails.eventLocation || '', 
-              eventTime: initialDetails.eventTime || '', 
+              eventTime: initialDetails.eventTime ? formatTime12h(initialDetails.eventTime) : '', 
               notes: initialDetails.notes || '' 
             });
             const rawSelectedIds = initialDetails.selectedServiceIds || [];
@@ -616,10 +658,59 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     setFormData(prev => ({ ...prev, eventName: val }));
   }, []);
 
-  const handleEventTimeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setFormData(prev => ({ ...prev, eventTime: val }));
+  const handleSelectWatchTime = useCallback((hour: number, minute: number, period: 'AM' | 'PM') => {
+    const formatted = `${hour}:${String(minute).padStart(2, '0')} ${period}`;
+    setFormData(prev => ({ ...prev, eventTime: formatted }));
   }, []);
+
+  const triggerWatchZoomClose = useCallback(() => {
+    if (watchCloseTimerRef.current) clearTimeout(watchCloseTimerRef.current);
+    watchCloseTimerRef.current = setTimeout(() => {
+      setIsTimePickerOpen(false);
+      setTimePopKey(k => k + 1);
+    }, 180);
+  }, []);
+
+  const updateWatchFromPointer = useCallback((clientX: number, clientY: number, mode: 'hour' | 'minute', currentHour: number, currentMinute: number, currentPeriod: 'AM' | 'PM') => {
+    const el = watchDialRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = clientX - cx;
+    const dy = clientY - cy;
+    if (Math.hypot(dx, dy) < 10) return;
+
+    let deg = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+    if (deg < 0) deg += 360;
+
+    if (mode === 'hour') {
+      const idx = Math.round(deg / 30) % 12;
+      const pickedHour = idx === 0 ? 12 : idx;
+      handleSelectWatchTime(pickedHour, currentMinute, currentPeriod);
+    } else {
+      const idx = Math.round(deg / 30) % 12;
+      const pickedMinute = idx * 5;
+      handleSelectWatchTime(currentHour, pickedMinute, currentPeriod);
+    }
+  }, [handleSelectWatchTime]);
+
+  const handleToggleTimePicker = useCallback(() => {
+    if (watchCloseTimerRef.current) clearTimeout(watchCloseTimerRef.current);
+    setIsCalendarOpen(false);
+    setIsTimePickerOpen(prev => {
+      const next = !prev;
+      if (next) {
+        setWatchDialMode('hour');
+        if (!formData.eventTime) {
+          setFormData(f => ({ ...f, eventTime: '6:00 PM' }));
+        }
+      } else {
+        setTimePopKey(k => k + 1);
+      }
+      return next;
+    });
+  }, [formData.eventTime]);
 
   const handleClientNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -645,6 +736,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
   }, []);
 
   const handleToggleCalendar = useCallback(() => {
+    setIsTimePickerOpen(false);
     setIsCalendarOpen(prev => !prev);
   }, []);
 
@@ -722,6 +814,8 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         if (failedFieldId === 'date-section') {
           setIsCalendarOpen(true);
+        } else if (failedFieldId === 'event-time') {
+          setIsTimePickerOpen(true);
         }
       }
       return;
@@ -867,7 +961,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
           type="button"
           disabled={isDisabled}
           onClick={() => handleDateClick(dateStr, isPast)}
-          className={`aspect-square rounded-full flex flex-col items-center justify-center text-xs font-bold transition-all outline-none relative group ${buttonStyle}`}
+          className={`aspect-square rounded-full flex flex-col items-center justify-center text-[11px] font-bold transition-all outline-none relative group ${buttonStyle}`}
         >
           <span>{day}</span>
           {!isSelected && !isDisabled && !isBlockedOrUnavailable && (
@@ -880,51 +974,54 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
     const weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
     return (
-      <div className="bg-[#050505]/95 border border-[#D4AF37]/25 rounded-2xl p-4 shadow-2xl select-none relative overflow-hidden w-full backdrop-blur-xl">
-        <div className="absolute inset-0 border border-white/5 pointer-events-none rounded-2xl" />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="simcha-popout-calendar bg-[#050505]/95 border border-[#D4AF37]/45 rounded-3xl p-3.5 shadow-[0_22px_55px_rgba(0,0,0,0.9),0_0_28px_rgba(212,175,55,0.22)] select-none relative overflow-hidden w-[274px] sm:w-[290px] backdrop-blur-xl"
+      >
+        <div className="absolute inset-0 border border-white/5 pointer-events-none rounded-3xl" />
         
-        {/* Header with Navigation */}
-        <div className="flex items-center justify-between mb-4 border-b border-[#D4AF37]/15 pb-3">
+        {/* Compact Header with Navigation */}
+        <div className="flex items-center justify-between mb-2.5 border-b border-[#D4AF37]/15 pb-2">
           <button
             type="button"
             onClick={prevMonth}
-            className="p-1.5 rounded-full border border-[#D4AF37]/10 hover:border-[#D4AF37]/40 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] cursor-pointer"
+            className="p-1.5 rounded-full border border-[#D4AF37]/15 hover:border-[#D4AF37]/50 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] cursor-pointer"
             aria-label="Previous Month"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-3.5 h-3.5" />
           </button>
           
-          <span className="font-[Cinzel] text-[#D4AF37] font-black uppercase tracking-widest text-xs flex items-center gap-1">
+          <span className="font-[Cinzel] text-[#D4AF37] font-black uppercase tracking-widest text-[11px] flex items-center gap-1">
             {monthName} <span className="text-white">{year}</span>
           </span>
 
           <button
             type="button"
             onClick={nextMonth}
-            className="p-1.5 rounded-full border border-[#D4AF37]/10 hover:border-[#D4AF37]/40 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] cursor-pointer"
+            className="p-1.5 rounded-full border border-[#D4AF37]/15 hover:border-[#D4AF37]/50 bg-black text-[#D4AF37] transition-all hover:scale-105 active:scale-95 outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37] cursor-pointer"
             aria-label="Next Month"
           >
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
         {/* Weekdays */}
         <div className="grid grid-cols-7 gap-1 text-center mb-1">
           {weekdays.map((wd, idx) => (
-            <div key={`wd-${idx}`} className="text-[10px] text-[#D4AF37]/70 font-black uppercase tracking-widest py-1">
+            <div key={`wd-${idx}`} className="text-[9px] text-[#D4AF37]/75 font-black uppercase tracking-widest py-0.5">
               {wd}
             </div>
           ))}
         </div>
 
         {/* Days */}
-        <div className="grid grid-cols-7 gap-1.5 mb-2">
+        <div className="grid grid-cols-7 gap-1 mb-1">
           {days}
         </div>
 
         {/* Concise inline message for tapped unavailable date */}
         {clickedUnavailableDate && (
-          <div className="mt-2 p-2.5 bg-red-950/40 border border-red-500/30 rounded-xl text-center text-xs text-red-300 animate-in fade-in duration-200">
+          <div className="mt-2 p-2 bg-red-950/40 border border-red-500/30 rounded-xl text-center text-[11px] text-red-300 animate-in fade-in duration-200">
             <span className="font-bold">This date is unavailable.</span> Please choose another date.
           </div>
         )}
@@ -1149,7 +1246,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                className="relative w-full shrink-0 overflow-hidden bg-black border-b border-[#D4AF37]/25"
+                className="simcha-addon-banner-wrap relative w-full shrink-0 overflow-hidden bg-black border-b border-[#D4AF37]/25"
               >
                 <div className="relative w-full h-44 sm:h-52 overflow-hidden">
                   <motion.img
@@ -1161,7 +1258,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                     transition={{ duration: 0.4, ease: 'easeOut' }}
                     className="w-full h-full object-cover object-center select-none"
                   />
-                  {/* Mode-aware bottom fade so gold description stands out cleanly in both Dark Mode & Light Mode */}
+                  {/* Mode-aware light bottom fade so gold description stands out while keeping add-on photo crisp */}
                   <div className="pointer-events-none absolute inset-0 simcha-addon-banner-fader" />
 
                   {/* Selected Add-on Name & Description on the Photo Fade in Gold */}
@@ -1172,7 +1269,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                           {activePhotoService.name}
                         </span>
                         {bannerNote ? (
-                          <p className="text-xs sm:text-sm font-extrabold text-[#D4AF37] tracking-wide mt-0.5 leading-snug drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]">
+                          <p className="text-xs sm:text-sm font-extrabold text-[#D4AF37] tracking-wide mt-0.5 leading-snug">
                             {bannerNote}
                           </p>
                         ) : (
@@ -1194,7 +1291,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                 className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border transition-all cursor-pointer ${
                                   isCurrent
                                     ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
-                                    : 'bg-black/70 text-[#D4AF37] border-[#D4AF37]/40 hover:border-[#D4AF37]'
+                                    : 'simcha-addon-pill-btn bg-black/70 text-[#D4AF37] border-[#D4AF37]/40 hover:border-[#D4AF37]'
                                 }`}
                               >
                                 {svc.name}
@@ -1212,20 +1309,15 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
         </AnimatePresence>
 
         <div 
-          {...dragHandleProps}
-          data-drag-handle="true"
-          className="bg-black p-6 pr-14 text-white flex justify-between items-start sticky top-0 z-10 border-b border-[#D4AF37]/20 cursor-grab active:cursor-grabbing select-none"
-        >
-          <div>
-            <h2 id="modal-title" className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">{initialDetails ? 'Update Your Selection' : 'Book Service'}</h2>
-            <p className="text-zinc-300 text-xs mt-1">Vendor: <span className="text-zinc-100 font-bold">{vendor.name}</span></p>
-          </div>
-        </div>
-
-        <div 
           ref={formScrollRef}
-          className={`flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y p-6 space-y-6 ${isSubmitting ? 'pointer-events-none' : ''}`}
+          className={`flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y px-6 pt-7 pb-6 space-y-5 ${isSubmitting ? 'pointer-events-none' : ''}`}
         >
+          <div className="text-center pb-0.5">
+            <h2 id="modal-title" className="text-xl sm:text-2xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider leading-tight">
+              {vendor.name}
+            </h2>
+          </div>
+
           {vendor.enableDateCheckLimit !== false && (
             <div className="simcha-date-limit-box relative overflow-hidden bg-black/90 rounded-3xl p-5 sm:p-6 text-center mb-5 space-y-2.5 transition-all">
               <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 w-3/4 h-24 bg-gradient-to-b from-[#FFE885]/25 to-transparent blur-xl" />
@@ -1255,25 +1347,39 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
             <label className={labelClass}>Event Date</label>
             
             {/* Elegant luxury display of Selected Date as pill-shaped action picker */}
-            <button
+            <motion.button
+              key={`date-trigger-${datePopKey}`}
+              initial={datePopKey > 0 ? { scale: 0.95 } : false}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 20 }}
               type="button"
               id="date-section"
               onClick={handleToggleCalendar}
-              className={`w-full flex items-center gap-3.5 px-5 py-3 bg-black hover:bg-neutral-900 border rounded-full transition-all outline-none focus:ring-1 focus:ring-[#D4AF37] text-left cursor-pointer ${highlightedField === 'date-section' ? 'border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-[#D4AF37]/30 hover:border-[#D4AF37]/60'}`}
+              aria-expanded={isCalendarOpen}
+              className={`w-full flex items-center gap-3.5 px-5 py-3 bg-black hover:bg-neutral-900 border rounded-full transition-colors outline-none focus:ring-1 focus:ring-[#D4AF37] text-left cursor-pointer ${
+                highlightedField === 'date-section'
+                  ? 'border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
+                  : isCalendarOpen
+                  ? 'border-[#D4AF37] ring-2 ring-[#D4AF37]/40 shadow-[0_0_18px_rgba(212,175,55,0.22)]'
+                  : datePopKey > 0
+                  ? 'border-[#D4AF37]/60 shadow-[0_0_14px_rgba(212,175,55,0.18)]'
+                  : 'border-[#D4AF37]/30 hover:border-[#D4AF37]/60'
+              }`}
             >
               <Calendar className="w-5 h-5 text-[#D4AF37] flex-shrink-0" />
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <span className="text-[10px] uppercase font-bold tracking-wider text-[#D4AF37]/60 block" style={{ textShadow: "0 0 4px rgba(212,175,55,0.1)" }}>Selected Celebration Date</span>
-                <span className="text-sm font-black text-zinc-100 font-[Cinzel] tracking-wide">{getReadableLocalDate()}</span>
+                <motion.span
+                  key={`date-val-${localDate}-${datePopKey}`}
+                  initial={datePopKey > 0 ? { scale: 1.15, color: '#FFE885' } : false}
+                  animate={{ scale: 1, color: '#f4f4f5' }}
+                  transition={{ type: 'spring', stiffness: 380, damping: 18 }}
+                  className="text-sm font-black text-zinc-100 font-[Cinzel] tracking-wide block truncate origin-left"
+                >
+                  {getReadableLocalDate()}
+                </motion.span>
               </div>
-            </button>
-            
-            {/* Interactive premium calendar picker inside an animated container */}
-            {isCalendarOpen && (
-              <div className="animate-in fade-in slide-in-from-top-2 duration-200 mt-2 relative z-20">
-                {renderInteractiveCalendar()}
-              </div>
-            )}
+            </motion.button>
           </div>
 
           {vendor.services && vendor.services.length > 0 && (() => {
@@ -1329,13 +1435,13 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                             : 'border-[#D4AF37]/25 hover:border-[#D4AF37]/50 bg-black'
                         }`}
                       >
-                        {/* Very light, non-cut-off subtle background image with mode-aware fader */}
+                        {/* Crisp background image with very light mode-aware fader */}
                         {bgImage && (
                           <div className="pointer-events-none absolute inset-0 overflow-hidden">
                             <img
                               src={bgImage}
                               alt=""
-                              className="w-full h-full object-cover object-center opacity-15 scale-105"
+                              className="w-full h-full object-cover object-center opacity-35 scale-105"
                             />
                             <div className="absolute inset-0 simcha-package-fader" />
                           </div>
@@ -1575,17 +1681,55 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
             />
             
             <div className="grid grid-cols-2 gap-4">
-              <FloatingInput 
-                id="event-time" 
-                required 
-                label="Time" 
-                type="time" 
-                icon={Clock} 
-                className="[color-scheme:dark]" 
-                value={formData.eventTime} 
-                onChange={handleEventTimeChange} 
-                highlighted={highlightedField === 'event-time'}
-              />
+              {/* Compact Luxury Time Trigger Button with Pop-Out Animation */}
+              <motion.button
+                key={`time-trigger-${timePopKey}`}
+                initial={timePopKey > 0 ? { scale: 0.94 } : false}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 20 }}
+                type="button"
+                id="event-time"
+                onClick={handleToggleTimePicker}
+                aria-expanded={isTimePickerOpen}
+                className={`relative w-full bg-black/60 border rounded-full text-left outline-none transition-colors duration-300 pt-5 pb-2 pl-11 pr-4 cursor-pointer flex items-center justify-between gap-1.5 group ${
+                  highlightedField === 'event-time'
+                    ? 'border-red-500 ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
+                    : isTimePickerOpen
+                    ? 'border-[#D4AF37] ring-2 ring-[#D4AF37]/40 shadow-[0_0_18px_rgba(212,175,55,0.25)]'
+                    : timePopKey > 0
+                    ? 'border-[#D4AF37]/60 shadow-[0_0_14px_rgba(212,175,55,0.18)]'
+                    : 'border-[#D4AF37]/20 hover:border-[#D4AF37]/55'
+                }`}
+              >
+                <Clock
+                  className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 transition-all duration-300 ${
+                    isTimePickerOpen
+                      ? 'text-[#D4AF37] scale-110'
+                      : highlightedField === 'event-time'
+                      ? 'text-red-500 scale-110'
+                      : 'text-[#D4AF37]/60 group-hover:text-[#D4AF37]'
+                  }`}
+                />
+                <span
+                  className={`absolute pointer-events-none transition-all duration-300 leading-none left-11 ${
+                    isTimePickerOpen || formData.eventTime
+                      ? 'top-2 text-[9px] text-[#D4AF37] font-black uppercase tracking-widest'
+                      : 'top-3.5 text-xs text-zinc-300 font-medium'
+                  }`}
+                >
+                  Time
+                </span>
+                <motion.span
+                  key={`time-val-${formData.eventTime}-${timePopKey}`}
+                  initial={timePopKey > 0 ? { scale: 1.22, color: '#FFE885' } : false}
+                  animate={{ scale: 1, color: '#f4f4f5' }}
+                  transition={{ type: 'spring', stiffness: 380, damping: 18 }}
+                  className="text-xs sm:text-sm font-black font-[Cinzel] tracking-wide text-zinc-100 truncate block min-h-[1.25rem] origin-left"
+                >
+                  {formData.eventTime ? formatTime12h(formData.eventTime) : ''}
+                </motion.span>
+              </motion.button>
+
               <FloatingInput 
                 id="client-name" 
                 required 
@@ -1738,6 +1882,229 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
             </button>
           </div>
         </div>
+
+        {/* Floating Centered Pop-Out Overlays Above the Modal Screen (Calendar & Simcha Booking Watch) */}
+        <AnimatePresence>
+          {isCalendarOpen && (
+            <motion.div
+              key="floating-calendar-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              onClick={() => setIsCalendarOpen(false)}
+              className="absolute inset-0 z-[130] bg-black/45 backdrop-blur-[2px] flex items-center justify-center p-4"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.76, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.74, y: 10 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 26 }}
+              >
+                {renderInteractiveCalendar()}
+              </motion.div>
+            </motion.div>
+          )}
+
+          {isTimePickerOpen && (() => {
+            const { hour: activeHour, minute: activeMinute, period: activePeriod } = parseTimeParts12h(formData.eventTime);
+            const clockHours = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+            const clockMinutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+            const handAngleDeg = watchDialMode === 'hour'
+              ? ((activeHour % 12) * 30)
+              : (activeMinute * 6);
+
+            return (
+              <motion.div
+                key="floating-watch-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                onClick={() => {
+                  setIsTimePickerOpen(false);
+                  setTimePopKey(k => k + 1);
+                }}
+                className="absolute inset-0 z-[130] bg-black/45 backdrop-blur-[2px] flex items-center justify-center p-4"
+              >
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.76, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.74, y: 10 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 26 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="simcha-luxury-watch-card relative w-[256px] sm:w-[268px] bg-[#060606] border border-[#D4AF37]/50 rounded-[2.25rem] p-4 shadow-[0_22px_55px_rgba(0,0,0,0.9),0_0_28px_rgba(212,175,55,0.22)] select-none flex flex-col items-center overflow-hidden"
+                >
+                  {/* Ambient radial gold glow behind the watch dial */}
+                  <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 w-48 h-24 bg-[#D4AF37]/15 rounded-full blur-2xl" />
+
+                  {/* Top Pop-Out Time Badge + AM/PM Switch */}
+                  <div className="relative z-10 flex items-center justify-between w-full gap-2 mb-3 pb-2.5 border-b border-[#D4AF37]/20">
+                    <motion.div
+                      key={`${activeHour}-${activeMinute}`}
+                      initial={{ scale: 1.08 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: 'spring', stiffness: 500, damping: 22 }}
+                      className="simcha-watch-digital-box flex items-center bg-black border border-[#D4AF37]/45 rounded-full px-2.5 py-1 shadow-[0_0_14px_rgba(212,175,55,0.18)]"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setWatchDialMode('hour')}
+                        className={`px-2 py-0.5 rounded-full font-[Cinzel] text-sm font-black tracking-wider transition-all cursor-pointer ${
+                          watchDialMode === 'hour'
+                            ? 'bg-[#D4AF37] text-black shadow-[0_0_10px_rgba(212,175,55,0.45)]'
+                            : 'text-[#D4AF37] hover:text-[#FFE885]'
+                        }`}
+                      >
+                        {String(activeHour).padStart(2, '0')}
+                      </button>
+                      <span className="text-[#D4AF37] font-black px-0.5 text-sm animate-pulse">:</span>
+                      <button
+                        type="button"
+                        onClick={() => setWatchDialMode('minute')}
+                        className={`px-2 py-0.5 rounded-full font-[Cinzel] text-sm font-black tracking-wider transition-all cursor-pointer ${
+                          watchDialMode === 'minute'
+                            ? 'bg-[#D4AF37] text-black shadow-[0_0_10px_rgba(212,175,55,0.45)]'
+                            : 'text-[#D4AF37] hover:text-[#FFE885]'
+                        }`}
+                      >
+                        {String(activeMinute).padStart(2, '0')}
+                      </button>
+                    </motion.div>
+
+                    {/* 12-Hour AM / PM Gold Switch */}
+                    <div className="simcha-watch-ampm-box flex items-center bg-black border border-[#D4AF37]/45 rounded-full p-0.5">
+                      {(['AM', 'PM'] as const).map((periodOpt) => {
+                        const isCurrentPeriod = activePeriod === periodOpt;
+                        return (
+                          <button
+                            key={periodOpt}
+                            type="button"
+                            onClick={() => handleSelectWatchTime(activeHour, activeMinute, periodOpt)}
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                              isCurrentPeriod
+                                ? 'bg-[#D4AF37] text-black shadow-[0_0_10px_rgba(212,175,55,0.45)]'
+                                : 'text-zinc-400 hover:text-[#D4AF37]'
+                            }`}
+                          >
+                            {periodOpt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Restored Luxury Horology Watch Dial with "SIMCHA • BOOKING WATCH" Inscription */}
+                  <div
+                    ref={watchDialRef}
+                    onPointerDown={(e) => {
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      isDraggingWatchRef.current = true;
+                      updateWatchFromPointer(e.clientX, e.clientY, watchDialMode, activeHour, activeMinute, activePeriod);
+                    }}
+                    onPointerMove={(e) => {
+                      if (!isDraggingWatchRef.current) return;
+                      updateWatchFromPointer(e.clientX, e.clientY, watchDialMode, activeHour, activeMinute, activePeriod);
+                    }}
+                    onPointerUp={() => {
+                      if (!isDraggingWatchRef.current) return;
+                      isDraggingWatchRef.current = false;
+                      if (watchDialMode === 'hour') {
+                        setWatchDialMode('minute');
+                      } else {
+                        triggerWatchZoomClose();
+                      }
+                    }}
+                    className="simcha-luxury-watch-dial relative w-52 h-52 rounded-full bg-gradient-to-b from-[#111111] via-[#070707] to-[#030303] border-2 border-[#D4AF37]/60 shadow-[0_0_30px_rgba(212,175,55,0.22),inset_0_0_28px_rgba(212,175,55,0.14)] flex items-center justify-center touch-none cursor-grab active:cursor-grabbing"
+                  >
+                    {/* Outer Horology Bezel Ring & 60 Precision Tick Marks */}
+                    <svg className="pointer-events-none absolute inset-0 w-full h-full" viewBox="0 0 240 240">
+                      <circle cx="120" cy="120" r="114" fill="none" stroke="rgba(212,175,55,0.28)" strokeWidth="1" />
+                      <circle cx="120" cy="120" r="76" fill="none" stroke="rgba(212,175,55,0.14)" strokeWidth="1" strokeDasharray="2 4" />
+                      {Array.from({ length: 60 }).map((_, idx) => {
+                        const isMajor = idx % 5 === 0;
+                        const angle = idx * 6;
+                        return (
+                          <line
+                            key={idx}
+                            x1="120"
+                            y1={isMajor ? '7' : '9'}
+                            x2="120"
+                            y2={isMajor ? '14' : '12'}
+                            stroke={isMajor ? '#D4AF37' : 'rgba(212,175,55,0.3)'}
+                            strokeWidth={isMajor ? '1.8' : '0.9'}
+                            strokeLinecap="round"
+                            transform={`rotate(${angle} 120 120)`}
+                          />
+                        );
+                      })}
+                    </svg>
+
+                    {/* Center Watch Face Inscription */}
+                    <div className="pointer-events-none absolute top-[27%] left-1/2 -translate-x-1/2 text-center">
+                      <span className="font-[Cinzel] text-[8px] font-black uppercase tracking-[0.28em] text-[#D4AF37]/70 block leading-none">
+                        SIMCHA
+                      </span>
+                      <span className="text-[6.5px] font-bold uppercase tracking-[0.18em] text-zinc-400 block mt-0.5">
+                        BOOKING WATCH
+                      </span>
+                    </div>
+
+                    {/* Sweeping Gold Watch Hand */}
+                    <div
+                      className="pointer-events-none absolute inset-0 transition-transform duration-150 ease-out"
+                      style={{ transform: `rotate(${handAngleDeg}deg)` }}
+                    >
+                      <div className="absolute left-1/2 top-[22%] -translate-x-1/2 w-[2.5px] h-[30%] bg-gradient-to-t from-[#D4AF37] via-[#FFE885] to-[#D4AF37] rounded-full shadow-[0_0_10px_rgba(212,175,55,0.85)]" />
+                      <div className="absolute left-1/2 top-[50%] -translate-x-1/2 w-[2px] h-[7%] bg-[#D4AF37]/70 rounded-full" />
+                    </div>
+
+                    {/* Center Metallic Gold Jewel Pivot */}
+                    <div className="pointer-events-none relative z-20 w-4 h-4 rounded-full bg-gradient-to-br from-[#FFF3B0] via-[#D4AF37] to-[#99731C] border border-black shadow-[0_0_12px_rgba(212,175,55,0.9)] flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 rounded-full bg-black" />
+                    </div>
+
+                    {/* 12 Radial Interactive Hour / Minute Numerals */}
+                    {(watchDialMode === 'hour' ? clockHours : clockMinutes).map((val, idx) => {
+                      const angleRad = ((idx * 30) - 90) * (Math.PI / 180);
+                      const radiusPct = 38.5;
+                      const leftPct = 50 + radiusPct * Math.cos(angleRad);
+                      const topPct = 50 + radiusPct * Math.sin(angleRad);
+                      const isSelectedVal = watchDialMode === 'hour'
+                        ? activeHour === val
+                        : activeMinute === val;
+
+                      return (
+                        <button
+                          key={`${watchDialMode}-${val}`}
+                          type="button"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={() => {
+                            if (watchDialMode === 'hour') {
+                              handleSelectWatchTime(val, activeMinute, activePeriod);
+                              setWatchDialMode('minute');
+                            } else {
+                              handleSelectWatchTime(activeHour, val, activePeriod);
+                              triggerWatchZoomClose();
+                            }
+                          }}
+                          style={{ left: `${leftPct}%`, top: `${topPct}%` }}
+                          className={`simcha-watch-numeral absolute -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full font-[Cinzel] text-xs font-black transition-all duration-150 flex items-center justify-center cursor-pointer z-20 ${
+                            isSelectedVal
+                              ? 'bg-[#D4AF37] text-black border-2 border-[#FFE885] shadow-[0_0_16px_rgba(212,175,55,0.85)] scale-110'
+                              : 'text-zinc-200 hover:text-[#D4AF37] hover:bg-[#D4AF37]/15 border border-transparent hover:border-[#D4AF37]/40'
+                          }`}
+                        >
+                          {watchDialMode === 'hour' ? val : String(val).padStart(2, '0')}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              </motion.div>
+            );
+          })()}
+        </AnimatePresence>
       </motion.div>
       )}
     </motion.div>

@@ -445,7 +445,22 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
                 <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Event Time</p>
                 <p className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
-                  <span>{eventTime || 'Standard Hours'}</span>
+                  <span>
+                    {(() => {
+                      if (!eventTime) return 'Standard Hours';
+                      const trimmed = eventTime.trim();
+                      if (/AM|PM/i.test(trimmed)) return trimmed.toUpperCase();
+                      const m24 = trimmed.match(/^(\d{1,2}):(\d{2})/);
+                      if (m24) {
+                        const h24 = parseInt(m24[1], 10);
+                        const mins = m24[2];
+                        const period = h24 >= 12 ? 'PM' : 'AM';
+                        const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+                        return `${h12}:${mins} ${period}`;
+                      }
+                      return trimmed;
+                    })()}
+                  </span>
                 </p>
               </div>
             </div>
