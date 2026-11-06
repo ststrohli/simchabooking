@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, ShoppingBag, Calendar, MessageSquare, LogOut, Trash2, 
-  ChevronRight, MapPin, Clock, CreditCard, Check, CheckCircle, CheckCheck, Bell, X, Menu, Send,
+  ChevronRight, ChevronDown, MapPin, Clock, CreditCard, Check, CheckCircle, CheckCheck, Bell, X, Menu, Send,
   FileText, Upload, Download, Loader2, Plus, Search, Edit3, ArrowLeft, ShieldCheck,
-  Mic, Image as ImageIcon, Play
+  Mic, Image as ImageIcon, Play, DollarSign, User, AlertCircle, Layers
 } from 'lucide-react';
 import { CartItem, Booking, Message, Vendor, UserAccount } from '../types';
 import { storage, db } from '../services/firebase';
@@ -15,7 +16,795 @@ import { CustomAudioPlayer } from './CustomAudioPlayer';
 import { trackFunnelStep } from '../services/analyticsService';
 import { EmbeddedCheckoutModal } from './EmbeddedCheckoutModal';
 import { ThemeModeSwitch } from './ThemeModeSwitch';
-import { collection, doc, setDoc, deleteDoc, getDocs, query, where, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
+import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
+import { collection, doc, setDoc, updateDoc, deleteDoc, getDocs, query, where, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
+
+const CLIENT_MODAL_TRANSITION = { duration: 1.15, ease: [0.25, 0.85, 0.35, 1] as const };
+
+const AccordionSection: React.FC<{
+  title: string;
+  icon: any;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  badge?: string | number;
+}> = ({ title, icon: Icon, isOpen, onToggle, children, badge }) => (
+  <div className="bg-zinc-900/50 rounded-2xl border border-white/5 overflow-hidden transition-all duration-300">
+    <button
+      type="button"
+      onClick={onToggle}
+      className="w-full p-4 flex items-center justify-between hover:bg-white/5 transition-colors text-left cursor-pointer"
+    >
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-xl bg-[#D4AF37]/10 text-[#D4AF37]">
+          <Icon className="w-4 h-4" />
+        </div>
+        <span className="text-[11px] font-black text-white uppercase tracking-widest">{title}</span>
+        {badge !== undefined && (
+          <span className="px-2 py-0.5 rounded-full bg-[#D4AF37]/20 text-[#D4AF37] text-[9px] font-black">
+            {badge}
+          </span>
+        )}
+      </div>
+      <ChevronDown className={`w-4 h-4 text-zinc-400 transition-transform duration-300 ${isOpen ? 'rotate-180 text-[#D4AF37]' : ''}`} />
+    </button>
+    <AnimatePresence initial={false}>
+      {isOpen && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.3, ease: [0.04, 0.62, 0.23, 0.98] }}
+        >
+          <div className="p-4 pt-0 border-t border-white/5 space-y-4">
+            {children}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </div>
+);
+
+interface ClientEventScopeModalProps {
+  mode: 'booking' | 'plan';
+  booking?: Booking;
+  planItem?: CartItem;
+  planIndex?: number;
+  vendor: Vendor;
+  user: UserAccount;
+  countdown: { text: string; isToday: boolean } | null;
+  openSections: { logistics: boolean; services: boolean; vendorInfo: boolean; notes: boolean };
+  toggleSection: (section: 'logistics' | 'services' | 'vendorInfo' | 'notes') => void;
+  onClose: () => void;
+  onMessage: () => void;
+  onPay?: () => void;
+  onPrefetchPay?: () => void;
+  isProcessingPayment?: boolean;
+  onMakeOrUpdateOffer?: (offerPrice: number, noteAddition?: string) => Promise<void>;
+  onCancelBooking?: () => Promise<void>;
+  onEditPlanItem?: () => void;
+  onRemovePlanItem?: () => void;
+  onSendPlanRequests?: () => void;
+}
+
+const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
+  mode,
+  booking,
+  planItem,
+  vendor,
+  user,
+  countdown,
+  openSections,
+  toggleSection,
+  onClose,
+  onMessage,
+  onPay,
+  onPrefetchPay,
+  isProcessingPayment,
+  onMakeOrUpdateOffer,
+  onCancelBooking,
+  onEditPlanItem,
+  onRemovePlanItem,
+  onSendPlanRequests,
+}) => {
+  const {
+    backdropOpacity,
+    isDismissing,
+    dismissWithSlideOut,
+    dragModalProps,
+    dragHandleProps,
+  } = useModalDragDismiss(onClose);
+
+  const isBooking = mode === 'booking' && !!booking;
+  const currentAmount = isBooking ? booking!.amount : (planItem?.amount || 0);
+  const currentOfferedPrice = isBooking ? booking!.offeredPrice : planItem?.offeredPrice;
+  const currentIsOffer = isBooking
+    ? Boolean(
+        booking!.isOffer ||
+        booking!.offeredPrice ||
+        booking!.notes?.includes('OFFERED PRICE:') ||
+        booking!.notes?.includes('[Client Offer')
+      )
+    : Boolean(planItem?.isOffer || planItem?.offeredPrice);
+
+  const [showOfferEditor, setShowOfferEditor] = useState(false);
+  const [offerAmountInput, setOfferAmountInput] = useState<string>(
+    currentOfferedPrice ? String(currentOfferedPrice) : String(currentAmount || '')
+  );
+  const [offerMessageInput, setOfferMessageInput] = useState('');
+  const [isSavingOffer, setIsSavingOffer] = useState(false);
+  const [offerFeedback, setOfferFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  const eventDate = isBooking ? booking!.date : (planItem?.date || '');
+  const eventTime = isBooking ? booking!.eventTime : planItem?.eventTime;
+  const eventName = isBooking ? booking!.eventName : planItem?.eventName;
+  const eventLocation = isBooking
+    ? (booking!.eventLocation || booking!.eventAddress || vendor.location || '')
+    : (planItem?.eventLocation || (planItem as any)?.eventAddress || vendor.location || '');
+  const selectedServices = isBooking ? (booking!.selectedServices || []) : (planItem?.selectedServices || []);
+  const notesText = isBooking ? booking!.notes : planItem?.notes;
+  const clientName = isBooking ? (booking!.clientName || user.name) : (planItem?.clientName || user.name);
+  const contactEmail = isBooking ? (booking!.contactEmail || user.username) : (planItem?.contactEmail || user.username);
+  const createdAt = isBooking && booking!.createdAt ? new Date(booking!.createdAt).toLocaleDateString() : undefined;
+
+  const locationItems = selectedServices.filter((s: any) => s.type === 'location');
+  const serviceAddOnItems = selectedServices.filter((s: any) => s.type !== 'location');
+
+  const handleSubmitOffer = async () => {
+    const parsed = Number(offerAmountInput.replace(/[^0-9.]/g, ''));
+    if (!parsed || parsed <= 0) {
+      setOfferFeedback({ type: 'error', text: 'Please enter a valid offer amount greater than $0.' });
+      return;
+    }
+    if (mode === 'plan' && onEditPlanItem) {
+      dismissWithSlideOut(() => {
+        onClose();
+        onEditPlanItem();
+      });
+      return;
+    }
+    if (!onMakeOrUpdateOffer) return;
+    setIsSavingOffer(true);
+    setOfferFeedback(null);
+    try {
+      await onMakeOrUpdateOffer(parsed, offerMessageInput.trim() || undefined);
+      setOfferFeedback({ type: 'success', text: `Offer of $${parsed.toLocaleString()} sent to ${vendor.name}!` });
+      setOfferMessageInput('');
+      setTimeout(() => {
+        setShowOfferEditor(false);
+      }, 900);
+    } catch (err: any) {
+      setOfferFeedback({ type: 'error', text: err?.message || 'Could not update offer. Please try again.' });
+    } finally {
+      setIsSavingOffer(false);
+    }
+  };
+
+  const handleConfirmCancelBooking = async () => {
+    if (!onCancelBooking) return;
+    setIsCancelling(true);
+    try {
+      await onCancelBooking();
+      dismissWithSlideOut();
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  return (
+    <motion.div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Event Details & Scope"
+      style={{ opacity: backdropOpacity }}
+      transition={CLIENT_MODAL_TRANSITION}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) dismissWithSlideOut();
+      }}
+      className={`fixed inset-0 z-[260] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-xl overflow-hidden ${
+        isDismissing ? 'pointer-events-none' : ''
+      }`}
+    >
+      <motion.div
+        {...dragModalProps}
+        transition={CLIENT_MODAL_TRANSITION}
+        onClick={(e) => e.stopPropagation()}
+        className={`simcha-scope-sheet relative w-full sm:w-full sm:max-w-xl bg-[#0d0d0d] h-[91dvh] sm:h-[90vh] sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-[2.5rem] border-t-2 border-r border-l sm:border border-[#D4AF37]/30 overflow-hidden shadow-[0_-20px_50px_rgba(0,0,0,0.8)] flex flex-col mt-auto sm:mt-0 transform-gpu pb-[env(safe-area-inset-bottom)] ${
+          isDismissing ? 'pointer-events-none' : ''
+        }`}
+      >
+        {/* Top Interactive Drag Zone */}
+        <div
+          {...dragHandleProps}
+          className="pt-3 pb-1 cursor-grab active:cursor-grabbing select-none shrink-0 touch-none"
+        >
+          <ModalDragIndicator />
+        </div>
+
+        {/* Floating Close Button */}
+        <button
+          type="button"
+          onClick={() => dismissWithSlideOut()}
+          aria-label="Close Event Details"
+          className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-30 p-2 bg-black/70 backdrop-blur-md hover:bg-[#D4AF37] text-white hover:text-black rounded-full transition-all border border-white/15 cursor-pointer shadow-lg"
+        >
+          <X className="w-4 h-4 sm:w-5 sm:h-5" />
+        </button>
+
+        {/* Modal Header (Draggable) */}
+        <div
+          {...dragHandleProps}
+          className="px-4 sm:px-6 pt-1 pb-3 border-b border-white/5 flex items-center justify-between bg-gradient-to-b from-[#151515] to-[#0d0d0d] shrink-0 cursor-grab active:cursor-grabbing select-none touch-none"
+        >
+          <div className="flex items-center gap-3 min-w-0 pr-10">
+            <div className="w-11 h-11 rounded-full overflow-hidden border border-[#D4AF37]/40 bg-[#D4AF37]/15 shrink-0 flex items-center justify-center text-[#D4AF37] font-[Cinzel] font-bold">
+              {vendor.image ? (
+                <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
+              ) : (
+                vendor.name.slice(0, 2).toUpperCase()
+              )}
+            </div>
+            <div className="space-y-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[8px] font-black text-[#D4AF37] uppercase tracking-[0.2em] px-2 py-0.5 rounded-full border border-[#D4AF37]/35 bg-[#D4AF37]/10">
+                  {vendor.category}
+                </span>
+                {isBooking ? (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${
+                      booking!.status === 'confirmed'
+                        ? 'bg-green-500/20 text-green-300 border-green-500/40'
+                        : booking!.status === 'cancelled'
+                        ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                        : 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/40'
+                    }`}
+                  >
+                    {booking!.status}
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/40">
+                    In Plan
+                  </span>
+                )}
+                {isBooking && booking!.paymentStatus === 'paid' && (
+                  <span className="bg-green-500/20 text-green-300 border border-green-500/40 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest">
+                    Paid
+                  </span>
+                )}
+                {currentIsOffer && (
+                  <span className="bg-[#D4AF37] text-black px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest">
+                    Offer: ${(currentOfferedPrice || currentAmount).toLocaleString()}
+                  </span>
+                )}
+                {countdown && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${
+                      countdown.isToday
+                        ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                        : 'bg-white/5 text-[#D4AF37] border-[#D4AF37]/30'
+                    }`}
+                  >
+                    {countdown.text}
+                  </span>
+                )}
+              </div>
+              <h2 className="text-base sm:text-lg font-bold text-white font-[Cinzel] tracking-tight truncate">
+                {vendor.name}
+              </h2>
+              <p className="text-[11px] text-zinc-400 font-medium truncate">
+                {eventName || 'Simcha Celebration'} • {eventDate}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Modal Body - Accordion Sections */}
+        <div
+          className="p-4 sm:p-6 overflow-y-auto space-y-3 custom-scrollbar flex-1 overscroll-contain"
+        >
+          {/* Quick Summary Strip */}
+          <div className="grid grid-cols-3 gap-2 bg-black/50 p-3 rounded-2xl border border-white/5">
+            <div className="text-center px-2 py-1 border-r border-white/5">
+              <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">Total Value</p>
+              <p className="text-sm sm:text-base font-bold text-[#D4AF37] font-[Cinzel] mt-0.5">
+                ${currentAmount.toLocaleString()}
+              </p>
+            </div>
+            <div className="text-center px-2 py-1 border-r border-white/5">
+              <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">Event Date</p>
+              <p className="text-xs font-bold text-white mt-0.5 truncate">{eventDate || 'TBD'}</p>
+            </div>
+            <div className="text-center px-2 py-1">
+              <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">
+                {isBooking ? 'Payment' : 'Stage'}
+              </p>
+              <p className="text-xs font-bold text-white uppercase mt-0.5 truncate">
+                {isBooking ? (booking!.paymentStatus || 'Pending') : 'Saved in Plan'}
+              </p>
+            </div>
+          </div>
+
+          {/* Inline Offer Editor Box (when toggled open) */}
+          <AnimatePresence initial={false}>
+            {showOfferEditor && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="p-4 rounded-2xl bg-[#14120a] border border-[#D4AF37]/45 space-y-3 shadow-xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-[#D4AF37]" />
+                      <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest">
+                        {currentIsOffer ? 'Update Your Offer' : 'Make an Offer to Vendor'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOfferEditor(false);
+                        setOfferFeedback(null);
+                      }}
+                      className="text-zinc-400 hover:text-white p-1 rounded-full"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1 ml-2">
+                        Offer Amount ($)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#D4AF37] font-bold text-sm">$</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={offerAmountInput}
+                          onChange={(e) => setOfferAmountInput(e.target.value)}
+                          placeholder={String(currentAmount)}
+                          className="w-full bg-black border border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-full pl-8 pr-4 py-2.5 text-xs font-bold text-white outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1 ml-2">
+                        Note for Vendor (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={offerMessageInput}
+                        onChange={(e) => setOfferMessageInput(e.target.value)}
+                        placeholder="e.g., Flexible on hours or setup..."
+                        className="w-full bg-black border border-white/15 focus:border-[#D4AF37] rounded-full px-4 py-2.5 text-xs text-white outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {offerFeedback && (
+                    <div
+                      className={`px-3.5 py-2 rounded-full text-[10px] font-bold flex items-center gap-2 ${
+                        offerFeedback.type === 'success'
+                          ? 'bg-green-500/20 text-green-300 border border-green-500/40'
+                          : 'bg-red-500/20 text-red-300 border border-red-500/40'
+                      }`}
+                    >
+                      {offerFeedback.type === 'success' ? (
+                        <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                      <span>{offerFeedback.text}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowOfferEditor(false)}
+                      className="px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-white border border-white/10 cursor-pointer"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSavingOffer}
+                      onClick={handleSubmitOffer}
+                      className="px-5 py-2 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 cursor-pointer shadow-lg"
+                    >
+                      {isSavingOffer ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                      <span>{currentIsOffer ? 'Update Offer' : 'Submit Offer'}</span>
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* 1. Event Logistics & Schedule */}
+          <AccordionSection
+            title="Event Logistics & Schedule"
+            icon={Calendar}
+            isOpen={openSections.logistics}
+            onToggle={() => toggleSection('logistics')}
+          >
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+                <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Event Date</p>
+                <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                  <span>{eventDate || 'Not specified'}</span>
+                </p>
+              </div>
+              <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+                <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Event Time</p>
+                <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                  <span>{eventTime || 'Standard Hours'}</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Celebration / Simcha Name</p>
+                <p className="text-xs font-bold text-white break-words">{eventName || 'Private Simcha Event'}</p>
+              </div>
+              {countdown && (
+                <span className="px-3 py-1 rounded-full bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/35 text-[9px] font-black uppercase tracking-widest shrink-0">
+                  {countdown.text}
+                </span>
+              )}
+            </div>
+
+            <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Venue / Location</p>
+                <p className="text-xs font-bold text-white break-words">
+                  {eventLocation || 'Location to be confirmed with vendor'}
+                </p>
+              </div>
+              {eventLocation && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(eventLocation)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black rounded-full border border-[#D4AF37]/30 transition-all text-[9px] font-black uppercase tracking-widest shrink-0"
+                >
+                  <MapPin className="w-3 h-3" />
+                  <span>Navigate</span>
+                </a>
+              )}
+            </div>
+          </AccordionSection>
+
+          {/* 2. Selected Packages, Locations, Add-ons & Pricing */}
+          <AccordionSection
+            title="Packages, Add-ons & Pricing"
+            icon={Layers}
+            isOpen={openSections.services}
+            onToggle={() => toggleSection('services')}
+            badge={selectedServices.length || 1}
+          >
+            <div className="space-y-2.5 pt-2">
+              {selectedServices.length > 0 ? (
+                <>
+                  {locationItems.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest px-1">
+                        Selected Location Tier
+                      </p>
+                      {locationItems.map((s: any, idx: number) => (
+                        <div
+                          key={`loc-${idx}`}
+                          className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-[#D4AF37]/25"
+                        >
+                          <div className="space-y-0.5 min-w-0 pr-3">
+                            <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                              <MapPin className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                              <span>{s.name}</span>
+                            </p>
+                            <div className="flex flex-wrap gap-2 text-[9px] text-zinc-400 font-bold uppercase tracking-widest">
+                              {s.hours ? <span>{s.hours} Total Hrs</span> : null}
+                              {s.baseHours ? <span>• {s.baseHours} Base Hrs Included</span> : null}
+                              {s.hourRate ? <span>• +${s.hourRate}/Extra Hr</span> : null}
+                            </div>
+                          </div>
+                          <span className="text-xs font-black text-[#D4AF37] font-[Cinzel] shrink-0">
+                            ${(s.calculatedPrice ?? s.price ?? 0).toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {serviceAddOnItems.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest px-1">
+                        Selected Services & Add-ons ({serviceAddOnItems.length})
+                      </p>
+                      {serviceAddOnItems.map((s: any, idx: number) => (
+                        <div
+                          key={`srv-${idx}`}
+                          className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5"
+                        >
+                          <div className="space-y-0.5 min-w-0 pr-3">
+                            <p className="text-xs font-bold text-white">{s.name}</p>
+                            <div className="flex flex-wrap gap-2 text-[9px] text-zinc-400 font-bold uppercase tracking-widest">
+                              {s.quantity && s.quantity > 1 && <span className="text-[#D4AF37]">Qty: {s.quantity}</span>}
+                              {s.hours && <span>{s.hours} Hrs</span>}
+                              {s.unit && <span>({s.unit})</span>}
+                              {s.description && <span className="normal-case text-zinc-400">{s.description}</span>}
+                            </div>
+                          </div>
+                          <span className="text-xs font-black text-[#D4AF37] font-[Cinzel] shrink-0">
+                            ${(s.calculatedPrice ?? ((s.price || 0) * (s.quantity || 1))).toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5">
+                  <div>
+                    <p className="text-xs font-bold text-white">Standard {vendor.category} Package</p>
+                    <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">Base Reservation</p>
+                  </div>
+                  <span className="text-xs font-black text-[#D4AF37] font-[Cinzel]">
+                    ${currentAmount.toLocaleString()}
+                  </span>
+                </div>
+              )}
+
+              {/* Financial & Offer Breakdown Box */}
+              <div className="p-3.5 bg-gradient-to-br from-[#D4AF37]/15 to-black rounded-xl border border-[#D4AF37]/30 space-y-2 mt-2">
+                {currentIsOffer && (
+                  <div className="flex items-center justify-between text-xs border-b border-white/10 pb-2">
+                    <span className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest">
+                      Submitted Offer Price
+                    </span>
+                    <span className="font-bold text-[#D4AF37]">
+                      ${(currentOfferedPrice || currentAmount).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[8px] font-black text-[#D4AF37] uppercase tracking-widest">
+                      {isBooking ? 'Total Booking Amount' : 'Estimated Plan Total'}
+                    </p>
+                    <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-0.5">
+                      {isBooking
+                        ? `Status: ${booking!.status.toUpperCase()} • Payment: ${(booking!.paymentStatus || 'pending').toUpperCase()}`
+                        : 'Ready to send booking request'}
+                    </p>
+                  </div>
+                  <p className="text-lg sm:text-xl font-black text-white font-[Cinzel]">
+                    ${currentAmount.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </AccordionSection>
+
+          {/* 3. Vendor & Reservation Info */}
+          <AccordionSection
+            title="Vendor & Reservation Details"
+            icon={User}
+            isOpen={openSections.vendorInfo}
+            onToggle={() => toggleSection('vendorInfo')}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
+              <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+                <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Vendor</p>
+                <p className="text-xs font-bold text-white">{vendor.name}</p>
+                <p className="text-[10px] text-[#D4AF37] uppercase tracking-wider mt-0.5">{vendor.category}</p>
+              </div>
+              <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+                <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Vendor Base Area</p>
+                <p className="text-xs font-bold text-white">{vendor.location || 'Tri-State / Worldwide'}</p>
+                {vendor.contactEmail && (
+                  <p className="text-[10px] text-zinc-400 truncate mt-0.5">{vendor.contactEmail}</p>
+                )}
+              </div>
+              <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+                <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Reserved By</p>
+                <p className="text-xs font-bold text-white">{clientName}</p>
+                <p className="text-[10px] text-zinc-400 truncate mt-0.5">{contactEmail}</p>
+              </div>
+              <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+                <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Reference</p>
+                <p className="text-xs font-bold text-white font-mono">
+                  {isBooking ? `#${booking!.id.slice(-8).toUpperCase()}` : 'DRAFT-PLAN'}
+                </p>
+                {createdAt && <p className="text-[10px] text-zinc-400 mt-0.5">Booked {createdAt}</p>}
+              </div>
+            </div>
+          </AccordionSection>
+
+          {/* 4. Special Requests & Notes */}
+          <AccordionSection
+            title="Notes & Special Requests"
+            icon={FileText}
+            isOpen={openSections.notes}
+            onToggle={() => toggleSection('notes')}
+          >
+            <div className="pt-2 space-y-2">
+              <div className="p-3.5 bg-black/40 rounded-xl border border-white/5">
+                <p className="text-xs text-zinc-300 leading-relaxed italic whitespace-pre-line">
+                  {notesText ? `"${notesText}"` : 'No additional notes or special requests were included.'}
+                </p>
+              </div>
+            </div>
+          </AccordionSection>
+
+          {/* Optional Cancel Request option for pending bookings inside scrollable body */}
+          {isBooking && booking!.status === 'pending' && onCancelBooking && (
+            <div className="pt-1 flex justify-center">
+              {!confirmCancel ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmCancel(true)}
+                  className="px-4 py-2 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white font-black rounded-full border border-red-500/25 transition-all text-[9px] uppercase tracking-widest cursor-pointer"
+                >
+                  Cancel Booking Request
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 bg-red-500/10 px-4 py-2 rounded-full border border-red-500/30">
+                  <span className="text-[9px] font-black text-red-300 uppercase tracking-widest">Cancel request?</span>
+                  <button
+                    type="button"
+                    disabled={isCancelling}
+                    onClick={handleConfirmCancelBooking}
+                    className="px-3 py-1 bg-red-500 text-white font-black rounded-full text-[9px] uppercase tracking-widest cursor-pointer"
+                  >
+                    {isCancelling ? 'Cancelling...' : 'Yes, Cancel'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmCancel(false)}
+                    className="px-3 py-1 bg-white/10 text-zinc-200 rounded-full text-[9px] font-black uppercase tracking-widest cursor-pointer"
+                  >
+                    Keep
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Modal Footer - Compact Single-Row Centered Pill Action Buttons */}
+        <div className="px-3 sm:px-5 py-2.5 bg-[#121212] border-t border-white/5 shrink-0">
+          {isBooking ? (
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 w-full max-w-md mx-auto">
+              {/* Only show Offer button if the booking was actually booked as an offer */}
+              {currentIsOffer && booking!.status !== 'cancelled' && booking!.paymentStatus !== 'paid' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowOfferEditor((prev) => !prev);
+                    setOfferFeedback(null);
+                  }}
+                  className={`min-w-0 flex-1 max-w-[165px] px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-full font-black text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest transition-all flex items-center justify-center gap-1 sm:gap-1.5 border cursor-pointer whitespace-nowrap ${
+                    showOfferEditor
+                      ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                      : 'bg-[#D4AF37]/10 hover:bg-[#D4AF37]/25 text-[#D4AF37] border-[#D4AF37]/40'
+                  }`}
+                >
+                  <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                  <span className="truncate">Offer</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  onMessage();
+                  dismissWithSlideOut(() => {
+                    onClose();
+                  });
+                }}
+                className="min-w-0 flex-1 max-w-[190px] px-3 sm:px-4 py-2 sm:py-2.5 bg-white/5 hover:bg-[#D4AF37] text-white hover:text-black font-black rounded-full border border-[#D4AF37]/40 transition-all text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap group"
+              >
+                <MessageSquare className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#D4AF37] group-hover:text-black shrink-0" />
+                <span className="truncate">Message</span>
+              </button>
+
+              {booking!.status === 'confirmed' && booking!.paymentStatus === 'pending' && onPay && (
+                <button
+                  type="button"
+                  disabled={isProcessingPayment}
+                  onClick={() => {
+                    if (onPrefetchPay) onPrefetchPay();
+                    onPay();
+                    dismissWithSlideOut(() => {
+                      onClose();
+                    });
+                  }}
+                  className="min-w-0 flex-1 max-w-[195px] px-3 sm:px-4 py-2 sm:py-2.5 bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black rounded-full shadow-lg shadow-[#D4AF37]/20 transition-all text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  {isProcessingPayment ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin shrink-0" /> : <ShieldCheck className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />}
+                  <span className="truncate">Pay ${currentAmount.toLocaleString()}</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            /* Plan Item Footer Actions - Single Centered Row */
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2 w-full max-w-md mx-auto">
+              {onRemovePlanItem && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    dismissWithSlideOut(() => {
+                      onClose();
+                      onRemovePlanItem();
+                    })
+                  }
+                  className="px-2.5 sm:px-3.5 py-2 sm:py-2.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white font-black rounded-full border border-red-500/25 transition-all text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap"
+                >
+                  <Trash2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                  <span>Remove</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  onMessage();
+                  dismissWithSlideOut(() => {
+                    onClose();
+                  });
+                }}
+                className="min-w-0 flex-1 max-w-[170px] px-2.5 sm:px-4 py-2 sm:py-2.5 bg-white/5 hover:bg-white/10 text-white font-black rounded-full border border-white/15 transition-all text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap"
+              >
+                <MessageSquare className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#D4AF37] shrink-0" />
+                <span className="truncate">Message</span>
+              </button>
+
+              {onEditPlanItem && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    dismissWithSlideOut(() => {
+                      onClose();
+                      onEditPlanItem();
+                    })
+                  }
+                  className="min-w-0 flex-1 max-w-[165px] px-2.5 sm:px-4 py-2 sm:py-2.5 bg-[#D4AF37]/15 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black font-black rounded-full border border-[#D4AF37]/40 transition-all text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  <Edit3 className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                  <span className="truncate">{currentIsOffer ? 'Offer' : 'Edit'}</span>
+                </button>
+              )}
+
+              {onSendPlanRequests && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    dismissWithSlideOut(() => {
+                      onClose();
+                      onSendPlanRequests();
+                    })
+                  }
+                  className="min-w-0 flex-1 max-w-[185px] px-2.5 sm:px-4 py-2 sm:py-2.5 bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black rounded-full shadow-lg shadow-[#D4AF37]/20 transition-all text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  <Send className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                  <span className="truncate">Send</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
 
 interface ClientPortalProps {
   user: UserAccount;
@@ -43,7 +832,14 @@ interface ClientPortalProps {
 const ClientPortal: React.FC<ClientPortalProps> = ({ 
   user, cart, bookings, messages, vendors, onRemoveFromCart, onEditCartItem, onProcessCart, onPaymentSuccess, onLogout, onClose, onUpdateProfile, onDeleteAccount, onMessageVendor, onOpenAdminChat, onActiveChatChange, onTabChange, initialTab, themeMode = 'dark', onToggleThemeMode
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile'>(initialTab as any || 'overview');
+  const normalizeClientTab = (tab?: string): 'overview' | 'plan' | 'events' | 'chats' | 'profile' => {
+    if (tab === 'plan' || tab === 'events' || tab === 'chats' || tab === 'profile' || tab === 'overview') return tab;
+    if (tab === 'messages') return 'chats';
+    if (tab === 'bookings' || tab === 'calendar') return 'events';
+    return 'overview';
+  };
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'events' | 'chats' | 'profile'>(normalizeClientTab(initialTab));
   
   const onTabChangeRef = useRef(onTabChange);
   useEffect(() => {
@@ -51,7 +847,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   }, [onTabChange]);
 
   useEffect(() => {
-    if (initialTab) setActiveTab(initialTab as any);
+    if (initialTab) setActiveTab(normalizeClientTab(initialTab));
   }, [initialTab]);
 
   useEffect(() => {
@@ -69,6 +865,19 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   const [selectedThreadVendorId, setSelectedThreadVendorId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [fullscreenMedia, setFullscreenMedia] = useState<{url: string, type: 'image' | 'video'} | null>(null);
+  const [chatTransitionTarget, setChatTransitionTarget] = useState<{
+    vendor: Vendor;
+    conId: string;
+    messages?: Message[];
+  } | null>(null);
+
+  const triggerMessageWithSkeleton = (vendor: Vendor, conId: string, threadMsgs?: Message[]) => {
+    setChatTransitionTarget({ vendor, conId, messages: threadMsgs });
+    window.setTimeout(() => {
+      setChatTransitionTarget(null);
+      onMessageVendor(vendor, conId, threadMsgs);
+    }, 1850);
+  };
 
   // Automatically scroll to the bottom of the chat pane when thread changes or new message is received
   useEffect(() => {
@@ -83,8 +892,14 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [payTransitionInfo, setPayTransitionInfo] = useState<{ vendorName?: string; amount: number } | null>(null);
   const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
-  const [checkoutBookingInfo, setCheckoutBookingInfo] = useState<{ id: string; amount: number; vendorName?: string } | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutBookingInfo, setCheckoutBookingInfo] = useState<{ id: string; vendorId: string; amount: number; vendorName?: string } | null>(null);
+  const prefetchedCheckoutRef = useRef<{
+    key: string;
+    promise: Promise<{ clientSecret?: string; url?: string }>;
+  } | null>(null);
   const profilePhotoInputRef = useRef<HTMLInputElement>(null);
 
   const handleProfilePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -137,28 +952,79 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     }
   };
 
-  const handlePay = async (bookingId: string, vendorId: string, amount: number) => {
-    setIsProcessingPayment(true);
-    try {
-      trackFunnelStep.initiatePayment(bookingId, vendorId, amount, 'Stripe');
-      const response = await fetch(`/api/stripe/create-checkout-session?vendorId=${vendorId}&amount=${amount}&bookingId=${bookingId}`);
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Failed to create checkout session');
-      }
-      const data = await response.json();
-      const clientSecret = data.clientSecret || data.client_secret;
+  const createCheckoutSessionRequest = async (bookingId: string, vendorId: string, amount: number) => {
+    const vendor = vendors.find(v => v.id === vendorId);
+    const queryParams = new URLSearchParams({
+      vendorId,
+      amount: String(amount),
+      bookingId,
+    });
+    if (vendor?.stripeAccountId) {
+      queryParams.set('stripeAccountId', vendor.stripeAccountId);
+    }
+    if (typeof vendor?.commissionRate === 'number') {
+      queryParams.set('commissionRate', String(vendor.commissionRate));
+    }
 
-      if (clientSecret) {
-        const vendor = vendors.find(v => v.id === vendorId);
-        setCheckoutBookingInfo({
-          id: bookingId,
-          amount,
-          vendorName: vendor?.name
-        });
-        setCheckoutClientSecret(clientSecret);
+    const response = await fetch(`/api/stripe/create-checkout-session?${queryParams.toString()}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || 'Failed to create checkout session');
+    }
+    const data = await response.json();
+    return {
+      clientSecret: data.clientSecret || data.client_secret,
+      url: data.url,
+    };
+  };
+
+  // Start fetching the Stripe checkout session at 0ms while the Event Scope Modal is sliding down
+  const prefetchPay = (bookingId: string, vendorId: string, amount: number) => {
+    const key = `${bookingId}_${vendorId}_${amount}`;
+    if (prefetchedCheckoutRef.current?.key === key) return;
+    trackFunnelStep.initiatePayment(bookingId, vendorId, amount, 'Stripe');
+    const promise = createCheckoutSessionRequest(bookingId, vendorId, amount);
+    // Prevent unhandled rejection if it errors before handlePay awaits it
+    promise.catch(() => {});
+    prefetchedCheckoutRef.current = { key, promise };
+  };
+
+  const handlePay = async (bookingId: string, vendorId: string, amount: number) => {
+    const vendor = vendors.find(v => v.id === vendorId);
+    setCheckoutError(null);
+    setCheckoutClientSecret(null);
+    setIsProcessingPayment(true);
+    // Show full-screen loading indicator immediately at 0ms while the event modal drops down
+    setPayTransitionInfo({ vendorName: vendor?.name, amount });
+
+    const transitionDelay = new Promise<void>(resolve => window.setTimeout(resolve, 1850));
+
+    try {
+      const key = `${bookingId}_${vendorId}_${amount}`;
+      let sessionPromise: Promise<{ clientSecret?: string; url?: string }>;
+      if (prefetchedCheckoutRef.current?.key === key) {
+        sessionPromise = prefetchedCheckoutRef.current.promise;
+        prefetchedCheckoutRef.current = null;
+      } else {
+        trackFunnelStep.initiatePayment(bookingId, vendorId, amount, 'Stripe');
+        sessionPromise = createCheckoutSessionRequest(bookingId, vendorId, amount);
+      }
+
+      // Wait for the 0.5s full-screen loader before popping up the payment modal
+      await transitionDelay;
+      setPayTransitionInfo(null);
+      setCheckoutBookingInfo({
+        id: bookingId,
+        vendorId,
+        amount,
+        vendorName: vendor?.name,
+      });
+
+      const data = await sessionPromise;
+      if (data.clientSecret) {
+        setCheckoutClientSecret(data.clientSecret);
       } else if (data.url) {
-        // Fallback redirect if server returned URL
+        setCheckoutBookingInfo(null);
         try {
           window.top!.location.href = data.url;
         } catch (e) {
@@ -170,7 +1036,15 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
       }
     } catch (error: any) {
       console.error('Payment Error:', error);
-      alert(`Payment Error: ${error.message || 'Failed to start payment. Please try again.'}`);
+      await transitionDelay;
+      setPayTransitionInfo(null);
+      setCheckoutBookingInfo({
+        id: bookingId,
+        vendorId,
+        amount,
+        vendorName: vendor?.name,
+      });
+      setCheckoutError(error.message || 'Failed to start payment. Please try again.');
     } finally {
       setIsProcessingPayment(false);
     }
@@ -494,6 +1368,45 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
     });
   }, [messages, liveClientMessages, vendors, user.id, user.username]);
 
+  const [selectedScopeTarget, setSelectedScopeTarget] = useState<
+    { mode: 'booking'; bookingId: string } | { mode: 'plan'; index: number } | null
+  >(null);
+  const [openScopeSections, setOpenScopeSections] = useState<{
+    logistics: boolean;
+    services: boolean;
+    vendorInfo: boolean;
+    notes: boolean;
+  }>({
+    logistics: true,
+    services: true,
+    vendorInfo: false,
+    notes: true,
+  });
+
+  const toggleScopeSection = (section: 'logistics' | 'services' | 'vendorInfo' | 'notes') => {
+    setOpenScopeSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const handleUpdateBookingOffer = async (booking: Booking, offerPrice: number, noteAddition?: string) => {
+    const bookingRef = doc(db, 'bookings', booking.id);
+    const updatedNotes = noteAddition
+      ? `${booking.notes ? booking.notes + '\n' : ''}[Client Offer $${offerPrice.toLocaleString()}]: ${noteAddition}`
+      : booking.notes || '';
+    await updateDoc(bookingRef, {
+      amount: offerPrice,
+      offeredPrice: offerPrice,
+      isOffer: true,
+      notes: updatedNotes,
+    });
+  };
+
+  const handleCancelClientBooking = async (bookingId: string) => {
+    const bookingRef = doc(db, 'bookings', bookingId);
+    await updateDoc(bookingRef, {
+      status: 'cancelled',
+    });
+  };
+
   const onActiveChatChangeRef = useRef(onActiveChatChange);
   useEffect(() => {
     onActiveChatChangeRef.current = onActiveChatChange;
@@ -501,9 +1414,21 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
   useEffect(() => {
     if (onActiveChatChangeRef.current) {
-      onActiveChatChangeRef.current(!!checkoutClientSecret);
+      onActiveChatChangeRef.current(
+        !!checkoutBookingInfo ||
+        !!checkoutClientSecret ||
+        !!selectedScopeTarget ||
+        !!payTransitionInfo ||
+        !!chatTransitionTarget
+      );
     }
-  }, [checkoutClientSecret]);
+  }, [checkoutBookingInfo, checkoutClientSecret, selectedScopeTarget, payTransitionInfo, chatTransitionTarget]);
+
+  useEffect(() => {
+    return () => {
+      onActiveChatChangeRef.current?.(false);
+    };
+  }, []);
 
   const getVendorInitials = (name?: string): string => {
     if (!name || !name.trim()) return 'V';
@@ -596,106 +1521,114 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         )}
 
         {activeTab === 'plan' && (
-          <div className="max-w-4xl mx-auto w-full space-y-3 animate-in slide-in-from-bottom-5 duration-500">
+          <div className="max-w-4xl mx-auto w-full space-y-2.5 animate-in slide-in-from-bottom-5 duration-500">
             {cart.length === 0 ? (
-              <div className="text-center py-14 bg-[#0a0a0a] rounded-3xl border border-dashed border-white/10">
-                <ShoppingBag className="w-12 h-12 mx-auto mb-3 text-[#D4AF37]" />
-                <p className="text-base font-[Cinzel] text-zinc-300">Your plan is empty.</p>
+              <div className="text-center py-14 bg-[#0a0a0a] rounded-full border border-dashed border-white/10 px-6">
+                <ShoppingBag className="w-10 h-10 mx-auto mb-2 text-[#D4AF37]" />
+                <p className="text-sm font-[Cinzel] text-zinc-300">Your plan is empty.</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {cart.map((item, index) => (
-                  <div
-                    key={`${item.vendor.id}-${index}`}
-                    className="simcha-event-card relative overflow-hidden rounded-[2rem] border border-[#D4AF37]/35 hover:border-[#D4AF37]/75 px-5 py-4 sm:px-6 sm:py-4.5 transition-all group flex items-center justify-between gap-4 shadow-xl min-h-[104px]"
-                  >
-                    {/* Full Background Musician / Vendor Profile Image */}
-                    <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-                      <img
-                        src={item.vendor.image}
-                        alt={item.vendor.name}
-                        className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
-                      />
-                      <div className="absolute inset-0 simcha-event-card-overlay" />
-                    </div>
+              <div className="space-y-2.5">
+                {cart.map((item, index) => {
+                  const vendorPhoto = item.vendor.image;
+                  const initials = getVendorInitials(item.vendor.name);
+                  const openPlanModal = () => {
+                    setOpenScopeSections({ logistics: true, services: true, vendorInfo: false, notes: true });
+                    setSelectedScopeTarget({ mode: 'plan', index });
+                  };
 
-                    {/* Left Balanced Event & Musician Info (No broken-off text) */}
-                    <div className="relative z-10 min-w-0 flex-1 flex flex-col justify-center gap-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="simcha-event-pill px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest text-[#D4AF37] border border-[#D4AF37]/40">
-                          {item.vendor.category}
-                        </span>
-                        {item.selectedServices && item.selectedServices.length > 0 && (
-                          <span className="simcha-event-pill px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest text-[#D4AF37] border border-[#D4AF37]/30">
-                            {item.selectedServices.length} {item.selectedServices.length === 1 ? 'Add-on' : 'Add-ons'}
-                          </span>
-                        )}
-                      </div>
-
-                      <h4 className="font-bold text-base sm:text-lg text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors leading-snug break-words drop-shadow-sm">
-                        {item.vendor.name}
-                      </h4>
-
-                      <div className="text-zinc-200 text-[11px] flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-medium leading-snug">
-                        <span className="inline-flex items-center gap-1 shrink-0 text-white font-semibold">
-                          <Calendar className="w-3 h-3 text-[#D4AF37] shrink-0" />
-                          {item.date}
-                        </span>
-                        {item.eventName && (
+                  return (
+                    <div
+                      key={`${item.vendor.id}-${index}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={openPlanModal}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openPlanModal();
+                        }
+                      }}
+                      className="simcha-event-card relative w-full overflow-hidden rounded-full border border-[#D4AF37]/35 hover:border-[#D4AF37]/80 transition-all duration-300 cursor-pointer group flex items-center justify-between gap-3 px-5 sm:px-7 py-3 sm:py-3.5 min-h-[64px] sm:min-h-[70px] shadow-xl active:scale-[0.99]"
+                    >
+                      {/* Full Background: Vendor Photo OR Initials Pattern */}
+                      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                        {vendorPhoto ? (
                           <>
-                            <span className="text-[#D4AF37]">•</span>
-                            <span className="text-zinc-100">{item.eventName}</span>
+                            <img
+                              src={vendorPhoto}
+                              alt={item.vendor.name}
+                              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                            />
+                            <div className="absolute inset-0 simcha-event-card-overlay" />
                           </>
-                        )}
-                        {item.eventTime && (
-                          <>
-                            <span className="text-[#D4AF37]">•</span>
-                            <span className="text-zinc-200 shrink-0">{item.eventTime}</span>
-                          </>
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-r from-[#0c0c0c] via-[#151208] to-[#0c0c0c] flex items-center justify-center relative">
+                            <span className="font-[Cinzel] font-black text-5xl sm:text-6xl tracking-[0.25em] text-[#D4AF37]/15 select-none">
+                              {initials}
+                            </span>
+                          </div>
                         )}
                       </div>
-                    </div>
 
-                    {/* Right Stepped Price & Pill Actions */}
-                    <div className="relative z-10 flex flex-col items-end justify-center gap-2 shrink-0">
-                      <p className="text-base sm:text-xl font-bold text-[#D4AF37] font-[Cinzel] leading-none drop-shadow-sm">
-                        ${item.amount.toLocaleString()}
-                      </p>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => onEditCartItem(index)}
-                          className="simcha-event-btn p-2 text-zinc-100 hover:bg-[#D4AF37] hover:text-black rounded-full transition-all border border-[#D4AF37]/40 cursor-pointer shadow-md"
-                          title="Edit Request"
-                          aria-label="Edit Request"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onRemoveFromCart(index)}
-                          className="simcha-event-btn p-2 text-zinc-200 hover:bg-red-500 hover:text-white rounded-full transition-all border border-white/20 hover:border-red-500 cursor-pointer shadow-md"
-                          title="Remove"
-                          aria-label="Remove item"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                      {/* Left Side: Compact Vendor Name + Category & Event Name */}
+                      <div className="relative z-10 flex items-center gap-3 min-w-0 flex-1">
+                        {!vendorPhoto && (
+                          <div className="w-9 h-9 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs shadow-inner">
+                            {initials}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <h4 className="font-bold text-sm sm:text-base text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
+                              {item.vendor.name}
+                            </h4>
+                            <span className="simcha-event-pill px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest text-[#D4AF37] border border-[#D4AF37]/40 shrink-0">
+                              {item.vendor.category}
+                            </span>
+                            {(item.isOffer || item.offeredPrice) && (
+                              <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest bg-[#D4AF37] text-black shrink-0">
+                                Offer
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[11px] text-zinc-200/90 truncate mt-0.5 drop-shadow-sm">
+                            <Calendar className="w-3 h-3 text-[#D4AF37] shrink-0" />
+                            <span className="font-semibold text-white shrink-0">{item.date}</span>
+                            {item.eventName && (
+                              <>
+                                <span className="text-[#D4AF37]">•</span>
+                                <span className="truncate text-zinc-200">{item.eventName}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Side: Price Pill + Chevron */}
+                      <div className="relative z-10 flex items-center gap-2 shrink-0">
+                        <span className="simcha-event-pill px-3 py-1 rounded-full text-xs sm:text-sm font-bold text-[#D4AF37] font-[Cinzel] border border-[#D4AF37]/40 shadow-sm">
+                          ${item.amount.toLocaleString()}
+                        </span>
+                        <div className="w-7 h-7 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
-                <div className="pt-4 mt-4 bg-[#0a0a0a] p-4 sm:p-5 rounded-3xl border border-[#D4AF37]/25 flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <span className="text-zinc-400 font-black uppercase tracking-[0.2em] text-[10px]">Plan Subtotal</span>
-                    <span className="text-xl sm:text-2xl font-bold text-[#D4AF37] font-[Cinzel]">${subtotal.toLocaleString()}</span>
+                <div className="pt-3 mt-3 bg-[#0a0a0a] px-5 py-3.5 sm:px-7 sm:py-4 rounded-full border border-[#D4AF37]/30 flex flex-row items-center justify-between gap-3 shadow-xl">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-zinc-400 font-black uppercase tracking-[0.2em] text-[9px] sm:text-[10px]">Subtotal</span>
+                    <span className="text-lg sm:text-xl font-bold text-[#D4AF37] font-[Cinzel] truncate">${subtotal.toLocaleString()}</span>
                   </div>
                   <button
                     type="button"
                     onClick={onProcessCart}
-                    className="w-full sm:w-auto px-7 bg-[#D4AF37] text-black py-3 rounded-full font-black text-[11px] uppercase tracking-[0.25em] hover:bg-[#E5C76B] transition-all shadow-xl shadow-[#D4AF37]/20 cursor-pointer"
+                    className="px-5 sm:px-7 bg-[#D4AF37] text-black py-2.5 sm:py-3 rounded-full font-black text-[10px] sm:text-[11px] uppercase tracking-[0.2em] hover:bg-[#E5C76B] transition-all shadow-xl shadow-[#D4AF37]/20 cursor-pointer shrink-0"
                   >
-                    Send All Booking Requests
+                    Send All Requests
                   </button>
                 </div>
               </div>
@@ -704,8 +1637,8 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         )}
 
         {activeTab === 'events' && (
-          <div className="space-y-3 animate-in slide-in-from-bottom-5 duration-500 max-w-4xl mx-auto w-full">
-            {/* Compact Horizontally Slidable Centered Pill Category Filter (Edge-to-Edge with no side cutoff) */}
+          <div className="space-y-2.5 animate-in slide-in-from-bottom-5 duration-500 max-w-4xl mx-auto w-full">
+            {/* Compact Horizontally Slidable Centered Pill Category Filter */}
             <div className="w-[calc(100%+2rem)] -mx-4 md:w-[calc(100%+5rem)] md:-mx-10 overflow-x-auto no-scrollbar py-1.5 touch-pan-x select-none">
               <div
                 className="flex items-center gap-2 px-4 md:px-10 w-max mx-auto"
@@ -735,120 +1668,117 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
             </div>
 
             {filteredClientBookings.length === 0 ? (
-              <div className="py-14 text-center bg-[#0a0a0a] rounded-3xl border border-dashed border-white/10">
-                <Calendar className="w-12 h-12 mx-auto mb-3 text-[#D4AF37]" />
-                <p className="text-base font-[Cinzel] text-zinc-300">
+              <div className="py-14 text-center bg-[#0a0a0a] rounded-full border border-dashed border-white/10 px-6">
+                <Calendar className="w-10 h-10 mx-auto mb-2 text-[#D4AF37]" />
+                <p className="text-sm font-[Cinzel] text-zinc-300">
                   {selectedEventCategory === 'All' ? 'No active reservations.' : `No ${selectedEventCategory} events found.`}
                 </p>
               </div>
             ) : filteredClientBookings.map((booking, index) => {
               const vendor = vendors.find(v => v.id === booking.vendorId);
               if (!vendor) return null;
-              const countdown = getCountdown(booking.date);
               const isLatestBooking = index === 0 && selectedEventCategory === 'All';
+              const vendorPhoto = vendor.image;
+              const initials = getVendorInitials(vendor.name);
+
+              const openBookingModal = () => {
+                setOpenScopeSections({ logistics: true, services: true, vendorInfo: false, notes: true });
+                setSelectedScopeTarget({ mode: 'booking', bookingId: booking.id });
+              };
 
               return (
                 <div
                   key={booking.id}
-                  className="simcha-event-card relative overflow-hidden rounded-[2rem] border border-[#D4AF37]/35 hover:border-[#D4AF37]/75 px-5 py-4 sm:px-6 sm:py-4.5 transition-all group flex items-center justify-between gap-4 shadow-xl min-h-[108px]"
+                  role="button"
+                  tabIndex={0}
+                  onClick={openBookingModal}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openBookingModal();
+                    }
+                  }}
+                  className={`simcha-event-card relative w-full overflow-hidden rounded-full border transition-all duration-300 cursor-pointer group flex items-center justify-between gap-3 px-5 sm:px-7 py-3 sm:py-3.5 min-h-[64px] sm:min-h-[70px] shadow-xl active:scale-[0.99] ${
+                    isLatestBooking
+                      ? 'border-[#D4AF37] shadow-[0_0_24px_rgba(212,175,55,0.16)]'
+                      : 'border-[#D4AF37]/35 hover:border-[#D4AF37]/80'
+                  }`}
                 >
-                  {/* Full Background Musician / Vendor Profile Image */}
+                  {/* Full Background: Vendor Photo OR Initials Pattern */}
                   <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-                    <img
-                      src={vendor.image}
-                      alt={vendor.name}
-                      className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
-                    />
-                    <div className="absolute inset-0 simcha-event-card-overlay" />
+                    {vendorPhoto ? (
+                      <>
+                        <img
+                          src={vendorPhoto}
+                          alt={vendor.name}
+                          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                        />
+                        <div className="absolute inset-0 simcha-event-card-overlay" />
+                      </>
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-r from-[#0c0c0c] via-[#151208] to-[#0c0c0c] flex items-center justify-center relative">
+                        <span className="font-[Cinzel] font-black text-5xl sm:text-6xl tracking-[0.25em] text-[#D4AF37]/15 select-none">
+                          {initials}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Left Balanced Event & Vendor Details (Never broken off) */}
-                  <div className="relative z-10 min-w-0 flex-1 flex flex-col justify-center gap-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {isLatestBooking && (
-                        <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest bg-[#D4AF37] text-black shadow-sm">
-                          Latest
+                  {/* Left Side: Compact Vendor Name + Essential Pill Badges */}
+                  <div className="relative z-10 flex items-center gap-3 min-w-0 flex-1">
+                    {!vendorPhoto && (
+                      <div className="w-9 h-9 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs shadow-inner">
+                        {initials}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <h3 className="font-bold text-sm sm:text-base text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
+                          {vendor.name}
+                        </h3>
+                        {isLatestBooking && (
+                          <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest bg-[#D4AF37] text-black shrink-0">
+                            Latest
+                          </span>
+                        )}
+                        <span className="simcha-event-pill px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest text-[#D4AF37] border border-[#D4AF37]/40 shrink-0 hidden xs:inline-block">
+                          {vendor.category}
                         </span>
-                      )}
-                      <span className="simcha-event-pill px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest text-[#D4AF37] border border-[#D4AF37]/40">
-                        {vendor.category}
-                      </span>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${
-                        booking.status === 'confirmed' 
-                          ? 'bg-green-500/25 text-green-300 border-green-500/45' 
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] text-zinc-200/90 truncate mt-0.5 drop-shadow-sm">
+                        <Calendar className="w-3 h-3 text-[#D4AF37] shrink-0" />
+                        <span className="font-semibold text-white shrink-0">{booking.date}</span>
+                        {booking.eventName && (
+                          <>
+                            <span className="text-[#D4AF37]">•</span>
+                            <span className="truncate text-zinc-200">{booking.eventName}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Side: Status + Price Pill + Chevron */}
+                  <div className="relative z-10 flex items-center gap-1.5 sm:gap-2 shrink-0">
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${
+                        booking.paymentStatus === 'paid'
+                          ? 'bg-green-500/25 text-green-300 border-green-500/45'
+                          : booking.status === 'confirmed'
+                          ? 'bg-green-500/25 text-green-300 border-green-500/45'
                           : booking.status === 'cancelled'
                           ? 'bg-red-500/25 text-red-300 border-red-500/45'
                           : 'simcha-event-pill text-[#D4AF37] border-[#D4AF37]/40'
-                      }`}>
-                        {booking.status}
-                      </span>
-                      {booking.paymentStatus === 'paid' && (
-                        <span className="bg-green-500/25 text-green-300 border border-green-500/45 px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest">
-                          Paid
-                        </span>
-                      )}
-                      {countdown && (
-                        <span className={`px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${
-                          countdown.isToday
-                            ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
-                            : 'simcha-event-pill text-[#D4AF37] border-[#D4AF37]/40'
-                        }`}>
-                          {countdown.text}
-                        </span>
-                      )}
-                    </div>
-
-                    <h3 className="font-bold text-base sm:text-lg text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors leading-snug break-words drop-shadow-sm">
-                      {vendor.name}
-                    </h3>
-
-                    <div className="text-zinc-200 text-[11px] flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-medium leading-snug">
-                      <span className="inline-flex items-center gap-1 shrink-0 text-white font-semibold">
-                        <Calendar className="w-3 h-3 text-[#D4AF37] shrink-0" />
-                        {booking.date}
-                      </span>
-                      {booking.eventName && (
-                        <>
-                          <span className="text-[#D4AF37]">•</span>
-                          <span className="text-zinc-100">{booking.eventName}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Right Stepped / Staircase Layout: Top (Price + Pay), Bottom (Message) */}
-                  <div className="relative z-10 flex flex-col items-end justify-center gap-2 shrink-0">
-                    {/* Top Stair Step: Price next to Pay button */}
-                    <div className="flex items-center justify-end gap-2">
-                      <p className="text-base sm:text-xl font-bold text-[#D4AF37] font-[Cinzel] leading-none drop-shadow-sm">
-                        ${booking.amount.toLocaleString()}
-                      </p>
-                      {booking.status === 'confirmed' && booking.paymentStatus === 'pending' && (
-                        <button 
-                          type="button"
-                          onClick={() => handlePay(booking.id, booking.vendorId, booking.amount)}
-                          disabled={isProcessingPayment}
-                          className="bg-[#D4AF37] hover:bg-[#E5C76B] active:scale-95 text-black font-black px-4 py-1.5 rounded-full shadow-lg flex items-center justify-center gap-1.5 transition-all text-[10px] uppercase tracking-widest cursor-pointer"
-                        >
-                          {isProcessingPayment ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
-                          <span>Pay</span>
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Bottom Stair Step: Message button */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const existingThread = chatThreads.find(([vid]) => vid === vendor.id);
-                        const conId = existingThread?.[1]?.lastMessage?.conversationId || [user.id, vendor.id].sort().filter(Boolean).join('_');
-                        onMessageVendor(vendor, conId, existingThread?.[1]?.messages);
-                      }}
-                      className="simcha-event-btn px-4 py-1.5 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black active:scale-95 rounded-full transition-all border border-[#D4AF37]/50 flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-widest cursor-pointer shadow-md"
+                      }`}
                     >
-                      <MessageSquare className="w-3 h-3" />
-                      <span>Message</span>
-                    </button>
+                      {booking.paymentStatus === 'paid' ? 'Paid' : booking.status}
+                    </span>
+                    <span className="simcha-event-pill px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold text-[#D4AF37] font-[Cinzel] border border-[#D4AF37]/40 shadow-sm">
+                      ${booking.amount.toLocaleString()}
+                    </span>
+                    <div className="w-7 h-7 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </div>
                   </div>
                 </div>
               );
@@ -1125,15 +2055,18 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           </div>
         )}
       </main>
-      {/* Embedded Stripe Paywall Modal */}
-      {checkoutClientSecret && (
+      {/* Embedded Stripe Paywall Modal — Opens immediately on Pay and shows luxury loader if session is still resolving */}
+      {checkoutBookingInfo && (
         <EmbeddedCheckoutModal
           clientSecret={checkoutClientSecret}
-          bookingId={checkoutBookingInfo?.id}
-          amount={checkoutBookingInfo?.amount}
-          vendorName={checkoutBookingInfo?.vendorName}
+          bookingId={checkoutBookingInfo.id}
+          amount={checkoutBookingInfo.amount}
+          vendorName={checkoutBookingInfo.vendorName}
+          error={checkoutError}
+          onRetry={() => handlePay(checkoutBookingInfo.id, checkoutBookingInfo.vendorId, checkoutBookingInfo.amount)}
           onClose={() => {
             setCheckoutClientSecret(null);
+            setCheckoutError(null);
             setCheckoutBookingInfo(null);
           }}
         />
@@ -1165,6 +2098,166 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Client Event / Plan Scope Bottom Drag-Dismiss Modal (No outer AnimatePresence so useModalDragDismiss unmounts cleanly) */}
+      {typeof document !== 'undefined' &&
+        selectedScopeTarget &&
+        createPortal(
+          (() => {
+            if (selectedScopeTarget.mode === 'booking') {
+              const activeBooking = clientBookings.find(b => b.id === selectedScopeTarget.bookingId) || bookings.find(b => b.id === selectedScopeTarget.bookingId);
+              if (!activeBooking) return null;
+              const activeVendor = vendors.find(v => v.id === activeBooking.vendorId);
+              if (!activeVendor) return null;
+              const countdown = getCountdown(activeBooking.date);
+              return (
+                <ClientEventScopeModal
+                  key={`booking-scope-${activeBooking.id}`}
+                  mode="booking"
+                  booking={activeBooking}
+                  vendor={activeVendor}
+                  user={user}
+                  countdown={countdown}
+                  openSections={openScopeSections}
+                  toggleSection={toggleScopeSection}
+                  onClose={() => setSelectedScopeTarget(null)}
+                  onMessage={() => {
+                    const existingThread = chatThreads.find(([vid]) => vid === activeVendor.id);
+                    const conId = existingThread?.[1]?.lastMessage?.conversationId || [user.id, activeVendor.id].sort().filter(Boolean).join('_');
+                    triggerMessageWithSkeleton(activeVendor, conId, existingThread?.[1]?.messages);
+                  }}
+                  onPrefetchPay={() => prefetchPay(activeBooking.id, activeBooking.vendorId, activeBooking.amount)}
+                  onPay={() => handlePay(activeBooking.id, activeBooking.vendorId, activeBooking.amount)}
+                  isProcessingPayment={isProcessingPayment}
+                  onMakeOrUpdateOffer={(offerPrice, noteAddition) =>
+                    handleUpdateBookingOffer(activeBooking, offerPrice, noteAddition)
+                  }
+                  onCancelBooking={() => handleCancelClientBooking(activeBooking.id)}
+                />
+              );
+            } else {
+              const planItem = cart[selectedScopeTarget.index];
+              if (!planItem) return null;
+              const countdown = getCountdown(planItem.date);
+              return (
+                <ClientEventScopeModal
+                  key={`plan-scope-${selectedScopeTarget.index}`}
+                  mode="plan"
+                  planItem={planItem}
+                  planIndex={selectedScopeTarget.index}
+                  vendor={planItem.vendor}
+                  user={user}
+                  countdown={countdown}
+                  openSections={openScopeSections}
+                  toggleSection={toggleScopeSection}
+                  onClose={() => setSelectedScopeTarget(null)}
+                  onMessage={() => {
+                    const existingThread = chatThreads.find(([vid]) => vid === planItem.vendor.id);
+                    const conId = existingThread?.[1]?.lastMessage?.conversationId || [user.id, planItem.vendor.id].sort().filter(Boolean).join('_');
+                    triggerMessageWithSkeleton(planItem.vendor, conId, existingThread?.[1]?.messages);
+                  }}
+                  onEditPlanItem={() => onEditCartItem(selectedScopeTarget.index)}
+                  onRemovePlanItem={() => onRemoveFromCart(selectedScopeTarget.index)}
+                  onSendPlanRequests={onProcessCart}
+                />
+              );
+            }
+          })(),
+          document.body
+        )}
+
+      {/* Full-Screen Loading Indicator in between Event Modal Pop-Down and Payment Modal Pop-Up */}
+      {typeof document !== 'undefined' &&
+        payTransitionInfo &&
+        createPortal(
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-[250] bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center p-6 select-none"
+          >
+            {/* Full-screen subtle skeleton frame */}
+            <div className="w-full max-w-md space-y-5 flex flex-col items-center">
+              <div className="relative w-20 h-20 flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full border-2 border-[#D4AF37]/20 animate-ping" />
+                <div className="absolute inset-1 rounded-full border-2 border-[#D4AF37]/25" />
+                <div className="absolute inset-1 rounded-full border-2 border-transparent border-t-[#D4AF37] border-r-[#D4AF37]/60 animate-spin" />
+                <div className="w-11 h-11 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center shadow-[0_0_30px_rgba(212,175,55,0.35)]">
+                  <ShieldCheck className="w-5 h-5 text-[#D4AF37] animate-pulse" />
+                </div>
+              </div>
+
+              <div className="text-center space-y-1.5">
+                <p className="text-xs sm:text-sm font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.25em]">
+                  Preparing Secure Checkout
+                </p>
+                <p className="text-[11px] text-zinc-400">
+                  {payTransitionInfo.vendorName
+                    ? `Connecting encrypted Stripe gateway for ${payTransitionInfo.vendorName} ($${payTransitionInfo.amount.toLocaleString()})...`
+                    : `Initializing encrypted Stripe payment ($${payTransitionInfo.amount.toLocaleString()})...`}
+                </p>
+              </div>
+
+              <div className="w-full space-y-2.5 pt-2 opacity-60">
+                <div className="h-11 w-full rounded-2xl bg-white/[0.04] border border-[#D4AF37]/20 animate-pulse" />
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="h-11 rounded-2xl bg-white/[0.04] border border-white/10 animate-pulse" />
+                  <div className="h-11 rounded-2xl bg-white/[0.04] border border-white/10 animate-pulse" />
+                </div>
+                <div className="h-12 w-full rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/35 animate-pulse" />
+              </div>
+            </div>
+          </motion.div>,
+          document.body
+        )}
+
+      {/* Full-Screen Luxury Chat Skeleton Loader (Dead-Centered to match Payment Loader) */}
+      {typeof document !== 'undefined' &&
+        chatTransitionTarget &&
+        createPortal(
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-[250] bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center p-6 select-none"
+          >
+            <div className="w-full max-w-md space-y-5 flex flex-col items-center text-center mx-auto">
+              <div className="relative w-20 h-20 flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full border-2 border-[#D4AF37]/20 animate-ping" />
+                <div className="absolute inset-1 rounded-full border-2 border-[#D4AF37]/25" />
+                <div className="absolute inset-1 rounded-full border-2 border-transparent border-t-[#D4AF37] border-r-[#D4AF37]/60 animate-spin" />
+                <div className="w-11 h-11 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center shadow-[0_0_30px_rgba(212,175,55,0.35)]">
+                  <MessageSquare className="w-5 h-5 text-[#D4AF37] animate-pulse" />
+                </div>
+              </div>
+
+              <div className="text-center space-y-1.5">
+                <p className="text-xs sm:text-sm font-bold font-[Cinzel] uppercase tracking-[0.25em] text-[#D4AF37]">
+                  Opening Direct Chat
+                </p>
+                <p className="text-[11px] text-zinc-400">
+                  Connecting conversation with {chatTransitionTarget.vendor.name}...
+                </p>
+              </div>
+
+              {/* Symmetrical Centered Skeleton Preview */}
+              <div className="w-full space-y-2.5 pt-2 opacity-60">
+                <div className="h-11 w-full rounded-2xl bg-white/[0.04] border border-[#D4AF37]/20 animate-pulse flex items-center px-3.5 gap-3">
+                  <div className="w-6 h-6 rounded-full bg-[#D4AF37]/25 shrink-0" />
+                  <div className="h-2.5 flex-1 rounded-full bg-white/15" />
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="h-11 rounded-2xl bg-white/[0.04] border border-white/10 animate-pulse" />
+                  <div className="h-11 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/25 animate-pulse" />
+                </div>
+                <div className="h-12 w-full rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/35 animate-pulse" />
+              </div>
+            </div>
+          </motion.div>,
+          document.body
+        )}
     </div>
   );
 };

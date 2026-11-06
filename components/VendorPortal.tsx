@@ -286,7 +286,7 @@ const VendorEventScopeModal: React.FC<{
       <motion.div
         {...dragModalProps}
         transition={EVENT_MODAL_TRANSITION}
-        className={`bg-[#0a0a0a] w-full sm:w-full sm:max-w-xl h-[93dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-[2.5rem] border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-[0_0_50px_rgba(212,175,55,0.18)] overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
+        className={`bg-[#0a0a0a] w-full sm:w-full sm:max-w-xl h-[96dvh] sm:h-[90vh] sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-[2.5rem] border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-[0_0_50px_rgba(212,175,55,0.18)] overflow-hidden relative flex flex-col mt-auto sm:mt-0 transform-gpu ${isDismissing ? 'pointer-events-none' : ''}`}
       >
         {/* Top bar drag indicator positioned across the top edge, leaving top-right corner clear for X button */}
         <div
@@ -1845,9 +1845,19 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
   useEffect(() => {
     if (onActiveChatChangeRef.current) {
-      onActiveChatChangeRef.current((!!selectedThreadEmail && activeTab === 'messages') || !!selectedCalendarEvent || !!activeProfileSettingModal);
+      onActiveChatChangeRef.current(
+        (!!selectedThreadEmail && activeTab === 'messages') ||
+        !!selectedCalendarEvent ||
+        (!!activeProfileSettingModal && activeTab === 'profile')
+      );
     }
   }, [selectedThreadEmail, activeTab, selectedCalendarEvent, activeProfileSettingModal]);
+
+  useEffect(() => {
+    return () => {
+      onActiveChatChangeRef.current?.(false);
+    };
+  }, []);
 
   const handleSendTestEmail = async () => {
     if (!testEmail || !testEmail.includes('@')) {
@@ -3085,21 +3095,21 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         e.stopPropagation();
                         handleSimchaBookingClick(b);
                       }}
-                      className="bg-[#1a1a1a]/80 backdrop-blur-md border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 p-3 rounded-xl shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 group/card text-left cursor-pointer"
+                      className="bg-[#1a1a1a]/80 backdrop-blur-md border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 p-3 rounded-2xl shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 group/card text-left cursor-pointer flex items-center justify-between gap-2"
                     >
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37]">
-                          {b.status === 'confirmed' ? 'Confirmed' : 'Pending'}
-                        </span>
-                        {b.eventTime && <span className="text-[8px] font-mono text-zinc-400">{b.eventTime}</span>}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37]">
+                            {b.status === 'confirmed' ? 'Confirmed' : b.status === 'cancelled' ? 'Cancelled' : 'Pending'}
+                          </span>
+                          {b.eventTime && <span className="text-[8px] font-mono text-zinc-400">• {b.eventTime}</span>}
+                        </div>
+                        <h5 className="text-xs font-bold text-white mb-0.5 group-hover/card:text-[#D4AF37] transition-colors truncate">{b.eventName}</h5>
+                        <p className="text-[10px] text-zinc-400 truncate">{b.clientName}</p>
                       </div>
-                      <h5 className="text-xs font-bold text-white mb-0.5 group-hover/card:text-[#D4AF37] transition-colors truncate">{b.eventName}</h5>
-                      <p className="text-[10px] text-zinc-400 truncate">{b.clientName}</p>
-                      {b.eventLocation && (
-                        <p className="text-[8px] text-zinc-400 truncate mt-1.5 flex items-center gap-1">
-                          <MapPin className="w-2.5 h-2.5 text-[#D4AF37]" /> {b.eventLocation}
-                        </p>
-                      )}
+                      <div className="w-6 h-6 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover/card:bg-[#D4AF37] group-hover/card:text-black transition-all shrink-0">
+                        <ChevronRight className="w-3 h-3" />
+                      </div>
                     </div>
                   ))}
 
@@ -3664,46 +3674,93 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         View All Booking/events
                       </button>
                     </div>
-                    <div className="p-6 divide-y divide-white/5">
+                    <div className="p-4 sm:p-6 space-y-2.5">
                       {sortedBookings.slice(0, 3).length === 0 ? (
                         <div className="py-12 text-center opacity-30">
                           <Calendar className="w-8 h-8 mx-auto mb-2 text-[#D4AF37]" />
                           <p className="text-[10px] font-black uppercase tracking-widest text-zinc-300">No upcoming booking/events scheduled</p>
                         </div>
                       ) : (
-                        sortedBookings.slice(0, 3).map((b) => (
-                          <div key={b.id} className="flex flex-col sm:flex-row justify-between sm:items-center py-4 gap-4 group hover:bg-white/[0.01] px-4 -mx-4 rounded-xl transition-all">
-                            <div className="space-y-1">
-                              <p className="font-bold text-white group-hover:text-[#D4AF37] transition-colors">{b.clientName}</p>
-                              <div className="flex flex-wrap items-center gap-3">
-                                <span className="text-[9px] text-zinc-300 font-bold uppercase tracking-widest flex items-center gap-1">
-                                  <Calendar className="w-3 h-3 text-[#D4AF37]" /> {b.date}
-                                </span>
-                                {b.eventTime && (
-                                  <span className="text-[9px] text-zinc-300 font-bold uppercase tracking-widest flex items-center gap-1">
-                                    <Clock className="w-3 h-3 text-[#D4AF37]" /> {b.eventTime}
-                                  </span>
+                        sortedBookings.slice(0, 3).map((b, idx) => {
+                          const clientPhoto = getClientPhoto(b);
+                          const initials = getClientInitials(b.clientName);
+                          return (
+                            <div
+                              key={b.id}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => handleSimchaBookingClick(b)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  handleSimchaBookingClick(b);
+                                }
+                              }}
+                              className={`simcha-event-card relative w-full overflow-hidden rounded-full border transition-all duration-300 cursor-pointer group flex items-center justify-between gap-3 px-5 sm:px-6 py-3 sm:py-3.5 min-h-[62px] shadow-xl active:scale-[0.99] ${
+                                idx === 0
+                                  ? 'border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
+                                  : 'border-[#D4AF37]/35 hover:border-[#D4AF37]/80'
+                              }`}
+                            >
+                              <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                                {clientPhoto ? (
+                                  <>
+                                    <img
+                                      src={clientPhoto}
+                                      alt={b.clientName}
+                                      className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                                    />
+                                    <div className="absolute inset-0 simcha-event-card-overlay" />
+                                  </>
+                                ) : (
+                                  <div className="w-full h-full bg-gradient-to-r from-[#0c0c0c] via-[#151208] to-[#0c0c0c] flex items-center justify-center relative">
+                                    <span className="font-[Cinzel] font-black text-4xl sm:text-5xl tracking-[0.25em] text-[#D4AF37]/15 select-none">
+                                      {initials}
+                                    </span>
+                                  </div>
                                 )}
                               </div>
+
+                              <div className="relative z-10 flex items-center gap-3 min-w-0 flex-1">
+                                {!clientPhoto && (
+                                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs shadow-inner">
+                                    {initials}
+                                  </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-bold text-sm text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
+                                    {b.clientName}
+                                  </p>
+                                  <div className="flex items-center gap-2 text-[10px] text-zinc-200/90 truncate mt-0.5">
+                                    <span className="flex items-center gap-1 font-semibold text-white shrink-0">
+                                      <Calendar className="w-2.5 h-2.5 text-[#D4AF37]" /> {b.date}
+                                    </span>
+                                    {b.eventTime && (
+                                      <span className="flex items-center gap-1 text-zinc-300 truncate">
+                                        <Clock className="w-2.5 h-2.5 text-[#D4AF37]" /> {b.eventTime}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="relative z-10 flex items-center gap-2 shrink-0">
+                                <span className={`px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${
+                                  b.status === 'confirmed'
+                                    ? 'bg-green-500/25 text-green-300 border-green-500/45'
+                                    : b.status === 'pending'
+                                    ? 'simcha-event-pill text-[#D4AF37] border-[#D4AF37]/45'
+                                    : 'bg-red-500/25 text-red-300 border-red-500/45'
+                                }`}>
+                                  {b.status}
+                                </span>
+                                <div className="w-7 h-7 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                                  <ChevronRight className="w-3.5 h-3.5" />
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex items-center justify-between sm:justify-end gap-4">
-                              <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-wider border ${
-                                b.status === 'confirmed' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
-                                b.status === 'pending' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/30' :
-                                'bg-red-500/10 text-red-500 border-red-500/20'
-                              }`}>
-                                {b.status}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleSimchaBookingClick(b)}
-                                className="bg-[#D4AF37]/10 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-4 py-2 rounded-full transition-all border border-[#D4AF37]/20 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 cursor-pointer"
-                              >
-                                <Eye className="w-3 h-3" /> Spec Sheet
-                              </button>
-                            </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </div>
@@ -4044,7 +4101,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               </div>
                             </div>
 
-                            {/* Right Side: Date + Status + Go to Event (if confirmed) */}
+                            {/* Right Side: Date + Status + Navigation Arrow */}
                             <div className="relative z-10 flex items-center gap-2 sm:gap-2.5 shrink-0">
                               <span className="simcha-event-pill px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-bold text-zinc-100 border border-white/15 flex items-center gap-1.5">
                                 <Calendar className="w-3 h-3 text-[#D4AF37] shrink-0" />
@@ -4063,18 +4120,9 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                 {b.status}
                               </span>
 
-                              {b.status === 'confirmed' && (b.eventAddress || b.eventLocation) && (
-                                <a
-                                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(b.eventAddress || b.eventLocation || '')}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="simcha-event-btn inline-flex items-center gap-1 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black px-3 py-1 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-widest border border-[#D4AF37]/50 transition-all cursor-pointer"
-                                >
-                                  <MapPin className="w-2.5 h-2.5" />
-                                  <span className="hidden sm:inline">Go to Event</span>
-                                </a>
-                              )}
+                              <div className="w-7 h-7 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </div>
                             </div>
                           </div>
                         );

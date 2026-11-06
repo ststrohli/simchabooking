@@ -1535,6 +1535,7 @@ function App() {
 
     isVendorViewRef.current = nextVendorView;
     setIsVendorView(nextVendorView);
+    setIsPortalChatActive(false);
 
     startTransition(() => {
       if (nextVendorView) {
@@ -1555,6 +1556,7 @@ function App() {
       } else {
         // Switching from Vendor back to Client takes the user directly to the homepage (marketplace)
         setPortalTab(prev => (prev === 'client' ? prev : 'client'));
+        setPortalInitialTab(prev => (['overview', 'plan', 'events', 'chats', 'profile'].includes(prev) ? prev : 'overview'));
         setActiveBottomTab(prev => (prev === 'home' ? prev : 'home'));
         setView(prev => (prev === 'marketplace' ? prev : 'marketplace'));
       }
@@ -2830,6 +2832,10 @@ function App() {
     setView('marketplace');
     window.scrollTo(0, 0);
   };
+
+  useEffect(() => {
+    setIsPortalChatActive(false);
+  }, [view, portalTab, isVendorView]);
 
   useEffect(() => {
     if (view === 'marketplace') setActiveBottomTab('home');
@@ -4717,19 +4723,23 @@ function App() {
     }
 
     if (view === 'payment-success') {
+      const matchedBooking = bookings.find(b => b.id === paymentBookingId);
+      const matchedVendor = vendors.find(v => v.id === (paymentVendorId || matchedBooking?.vendorId));
       return (
-        <motion.div 
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0, transitionEnd: { transform: 'none' } }}
-          transition={APP_SLIDE_UP_TRANSITION}
-          className="min-h-screen bg-black flex flex-col"
-        >
-          <PaymentSuccess 
-            bookingId={paymentBookingId || ''} 
-            vendorId={paymentVendorId || ''} 
-            onReturn={() => { setPortalTab('client'); setView('portal'); }} 
-          />
-        </motion.div>
+        <PaymentSuccess 
+          bookingId={paymentBookingId || ''} 
+          vendorId={paymentVendorId || matchedBooking?.vendorId || ''} 
+          amount={matchedBooking?.amount}
+          vendorName={matchedVendor?.name}
+          eventDate={matchedBooking?.date}
+          eventName={matchedBooking?.eventName}
+          onReturn={() => {
+            setPortalTab('client');
+            setPortalInitialTab('events');
+            setActiveBottomTab('events');
+            setView('portal');
+          }} 
+        />
       );
     }
 
@@ -5548,7 +5558,7 @@ function App() {
         !showPriorityHoldPopup && 
         !chatVendor && 
         !isAdminChatOpen && 
-        !isPortalChatActive && (
+        !((view === 'portal' || view === 'admin') && isPortalChatActive) && (
         <BottomNav 
           currentView={activeBottomTab} 
           onNavigate={handleBottomNav} 

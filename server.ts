@@ -357,13 +357,17 @@ async function startServer() {
   const searchTracker = new Map<string, number>();
   setInterval(() => searchTracker.clear(), 24 * 60 * 60 * 1000);
 
+  let cachedPlatformAccountId: string | null = null;
+  const cachedTransferCapableAccounts = new Map<string, boolean>();
+
   // 1. IMMEDIATE BYPASS ROUTE - MUST BE AT THE VERY TOP
   // This bypasses any global middleware (including sessions) that might hang on Firestore
   app.all("/api/stripe/create-checkout-session", express.json(), async (req, res) => {
     console.log(`[Stripe] Starting Checkout Session (Method: ${req.method})`);
     try {
       // Handle both POST (body) and GET (query)
-      const { bookingId, vendorId, amount } = req.method === 'POST' ? req.body : req.query;
+      const params = req.method === 'POST' ? req.body : req.query;
+      const { bookingId, vendorId, amount, stripeAccountId: clientStripeAccountId, commissionRate: clientCommissionRate } = params;
       
       if (!vendorId) {
         return res.status(400).send("Missing vendorId");
@@ -373,53 +377,45 @@ async function startServer() {
         return res.status(400).send("Invalid or missing amount");
       }
 
-      // 1. LOOK UP RATE: Fetch the vendor's document from the database
-      let commissionRate = 5; // Default to 5%
-      let vendorStripeAccountId = null;
+      // 1. LOOK UP RATE: Use client-provided vendor Stripe info if valid, otherwise fetch from DB in parallel with getStripe()
+      let commissionRate = clientCommissionRate !== undefined && !isNaN(Number(clientCommissionRate)) ? Number(clientCommissionRate) : 5;
+      let vendorStripeAccountId: string | null =
+        typeof clientStripeAccountId === 'string' && clientStripeAccountId.startsWith('acct_')
+          ? clientStripeAccountId
+          : null;
 
-      console.log('Attempting to fetch Vendor with ID:', vendorId);
+      const stripePromise = getStripe();
 
-      try {
-        const vendorDoc = await safeFirestoreOp(async (database) => {
-          // FLEXIBLE LOOKUP: First try by document ID
-          let doc = await database.collection('vendors').doc(vendorId as string).get();
-          
-          // If not found by document ID, try searching for a field named 'id'
-          if (!doc.exists) {
-            console.log(`[Stripe] Vendor not found by document ID ${vendorId}. Searching by 'id' field...`);
-            const querySnapshot = await database.collection('vendors').where('id', '==', vendorId).limit(1).get();
-            if (!querySnapshot.empty) {
-              doc = querySnapshot.docs[0];
+      if (!vendorStripeAccountId) {
+        console.log('Attempting to fetch Vendor with ID:', vendorId);
+        try {
+          const vendorDoc = await safeFirestoreOp(async (database) => {
+            let doc = await database.collection('vendors').doc(vendorId as string).get();
+            if (!doc.exists) {
+              const querySnapshot = await database.collection('vendors').where('id', '==', vendorId).limit(1).get();
+              if (!querySnapshot.empty) {
+                doc = querySnapshot.docs[0];
+              }
+            }
+            return doc;
+          }, "Fetch Vendor for Checkout", "vendors", vendorId as string);
+
+          if (vendorDoc && vendorDoc.exists) {
+            const vendorData = vendorDoc.data();
+            if (vendorData) {
+              commissionRate = typeof vendorData.commissionRate === 'number' ? vendorData.commissionRate : 5;
+              if (vendorData.stripeAccountId && vendorData.stripeAccountId.startsWith('acct_')) {
+                vendorStripeAccountId = vendorData.stripeAccountId;
+              } else if (vendorData.stripeaccountid && vendorData.stripeaccountid.startsWith('acct_')) {
+                vendorStripeAccountId = vendorData.stripeaccountid;
+              } else if (vendorData.StripeAccountID && vendorData.StripeAccountID.startsWith('acct_')) {
+                vendorStripeAccountId = vendorData.StripeAccountID;
+              }
             }
           }
-          return doc;
-        }, "Fetch Vendor for Checkout", "vendors", vendorId as string);
-
-        if (vendorDoc && vendorDoc.exists) {
-          const vendorData = vendorDoc.data();
-          if (vendorData) {
-            // LOG THE FULL OBJECT AS REQUESTED
-            console.log('Full Vendor Data:', JSON.stringify(vendorData));
-
-            // CALCULATE SPLIT: Use commissionRate from DB, default to 5 if missing
-            commissionRate = typeof vendorData.commissionRate === 'number' ? vendorData.commissionRate : 5;
-            
-            // CASE SENSITIVITY CHECK: Ensure we use stripeAccountId exactly as requested
-            if (vendorData.stripeAccountId && vendorData.stripeAccountId.startsWith('acct_')) {
-              vendorStripeAccountId = vendorData.stripeAccountId;
-            } else if (vendorData.stripeaccountid && vendorData.stripeaccountid.startsWith('acct_')) {
-              console.warn(`[Stripe] Found lowercase 'stripeaccountid' for vendor ${vendorId}. Using it, but please fix the database field name to 'stripeAccountId'.`);
-              vendorStripeAccountId = vendorData.stripeaccountid;
-            } else if (vendorData.StripeAccountID && vendorData.StripeAccountID.startsWith('acct_')) {
-              console.warn(`[Stripe] Found uppercase 'StripeAccountID' for vendor ${vendorId}. Using it, but please fix the database field name to 'stripeAccountId'.`);
-              vendorStripeAccountId = vendorData.StripeAccountID;
-            }
-          }
-        } else {
-          console.warn(`[Stripe] Vendor ${vendorId} not found in database.`);
+        } catch (dbError) {
+          console.warn("[Stripe] DB Fetch failed, using defaults.", dbError);
         }
-      } catch (dbError) {
-        console.warn("[Stripe] DB Fetch failed, using defaults.", dbError);
       }
 
       // Optional environment fallback for default connected account in test/staging environments
@@ -427,59 +423,63 @@ async function startServer() {
         vendorStripeAccountId = process.env.STRIPE_DEFAULT_CONNECTED_ACCOUNT_ID.trim();
       }
 
-      // CRUCIAL: Throw error if vendor.stripeAccountId is missing or undefined
       if (!vendorStripeAccountId) {
         console.error(`[Stripe] Checkout failed: Vendor ${vendorId} has no valid Stripe Account ID.`);
         return res.status(400).send(`Error: Vendor ${vendorId} is not connected to Stripe. Please contact the vendor.`);
       }
 
-      const stripe = await getStripe();
+      const stripe = await stripePromise;
       
       // MATH: Convert to cents for Stripe
       const amountInCents = Math.round(Number(amount) * 100);
 
-      // Validate payment amount is greater than zero
       if (amountInCents <= 0) {
-        console.error(`[Stripe] Fee calculation error: Invalid amount (${amountInCents})`);
         return res.status(400).json({ error: "The payment amount must be greater than zero. Free bookings or zero-value transactions do not require card payments." });
       }
 
       const platformCutInCents = Math.round(amountInCents * (commissionRate / 100));
 
-      // VALIDATION: Ensure fee is less than total
       if (platformCutInCents >= amountInCents) {
-        console.error(`[Stripe] Fee calculation error: Fee (${platformCutInCents}) >= Amount (${amountInCents})`);
         return res.status(400).json({ error: "The calculated platform fee exceeds the total payment amount. Please check the commission rate." });
       }
 
-      // 2. SAFETY: Self-transfer and destination account capabilities check
+      // 2. FAST PARALLEL SAFETY: Self-transfer and destination account capabilities check (cached after first lookup)
       let transferData: any = undefined;
       try {
-        // Retrieve the platform's own account ID to avoid self-transfer
-        // @ts-ignore - Stripe types might vary across versions
-        const platformAccount = await stripe.accounts.retrieve(); 
-        if (platformAccount.id === vendorStripeAccountId) {
-          console.log(`[Stripe] Self-transfer detected for account ${vendorStripeAccountId}. Skipping transfer_data to avoid crash.`);
-        } else {
+        const [platformId, isDestCapable] = await Promise.all([
+          (async () => {
+            if (cachedPlatformAccountId) return cachedPlatformAccountId;
+            try {
+              // @ts-ignore
+              const platformAccount = await stripe.accounts.retrieve();
+              cachedPlatformAccountId = platformAccount.id;
+              return cachedPlatformAccountId;
+            } catch {
+              return null;
+            }
+          })(),
+          (async () => {
+            if (cachedTransferCapableAccounts.has(vendorStripeAccountId!)) {
+              return cachedTransferCapableAccounts.get(vendorStripeAccountId!)!;
+            }
+            try {
+              const destAccount = await stripe.accounts.retrieve(vendorStripeAccountId!);
+              const transfersCap = destAccount.capabilities?.transfers || destAccount.capabilities?.legacy_payments;
+              const capable = !destAccount.capabilities || transfersCap === 'active' || transfersCap === 'pending';
+              cachedTransferCapableAccounts.set(vendorStripeAccountId!, capable);
+              return capable;
+            } catch {
+              return true;
+            }
+          })(),
+        ]);
+
+        if (platformId !== vendorStripeAccountId && isDestCapable) {
           transferData = { destination: vendorStripeAccountId };
         }
       } catch (e) {
-        console.warn("[Stripe] Could not verify platform account ID for self-transfer check.", e);
+        console.warn("[Stripe] Account verification fallback:", e);
         transferData = { destination: vendorStripeAccountId };
-      }
-
-      // Check destination account capabilities if transferData is set
-      if (transferData) {
-        try {
-          const destAccount = await stripe.accounts.retrieve(vendorStripeAccountId);
-          const transfersCap = destAccount.capabilities?.transfers || destAccount.capabilities?.legacy_payments;
-          if (destAccount.capabilities && transfersCap !== 'active' && transfersCap !== 'pending') {
-            console.warn(`[Stripe] Destination account ${vendorStripeAccountId} does not have active transfer capabilities (status: ${transfersCap || 'disabled'}). Skipping transfer_data to process standard charge.`);
-            transferData = undefined;
-          }
-        } catch (accCheckErr: any) {
-          console.warn(`[Stripe] Destination account check note for ${vendorStripeAccountId}:`, accCheckErr.message);
-        }
       }
 
       // EXACT LOGS REQUESTED BY USER
