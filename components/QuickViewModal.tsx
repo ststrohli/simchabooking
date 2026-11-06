@@ -73,17 +73,32 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
 
   const mediaItems = useMemo(() => {
     const items: Array<{ type: 'image' | 'video', url: string, isNative?: boolean, label?: string }> = [];
+    const isEmbedVideoUrl = (u: string) =>
+      /youtube\.com\/embed\/|player\.vimeo\.com\/video\//i.test(u);
+    const isDirectVideoUrl = (u: string) =>
+      !isEmbedVideoUrl(u) && (
+        u.startsWith('data:video/') ||
+        /\.(mp4|webm|ogg|mov|m4v|avi|ogv)(?:\?|$|#|%)/i.test(u) ||
+        u.includes('video%2F') ||
+        u.includes('video/') ||
+        u.includes('simcha_video=1') ||
+        u.includes('dl.dropboxusercontent.com')
+      );
+
     if (vendor.video) {
-      const isNativeVideo = vendor.video.startsWith('data:video/') || vendor.video.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || vendor.video.includes('video%2F') || vendor.video.includes('video/');
+      const isNativeVideo = isDirectVideoUrl(vendor.video);
       items.push({ type: 'video', url: vendor.video, isNative: !!isNativeVideo, label: `${vendor.name} Feature Film` });
     }
     if (vendor.gallery && vendor.gallery.length > 0) {
       items.push(...vendor.gallery.map((url, idx) => {
         if (!url) return null;
-        const isNativeVideo = url.startsWith('data:video/') || url.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || url.includes('video%2F') || url.includes('video/');
-        return isNativeVideo
-          ? { type: 'video' as const, url, isNative: true, label: `Showcase Video ${idx + 1}` }
-          : { type: 'image' as const, url, label: `Gallery Photo ${idx + 1}` };
+        if (isDirectVideoUrl(url)) {
+          return { type: 'video' as const, url, isNative: true, label: `Showcase Video ${idx + 1}` };
+        }
+        if (isEmbedVideoUrl(url)) {
+          return { type: 'video' as const, url, isNative: false, label: `Showcase Video ${idx + 1}` };
+        }
+        return { type: 'image' as const, url, label: `Gallery Photo ${idx + 1}` };
       }).filter(Boolean) as any);
     }
     if (items.length === 0) items.push({ type: 'image', url: vendor.image || 'https://picsum.photos/800/600', label: vendor.name });

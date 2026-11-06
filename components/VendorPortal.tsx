@@ -36,14 +36,179 @@ interface VendorPortalProps {
   onToggleThemeMode?: (mode: 'dark' | 'light') => void;
 }
 
+const isEmbedVideo = (url?: string | null) => {
+  if (!url) return false;
+  return /youtube\.com\/embed\/|player\.vimeo\.com\/video\//i.test(url);
+};
+
 const isVideo = (url?: string | null) => {
   if (!url) return false;
   return !!(
+    isEmbedVideo(url) ||
     url.startsWith('data:video/') ||
-    url.match(/\.(mp4|webm|ogg|mov|m4v|avi|ogv)(?:\?|$|%)/i) || 
+    url.match(/\.(mp4|webm|ogg|mov|m4v|avi|ogv)(?:\?|$|#|%)/i) || 
     url.includes('video%2F') || 
-    url.includes('video/')
+    url.includes('video/') ||
+    url.includes('simcha_video=1') ||
+    url.includes('dl.dropboxusercontent.com')
   );
+};
+
+const validateAndNormalizeVideoUrl = (rawInput: string): {
+  isValid: boolean;
+  normalizedUrl?: string;
+  error?: string;
+  shouldProbeVideo?: boolean;
+} => {
+  const trimmed = rawInput.trim();
+  if (!trimmed) {
+    return {
+      isValid: false,
+      error: 'Please paste a video link before adding it to your showcase.',
+    };
+  }
+
+  if (/\s/.test(trimmed)) {
+    return {
+      isValid: false,
+      error: 'Invalid URL format. Make sure the link does not contain spaces.',
+    };
+  }
+
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(withProtocol);
+  } catch {
+    return {
+      isValid: false,
+      error: 'That does not look like a valid web address. Please paste a full https:// video link.',
+    };
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname.includes('.')) {
+    return {
+      isValid: false,
+      error: 'Please enter a valid https:// video URL (e.g., YouTube, Vimeo, Dropbox, or direct .mp4 link).',
+    };
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const pathname = parsed.pathname;
+
+  // Reject obvious non-video file extensions (images, documents, webpages)
+  if (/\.(jpe?g|png|gif|webp|svg|bmp|ico|pdf|docx?|xlsx?|zip|rar|html?|php|asp)(?:\?|$|#)/i.test(pathname)) {
+    return {
+      isValid: false,
+      error: 'This link points to an image or webpage rather than a video. Please paste a video link (.mp4, .mov, .webm, YouTube, or Vimeo).',
+    };
+  }
+
+  // 1. Validate & Normalize YouTube Links
+  if (host === 'youtu.be' || host.endsWith('youtube.com') || host.endsWith('youtube-nocookie.com')) {
+    let ytId = '';
+    if (host === 'youtu.be') {
+      ytId = pathname.split('/').filter(Boolean)[0] || '';
+    } else if (pathname.startsWith('/watch')) {
+      ytId = parsed.searchParams.get('v') || '';
+    } else {
+      const match = pathname.match(/^\/(?:shorts|embed|live|v)\/([a-zA-Z0-9_-]{6,})/i);
+      if (match?.[1]) ytId = match[1];
+    }
+
+    if (!ytId || !/^[a-zA-Z0-9_-]{6,15}$/.test(ytId)) {
+      return {
+        isValid: false,
+        error: 'Invalid YouTube link. Please paste a link to a specific YouTube video or Short (e.g., youtube.com/watch?v=... or youtu.be/...).',
+      };
+    }
+
+    return {
+      isValid: true,
+      normalizedUrl: `https://www.youtube.com/embed/${ytId}`,
+    };
+  }
+
+  // 2. Validate & Normalize Vimeo Links
+  if (host.endsWith('vimeo.com')) {
+    const vimeoMatch = pathname.match(/\/(?:video\/|channels\/[^/]+\/|groups\/[^/]+\/videos\/)?(\d{5,})/i);
+    if (!vimeoMatch?.[1]) {
+      return {
+        isValid: false,
+        error: 'Invalid Vimeo link. Please paste a direct link to a specific Vimeo video (e.g., vimeo.com/123456789).',
+      };
+    }
+
+    return {
+      isValid: true,
+      normalizedUrl: `https://player.vimeo.com/video/${vimeoMatch[1]}`,
+    };
+  }
+
+  // 3. Validate & Normalize Dropbox Links
+  if (host.endsWith('dropbox.com') || host.endsWith('dropboxusercontent.com')) {
+    if (pathname === '/' || pathname.length < 4) {
+      return {
+        isValid: false,
+        error: 'Invalid Dropbox link. Please paste a shared link to a specific video file.',
+      };
+    }
+    let directDropbox = withProtocol
+      .replace(/^https?:\/\/(www\.)?dropbox\.com\//i, 'https://dl.dropboxusercontent.com/')
+      .replace(/[?&]dl=0/i, '')
+      .replace(/[?&]dl=1/i, '');
+    directDropbox = directDropbox.includes('#')
+      ? `${directDropbox}&simcha_video=1`
+      : `${directDropbox}#t=0.001&simcha_video=1`;
+    return {
+      isValid: true,
+      normalizedUrl: directDropbox,
+      shouldProbeVideo: true,
+    };
+  }
+
+  // 4. Validate & Normalize Google Drive Video Links
+  if (host === 'drive.google.com') {
+    const driveMatch = withProtocol.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/i) || [null, parsed.searchParams.get('id')];
+    if (!driveMatch?.[1]) {
+      return {
+        isValid: false,
+        error: 'Invalid Google Drive link. Please paste a shared file link (e.g., drive.google.com/file/d/.../view).',
+      };
+    }
+    const directDrive = `https://drive.google.com/uc?export=download&id=${driveMatch[1]}#t=0.001&simcha_video=1`;
+    return {
+      isValid: true,
+      normalizedUrl: directDrive,
+    };
+  }
+
+  // 5. Direct Video File Extensions (.mp4, .mov, .webm, .m4v, .ogg, .ogv) or Known Video Storage / CDN Hosts
+  const hasVideoExtension = /\.(mp4|webm|ogg|mov|m4v|ogv|m3u8)(?:\?|$|#)/i.test(withProtocol);
+  const isKnownVideoStorageHost =
+    /firebasestorage\.googleapis\.com|storage\.googleapis\.com|cloudinary\.com|mux\.com|b-cdn\.net|cloudfront\.net|r2\.dev|amazonaws\.com|digitaloceanspaces\.com|supabase\.co|vimeo|jwplatform\.com/i.test(
+      host
+    ) ||
+    withProtocol.includes('video%2F') ||
+    withProtocol.includes('video/');
+
+  if (hasVideoExtension || isKnownVideoStorageHost) {
+    const taggedUrl = withProtocol.includes('#')
+      ? `${withProtocol}&simcha_video=1`
+      : `${withProtocol}#t=0.001&simcha_video=1`;
+    return {
+      isValid: true,
+      normalizedUrl: taggedUrl,
+      shouldProbeVideo: true,
+    };
+  }
+
+  return {
+    isValid: false,
+    error:
+      'Unsupported video link. Please paste a valid YouTube, Vimeo, Dropbox, Google Drive, or direct video file (.mp4, .mov, .webm) URL.',
+  };
 };
 
 const renderMedia = (url: string | undefined | null, className: string, defaultContent?: React.ReactNode) => {
@@ -1149,6 +1314,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [showVideoUrlBar, setShowVideoUrlBar] = useState(false);
+  const [videoUrlInput, setVideoUrlInput] = useState('');
+  const [videoUrlError, setVideoUrlError] = useState<string | null>(null);
+  const [isSavingVideoUrl, setIsSavingVideoUrl] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [stripeMessage, setStripeMessage] = useState<string | null>(null);
@@ -2081,6 +2250,92 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       setIsUploadingMedia(false);
       setUploadProgresses(prev => { const newP = {...prev}; delete newP['gallery']; return newP; });
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleAddVideoUrl = async () => {
+    setVideoUrlError(null);
+    const validation = validateAndNormalizeVideoUrl(videoUrlInput);
+    if (!validation.isValid || !validation.normalizedUrl) {
+      const errMsg = validation.error || 'Please enter a valid video URL.';
+      setVideoUrlError(errMsg);
+      showNotification(errMsg, 'error');
+      return;
+    }
+
+    if (!vendor.id) return;
+
+    const currentGallery = latestEditFormRef.current.gallery || vendor.gallery || [];
+    if (currentGallery.includes(validation.normalizedUrl)) {
+      const dupMsg = 'This video link is already in your showcase gallery.';
+      setVideoUrlError(dupMsg);
+      showNotification(dupMsg, 'info');
+      return;
+    }
+
+    setIsSavingVideoUrl(true);
+    try {
+      // If it's a direct video stream URL, quickly probe metadata to catch broken/404 video links
+      if (validation.shouldProbeVideo && typeof document !== 'undefined') {
+        const isPlayable = await new Promise<boolean>((resolve) => {
+          const probeVideo = document.createElement('video');
+          probeVideo.preload = 'metadata';
+          probeVideo.muted = true;
+          const timer = setTimeout(() => {
+            probeVideo.src = '';
+            // Allow if metadata takes longer than 3.5s on slow CDNs, unless it explicitly errored
+            resolve(true);
+          }, 3500);
+          probeVideo.onloadedmetadata = () => {
+            clearTimeout(timer);
+            probeVideo.src = '';
+            resolve(true);
+          };
+          probeVideo.oncanplay = () => {
+            clearTimeout(timer);
+            probeVideo.src = '';
+            resolve(true);
+          };
+          probeVideo.onerror = () => {
+            clearTimeout(timer);
+            probeVideo.src = '';
+            resolve(false);
+          };
+          probeVideo.src = validation.normalizedUrl!;
+        });
+
+        if (!isPlayable) {
+          const brokenMsg =
+            'We could not load a playable video from this link. Please verify that the URL is public and points to a valid video file.';
+          setVideoUrlError(brokenMsg);
+          showNotification(brokenMsg, 'error');
+          setIsSavingVideoUrl(false);
+          return;
+        }
+      }
+
+      const newGallery = [...currentGallery, validation.normalizedUrl];
+
+      await updateDoc(doc(db, 'vendors', vendor.id), {
+        gallery: newGallery
+      });
+
+      applyImmediateVendorUpdate(prev => ({
+        ...prev,
+        gallery: newGallery
+      }));
+
+      setVideoUrlInput('');
+      setVideoUrlError(null);
+      setShowVideoUrlBar(false);
+      showNotification('Video link verified and added to your showcase!');
+    } catch (err: any) {
+      console.error('Video URL save error:', err);
+      const failMsg = 'Failed to add video link: ' + (err.message || 'Unknown error');
+      setVideoUrlError(failMsg);
+      showNotification(failMsg, 'error');
+    } finally {
+      setIsSavingVideoUrl(false);
     }
   };
 
@@ -5054,8 +5309,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     icon={Film}
                     onClose={() => setActiveProfileSettingModal(null)}
                   >
-                    {/* Even Pill Upload Controls */}
-                    <div className="flex flex-wrap items-center justify-between gap-2.5 bg-black/60 p-2.5 rounded-full border border-[#D4AF37]/30">
+                    {/* Even Pill Upload Controls: Add Photo, Upload Video, Paste Video URL */}
+                    <div className="grid grid-cols-3 gap-2 bg-black/60 p-2 rounded-full border border-[#D4AF37]/30">
                       <button
                         type="button"
                         onClick={() => {
@@ -5064,10 +5319,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             fileInputRef.current.click();
                           }
                         }}
-                        className="flex-1 h-10 px-4 rounded-full bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase tracking-widest border border-white/15 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                        className="h-10 px-3 rounded-full bg-white/5 hover:bg-white/10 text-white text-[9px] sm:text-[10px] font-black uppercase tracking-widest border border-white/15 flex items-center justify-center gap-1.5 cursor-pointer transition-all truncate"
                       >
-                        <ImageIcon className="w-4 h-4 text-[#D4AF37]" />
-                        <span>Add Photo</span>
+                        <ImageIcon className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                        <span className="truncate">Add Photo</span>
                       </button>
                       <button
                         type="button"
@@ -5077,12 +5332,96 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             fileInputRef.current.click();
                           }
                         }}
-                        className="flex-1 h-10 px-4 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black text-[10px] font-black uppercase tracking-widest border border-[#D4AF37] flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md"
+                        className="h-10 px-3 rounded-full bg-white/5 hover:bg-white/10 text-white text-[9px] sm:text-[10px] font-black uppercase tracking-widest border border-white/15 flex items-center justify-center gap-1.5 cursor-pointer transition-all truncate"
                       >
-                        <Film className="w-4 h-4" />
-                        <span>Upload Video</span>
+                        <Film className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                        <span className="truncate">Upload Video</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowVideoUrlBar(prev => !prev);
+                          setVideoUrlError(null);
+                        }}
+                        className={`h-10 px-3 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest border flex items-center justify-center gap-1.5 cursor-pointer transition-all truncate ${
+                          showVideoUrlBar
+                            ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-md'
+                            : 'bg-[#D4AF37]/15 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border-[#D4AF37]/50'
+                        }`}
+                      >
+                        <Video className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{showVideoUrlBar ? 'Close URL' : 'Video URL'}</span>
                       </button>
                     </div>
+
+                    {/* Sleek Post-Shaped Video URL Input Bar + Friendly Validation Feedback */}
+                    <AnimatePresence initial={false}>
+                      {showVideoUrlBar && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -6 }}
+                          transition={{ duration: 0.2 }}
+                          className="space-y-2"
+                        >
+                          <div
+                            className={`bg-black/75 p-2 pl-4 rounded-full border flex items-center gap-2 shadow-xl transition-colors ${
+                              videoUrlError ? 'border-red-500/70' : 'border-[#D4AF37]/50'
+                            }`}
+                          >
+                            <Film className={`w-4 h-4 shrink-0 ${videoUrlError ? 'text-red-400' : 'text-[#D4AF37]'}`} />
+                            <input
+                              type="url"
+                              autoFocus
+                              value={videoUrlInput}
+                              onChange={(e) => {
+                                setVideoUrlInput(e.target.value);
+                                if (videoUrlError) setVideoUrlError(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAddVideoUrl();
+                                }
+                              }}
+                              placeholder="Paste YouTube, Vimeo, Dropbox, or .mp4 video link..."
+                              className="flex-1 min-w-0 bg-transparent text-xs sm:text-sm font-semibold text-white placeholder:text-zinc-500 outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAddVideoUrl}
+                              disabled={isSavingVideoUrl}
+                              className="h-9 px-5 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] disabled:opacity-40 text-black text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shrink-0 cursor-pointer transition-all shadow-md"
+                            >
+                              {isSavingVideoUrl ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Checking</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                                  <span>Add</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {videoUrlError && (
+                            <motion.div
+                              initial={{ opacity: 0, y: -4 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="px-4 py-2.5 rounded-2xl bg-red-500/10 border border-red-500/35 flex items-start gap-2.5 text-left"
+                            >
+                              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                              <p className="text-[11px] font-semibold text-red-300 leading-snug">
+                                {videoUrlError}
+                              </p>
+                            </motion.div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
                     {typeof uploadProgresses['gallery'] === 'number' && (
                       <div className="flex items-center justify-center gap-3 text-[#D4AF37] text-[10px] font-black uppercase tracking-widest bg-black/60 border border-[#D4AF37]/30 px-4 py-2.5 rounded-full">
@@ -5094,6 +5433,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
                       {editForm.gallery?.map((url, idx) => {
                         const isVid = isVideo(url);
+                        const isEmbed = isEmbedVideo(url);
                         return (
                           <div
                             key={idx}
@@ -5103,8 +5443,15 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               onClick={() => setFullscreenMedia({ url, type: isVid ? 'video' : 'image' })}
                               className="w-full h-full cursor-pointer relative"
                             >
-                              {isVid ? (
-                                <video autoPlay muted loop playsInline src={url} className="w-full h-full object-cover" />
+                              {isEmbed ? (
+                                <iframe
+                                  src={url}
+                                  title={`Showcase video ${idx + 1}`}
+                                  className="w-full h-full border-0 pointer-events-none"
+                                  allow="autoplay; fullscreen"
+                                />
+                              ) : isVid ? (
+                                <video autoPlay muted loop playsInline preload="metadata" src={url} className="w-full h-full object-cover" />
                               ) : (
                                 <img src={url} className="w-full h-full object-cover" alt="" />
                               )}
@@ -5123,7 +5470,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             </button>
                             {isVid && (
                               <div className="absolute bottom-2.5 left-2.5 bg-black/80 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[8px] font-black text-[#D4AF37] border border-[#D4AF37]/30 flex items-center gap-1">
-                                <Video className="w-2.5 h-2.5" /> VIDEO
+                                <Video className="w-2.5 h-2.5" /> {url.includes('simcha_video=1') || isEmbed ? 'VIDEO LINK' : 'VIDEO'}
                               </div>
                             )}
                           </div>
@@ -5360,7 +5707,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[220] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-sm"
           >
             <button 
               onClick={() => setFullscreenMedia(null)}
@@ -5370,6 +5717,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             </button>
             {fullscreenMedia.type === 'image' ? (
               <img src={fullscreenMedia.url} alt="Fullscreen View" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
+            ) : isEmbedVideo(fullscreenMedia.url) ? (
+              <iframe src={fullscreenMedia.url} className="w-full max-w-4xl aspect-video rounded-xl shadow-2xl border-0 bg-black" allow="autoplay; fullscreen" />
             ) : (
               <video src={fullscreenMedia.url} controls autoPlay className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl bg-black" />
             )}

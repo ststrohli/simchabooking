@@ -1333,7 +1333,14 @@ const handleFirestoreError = (
 
 const isVideo = (url?: string | null) => {
   if (!url) return false;
-  return !!(url.match(/\.(mp4|webm|ogg|mov)(?:\?|$|%)/i) || url.includes('video%2F') || url.includes('video/'));
+  return !!(
+    url.startsWith('data:video/') ||
+    url.match(/\.(mp4|webm|ogg|mov|m4v|avi|ogv)(?:\?|$|#|%)/i) ||
+    url.includes('video%2F') ||
+    url.includes('video/') ||
+    url.includes('simcha_video=1') ||
+    url.includes('dl.dropboxusercontent.com')
+  );
 };
 
 const renderMedia = (url: string | undefined | null, className: string, alt?: string, ariaHidden?: boolean, priority?: boolean) => {
