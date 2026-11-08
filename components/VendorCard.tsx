@@ -35,10 +35,10 @@ const VendorCard: React.FC<VendorCardProps> = React.memo(({ vendor, onQuickView,
           onQuickView(vendor);
         }
       }}
-      whileHover={{ y: -5, scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ type: "spring", stiffness: 260, damping: 20 }}
-      className={`relative w-full aspect-[4/5] bg-[#111] rounded-2xl shadow-2xl border-2 border-[#D4AF37]/10 overflow-hidden hover:border-[#D4AF37]/40 hover:shadow-[0_20px_40px_rgba(212,175,55,0.12)] transition-[border-color,box-shadow] duration-300 group flex flex-col justify-end text-left cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transform-gpu will-change-transform ${isCurrentlySelectedDateBlocked ? 'opacity-70' : ''}`} 
+      whileHover={{ y: -10, scale: 1.045 }}
+      whileTap={{ scale: 0.97 }}
+      transition={{ type: "spring", stiffness: 340, damping: 18 }}
+      className={`relative w-full aspect-[4/5] bg-[#111] rounded-2xl shadow-2xl border-2 border-[#D4AF37]/15 overflow-hidden hover:border-[#FFE885] hover:shadow-[0_22px_48px_rgba(212,175,55,0.34),0_0_24px_rgba(255,232,133,0.22)] transition-[border-color,box-shadow] duration-300 group flex flex-col justify-end text-left cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transform-gpu will-change-transform ${isCurrentlySelectedDateBlocked ? 'opacity-70' : ''}`} 
       aria-labelledby={`vendor-name-${vendor.id}`}
     >
       {isCurrentlySelectedDateBlocked && (
@@ -49,12 +49,13 @@ const VendorCard: React.FC<VendorCardProps> = React.memo(({ vendor, onQuickView,
         </div>
       )}
       
-      <img src={coverImage} alt={vendor.name} decoding="async" className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 transform-gpu" />
+      <img src={coverImage} alt={vendor.name} decoding="async" className="absolute inset-0 w-full h-full object-cover group-hover:scale-115 transition-transform duration-500 ease-out transform-gpu" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent simcha-image-fader-vendor"></div>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_85%,rgba(212,175,55,0.22)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       
-      <div className="relative z-10 p-5 md:p-6 w-full">
-         <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.25em] mb-1.5 drop-shadow-md">{vendor.category}</p>
-         <h3 id={`vendor-name-${vendor.id}`} className="font-black text-xl md:text-2xl text-white font-[Cinzel] leading-tight drop-shadow-lg">{vendor.name}</h3>
+      <div className="relative z-10 p-5 md:p-6 w-full transform transition-transform duration-300 group-hover:-translate-y-1">
+         <p className="text-[10px] font-black text-[#D4AF37] group-hover:text-[#FFE885] uppercase tracking-[0.25em] mb-1.5 drop-shadow-md transition-colors duration-300">{vendor.category}</p>
+         <h3 id={`vendor-name-${vendor.id}`} className="font-black text-xl md:text-2xl text-white group-hover:text-[#FFE885] font-[Cinzel] leading-tight drop-shadow-lg transition-colors duration-300">{vendor.name}</h3>
       </div>
     </motion.div>
   );

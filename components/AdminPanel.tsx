@@ -1,16 +1,27 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, LayoutList, ArrowLeft, LogOut, Lock, Trash2, Search, Settings, User, Key, Upload, Tag, X, Check, CheckCheck, CheckSquare, Square, Film, Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight, MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard, Bot, Volume2, Send, ShoppingBag, Calendar, FileText, Download, Mail, MailOpen, Eye, EyeOff, Filter, ArrowUpDown, ArrowUp, ArrowDown, UserPlus, UserCheck, Clock, Mic, Sparkles, CheckCircle2, Maximize2, Copy } from 'lucide-react';
-import { auth, db, handleFirestoreError, OperationType, firebaseConfig } from '../services/firebase';
+import { createPortal } from 'react-dom';
+import { motion } from 'motion/react';
+import {
+  ShieldCheck, Plus, Image as ImageIcon, MapPin, DollarSign, ArrowLeft,
+  Trash2, Search, Settings, User, Key, Upload, Tag, X, Check, CheckCheck,
+  Play, Loader2, BarChart3, Wallet, LogIn, Edit2, ChevronDown, ChevronRight,
+  MessageSquare, Camera, FolderPlus, ListTree, Layers, CreditCard,
+  ShoppingBag, Calendar, FileText, ArrowUp, ArrowDown, UserPlus, UserCheck,
+  Mic, Sparkles, CheckCircle2, RefreshCw, AlertTriangle
+} from 'lucide-react';
+import { auth, db, firebaseConfig } from '../services/firebase';
 import { markChatAsRead } from '../services/messagingService';
-import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, addDoc, setDoc, where, getDocs, getDoc, deleteField } from 'firebase/firestore';
+import {
+  collection, query, orderBy, limit, onSnapshot, doc, updateDoc,
+  deleteDoc, setDoc, where, getDocs, getDoc, deleteField
+} from 'firebase/firestore';
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { uploadFileRobustly, uploadFileWithProgress } from '../services/uploadService';
-import { CustomAudioPlayer } from './CustomAudioPlayer';
 import ChatModal from './ChatModal';
 import LocationAutocomplete from './LocationAutocomplete';
-import { Vendor, VendorCategory, Post, Booking, UserAccount, Message, HeroImage } from '../types';
+import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
+import { Vendor, Post, Booking, UserAccount, Message, HeroImage } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const getSecondaryAuth = () => {
@@ -101,69 +112,14 @@ const FALLBACK_HERO_IMAGES: HeroImage[] = [
   },
 ];
 
-const TableContainer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [showLeftShadow, setShowLeftShadow] = useState(false);
-  const [showRightShadow, setShowRightShadow] = useState(false);
-
-  const checkScroll = () => {
-    if (containerRef.current) {
-      const { scrollLeft, scrollWidth, clientWidth } = containerRef.current;
-      const nextLeft = scrollLeft > 10;
-      const nextRight = scrollLeft < scrollWidth - clientWidth - 10;
-      setShowLeftShadow(prev => (prev === nextLeft ? prev : nextLeft));
-      setShowRightShadow(prev => (prev === nextRight ? prev : nextRight));
-    }
-  };
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (el) {
-      checkScroll();
-      el.addEventListener('scroll', checkScroll);
-      window.addEventListener('resize', checkScroll);
-      
-      const observer = new ResizeObserver(checkScroll);
-      observer.observe(el);
-      
-      return () => {
-        el.removeEventListener('scroll', checkScroll);
-        window.removeEventListener('resize', checkScroll);
-        observer.disconnect();
-      };
-    }
-  }, []);
-
-  return (
-    <div className="relative group/table w-full rounded-xl overflow-hidden border border-white/5 bg-black/40">
-      <div 
-        className={`pointer-events-none absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-black via-black/90 to-transparent z-20 transition-all duration-300 ${
-          showLeftShadow ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
-        }`}
-      />
-      <div 
-        className={`pointer-events-none absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-black via-black/90 to-transparent z-20 transition-all duration-300 ${
-          showRightShadow ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'
-        }`}
-      />
-      <div 
-        ref={containerRef}
-        className="overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent w-full"
-      >
-        {children}
-      </div>
-    </div>
-  );
-};
-
 const COMMISSION_RATE = 0.10;
 
 const isVideo = (url?: string | null) => {
   if (!url) return false;
   return !!(
     url.startsWith('data:video/') ||
-    url.match(/\.(mp4|webm|ogg|mov|m4v|avi|ogv)(?:\?|$|%)/i) || 
-    url.includes('video%2F') || 
+    url.match(/\.(mp4|webm|ogg|mov|m4v|avi|ogv)(?:\?|$|%)/i) ||
+    url.includes('video%2F') ||
     url.includes('video/')
   );
 };
@@ -176,17 +132,31 @@ const renderMedia = (url: string | undefined | null, className: string, defaultC
   return <img src={url} className={className} alt="" />;
 };
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ 
-    vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor, onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack, categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories, onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage, heroBackgroundUrl, onUpdateHeroBackground, heroImages = [], onAddHeroImage, onDeleteHeroImage, onUpdateHeroImages, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder, onDeleteCategory, onActiveChatChange, maxSearchDates = 4, searchDateResetHours = 24, onUpdateSearchCalendarSettings
+type AdminTab = 'overview' | 'vendors' | 'bookings' | 'categories' | 'visuals' | 'messages' | 'users';
+
+const AdminPanel: React.FC<AdminPanelProps> = ({
+  vendors, posts, bookings, users, messages, onAddVendor, onUpdateVendor, onRemoveVendor,
+  onToggleVerify, onUpdateBookingStatus, onLoginAsVendor, onAddPost, onRemovePost, onBack,
+  categoryImages, onUpdateCategoryImage, categories, onAddCategory, categorySubCategories,
+  onUpdateCategorySubCategories, subCategoryImages = {}, onUpdateSubCategoryImage,
+  heroBackgroundUrl, onUpdateHeroBackground, heroImages = [], onAddHeroImage, onDeleteHeroImage,
+  onUpdateHeroImages, onSendMessage, showNotification, onSeedTaxonomy, onUpdateCategoryOrder,
+  onDeleteCategory, onActiveChatChange, maxSearchDates = 4, searchDateResetHours = 24,
+  onUpdateSearchCalendarSettings
 }) => {
-  const [isAuthenticated] = useState(true);
-  const [accessCode, setAccessCode] = useState('');
-  const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'add' | 'manage' | 'calendar' | 'invite' | 'posts' | 'categories' | 'hero' | 'bookings' | 'stripe' | 'users' | 'messages' | 'analytics' | 'moderation'>('manage');
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [isUploading, setIsUploading] = useState(false);
   const [isSeedingTaxonomy, setIsSeedingTaxonomy] = useState(false);
   const [localMaxSearchDates, setLocalMaxSearchDates] = useState<number>(maxSearchDates);
   const [localSearchDateResetHours, setLocalSearchDateResetHours] = useState<number>(searchDateResetHours);
+
+  useEffect(() => {
+    setLocalMaxSearchDates(maxSearchDates);
+  }, [maxSearchDates]);
+
+  useEffect(() => {
+    setLocalSearchDateResetHours(searchDateResetHours);
+  }, [searchDateResetHours]);
 
   // Hero Background Library State
   const [localHeroImages, setLocalHeroImages] = useState<HeroImage[]>(() => {
@@ -200,1378 +170,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   }, [heroImages]);
 
-  // Real-time Firestore listener for hero images
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'metadata', 'app_config'), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (Array.isArray(data.heroImages) && data.heroImages.length > 0) {
-          setLocalHeroImages(data.heroImages);
-        }
-      }
-    }, () => {});
-    return () => unsub();
-  }, []);
-
-  const labelClass = "text-xs font-bold text-zinc-400 uppercase tracking-wider block mb-2";
-  const inputClass = "w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all placeholder:text-zinc-600";
-
-  const [heroSearchTerm, setHeroSearchTerm] = useState('');
-  const [heroFilterTab, setHeroFilterTab] = useState<'all' | 'uploaded' | 'curated'>('all');
-  const [previewHeroModal, setPreviewHeroModal] = useState<HeroImage | null>(null);
-  const [editingHeroId, setEditingHeroId] = useState<string | null>(null);
-  const [editingHeroName, setEditingHeroName] = useState<string>('');
-  const [isActivatingHeroUrl, setIsActivatingHeroUrl] = useState<string | null>(null);
-  const [isHeroDragging, setIsHeroDragging] = useState(false);
-  const [showHeroMockupText, setShowHeroMockupText] = useState(true);
-
-  // Ensure current active background is included in the display list
-  const allDisplayHeroImages = useMemo<HeroImage[]>(() => {
-    const list = [...localHeroImages];
-    if (heroBackgroundUrl && !list.some((h: HeroImage) => h.url === heroBackgroundUrl)) {
-      list.unshift({
-        id: `hero-active-${Date.now()}`,
-        name: 'Current Active Background',
-        url: heroBackgroundUrl,
-        uploadedAt: new Date().toISOString(),
-        isDefault: false
-      });
-    }
-    return list;
-  }, [localHeroImages, heroBackgroundUrl]);
-
-  const filteredHeroImages = useMemo<HeroImage[]>(() => {
-    return allDisplayHeroImages.filter((item: HeroImage) => {
-      if (heroFilterTab === 'uploaded' && item.isDefault) return false;
-      if (heroFilterTab === 'curated' && !item.isDefault) return false;
-      if (heroSearchTerm.trim()) {
-        const term = heroSearchTerm.toLowerCase();
-        const matchesName = (item.name || '').toLowerCase().includes(term);
-        const matchesUrl = (item.url || '').toLowerCase().includes(term);
-        return matchesName || matchesUrl;
-      }
-      return true;
-    });
-  }, [allDisplayHeroImages, heroFilterTab, heroSearchTerm]);
-
-  const handleSelectActiveHero = async (url: string, name?: string) => {
-    if (url === heroBackgroundUrl) return;
-    setIsActivatingHeroUrl(url);
-    try {
-      onUpdateHeroBackground(url);
-      await setDoc(doc(db, 'metadata', 'app_config'), {
-        heroBackgroundUrl: url
-      }, { merge: true });
-      showNotification(`Hero background switched to "${name || 'selected image'}"!`, 'success');
-      if (previewHeroModal) {
-        setPreviewHeroModal(null);
-      }
-    } catch (err: any) {
-      console.error("Error setting active hero background:", err);
-      showNotification(err.message || "Failed to update active hero background.", 'error');
-    } finally {
-      setIsActivatingHeroUrl(null);
-    }
-  };
-
-  const handleDeleteHeroImage = async (heroItem: HeroImage) => {
-    if (heroItem.url === heroBackgroundUrl) {
-      showNotification("Cannot delete the currently active hero background. Please switch to another background first.", 'info');
-      return;
-    }
-
-    if (!window.confirm(`Are you sure you want to remove "${heroItem.name || 'this hero background'}" from the library?`)) {
-      return;
-    }
-
-    try {
-      const updated = localHeroImages.filter(h => h.id !== heroItem.id && h.url !== heroItem.url);
-      setLocalHeroImages(updated);
-      
-      if (onDeleteHeroImage) {
-        onDeleteHeroImage(heroItem.id);
-      } else {
-        await setDoc(doc(db, 'metadata', 'app_config'), {
-          heroImages: updated
-        }, { merge: true });
-      }
-      showNotification(`"${heroItem.name || 'Hero image'}" removed from library.`, 'info');
-    } catch (err: any) {
-      console.error("Error deleting hero image:", err);
-      showNotification("Failed to remove hero image.", 'error');
-    }
-  };
-
-  const handleStartRenameHero = (heroItem: HeroImage) => {
-    setEditingHeroId(heroItem.id);
-    setEditingHeroName(heroItem.name || '');
-  };
-
-  const handleSaveRenameHero = async (heroItem: HeroImage) => {
-    if (!editingHeroName.trim()) {
-      setEditingHeroId(null);
-      return;
-    }
-    try {
-      const updated = localHeroImages.map(h => {
-        if (h.id === heroItem.id || h.url === heroItem.url) {
-          return { ...h, name: editingHeroName.trim() };
-        }
-        return h;
-      });
-      setLocalHeroImages(updated);
-      await setDoc(doc(db, 'metadata', 'app_config'), {
-        heroImages: updated
-      }, { merge: true });
-      showNotification("Hero background name updated.", 'success');
-    } catch (err: any) {
-      console.error("Error renaming hero image:", err);
-    } finally {
-      setEditingHeroId(null);
-    }
-  };
-
-  const handleProcessHeroFile = async (file: File) => {
-    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-      showNotification("Please upload an image or video file.", 'info');
-      return;
-    }
-
-    const previewUrl = URL.createObjectURL(file);
-    setPreviewUrls(prev => ({ ...prev, 'hero': previewUrl }));
-    setUploadProgresses(prev => ({ ...prev, 'hero': 0 }));
-    setIsUploading(true);
-
-    try {
-      const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
-      const formattedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
-      
-      const url = await uploadFileWithProgress(file, `hero/${Date.now()}_${file.name}`, (progress) => {
-        setUploadProgresses(prev => ({ ...prev, 'hero': progress }));
-      });
-
-      const newHero: HeroImage = {
-        id: `hero_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        url,
-        name: formattedName || 'Custom Hero Image',
-        uploadedAt: new Date().toISOString(),
-        isDefault: false,
-        fileSize: file.size
-      };
-
-      onUpdateHeroBackground(url);
-      if (onAddHeroImage) {
-        onAddHeroImage(newHero);
-      } else {
-        const updated = [newHero, ...localHeroImages.filter(h => h.url !== url)];
-        setLocalHeroImages(updated);
-        await setDoc(doc(db, 'metadata', 'app_config'), {
-          heroBackgroundUrl: url,
-          heroImages: updated
-        }, { merge: true });
-      }
-
-      showNotification("Hero background uploaded, added to library, and activated!", "success");
-    } catch (err: any) {
-      console.error("Hero upload error:", err);
-      showNotification(err.message || "Failed to upload hero background.", 'info');
-    } finally {
-      setIsUploading(false);
-      setUploadProgresses(prev => { const newP = {...prev}; delete newP['hero']; return newP; });
-    }
-  };
-
-  useEffect(() => {
-    setLocalMaxSearchDates(maxSearchDates);
-  }, [maxSearchDates]);
-
-  useEffect(() => {
-    setLocalSearchDateResetHours(searchDateResetHours);
-  }, [searchDateResetHours]);
-
-  // Vendor Invite states and user_roles Firestore listener
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [isInvitingVendor, setIsInvitingVendor] = useState(false);
-  const [vendorUserRoles, setVendorUserRoles] = useState<any[]>([]);
-
-  useEffect(() => {
-    const q = query(collection(db, 'user_roles'), where('role', '==', 'vendor'));
-    const unsub = onSnapshot(q, (snap) => {
-      const roles: any[] = [];
-      snap.forEach(docSnap => {
-        roles.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      setVendorUserRoles(roles);
-    }, (err) => {
-      console.warn("Could not fetch user_roles:", err);
-    });
-    return () => unsub();
-  }, []);
-
-  const handleInviteVendor = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanEmail = inviteEmail.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      showNotification('Please enter a valid email address.', 'info');
-      return;
-    }
-
-    setIsInvitingVendor(true);
-    try {
-      // 1. Check if user exists in the registered users list
-      const existingUser = users.find(u => ((u as any).email || (u as any).username)?.trim().toLowerCase() === cleanEmail);
-
-      if (existingUser) {
-        // User is already registered! Set user_roles/UID and update users/UID
-        const roleRef = doc(db, 'user_roles', existingUser.id);
-        await setDoc(roleRef, {
-          role: 'vendor',
-          email: cleanEmail,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-
-        const userRef = doc(db, 'users', existingUser.id);
-        await setDoc(userRef, {
-          role: 'vendor',
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-
-        showNotification(`Vendor role assigned to registered user (${cleanEmail})!`, 'success');
-      } else {
-        // User not registered yet! Write an invite document to user_roles
-        const inviteDocId = `invite_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
-        const inviteRef = doc(db, 'user_roles', inviteDocId);
-        await setDoc(inviteRef, {
-          role: 'vendor',
-          email: cleanEmail,
-          isInvite: true,
-          createdAt: new Date().toISOString()
-        }, { merge: true });
-
-        showNotification(`Vendor invitation created in 'user_roles' for ${cleanEmail}! They will automatically receive vendor access upon sign-up.`, 'success');
-      }
-
-      setInviteEmail('');
-    } catch (err: any) {
-      console.error("Error inviting vendor:", err);
-      showNotification(err.message || 'Failed to assign vendor role.', 'error');
-    } finally {
-      setIsInvitingVendor(false);
-    }
-  };
-
-  const handleRevokeVendorRole = async (docId: string, email: string) => {
-    if (!window.confirm(`Are you sure you want to revoke vendor role for ${email}?`)) return;
-    try {
-      await deleteDoc(doc(db, 'user_roles', docId));
-      if (!docId.startsWith('invite_')) {
-        await setDoc(doc(db, 'users', docId), { role: 'client', updatedAt: new Date().toISOString() }, { merge: true });
-      }
-      showNotification(`Vendor access revoked for ${email}.`, 'info');
-    } catch (err: any) {
-      console.error("Error revoking vendor role:", err);
-      showNotification('Failed to revoke vendor role.', 'error');
-    }
-  };
-
-  const handleMoveCategory = (cat: string, direction: 'up' | 'down') => {
-    const currentIndex = categories.indexOf(cat);
-    if (currentIndex === -1) return;
-    
-    const newCategories = [...categories];
-    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    
-    if (targetIndex >= 0 && targetIndex < newCategories.length) {
-      // Swap elements
-      newCategories[currentIndex] = newCategories[targetIndex];
-      newCategories[targetIndex] = cat;
-      
-      onUpdateCategoryOrder(newCategories);
-    }
-  };
-
-  const handleSeed = async () => {
-    setIsSeedingTaxonomy(true);
-    try {
-      if (onSeedTaxonomy) {
-        await onSeedTaxonomy();
-      } else {
-        const taxonomyData = [
-          { name: "Music", subcategories: ["DJ", "Band", "Choir", "One-Man Band"] },
-          { name: "Catering", subcategories: ["Meat", "Dairy", "Pareve", "Food Trucks"] },
-          { name: "Photography & Video", subcategories: ["Wedding Photo", "Event Video", "Drone"] },
-          { name: "Design & Florals", subcategories: ["Chupah Design", "Table Centerpieces", "Lighting"] }
-        ];
-        
-        if (typeof db === 'undefined') {
-          throw new Error("'db' is undefined!");
-        }
-
-        for (const cat of taxonomyData) {
-          await addDoc(collection(db, "categories"), {
-            name: cat.name,
-            subcategories: cat.subcategories,
-            imageUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=400", // placeholder
-            icon: "star"
-          });
-        }
-        window.alert('Database successfully seeded with Jewish Event Taxonomy!');
-        showNotification('Database successfully seeded with Jewish Event Taxonomy!', 'success');
-      }
-    } catch (globalError: any) {
-      console.error("Seeding error:", globalError);
-      window.alert("Error seeding database: " + (globalError?.message || globalError || "Unknown error"));
-      showNotification("Error seeding database: " + (globalError?.message || globalError || "Unknown error"), 'error');
-    } finally {
-      setIsSeedingTaxonomy(false);
-    }
-  };
-
-  const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
-  const [selectedPostFile, setSelectedPostFile] = useState<File | null>(null);
-  const [selectedVendorFile, setSelectedVendorFile] = useState<File | null>(null);
-  const [selectedCategoryFile, setSelectedCategoryFile] = useState<File | null>(null);
-  const [selectedHeroFile, setSelectedHeroFile] = useState<File | null>(null);
-
-  // Real-time Upload Progress & Optimistic Previews
-  const [uploadProgresses, setUploadProgresses] = useState<Record<string, number>>({});
-  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
-
-  // Advanced Back-Office moderation & search states
-  const [moderationActioning, setModerationActioning] = useState<Record<string, 'approve' | 'reject'>>({});
-  const [removedModerationIds, setRemovedModerationIds] = useState<string[]>([]);
-  const [filterText, setFilterText] = useState('');
-  
-  // Orphaned Data Cleanup state
-  const [isRunningCleanup, setIsRunningCleanup] = useState(false);
-  const [cleanupResult, setCleanupResult] = useState<any>(null);
-
-  const handleRunOrphanedCleanup = async () => {
-    if (!window.confirm("Run Orphaned Data Scan & Cleanup?\n\nThis will scan Firestore user_roles, users, and vendors collections, cross-reference with active Firebase Auth accounts, and delete any Firestore documents that lack a matching active user in Auth.")) {
-      return;
-    }
-    setIsRunningCleanup(true);
-    setCleanupResult(null);
-    try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        showNotification("Authentication required to run cleanup.", "error");
-        setIsRunningCleanup(false);
-        return;
-      }
-      const token = await currentUser.getIdToken();
-      const res = await fetch("/api/admin/cleanup-orphaned-data", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        }
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setCleanupResult(data.stats);
-        showNotification(`Cleanup complete! Removed ${data.stats.totalDeleted} orphaned document(s).`, "success");
-      } else {
-        throw new Error(data.error || "Failed to execute cleanup");
-      }
-    } catch (err: any) {
-      console.error("Cleanup error:", err);
-      showNotification(err.message || "Failed to execute orphaned data cleanup.", "error");
-    } finally {
-      setIsRunningCleanup(false);
-    }
-  };
-  
-  const [analyticsLogs, setAnalyticsLogs] = useState<any[]>([]);
-  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
-
-  // Analytics calculations
-  const analyticsStats = React.useMemo(() => {
-    let view_vendor = 0;
-    let add_to_plan = 0;
-    let submit_booking_request = 0;
-    let payment_completed = 0;
-
-    analyticsLogs.forEach(log => {
-      if (log.eventName === 'view_vendor') view_vendor++;
-      if (log.eventName === 'add_to_plan') add_to_plan++;
-      if (log.eventName === 'submit_booking_request') submit_booking_request++;
-      if (log.eventName === 'payment_completed') payment_completed++;
-    });
-
-    const planRate = view_vendor > 0 ? (add_to_plan / view_vendor) * 100 : 0;
-    const requestRate = add_to_plan > 0 ? (submit_booking_request / add_to_plan) * 100 : 0;
-    const purchaseRate = submit_booking_request > 0 ? (payment_completed / submit_booking_request) * 100 : 0;
-    const overallRate = view_vendor > 0 ? (payment_completed / view_vendor) * 100 : 0;
-
-    return {
-      view_vendor,
-      add_to_plan,
-      submit_booking_request,
-      payment_completed,
-      planRate,
-      requestRate,
-      purchaseRate,
-      overallRate
-    };
-  }, [analyticsLogs]);
-
-  const bookingChartData = React.useMemo(() => {
-    const data: Record<string, number> = {};
-    const today = new Date();
-    
-    // Initialize the last 30 days with 0
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
-      data[dateStr] = 0;
-    }
-
-    bookings.forEach(booking => {
-      if (booking.createdAt) {
-        let dateStr = '';
-        if (typeof booking.createdAt === 'string') {
-           dateStr = booking.createdAt.split('T')[0];
-        } else if ((booking.createdAt as any).toDate) {
-           dateStr = (booking.createdAt as any).toDate().toISOString().split('T')[0];
-        } else if ((booking.createdAt as any) instanceof Date) {
-           dateStr = (booking.createdAt as any).toISOString().split('T')[0];
-        }
-        if (dateStr && data[dateStr] !== undefined) {
-           data[dateStr]++;
-        }
-      }
-    });
-
-    return Object.keys(data).map(date => {
-      // Format as "MMM DD"
-      const d = new Date(date);
-      // Fix for timezone offset so it doesn't jump back a day
-      d.setMinutes(d.getMinutes() + d.getTimezoneOffset());
-      const formatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      return {
-        date: formatted,
-        fullDate: date,
-        requests: data[date]
-      };
-    });
-  }, [bookings]);
-
-  useEffect(() => {
-    if (activeTab === 'analytics') {
-      setIsLoadingAnalytics(true);
-      const q = query(
-        collection(db, "analytics_logs"),
-        orderBy("timestamp", "desc"),
-        limit(500)
-      );
-      
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const logs = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setAnalyticsLogs(logs);
-        setIsLoadingAnalytics(false);
-      }, (err) => {
-        console.error("Failed to load analytics logs:", err);
-        setIsLoadingAnalytics(false);
-      });
-
-      return () => unsubscribe();
-    }
-  }, [activeTab]);
-  
-  const postFileInputRef = useRef<HTMLInputElement>(null);
-  const vendorFileInputRef = useRef<HTMLInputElement>(null);
-  const categoryImageInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const newCatImageInputRef = useRef<HTMLInputElement>(null);
-  const heroImageInputRef = useRef<HTMLInputElement>(null);
-
-  const [postForm, setPostForm] = useState({
-    title: '',
-    description: '',
-    type: 'image' as 'image' | 'video',
-    url: '',
-    vendorId: ''
-  });
-
-  const [newSubCategoryInputs, setNewSubCategoryInputs] = useState<Record<string, string>>({});
-  const [newNestedSubCategoryInputs, setNewNestedSubCategoryInputs] = useState<Record<string, string>>({});
-
-  const [newCategoryForm, setNewCategoryForm] = useState({
-    name: '',
-    image: '',
-    subCatsString: '' // comma separated
-  });
-
-  const [formData, setFormData] = useState({
-    name: '', 
-    category: categories[0] || 'Catering', 
-    subCategories: [] as string[], 
-    description: '', 
-    priceStart: '', 
-    location: '', 
-    image: '', 
-    isKosher: false, 
-    isVerified: false, 
-    username: '', 
-    password: '',
-    commissionRate: '5',
-    contactEmail: ''
-  });
-
-  const [onboardingVendorId, setOnboardingVendorId] = useState<string | null>(null);
-  const [isOnboarding, setIsOnboarding] = useState(false);
-  const [selectedInquiryEmail, setSelectedInquiryEmail] = useState<string | null>(null);
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState('');
-  
-  // Conversation search & filter states
-  const [convoSearchQuery, setConvoSearchQuery] = useState('');
-  const [convoReadFilter, setConvoReadFilter] = useState<'all' | 'unread' | 'read'>('all');
-  const [convoSortBy, setConvoSortBy] = useState<'recent' | 'oldest' | 'alphabetical'>('recent');
-  
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatRecipient, setChatRecipient] = useState<{
-    id: string;
-    name: string;
-    email: string;
-    role: 'client' | 'vendor';
-  } | null>(null);
-
-  useEffect(() => {
-    onActiveChatChange?.(Boolean(selectedConversationId || chatOpen));
-    return () => {
-      onActiveChatChange?.(false);
-    };
-  }, [selectedConversationId, chatOpen, onActiveChatChange]);
-
-  // Direct real-time listener for Admin Support conversations only (never private client-vendor chats)
-  const [liveAdminMessages, setLiveAdminMessages] = useState<Message[]>([]);
-  useEffect(() => {
-    const msgListeners = new Map<string, () => void>();
-    const convoMsgsMap = new Map<string, Message[]>();
-
-    const rebuild = () => {
-      const seen = new Set<string>();
-      const list: Message[] = [];
-      for (const arr of convoMsgsMap.values()) {
-        for (const m of arr) {
-          if (m.id && seen.has(m.id)) continue;
-          if (m.id) seen.add(m.id);
-          list.push(m);
-        }
-      }
-      list.sort((a, b) => {
-        const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-        const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return tA - tB;
-      });
-      setLiveAdminMessages(list);
-    };
-
-    const subscribeConvoDoc = (cid: string) => {
-      if (!cid || msgListeners.has(cid)) return;
-      const unsubMsg = onSnapshot(
-        collection(db, 'conversations', cid, 'messages'),
-        (snap) => {
-          const msgs = snap.docs.map((docSnap) => {
-            const data = docSnap.data();
-            let timestampStr = data.timestamp || new Date().toISOString();
-            if (data.sent_at) {
-              if (typeof data.sent_at.toDate === 'function') {
-                timestampStr = data.sent_at.toDate().toISOString();
-              } else {
-                timestampStr = new Date(data.sent_at).toISOString();
-              }
-            }
-            return {
-              id: docSnap.id,
-              ...data,
-              senderId: data.sender_id || data.senderId,
-              conversationId: data.conversationId || cid,
-              timestamp: timestampStr,
-            } as Message;
-          });
-          convoMsgsMap.set(cid, msgs);
-          rebuild();
-        },
-        () => {}
-      );
-      msgListeners.set(cid, unsubMsg);
-    };
-
-    const qAdminPart = query(
-      collection(db, 'conversations'),
-      where('participant_ids', 'array-contains', 'admin')
-    );
-    const qAdminType = query(
-      collection(db, 'conversations'),
-      where('type', '==', 'admin_support')
-    );
-
-    const unsub1 = onSnapshot(
-      qAdminPart,
-      (snap) => {
-        snap.docs.forEach((d) => subscribeConvoDoc(d.id));
-      },
-      () => {}
-    );
-    const unsub2 = onSnapshot(
-      qAdminType,
-      (snap) => {
-        snap.docs.forEach((d) => subscribeConvoDoc(d.id));
-      },
-      () => {}
-    );
-
-    return () => {
-      unsub1();
-      unsub2();
-      msgListeners.forEach((u) => u());
-      msgListeners.clear();
-    };
-  }, []);
-
-  const allAdminSupportMessages = React.useMemo(() => {
-    const byId = new Map<string, Message>();
-    const combined = [...messages, ...liveAdminMessages];
-    combined.forEach((m) => {
-      if (!m) return;
-      const isAdminSupport = Boolean(
-        m.isAdminInquiry ||
-        m.senderId === 'admin' ||
-        m.receiverId === 'admin' ||
-        (m.participants && m.participants.includes('admin')) ||
-        (m.conversationId && m.conversationId.split('_').includes('admin'))
-      );
-      if (!isAdminSupport) return;
-      const key = m.id || m.tempId || `${m.senderId}_${m.timestamp}_${m.text}`;
-      byId.set(key, m);
-    });
-    return Array.from(byId.values()).sort((a, b) => {
-      const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return tA - tB;
-    });
-  }, [messages, liveAdminMessages]);
-
-  const getOtherUserId = (msg: Message) => {
-    if (msg.senderId === 'admin') return msg.receiverId;
-    return msg.senderId;
-  };
-
-  const getOtherUserDetails = (otherId: string, lastMsg: Message) => {
-    // Try to find in vendors first if they are a vendor
-    const vendor = vendors.find(
-      v => v.id === otherId || (lastMsg.vendorEmail && v.contactEmail?.toLowerCase() === lastMsg.vendorEmail.toLowerCase())
-    );
-    if (vendor) {
-      return {
-        id: vendor.id,
-        name: vendor.name,
-        email: vendor.contactEmail || lastMsg.vendorEmail || '',
-        role: 'vendor' as 'vendor' | 'client',
-        avatar: vendor.image || ''
-      };
-    }
-
-    // Try to find in users
-    const cleanClientEmail = (lastMsg.clientEmail || '').trim().toLowerCase();
-    const user = users.find(
-      u =>
-        u.id === otherId ||
-        (cleanClientEmail && ((u.username || (u as any).email || '').toLowerCase() === cleanClientEmail))
-    );
-    if (user) {
-      const uEmail = user.username || (user as any).email || lastMsg.clientEmail || '';
-      return {
-        id: user.id,
-        name: user.name || uEmail.split('@')[0] || 'Client',
-        email: uEmail,
-        role: 'client' as 'vendor' | 'client',
-        avatar: user.photoURL || ''
-      };
-    }
-
-    // Fallback to message info
-    return {
-      id: otherId,
-      name: lastMsg.clientName || 'User',
-      email: lastMsg.clientEmail || '',
-      role: (lastMsg.vendorEmail && !lastMsg.clientEmail ? 'vendor' : 'client') as 'vendor' | 'client',
-      avatar: ''
-    };
-  };
-
-  const getConversationParticipants = (lastMsg: Message) => {
-    const sId = lastMsg.senderId || '';
-    const rId = lastMsg.receiverId || '';
-    const cleanClientEmail = (lastMsg.clientEmail || '').trim().toLowerCase();
-
-    // Find vendor in vendors list by either senderId, receiverId, or vendorEmail
-    const vendor = vendors.find(v => 
-      v.id === sId || 
-      v.id === rId || 
-      (lastMsg.vendorEmail && v.contactEmail?.toLowerCase() === lastMsg.vendorEmail.toLowerCase())
-    );
-    
-    // Find client in users list by either senderId, receiverId, or clientEmail
-    const client = users.find(u => 
-      u.id === sId || 
-      u.id === rId || 
-      (cleanClientEmail && ((u.username || (u as any).email || '').toLowerCase() === cleanClientEmail))
-    );
-    
-    const clientDetails = {
-      id: client?.id || (sId === vendor?.id ? rId : sId),
-      name: client?.name || lastMsg.clientName || 'Client',
-      email: client?.username || (client as any)?.email || lastMsg.clientEmail || '',
-      avatar: client?.photoURL || ''
-    };
-
-    const vendorDetails = {
-      id: vendor?.id || (sId === clientDetails.id ? rId : sId),
-      name: vendor?.name || 'Vendor',
-      email: vendor?.contactEmail || lastMsg.vendorEmail || '',
-      avatar: vendor?.image || ''
-    };
-
-    return { vendor: vendorDetails, client: clientDetails };
-  };
-
-  const handleOpenChat = (conversationId: string, lastMsg: Message) => {
-    const otherId = getOtherUserId(lastMsg);
-    const otherUser = getOtherUserDetails(otherId, lastMsg);
-    setSelectedInquiryEmail(otherUser.email);
-    setSelectedConversationId(conversationId);
-    setActiveTab('messages');
-  };
-
-  const toggleMessageReadStatus = async (messageId: string, currentStatus: boolean, e?: React.MouseEvent) => {
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-    try {
-      const msg = messages.find(m => m.id === messageId);
-      if (msg && msg.conversationId) {
-        await markChatAsRead(msg.conversationId, 'admin');
-        showNotification(`Marked conversation as read`, 'success');
-      } else {
-        showNotification('Unable to resolve conversation', 'info');
-      }
-    } catch (err) {
-      console.error('Error updating message read status:', err);
-    }
-  };
-
-  const toggleConversationReadStatus = async (conversationId: string, otherEmail: string, hasUnread: boolean, e?: React.MouseEvent) => {
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-    try {
-      if (conversationId) {
-        await markChatAsRead(conversationId, 'admin');
-        showNotification('Conversation marked as read', 'success');
-      } else {
-        showNotification('Invalid conversation ID', 'info');
-      }
-    } catch (err) {
-      console.error('Error toggling conversation read status:', err);
-    }
-  };
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [fullscreenMedia, setFullscreenMedia] = useState<{url: string, type: 'image' | 'video'} | null>(null);
-
-  // Automatically scroll to bottom of active message thread
-  useEffect(() => {
-    if (messagesEndRef.current) {
-        messagesEndRef.current.scrollTop = messagesEndRef.current.scrollHeight;
-    }
-  }, [selectedInquiryEmail, selectedConversationId, messages]);
-
-  const handleSendReply = () => {
-    if (!replyText.trim() || !selectedInquiryEmail) return;
-    
-    // Find matching message in this conversation to determine recipient ID
-    const conversationMessages = messages.filter(m => 
-      m.conversationId === selectedConversationId || 
-      [m.senderId, m.receiverId].sort().join('_') === selectedConversationId ||
-      m.clientEmail === selectedInquiryEmail || 
-      m.vendorEmail === selectedInquiryEmail
-    );
-    
-    const lastMsg = conversationMessages[conversationMessages.length - 1];
-    const otherId = lastMsg ? getOtherUserId(lastMsg) : 'client_legacy';
-    const otherDetails = lastMsg ? getOtherUserDetails(otherId, lastMsg) : { name: 'Client', email: selectedInquiryEmail, role: 'client' as const };
-    
-    onSendMessage({
-        text: replyText,
-        receiverId: otherId,
-        clientEmail: otherDetails.role === 'client' ? otherDetails.email : undefined,
-        clientName: otherDetails.role === 'client' ? otherDetails.name : undefined,
-        senderId: 'admin',
-        isAdminInquiry: true,
-        type: 'text',
-        conversationId: selectedConversationId || lastMsg?.conversationId || [ 'admin', otherId ].sort().join('_'),
-        vendorEmail: otherDetails.role === 'vendor' ? otherDetails.email : undefined
-    });
-    
-    setReplyText('');
-  };
-
-  useEffect(() => {
-    // Reset sub-selections when primary category changes
-    setFormData(prev => ({ ...prev, subCategories: [] }));
-  }, [formData.category]);
-
-  const totalPaidVolume = bookings
-    .filter(b => b.paymentStatus === 'paid')
-    .reduce((sum, b) => sum + b.amount, 0);
-    
-  const totalCommission = bookings
-    .filter(b => b.paymentStatus === 'paid')
-    .reduce((sum, b) => {
-      const vendor = vendors.find(v => v.id === b.vendorId);
-      const rate = vendor?.commissionRate || 5;
-      return sum + (b.amount * (rate / 100));
-    }, 0);
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-  };
-
-  const uploadFile = async (file: File, path: string): Promise<string> => {
-    return await uploadFileRobustly(file, `${path}/${Date.now()}_${file.name}`);
-  };
-
-  const handleVendorFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setSelectedVendorFile(file);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setFormData(prev => ({ ...prev, image: e.target?.result as string }));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleVendorSubmit = async (e: React.FormEvent, triggerOnboarding = false) => {
-    e.preventDefault();
-    setIsUploading(true);
-    try {
-      let imageUrl = formData.image || 'https://picsum.photos/800/600';
-      if (selectedVendorFile) {
-        imageUrl = await uploadFile(selectedVendorFile, 'vendors');
-      }
-
-      let vendorId = editingVendor ? editingVendor.id : '';
-
-      // For new vendors, automatically create their login credentials in Firebase Auth
-      if (!editingVendor) {
-        if (!formData.contactEmail.trim()) {
-          showNotification('A contact email is required to create vendor credentials.', 'info');
-          setIsUploading(false);
-          return;
-        }
-        if (!formData.password || formData.password.length < 6) {
-          showNotification('A temporary portal password of at least 6 characters is required.', 'info');
-          setIsUploading(false);
-          return;
-        }
-
-        const emailLower = formData.contactEmail.trim().toLowerCase();
-        const existingUserInUsers = users?.find(u => ((u as any).email || (u as any).username)?.trim().toLowerCase() === emailLower);
-        const existingUserInVendors = vendors?.find(v => v.contactEmail?.trim().toLowerCase() === emailLower);
-        let reusedUid = existingUserInUsers?.id || existingUserInVendors?.id;
-
-        if (!reusedUid) {
-          try {
-            const lookupResp = await fetch(`/api/auth/lookup-uid?email=${encodeURIComponent(emailLower)}`);
-            if (lookupResp.ok) {
-              const lookupData = await lookupResp.json();
-              if (lookupData.uid) {
-                reusedUid = lookupData.uid;
-              }
-            }
-          } catch (lookupErr) {
-            console.warn("Could not query backend UID lookup for registered email:", lookupErr);
-          }
-        }
-
-        if (reusedUid) {
-          vendorId = reusedUid;
-          showNotification('Reusing existing account registered under this email.', 'success');
-        } else {
-          try {
-            const secAuth = getSecondaryAuth();
-            const userCredential = await createUserWithEmailAndPassword(
-              secAuth,
-              formData.contactEmail.trim(),
-              formData.password
-            );
-            
-            vendorId = userCredential.user.uid;
-            
-            // Sign out of the secondary auth session right away to keep it clean
-            await signOut(secAuth);
-          } catch (authErr: any) {
-            console.error("Firebase Authentication Vendor creation failed:", authErr);
-            let errMsg = authErr.message || "Failed to create vendor login credentials.";
-            let recovered = false;
-
-            if (authErr.code === 'auth/email-already-in-use') {
-              try {
-                const lookupResp = await fetch(`/api/auth/lookup-uid?email=${encodeURIComponent(emailLower)}`);
-                if (lookupResp.ok) {
-                  const lookupData = await lookupResp.json();
-                  if (lookupData.uid) {
-                    vendorId = lookupData.uid;
-                    showNotification('Reusing existing auth account with this email.', 'success');
-                    recovered = true;
-                  }
-                }
-              } catch (fallbackErr) {
-                console.error("Fallback UID lookup failed:", fallbackErr);
-              }
-              errMsg = "The email is already registered in Firebase Authentication.";
-            } else if (authErr.code === 'auth/invalid-email') {
-              errMsg = "The provided contact email starts with or contains invalid characters.";
-            } else if (authErr.code === 'auth/weak-password') {
-              errMsg = "The password is too weak. Must be at least 6 characters.";
-            }
-
-            if (!recovered) {
-              showNotification(errMsg, 'info');
-              setIsUploading(false);
-              return;
-            }
-          }
-        }
-      }
-
-      const parsedDownPayment = formData.priceStart !== '' ? Number(formData.priceStart) : undefined;
-      const { password: _ignoredPassword, ...safeFormData } = formData;
-      const newVendor: Vendor = {
-        ...safeFormData,
-        id: vendorId, 
-        image: imageUrl, 
-        priceStart: parsedDownPayment ?? 0,
-        downPayment: parsedDownPayment,
-        rating: editingVendor ? editingVendor.rating : 5.0, 
-        unavailableDates: editingVendor ? editingVendor.unavailableDates : [], 
-        reviews: editingVendor ? editingVendor.reviews : [], 
-        services: editingVendor ? editingVendor.services : [], 
-        paymentMethods: editingVendor ? editingVendor.paymentMethods : ['Check', 'Cash'],
-        commissionRate: Number(formData.commissionRate) || 5,
-        stripeConnected: editingVendor ? editingVendor.stripeConnected : false,
-        stripeAccountId: editingVendor ? editingVendor.stripeAccountId : undefined
-      };
-
-      if (editingVendor) {
-        onUpdateVendor(newVendor);
-        showNotification('Professional profile updated!');
-        setEditingVendor(null);
-      } else {
-        onAddVendor(newVendor);
-        showNotification('New professional added!');
-      }
-
-      if (triggerOnboarding) {
-        await handleStripeOnboard(vendorId, formData.contactEmail);
-      }
-
-      setFormData({ 
-        name: '', 
-        category: categories[0] || 'Catering', 
-        subCategories: [], 
-        description: '', 
-        priceStart: '', 
-        location: '', 
-        image: '', 
-        isKosher: false, 
-        isVerified: false, 
-        username: '', 
-        password: '',
-        commissionRate: '5',
-        contactEmail: ''
-      });
-      setSelectedVendorFile(null);
-      setActiveTab('manage');
-    } catch (err) {
-      showNotification("Failed to save vendor.", 'info');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleEditVendor = (vendor: Vendor) => {
-    setEditingVendor(vendor);
-    const downPaymentVal = vendor.downPayment ?? (vendor.priceStart > 0 ? vendor.priceStart : undefined);
-    setFormData({
-      name: vendor.name,
-      category: vendor.category,
-      subCategories: vendor.subCategories || [],
-      description: vendor.description,
-      priceStart: downPaymentVal !== undefined ? downPaymentVal.toString() : '',
-      location: vendor.location,
-      image: vendor.image,
-      isKosher: vendor.isKosher || false,
-      isVerified: vendor.isVerified || false,
-      username: vendor.username || '',
-      password: vendor.password || '',
-      commissionRate: (vendor.commissionRate || 5).toString(),
-      contactEmail: vendor.contactEmail || ''
-    });
-    setActiveTab('add');
-  };
-
-  const handleStripeOnboard = async (vendorId: string, email: string) => {
-    setIsOnboarding(true);
-    try {
-      const response = await fetch('/api/stripe/onboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vendorId, email }),
-      });
-      const data = await response.json();
-      if (data.url) {
-        window.open(data.url, '_blank');
-      } else {
-        throw new Error(data.error || "Failed to get onboarding URL");
-      }
-    } catch (err: any) {
-      showNotification(err.message || "Stripe onboarding failed.", 'info');
-    } finally {
-      setIsOnboarding(false);
-    }
-  };
-
-  const handleManualStripeId = async (vendorId: string) => {
-    const stripeId = prompt("Enter the Stripe Account ID (e.g., acct_...) for this vendor:");
-    if (!stripeId || !stripeId.startsWith('acct_')) {
-        if (stripeId) showNotification("Invalid Stripe Account ID format.", 'info');
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/stripe/force-connect-db', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vendorId, stripeAccountId: stripeId }),
-        });
-        const data = await response.json();
-        if (data.status === 'ok') {
-            showNotification("Stripe ID updated successfully!", 'success');
-            // Update local state if needed, though Firestore listener in App.tsx should handle it
-        } else {
-            throw new Error(data.error || "Failed to update Stripe ID");
-        }
-    } catch (err: any) {
-        showNotification(err.message || "Failed to update Stripe ID.", 'info');
-    }
-  };
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const isImage = file.type.startsWith('image/');
-    const isVideo = file.type.startsWith('video/');
-    if (!isImage && !isVideo) { 
-      showNotification("Please upload an image or video file.", 'info'); 
-      return; 
-    }
-
-    setSelectedPostFile(file);
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-      const base64 = e.target?.result as string;
-      setPostForm(prev => ({ 
-        ...prev, 
-        url: base64, 
-        type: isVideo ? 'video' : 'image' 
-      }));
-    };
-
-    reader.readAsDataURL(file);
-  };
-
-  const subCategoryImageInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  const handleSubCategoryImageUpload = async (subCategory: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !onUpdateSubCategoryImage) return;
-    
-    // Optimistic Preview
-    const previewUrl = URL.createObjectURL(file);
-    setPreviewUrls(prev => ({ ...prev, [subCategory]: previewUrl }));
-    setUploadProgresses(prev => ({ ...prev, [subCategory]: 0 }));
-
-    try {
-      const url = await uploadFileWithProgress(file, `taxonomy/${Date.now()}_${file.name}`, (progress) => {
-        setUploadProgresses(prev => ({ ...prev, [subCategory]: progress }));
-      });
-      onUpdateSubCategoryImage(subCategory, url);
-    } catch (err) {
-      console.error("Upload error:", err);
-      showNotification('Upload failed', 'info');
-    } finally {
-      setUploadProgresses(prev => { const newP = {...prev}; delete newP[subCategory]; return newP; });
-    }
-  };
-
-  const handleCategoryImageUpload = async (category: string, event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    
-    // Optimistic Preview
-    const previewUrl = URL.createObjectURL(file);
-    setPreviewUrls(prev => ({ ...prev, [category]: previewUrl }));
-    setUploadProgresses(prev => ({ ...prev, [category]: 0 }));
-
-    try {
-      const url = await uploadFileWithProgress(file, `categories/${Date.now()}_${file.name}`, (progress) => {
-        setUploadProgresses(prev => ({ ...prev, [category]: progress }));
-      });
-      onUpdateCategoryImage(category, url);
-    } catch (err) {
-      showNotification("Failed to upload category image.", 'info');
-    } finally {
-      setUploadProgresses(prev => { const newP = {...prev}; delete newP[category]; return newP; });
-    }
-  };
-
-  const handleNewCategoryImgUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setSelectedCategoryFile(file);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const base64 = e.target?.result as string;
-      setNewCategoryForm(prev => ({ ...prev, image: base64 }));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleHeroBackgroundUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    await handleProcessHeroFile(file);
-    if (heroImageInputRef.current) heroImageInputRef.current.value = "";
-  };
-
-  const handlePostSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedPostFile && !postForm.url) { 
-      showNotification("Please select an image or video to upload.", 'info'); 
-      return; 
-    }
-    
-    setIsUploading(true);
-    try {
-      let finalUrl = postForm.url;
-      if (selectedPostFile) {
-        finalUrl = await uploadFile(selectedPostFile, 'posts');
-      }
-
-      const newPost: Post = {
-        id: Math.random().toString(36).substr(2, 9),
-        type: postForm.type,
-        url: finalUrl,
-        title: postForm.title || "Community Moment",
-        description: postForm.description,
-        timestamp: new Date().toISOString(),
-        ...(postForm.vendorId ? { vendorId: postForm.vendorId } : {})
-      };
-
-      onAddPost(newPost);
-      setPostForm({ title: '', description: '', type: 'image', url: '', vendorId: '' });
-      setSelectedPostFile(null);
-      if (postFileInputRef.current) postFileInputRef.current.value = "";
-    } catch (err) {
-      showNotification("Failed to publish post.", 'info');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleAddCategorySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCategoryForm.name.trim()) return;
-    
-    setIsUploading(true);
-    try {
-      let imageUrl = newCategoryForm.image || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=600';
-      if (selectedCategoryFile) {
-        imageUrl = await uploadFile(selectedCategoryFile, 'categories');
-      }
-
-      const subCats = newCategoryForm.subCatsString
-        .split(',')
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
-      
-      const defaultSubs: Record<string, string[]> = {};
-      subCats.forEach(sc => defaultSubs[sc] = []);
-
-      onAddCategory(newCategoryForm.name.trim(), imageUrl, []);
-      onUpdateCategorySubCategories(newCategoryForm.name.trim(), defaultSubs);
-      
-      setNewCategoryForm({ name: '', image: '', subCatsString: '' });
-      setSelectedCategoryFile(null);
-      if (newCatImageInputRef.current) newCatImageInputRef.current.value = "";
-    } catch (err) {
-      showNotification("Failed to add category.", 'info');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleAddSubCategory = (category: string) => {
-    const newSub = newSubCategoryInputs[category];
-    if (!newSub?.trim()) return;
-    const currentSubs = categorySubCategories[category] || {};
-    if (currentSubs[newSub.trim()]) { showNotification("Classification group already exists!", 'info'); return; }
-    
-    onUpdateCategorySubCategories(category, { 
-      ...currentSubs, 
-      [newSub.trim()]: [] 
-    });
-    setNewSubCategoryInputs(prev => ({ ...prev, [category]: '' }));
-  };
-
-  const handleDeleteSubcategory = async (categoryName: string, subName: string) => {
-    alert("Alert #1: Starting subcategory delete for " + subName + "...");
-    
-    try {
-      const q = query(collection(db, 'categories'), where('name', '==', categoryName));
-      const snapshot = await getDocs(q);
-
-      if (snapshot.empty) {
-        alert("CRASH DETECTED: Could not find parent category in database.");
-        return;
-      }
-
-      const parentDoc = snapshot.docs[0];
-      alert("Alert #2: Found parent document ID: " + parentDoc.id);
-
-      await updateDoc(doc(db, 'categories', parentDoc.id), {
-        [`subcategories.${subName}`]: deleteField()
-      });
-
-      alert("Alert #3: Successfully removed subcategory from database!");
-
-      // Instant UI Refresh
-      setLocalCategorySubCategories(prev => {
-        const newSubs = { ...prev };
-        if (newSubs[categoryName]) {
-          const catSubs = { ...newSubs[categoryName] };
-          delete catSubs[subName];
-          newSubs[categoryName] = catSubs;
-        }
-        return newSubs;
-      });
-
-    } catch (error: any) {
-      alert("CRASH DETECTED: " + error.message);
-    }
-  };
-
-  const handleAddNestedSubCategory = (category: string, sub: string) => {
-    const key = `${category}-${sub}`;
-    const newNested = newNestedSubCategoryInputs[key];
-    if (!newNested?.trim()) return;
-    
-    const currentSubs = { ...categorySubCategories[category] };
-    const nestedList = currentSubs[sub] || [];
-    
-    if (nestedList.includes(newNested.trim())) { showNotification("Option already exists!", 'info'); return; }
-    
-    currentSubs[sub] = [...nestedList, newNested.trim()];
-    onUpdateCategorySubCategories(category, currentSubs);
-    setNewNestedSubCategoryInputs(prev => ({ ...prev, [key]: '' }));
-  };
-
-  const handleRemoveNestedSubCategory = async (category: string, sub: string, nested: string) => {
-    alert("Alert #1: Starting nested subcategory delete for " + nested + "...");
-    try {
-      const q = query(collection(db, 'categories'), where('name', '==', category));
-      const snapshot = await getDocs(q);
-      
-      if (snapshot.empty) return;
-      const parentDoc = snapshot.docs[0];
-      
-      const currentSubs = { ...localCategorySubCategories[category] };
-      currentSubs[sub] = (currentSubs[sub] || []).filter(n => n !== nested);
-      
-      await updateDoc(doc(db, 'categories', parentDoc.id), {
-        [`subcategories.${sub}`]: currentSubs[sub]
-      });
-      
-      setLocalCategorySubCategories(prev => {
-        const newSubs = { ...prev };
-        if (newSubs[category]) {
-          newSubs[category] = currentSubs;
-        }
-        return newSubs;
-      });
-      alert("Alert #2: Successfully removed nested item!");
-    } catch (error: any) {
-      alert("CRASH DETECTED: " + error.message);
-    }
-  };
-
-  const toggleSubCategorySelection = (sub: string) => {
-    setFormData(prev => ({
-      ...prev,
-      subCategories: prev.subCategories.includes(sub)
-        ? prev.subCategories.filter(s => s !== sub)
-        : [...prev.subCategories, sub]
-    }));
-  };
-
-  const handleDeleteVendor = (id: string, name: string) => {
-    onRemoveVendor(id);
-  };
-
-  const handleDeleteCategory = async (categoryName: string) => {
-    alert("Alert #1: Delete clicked for category: " + categoryName);
-    
-    try {
-      alert("Alert #2: Starting database query...");
-      const q = query(collection(db, 'categories'), where('name', '==', categoryName));
-      const snapshot = await getDocs(q);
-
-      alert("Alert #3: Query finished. Found " + snapshot.docs.length + " matching documents.");
-
-      if (snapshot.empty) {
-        alert("Error: Could not find '" + categoryName + "' in the database. Deletion stopped.");
-        return;
-      }
-
-      for (const document of snapshot.docs) {
-        alert("Alert #4: Deleting database ID: " + document.id);
-        await deleteDoc(doc(db, 'categories', document.id));
-      }
-
-      alert("Alert #5: Successfully deleted from database! Refreshing UI...");
-      
-      // Update the local state so it disappears from the screen immediately
-      setLocalCategories(prev => prev.filter(c => c !== categoryName));
-
-    } catch (error: any) {
-      alert("CRASH DETECTED: " + error.message);
-    }
-  };
-
-  const [localCategories, setLocalCategories] = useState(categories);
-  const [localCategorySubCategories, setLocalCategorySubCategories] = useState(categorySubCategories);
+  const allDisplayHeroImages = useMemo(() => {
+    const map = new Map<string, HeroImage>();
+    FALLBACK_HERO_IMAGES.forEach(img => map.set(img.url, img));
+    localHeroImages.forEach(img => map.set(img.url, img));
+    return Array.from(map.values());
+  }, [localHeroImages]);
+
+  // Optimistic Local States for Taxonomy
+  const [localCategories, setLocalCategories] = useState<string[]>(categories);
+  const [localCategorySubCategories, setLocalCategorySubCategories] = useState<Record<string, Record<string, string[]>>>(categorySubCategories);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
 
   useEffect(() => {
     setLocalCategories(categories);
@@ -1581,2702 +191,3394 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     setLocalCategorySubCategories(categorySubCategories);
   }, [categorySubCategories]);
 
-  const renderHeroBackgroundSection = (isFullTab = false) => {
-    const activeHeroItem = allDisplayHeroImages.find((h: HeroImage) => h.url === heroBackgroundUrl);
-    const uploadedCount = allDisplayHeroImages.filter((h: HeroImage) => !h.isDefault).length;
-    const curatedCount = allDisplayHeroImages.filter((h: HeroImage) => h.isDefault).length;
+  // Upload Previews and Progress
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
+  const [uploadProgresses, setUploadProgresses] = useState<Record<string, number>>({});
 
-    return (
-      <div className="space-y-8 animate-in fade-in duration-300">
-        {/* Section Header */}
-        <div className="bg-[#111] p-6 rounded-2xl border border-[#D4AF37]/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Camera className="w-5 h-5 text-[#D4AF37]" />
-              <h2 className="text-xl font-bold font-[Cinzel] text-white">Hero Visual System & Background Library</h2>
-            </div>
-            <p className="text-xs text-zinc-400 max-w-2xl leading-relaxed">
-              View all previously uploaded and curated hero visuals, preview landing page typography contrast, and select any image to activate as the live marketplace backdrop.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => heroImageInputRef.current?.click()}
-              disabled={isUploading}
-              className="px-5 py-2.5 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-xs uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg hover:shadow-[0_0_20px_rgba(212,175,55,0.4)] disabled:opacity-50 cursor-pointer"
-            >
-              {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              <span>Upload New Hero Image</span>
-            </button>
-            <input
-              type="file"
-              accept="image/*,video/*"
-              className="hidden"
-              ref={heroImageInputRef}
-              onChange={handleHeroBackgroundUpload}
-            />
-          </div>
-        </div>
+  // Search & Filter states
+  const [vendorSearch, setVendorSearch] = useState('');
+  const [vendorCategoryFilter, setVendorCategoryFilter] = useState<string>('ALL');
+  const [vendorVerifyFilter, setVendorVerifyFilter] = useState<'all' | 'verified' | 'unverified'>('all');
 
-        {/* Current Active Background Hero Spotlight Card */}
-        <div className="bg-[#111] rounded-2xl border-2 border-[#D4AF37]/40 shadow-2xl overflow-hidden relative">
-          <div className="bg-black/90 px-6 py-4 border-b border-[#D4AF37]/20 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.25em]">Active Landing Page Hero</span>
-              <span className="text-xs font-bold text-white font-[Cinzel]">
-                — {activeHeroItem?.name || 'Selected Visual'}
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setShowHeroMockupText(prev => !prev)}
-                className="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-zinc-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors border border-white/10 cursor-pointer"
-                title="Toggle mockup headline text overlay"
-              >
-                {showHeroMockupText ? <Eye className="w-3.5 h-3.5 text-[#D4AF37]" /> : <EyeOff className="w-3.5 h-3.5 text-zinc-400" />}
-                <span>{showHeroMockupText ? 'Hide Title Overlay' : 'Show Title Overlay'}</span>
-              </button>
-              {activeHeroItem && (
-                <button
-                  type="button"
-                  onClick={() => setPreviewHeroModal(activeHeroItem)}
-                  className="px-3 py-1.5 rounded-full bg-[#D4AF37]/15 hover:bg-[#D4AF37] hover:text-black text-[#D4AF37] text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors border border-[#D4AF37]/30 cursor-pointer"
-                >
-                  <Maximize2 className="w-3.5 h-3.5" />
-                  <span>Full Screen Simulation</span>
-                </button>
-              )}
-            </div>
-          </div>
+  const [bookingSearch, setBookingSearch] = useState('');
+  const [bookingStatusFilter, setBookingStatusFilter] = useState<'all' | 'confirmed' | 'pending' | 'cancelled' | 'paid'>('all');
 
-          <div className="p-6 md:p-8">
-            <div className="relative aspect-[21/9] w-full rounded-xl overflow-hidden bg-black border border-[#D4AF37]/30 shadow-inner group">
-              {renderMedia(previewUrls['hero'] || heroBackgroundUrl, "w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000")}
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/30 pointer-events-none" />
+  const [userSearch, setUserSearch] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'client' | 'vendor' | 'admin'>('all');
 
-              {/* Real Simulation Title Overlay */}
-              {showHeroMockupText && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 pointer-events-none select-none">
-                  <div className="font-bold font-[Cinzel] tracking-tight leading-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.9)] max-w-xl">
-                    <span className="block text-xl sm:text-2xl md:text-3xl lg:text-4xl">Celebrate Your</span>
-                    <span className="block text-xl sm:text-2xl md:text-3xl lg:text-4xl text-[#D4AF37]">Simcha.</span>
-                    <span className="block text-xl sm:text-2xl md:text-3xl lg:text-4xl">Book Perfection.</span>
-                  </div>
-                  <p className="mt-2 text-[10px] sm:text-xs text-zinc-200 font-light max-w-md drop-shadow hidden sm:block">
-                    From world-class kosher caterers to soulful bands, create your complete simcha in one place.
-                  </p>
-                </div>
-              )}
+  // Selected items for drag-dismiss sheets
+  const [selectedVendorForSheet, setSelectedVendorForSheet] = useState<Vendor | null>(null);
+  const [isCreatingNewVendor, setIsCreatingNewVendor] = useState(false);
+  const [confirmDeleteVendorId, setConfirmDeleteVendorId] = useState<string | null>(null);
+  const [confirmResetStripeVendorId, setConfirmResetStripeVendorId] = useState<string | null>(null);
+  const [manualStripeInput, setManualStripeInput] = useState<string>('');
+  const [showManualStripeInput, setShowManualStripeInput] = useState(false);
 
-              {/* Badges on bottom */}
-              <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between text-[10px] text-zinc-300">
-                <span className="bg-black/75 px-3 py-1 rounded-full border border-[#D4AF37]/30 text-[#D4AF37] font-mono font-bold flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  Active on Landing Page
-                </span>
-                <span className="bg-black/75 px-3 py-1 rounded-full border border-white/10 font-mono text-zinc-400">
-                  {activeHeroItem?.uploadedAt ? `Updated ${new Date(activeHeroItem.uploadedAt).toLocaleDateString()}` : 'Default Preset'}
-                </span>
+  const [selectedBookingForSheet, setSelectedBookingForSheet] = useState<Booking | null>(null);
+  const [editingBookingAmount, setEditingBookingAmount] = useState<string>('');
+  const [editingBookingDate, setEditingBookingDate] = useState<string>('');
+  const [confirmDeleteBookingId, setConfirmDeleteBookingId] = useState<string | null>(null);
+
+  const [selectedUserForSheet, setSelectedUserForSheet] = useState<UserAccount | null>(null);
+  const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<string | null>(null);
+
+  // Quick Whitelist / Invite Vendor state
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [isInvitingVendor, setIsInvitingVendor] = useState(false);
+  const [vendorUserRoles, setVendorUserRoles] = useState<Array<{ id: string; email?: string; role: string; updatedAt?: string; createdAt?: string; invitedAt?: string; isInvite?: boolean }>>([]);
+  const [isRunningCleanup, setIsRunningCleanup] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<null | {
+    deletedUserRolesCount: number;
+    deletedUsersCount: number;
+    deletedVendorsCount: number;
+    deletedPostsCount: number;
+    activeAuthUsersCount: number;
+  }>(null);
+
+  // Messages & Conversations state
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [selectedInquiryEmail, setSelectedInquiryEmail] = useState<string | null>(null);
+  const [convoSearchQuery, setConvoSearchQuery] = useState('');
+  const [convoReadFilter, setConvoReadFilter] = useState<'all' | 'unread' | 'read'>('all');
+  const [locallyReadThreadCids, setLocallyReadThreadCids] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    onActiveChatChange?.(Boolean(selectedConversationId));
+    return () => {
+      onActiveChatChange?.(false);
+    };
+  }, [selectedConversationId, onActiveChatChange]);
+
+  // Analytics state
+  const [analyticsLogs, setAnalyticsLogs] = useState<any[]>([]);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+
+  // Forms
+  const [formData, setFormData] = useState({
+    name: '',
+    category: categories[0] || 'Catering',
+    subCategories: [] as string[],
+    description: '',
+    priceStart: '',
+    location: '',
+    image: '',
+    username: '',
+    password: '',
+    contactEmail: '',
+    commissionRate: '10',
+    kosherStatus: 'Kosher Certified',
+    isVerified: true
+  });
+
+  const [postForm, setPostForm] = useState({
+    title: '', description: '', url: '', type: 'image' as 'image' | 'video', vendorId: ''
+  });
+  const [showMomentModal, setShowMomentModal] = useState(false);
+
+  const [newCategoryForm, setNewCategoryForm] = useState({
+    name: '', image: '', subCatsString: ''
+  });
+
+  const [newSubCategoryInputs, setNewSubCategoryInputs] = useState<Record<string, string>>({});
+  const [newNestedSubCategoryInputs, setNewNestedSubCategoryInputs] = useState<Record<string, string>>({});
+
+  // Refs
+  const postFileInputRef = useRef<HTMLInputElement>(null);
+  const vendorFileInputRef = useRef<HTMLInputElement>(null);
+  const heroFileInputRef = useRef<HTMLInputElement>(null);
+  const categoryImageInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const subCategoryImageInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const newCatImageInputRef = useRef<HTMLInputElement | null>(null);
+  const [isOnboarding, setIsOnboarding] = useState(false);
+
+  // Drag dismiss hooks for sheets
+  const vendorSheetDrag = useModalDragDismiss(() => {
+    setSelectedVendorForSheet(null);
+    setIsCreatingNewVendor(false);
+    setConfirmDeleteVendorId(null);
+    setConfirmResetStripeVendorId(null);
+    setShowManualStripeInput(false);
+  });
+
+  const bookingSheetDrag = useModalDragDismiss(() => {
+    setSelectedBookingForSheet(null);
+    setConfirmDeleteBookingId(null);
+  });
+
+  const userSheetDrag = useModalDragDismiss(() => {
+    setSelectedUserForSheet(null);
+    setConfirmDeleteUserId(null);
+  });
+
+  const addCategoryModalDrag = useModalDragDismiss(() => {
+    setShowAddCategoryModal(false);
+  });
+
+  const momentModalDrag = useModalDragDismiss(() => {
+    setShowMomentModal(false);
+  });
+
+  useEffect(() => {
+    if (selectedVendorForSheet || isCreatingNewVendor) {
+      return vendorSheetDrag.triggerSlideUpEntry();
+    }
+  }, [Boolean(selectedVendorForSheet || isCreatingNewVendor)]);
+
+  useEffect(() => {
+    if (selectedBookingForSheet) {
+      return bookingSheetDrag.triggerSlideUpEntry();
+    }
+  }, [Boolean(selectedBookingForSheet)]);
+
+  useEffect(() => {
+    if (selectedUserForSheet) {
+      return userSheetDrag.triggerSlideUpEntry();
+    }
+  }, [Boolean(selectedUserForSheet)]);
+
+  useEffect(() => {
+    if (showAddCategoryModal) {
+      return addCategoryModalDrag.triggerSlideUpEntry();
+    }
+  }, [showAddCategoryModal]);
+
+  useEffect(() => {
+    if (showMomentModal) {
+      return momentModalDrag.triggerSlideUpEntry();
+    }
+  }, [showMomentModal]);
+
+  // Listen to user_roles
+  useEffect(() => {
+    const q = query(collection(db, 'user_roles'), where('role', '==', 'vendor'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const roles = snapshot.docs.map(d => ({
+        id: d.id,
+        ...(d.data() as any)
+      }));
+      setVendorUserRoles(roles);
+    }, (err) => {
+      console.warn('Error fetching vendor roles:', err);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Listen to analytics_logs when on overview
+  useEffect(() => {
+    if (activeTab === 'overview') {
+      setIsLoadingAnalytics(true);
+      const q = query(collection(db, 'analytics_logs'), orderBy('timestamp', 'desc'), limit(200));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const logs = snapshot.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        }));
+        setAnalyticsLogs(logs);
+        setIsLoadingAnalytics(false);
+      }, () => {
+        setIsLoadingAnalytics(false);
+      });
+      return () => unsubscribe();
+    }
+  }, [activeTab]);
+
+  // Sync selectedVendorForSheet with live vendor updates
+  useEffect(() => {
+    if (selectedVendorForSheet) {
+      const updated = vendors.find(v => v.id === selectedVendorForSheet.id);
+      if (updated) {
+        setSelectedVendorForSheet(updated);
+      }
+    }
+  }, [vendors]);
+
+  // Sync selectedBookingForSheet with live booking updates
+  useEffect(() => {
+    if (selectedBookingForSheet) {
+      const updated = bookings.find(b => b.id === selectedBookingForSheet.id);
+      if (updated) {
+        setSelectedBookingForSheet(updated);
+      }
+    }
+  }, [bookings]);
+
+  // Sync selectedUserForSheet with live user updates
+  useEffect(() => {
+    if (selectedUserForSheet) {
+      const updated = users.find(u => u.id === selectedUserForSheet.id);
+      if (updated) {
+        setSelectedUserForSheet(updated);
+      }
+    }
+  }, [users]);
+
+  const analyticsStats = useMemo(() => {
+    const counts = {
+      view_vendor: 0,
+      add_to_plan: 0,
+      submit_booking_request: 0,
+      payment_completed: 0
+    };
+    analyticsLogs.forEach(log => {
+      if (counts[log.eventName as keyof typeof counts] !== undefined) {
+        counts[log.eventName as keyof typeof counts]++;
+      }
+    });
+    const planRate = counts.view_vendor > 0 ? (counts.add_to_plan / counts.view_vendor) * 100 : 0;
+    const requestRate = counts.add_to_plan > 0 ? (counts.submit_booking_request / counts.add_to_plan) * 100 : 0;
+    const purchaseRate = counts.submit_booking_request > 0 ? (counts.payment_completed / counts.submit_booking_request) * 100 : 0;
+    const overallRate = counts.view_vendor > 0 ? (counts.payment_completed / counts.view_vendor) * 100 : 0;
+
+    return {
+      ...counts,
+      planRate,
+      requestRate,
+      purchaseRate,
+      overallRate
+    };
+  }, [analyticsLogs]);
+
+  const bookingChartData = useMemo(() => {
+    const last14Days = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (13 - i));
+      return d.toISOString().split('T')[0];
+    });
+    const countsByDate: Record<string, number> = {};
+    last14Days.forEach(date => { countsByDate[date] = 0; });
+
+    analyticsLogs.forEach(log => {
+      if (log.eventName === 'submit_booking_request' && log.timestamp) {
+        const dateStr = new Date(log.timestamp).toISOString().split('T')[0];
+        if (countsByDate[dateStr] !== undefined) {
+          countsByDate[dateStr]++;
+        }
+      }
+    });
+
+    return last14Days.map(date => {
+      const [, month, day] = date.split('-');
+      return {
+        date: `${month}/${day}`,
+        requests: countsByDate[date]
+      };
+    });
+  }, [analyticsLogs]);
+
+  const paidBookings = useMemo(() => bookings.filter(b => b.paymentStatus === 'paid'), [bookings]);
+  const totalPaidVolume = useMemo(() => paidBookings.reduce((sum, b) => sum + b.amount, 0), [paidBookings]);
+  const totalCommission = useMemo(() => paidBookings.reduce((sum, b) => {
+    const vendor = vendors.find(v => v.id === b.vendorId);
+    const rate = vendor?.commissionRate !== undefined ? vendor.commissionRate / 100 : COMMISSION_RATE;
+    return sum + (b.amount * rate);
+  }, 0), [paidBookings, vendors]);
+
+  // Process Admin Support Messages & Unread Count
+  const processedSupportThreads = useMemo(() => {
+    const isLegacySupportMessage = (m: Message) => {
+      const isDirectSupport =
+        m.senderId === 'admin' ||
+        m.receiverId === 'admin' ||
+        m.isAdminInquiry === true ||
+        (m.conversationId && m.conversationId.includes('admin'));
+      if (!isDirectSupport) return false;
+      const isAutomatedNotification =
+        Boolean((m as any).bookingId) ||
+        Boolean((m as any).eventType) ||
+        m.senderId === 'system' ||
+        (typeof m.text === 'string' && m.text.startsWith('New Booking Request:'));
+      return !isAutomatedNotification;
+    };
+
+    const allAdminSupportMessages = messages.filter(isLegacySupportMessage);
+
+    const getOtherUserId = (m: Message) => {
+      if (m.senderId === 'admin') {
+        if (m.receiverId && m.receiverId !== 'admin' && m.receiverId !== 'client_legacy') return m.receiverId;
+        if (m.clientEmail) return m.clientEmail;
+      } else {
+        if (m.senderId && m.senderId !== 'client_legacy') return m.senderId;
+        if (m.clientEmail) return m.clientEmail;
+      }
+      if (m.conversationId && m.conversationId !== 'admin_client_legacy') {
+        const parts = m.conversationId.split('_').filter(p => p !== 'admin' && p !== 'support' && p !== 'client' && p !== 'legacy');
+        if (parts.length > 0) return parts.join('_');
+      }
+      return m.clientEmail || m.senderId || m.receiverId || 'unknown';
+    };
+
+    const getOtherUserDetails = (id: string, m: Message) => {
+      const normalizedId = (id || '').trim().toLowerCase();
+      const normalizedClientEmail = (m.clientEmail || '').trim().toLowerCase();
+
+      const foundUser = users.find(u => {
+        const uEmail = ((u as any).email || (u as any).username || '').trim().toLowerCase();
+        return (
+          (id && id !== 'client_legacy' && u.id === id) ||
+          (normalizedId && normalizedId !== 'client_legacy' && uEmail === normalizedId) ||
+          (normalizedClientEmail && uEmail === normalizedClientEmail)
+        );
+      });
+      if (foundUser) {
+        const resolvedEmail = (foundUser as any).email || (foundUser as any).username || m.clientEmail || (id.includes('@') ? id : '');
+        const resolvedName = foundUser.name || m.clientName || (resolvedEmail ? resolvedEmail.split('@')[0] : 'Client');
+        return { id: foundUser.id, name: resolvedName, email: resolvedEmail, role: 'client' as const, avatar: foundUser.photoURL };
+      }
+
+      const foundVendor = vendors.find(v => {
+        const vEmail = (v.contactEmail || v.username || '').trim().toLowerCase();
+        return (
+          (id && id !== 'client_legacy' && v.id === id) ||
+          (normalizedId && normalizedId !== 'client_legacy' && vEmail === normalizedId) ||
+          (normalizedClientEmail && vEmail === normalizedClientEmail)
+        );
+      });
+      if (foundVendor) {
+        return { id: foundVendor.id, name: foundVendor.name, email: foundVendor.contactEmail || m.clientEmail || '', role: 'vendor' as const, avatar: foundVendor.image };
+      }
+
+      const fallbackEmail = m.clientEmail || (id && id.includes('@') ? id : '');
+      const fallbackName = m.clientName || (fallbackEmail ? fallbackEmail.split('@')[0] : (id && id !== 'client_legacy' ? id : 'Client'));
+      return {
+        id: id && id !== 'client_legacy' ? id : (fallbackEmail || 'client_legacy'),
+        name: fallbackName,
+        email: fallbackEmail,
+        role: 'client' as const,
+        avatar: (m as any).senderPhoto
+      };
+    };
+
+    type ConversationBucket = {
+      cid: string;
+      cids: Set<string>;
+      isAdminSupport: boolean;
+      clientDetails: { id: string; name: string; email: string; avatar?: string };
+      otherUser: { id: string; name: string; email: string; role: 'client' | 'vendor'; avatar?: string };
+      messages: Message[];
+      msg: Message;
+    };
+
+    const buckets: ConversationBucket[] = [];
+
+    allAdminSupportMessages.forEach(m => {
+      const rawCid = m.conversationId || [m.senderId, m.receiverId].sort().join('_');
+      const rawOther = m.senderId === 'admin' ? m.receiverId : m.senderId;
+      const msgEmailLower = (m.clientEmail || (rawOther && rawOther.includes('@') ? rawOther : '')).trim().toLowerCase();
+
+      const matchedAccount = users.find(u => {
+        const uEmail = ((u as any).email || (u as any).username || '').trim().toLowerCase();
+        if (rawOther && rawOther !== 'client_legacy' && rawOther !== 'admin' && u.id === rawOther) return true;
+        if (msgEmailLower && uEmail === msgEmailLower) return true;
+        if (rawCid && rawCid !== 'admin_client_legacy' && rawCid.includes(u.id)) return true;
+        return false;
+      });
+
+      const resolvedUid = matchedAccount?.id || (rawOther && rawOther !== 'client_legacy' && rawOther !== 'admin' && !rawOther.includes('@') ? rawOther : '');
+      const resolvedEmail = (matchedAccount as any)?.email || (matchedAccount as any)?.username || m.clientEmail || (rawOther && rawOther.includes('@') ? rawOther : '');
+      const resolvedEmailLower = (resolvedEmail || '').trim().toLowerCase();
+      const resolvedName = matchedAccount?.name || m.clientName || (resolvedEmail ? resolvedEmail.split('@')[0] : 'Client');
+      const resolvedAvatar = matchedAccount?.photoURL || (m as any).senderPhoto;
+
+      const canonicalCid = resolvedUid
+        ? ['admin', resolvedUid].sort().join('_')
+        : (resolvedEmailLower ? `admin_${resolvedEmailLower}` : rawCid);
+
+      const clientDetails = {
+        id: resolvedUid || resolvedEmailLower || rawOther || 'client_legacy',
+        name: resolvedName,
+        email: resolvedEmail,
+        avatar: resolvedAvatar
+      };
+
+      const otherUser = {
+        id: resolvedUid || rawOther || resolvedEmail,
+        name: resolvedName,
+        email: resolvedEmail,
+        role: 'client' as const,
+        avatar: resolvedAvatar
+      };
+
+      let bucket = buckets.find(b => {
+        const bClientUid = b.clientDetails.id && b.clientDetails.id !== 'client_legacy' && b.clientDetails.id !== 'admin' && !b.clientDetails.id.includes('@') ? b.clientDetails.id : '';
+        const bEmailLower = (b.clientDetails.email || '').trim().toLowerCase();
+        if (resolvedUid && bClientUid && resolvedUid === bClientUid) return true;
+        if (resolvedEmailLower && bEmailLower && resolvedEmailLower === bEmailLower) return true;
+        if (b.cids.has(rawCid) || b.cids.has(canonicalCid)) return true;
+        return false;
+      });
+
+      if (!bucket) {
+        bucket = {
+          cid: canonicalCid,
+          cids: new Set([rawCid, canonicalCid]),
+          isAdminSupport: true,
+          clientDetails,
+          otherUser,
+          messages: [],
+          msg: { ...m, conversationId: canonicalCid }
+        };
+        buckets.push(bucket);
+      } else {
+        bucket.cids.add(rawCid);
+        bucket.cids.add(canonicalCid);
+        if (bucket.cid.includes('client_legacy') && !canonicalCid.includes('client_legacy')) {
+          bucket.cid = canonicalCid;
+        }
+        if ((!bucket.clientDetails.id || bucket.clientDetails.id === 'client_legacy') && resolvedUid) {
+          bucket.clientDetails.id = resolvedUid;
+        }
+        if (!bucket.clientDetails.email && resolvedEmail) {
+          bucket.clientDetails.email = resolvedEmail;
+        }
+        if ((bucket.clientDetails.name === 'Client' || bucket.clientDetails.name === 'User') && resolvedName !== 'Client') {
+          bucket.clientDetails.name = resolvedName;
+        }
+        if (!bucket.clientDetails.avatar && resolvedAvatar) {
+          bucket.clientDetails.avatar = resolvedAvatar;
+        }
+        if ((!bucket.otherUser.id || bucket.otherUser.id === 'client_legacy') && otherUser.id && otherUser.id !== 'client_legacy') {
+          bucket.otherUser = otherUser;
+        }
+      }
+
+      bucket.messages.push(m);
+    });
+
+    const list = buckets.map(bucket => {
+      bucket.messages.sort((a, b) => {
+        const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return tA - tB;
+      });
+      const latest = bucket.messages[bucket.messages.length - 1] || bucket.msg;
+      const msg = { ...latest, conversationId: bucket.cid };
+      const isLocallyMarkedRead = locallyReadThreadCids.has(bucket.cid) || Array.from(bucket.cids).some(c => locallyReadThreadCids.has(c));
+      const hasUnread = !isLocallyMarkedRead && bucket.messages.some(m => m.senderId !== 'admin' && !m.isRead);
+
+      return {
+        msg,
+        cid: bucket.cid,
+        cids: bucket.cids,
+        messages: bucket.messages,
+        isAdminSupport: true,
+        hasUnread,
+        clientDetails: bucket.clientDetails,
+        otherUser: bucket.otherUser
+      };
+    });
+
+    list.sort((a, b) => {
+      const timeA = a.msg.timestamp ? new Date(a.msg.timestamp).getTime() : 0;
+      const timeB = b.msg.timestamp ? new Date(b.msg.timestamp).getTime() : 0;
+      return timeB - timeA;
+    });
+
+    return {
+      list,
+      allAdminSupportMessages,
+      getOtherUserId,
+      getOtherUserDetails,
+      unreadCount: list.filter(t => t.hasUnread).length
+    };
+  }, [messages, users, vendors, locallyReadThreadCids]);
+
+  // Handlers
+  const handleOpenNewVendorModal = () => {
+    setFormData({
+      name: '',
+      category: categories[0] || 'Catering',
+      subCategories: [],
+      description: '',
+      priceStart: '',
+      location: '',
+      image: '',
+      username: '',
+      password: '',
+      contactEmail: '',
+      commissionRate: '10',
+      kosherStatus: 'Kosher Certified',
+      isVerified: true
+    });
+    setSelectedVendorForSheet(null);
+    setIsCreatingNewVendor(true);
+  };
+
+  const handleOpenEditVendorModal = (vendor: Vendor) => {
+    setFormData({
+      name: vendor.name || '',
+      category: vendor.category || categories[0] || 'Catering',
+      subCategories: vendor.subCategories || [],
+      description: vendor.description || '',
+      priceStart: (vendor.downPayment ?? vendor.priceStart) > 0 ? (vendor.downPayment ?? vendor.priceStart).toString() : '',
+      location: vendor.location || '',
+      image: vendor.image || '',
+      username: vendor.username || '',
+      password: vendor.password || '',
+      contactEmail: vendor.contactEmail || '',
+      commissionRate: (vendor.commissionRate ?? 10).toString(),
+      kosherStatus: vendor.isKosher === false ? 'Non-Kosher' : 'Kosher Certified',
+      isVerified: vendor.isVerified ?? true
+    });
+    setManualStripeInput(vendor.stripeAccountId || '');
+    setShowManualStripeInput(false);
+    setConfirmDeleteVendorId(null);
+    setConfirmResetStripeVendorId(null);
+    setIsCreatingNewVendor(false);
+    setSelectedVendorForSheet(vendor);
+  };
+
+  const handleVendorFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const downloadUrl = await uploadFileRobustly(file, 'vendors');
+      setFormData(prev => ({ ...prev, image: downloadUrl }));
+      showNotification('Vendor photo uploaded.', 'success');
+    } catch {
+      showNotification('Failed to upload image.', 'error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const toggleSubCategorySelection = (subCat: string) => {
+    setFormData(prev => {
+      const current = prev.subCategories;
+      const updated = current.includes(subCat)
+        ? current.filter(item => item !== subCat)
+        : [...current, subCat];
+      return { ...prev, subCategories: updated };
+    });
+  };
+
+  const handleStripeOnboard = async (vendorId: string, email: string) => {
+    setIsOnboarding(true);
+    try {
+      const response = await fetch('/api/stripe/onboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vendorId,
+          email: email || 'vendor@simchamarket.com',
+          origin: window.location.origin
+        })
+      });
+      const contentType = response.headers.get('content-type');
+      let data: any;
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        throw new Error('Stripe server error');
+      }
+      if (!response.ok) throw new Error(data.error || 'Failed to start Stripe onboarding');
+
+      const vendorToUpdate = vendors.find(v => v.id === vendorId);
+      if (vendorToUpdate && data.accountId) {
+        onUpdateVendor({
+          ...vendorToUpdate,
+          stripeAccountId: data.accountId
+        });
+      }
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err: any) {
+      showNotification(err.message || 'Stripe onboarding error', 'error');
+    } finally {
+      setIsOnboarding(false);
+    }
+  };
+
+  const handleSaveManualStripeId = (vendor: Vendor) => {
+    const trimmed = manualStripeInput.trim();
+    onUpdateVendor({
+      ...vendor,
+      stripeAccountId: trimmed || undefined
+    });
+    setShowManualStripeInput(false);
+    showNotification(trimmed ? 'Stripe Account ID updated.' : 'Stripe Account ID cleared.', 'success');
+  };
+
+  const handleResetVendorStripe = (vendor: Vendor) => {
+    onUpdateVendor({
+      ...vendor,
+      stripeAccountId: undefined
+    });
+    setConfirmResetStripeVendorId(null);
+    setManualStripeInput('');
+    showNotification(`Disconnected Stripe for ${vendor.name}.`, 'info');
+  };
+
+  const handleVendorSubmit = async (e: React.FormEvent, startStripe = false) => {
+    e.preventDefault();
+    if (!formData.location || !formData.location.trim()) {
+      showNotification('Please enter a location for this vendor.', 'error');
+      return;
+    }
+
+    const parsedDownPayment = formData.priceStart !== '' ? Math.max(0, Number(formData.priceStart)) : 0;
+
+    if (selectedVendorForSheet && !isCreatingNewVendor) {
+      const updatedVendor: Vendor = {
+        ...selectedVendorForSheet,
+        name: formData.name,
+        category: formData.category,
+        subCategories: formData.subCategories,
+        description: formData.description,
+        priceStart: parsedDownPayment,
+        downPayment: parsedDownPayment,
+        location: formData.location,
+        image: formData.image || selectedVendorForSheet.image,
+        username: formData.username,
+        password: formData.password,
+        contactEmail: formData.contactEmail,
+        commissionRate: Number(formData.commissionRate),
+        isKosher: formData.kosherStatus === 'Kosher Certified',
+        isVerified: formData.isVerified
+      };
+      onUpdateVendor(updatedVendor);
+      showNotification(`${updatedVendor.name} updated.`, 'success');
+      if (startStripe) {
+        await handleStripeOnboard(updatedVendor.id, updatedVendor.contactEmail || '');
+      } else {
+        setSelectedVendorForSheet(null);
+      }
+    } else {
+      let vendorId = Math.random().toString(36).substr(2, 9);
+      const emailToRegister = formData.contactEmail?.trim() || (formData.username?.includes('@') ? formData.username.trim() : '');
+      const passwordToRegister = formData.password?.trim() || 'SimchaVendor123!';
+
+      if (emailToRegister && passwordToRegister) {
+        try {
+          const secondaryAuth = getSecondaryAuth();
+          const userCredential = await createUserWithEmailAndPassword(secondaryAuth, emailToRegister, passwordToRegister);
+          vendorId = userCredential.user.uid;
+          await signOut(secondaryAuth);
+        } catch (authErr: any) {
+          if (authErr.code === 'auth/email-already-in-use') {
+            const existingUser = users.find(u => ((u as any).email || u.username)?.toLowerCase() === emailToRegister.toLowerCase());
+            if (existingUser) vendorId = existingUser.id;
+          }
+        }
+      }
+
+      const newVendor: Vendor = {
+        id: vendorId,
+        name: formData.name,
+        category: formData.category,
+        subCategories: formData.subCategories,
+        description: formData.description,
+        priceStart: parsedDownPayment,
+        downPayment: parsedDownPayment,
+        rating: 5.0,
+        isKosher: formData.kosherStatus === 'Kosher Certified',
+        isVerified: formData.isVerified,
+        image: formData.image || 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&q=80&w=1000',
+        location: formData.location,
+        reviews: [],
+        unavailableDates: [],
+        username: formData.username || emailToRegister,
+        password: formData.password,
+        contactEmail: formData.contactEmail || emailToRegister,
+        commissionRate: Number(formData.commissionRate)
+      };
+
+      onAddVendor(newVendor);
+      showNotification(`${newVendor.name} added to marketplace.`, 'success');
+      if (startStripe) {
+        await handleStripeOnboard(newVendor.id, newVendor.contactEmail || '');
+      } else {
+        setIsCreatingNewVendor(false);
+      }
+    }
+  };
+
+  const handleConfirmDeleteVendor = async (vendor: Vendor) => {
+    try {
+      await deleteDoc(doc(db, 'user_roles', vendor.id)).catch(() => {});
+      await deleteDoc(doc(db, 'users', vendor.id)).catch(() => {});
+      onRemoveVendor(vendor.id);
+      setSelectedVendorForSheet(null);
+      setConfirmDeleteVendorId(null);
+      showNotification(`Removed ${vendor.name}.`, 'info');
+    } catch {
+      onRemoveVendor(vendor.id);
+      setSelectedVendorForSheet(null);
+      setConfirmDeleteVendorId(null);
+    }
+  };
+
+  // Booking sheet handlers
+  const handleOpenBookingSheet = (booking: Booking) => {
+    setSelectedBookingForSheet(booking);
+    setEditingBookingAmount(booking.amount.toString());
+    setEditingBookingDate(booking.date || '');
+    setConfirmDeleteBookingId(null);
+  };
+
+  const handleSaveBookingDetails = async () => {
+    if (!selectedBookingForSheet) return;
+    const parsedAmount = Math.max(0, Number(editingBookingAmount) || 0);
+    try {
+      await updateDoc(doc(db, 'bookings', selectedBookingForSheet.id), {
+        amount: parsedAmount,
+        date: editingBookingDate.trim() || selectedBookingForSheet.date
+      });
+      showNotification('Booking details updated.', 'success');
+    } catch (err: any) {
+      showNotification('Failed to update booking: ' + (err.message || ''), 'error');
+    }
+  };
+
+  const handleToggleBookingPaymentStatus = async (booking: Booking) => {
+    const nextPaymentStatus = booking.paymentStatus === 'paid' ? 'unpaid' : 'paid';
+    try {
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        paymentStatus: nextPaymentStatus
+      });
+      showNotification(`Payment status marked as ${nextPaymentStatus}.`, 'success');
+    } catch (err: any) {
+      showNotification('Failed to update payment status: ' + (err.message || ''), 'error');
+    }
+  };
+
+  const handleDeleteBooking = async (bookingId: string) => {
+    try {
+      await deleteDoc(doc(db, 'bookings', bookingId));
+      setSelectedBookingForSheet(null);
+      setConfirmDeleteBookingId(null);
+      showNotification('Booking deleted.', 'info');
+    } catch (err: any) {
+      showNotification('Failed to delete booking: ' + (err.message || ''), 'error');
+    }
+  };
+
+  // User Role & Account Management
+  const handleChangeUserRole = async (userAcc: UserAccount, nextRole: 'client' | 'vendor' | 'admin') => {
+    try {
+      const email = ((userAcc as any).email || userAcc.username || '').trim().toLowerCase();
+      await updateDoc(doc(db, 'users', userAcc.id), {
+        role: nextRole,
+        updatedAt: new Date().toISOString()
+      });
+      await setDoc(doc(db, 'user_roles', userAcc.id), {
+        role: nextRole,
+        email,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      showNotification(`Updated ${userAcc.name || email || 'user'} role to ${nextRole.toUpperCase()}.`, 'success');
+    } catch (err: any) {
+      showNotification('Failed to update role: ' + (err.message || ''), 'error');
+    }
+  };
+
+  const handleDeleteUserAccount = async (userAcc: UserAccount) => {
+    try {
+      await deleteDoc(doc(db, 'users', userAcc.id)).catch(() => {});
+      await deleteDoc(doc(db, 'user_roles', userAcc.id)).catch(() => {});
+      setSelectedUserForSheet(null);
+      setConfirmDeleteUserId(null);
+      showNotification(`Deleted user record for ${userAcc.name || userAcc.username || userAcc.id}.`, 'info');
+    } catch (err: any) {
+      showNotification('Failed to delete user: ' + (err.message || ''), 'error');
+    }
+  };
+
+  const handleInviteVendor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = inviteEmail.trim().toLowerCase();
+    if (!cleanEmail) return;
+    setIsInvitingVendor(true);
+    try {
+      const existingUser = users.find(
+        u => ((u as any).email || (u as any).username || '').trim().toLowerCase() === cleanEmail
+      );
+      if (existingUser) {
+        await setDoc(doc(db, 'user_roles', existingUser.id), {
+          role: 'vendor',
+          email: cleanEmail,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        await updateDoc(doc(db, 'users', existingUser.id), {
+          role: 'vendor'
+        }).catch(() => {});
+        showNotification(`Elevated ${cleanEmail} to Vendor.`, 'success');
+      } else {
+        const inviteDocId = `invite_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+        await setDoc(doc(db, 'user_roles', inviteDocId), {
+          role: 'vendor',
+          email: cleanEmail,
+          invitedAt: new Date().toISOString(),
+          isInvite: true
+        }, { merge: true });
+        showNotification(`Pre-authorized ${cleanEmail} for Vendor access.`, 'success');
+      }
+      setInviteEmail('');
+    } catch (err: any) {
+      showNotification('Failed to assign vendor role: ' + (err.message || ''), 'error');
+    } finally {
+      setIsInvitingVendor(false);
+    }
+  };
+
+  const handleRunOrphanedCleanup = async () => {
+    setIsRunningCleanup(true);
+    setCleanupResult(null);
+    try {
+      let idToken = '';
+      if (auth.currentUser) {
+        idToken = await auth.currentUser.getIdToken();
+      }
+      const response = await fetch('/api/admin/cleanup-orphaned-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
+        }
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Cleanup failed');
+      }
+      setCleanupResult(data.summary);
+      const totalRemoved =
+        (data.summary?.deletedUserRolesCount || 0) +
+        (data.summary?.deletedUsersCount || 0) +
+        (data.summary?.deletedVendorsCount || 0) +
+        (data.summary?.deletedPostsCount || 0);
+      showNotification(
+        totalRemoved > 0
+          ? `Cleanup complete: Removed ${totalRemoved} orphaned record(s).`
+          : 'Database is clean! Zero orphaned records found.',
+        'success'
+      );
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to clean up orphaned data.', 'error');
+    } finally {
+      setIsRunningCleanup(false);
+    }
+  };
+
+  // Hero & Visuals Handlers
+  const handleHeroFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const downloadUrl = await uploadFileRobustly(file, 'hero');
+      const baseName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+      const newHeroImage: HeroImage = {
+        id: `hero-${Date.now()}`,
+        name: baseName ? baseName.charAt(0).toUpperCase() + baseName.slice(1) : 'Uploaded Hero Image',
+        url: downloadUrl,
+        uploadedAt: new Date().toISOString(),
+        isDefault: false,
+      };
+      const nextImages = [newHeroImage, ...localHeroImages];
+      setLocalHeroImages(nextImages);
+      if (onAddHeroImage) {
+        onAddHeroImage(newHeroImage);
+      } else if (onUpdateHeroImages) {
+        onUpdateHeroImages(nextImages);
+      }
+      onUpdateHeroBackground(downloadUrl);
+      showNotification('Hero background uploaded and set active.', 'success');
+    } catch {
+      showNotification('Failed to upload hero image.', 'error');
+    } finally {
+      setIsUploading(false);
+      if (heroFileInputRef.current) heroFileInputRef.current.value = '';
+    }
+  };
+
+  const handleSelectHeroImage = (img: HeroImage) => {
+    onUpdateHeroBackground(img.url);
+    showNotification(`Active background set to "${img.name}".`, 'success');
+  };
+
+  const handleRemoveHeroImageFromLibrary = (img: HeroImage, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (img.isDefault) {
+      showNotification('Default backgrounds cannot be deleted.', 'info');
+      return;
+    }
+    const nextImages = localHeroImages.filter(item => item.id !== img.id && item.url !== img.url);
+    setLocalHeroImages(nextImages);
+    if (onDeleteHeroImage) {
+      onDeleteHeroImage(img.id);
+    } else if (onUpdateHeroImages) {
+      onUpdateHeroImages(nextImages);
+    }
+    if (heroBackgroundUrl === img.url) {
+      const fallback = nextImages[0] || FALLBACK_HERO_IMAGES[0];
+      if (fallback) onUpdateHeroBackground(fallback.url);
+    }
+    showNotification(`Removed "${img.name}".`, 'info');
+  };
+
+  // Moments / Posts Handlers
+  const handlePostFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const type = file.type.startsWith('video') ? 'video' : 'image';
+      const downloadUrl = await uploadFileRobustly(file, 'posts');
+      setPostForm(prev => ({ ...prev, url: downloadUrl, type }));
+      showNotification('Media uploaded.', 'success');
+    } catch {
+      showNotification('Upload failed.', 'error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handlePostSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!postForm.url) return;
+    onAddPost({
+      id: Math.random().toString(36).substr(2, 9),
+      title: postForm.title,
+      description: postForm.description,
+      url: postForm.url,
+      type: postForm.type,
+      vendorId: postForm.vendorId || undefined,
+      timestamp: new Date().toISOString().split('T')[0]
+    });
+    setPostForm({ title: '', description: '', url: '', type: 'image', vendorId: '' });
+    setShowMomentModal(false);
+    showNotification('Community moment published.', 'success');
+  };
+
+  // Category & Taxonomy Handlers
+  const handleMoveCategory = (catName: string, direction: 'up' | 'down') => {
+    const currentIndex = localCategories.indexOf(catName);
+    if (currentIndex === -1) return;
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= localCategories.length) return;
+    const updated = [...localCategories];
+    const [moved] = updated.splice(currentIndex, 1);
+    updated.splice(newIndex, 0, moved);
+    setLocalCategories(updated);
+    onUpdateCategoryOrder(updated);
+  };
+
+  const handleSeed = async () => {
+    if (!onSeedTaxonomy) return;
+    setIsSeedingTaxonomy(true);
+    try {
+      await onSeedTaxonomy();
+      showNotification('Default taxonomy seeded.', 'success');
+    } finally {
+      setIsSeedingTaxonomy(false);
+    }
+  };
+
+  const handleCategoryImageUpload = async (category: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const localPreview = URL.createObjectURL(file);
+    setPreviewUrls(prev => ({ ...prev, [category]: localPreview }));
+    setUploadProgresses(prev => ({ ...prev, [category]: 0 }));
+    try {
+      const downloadUrl = await uploadFileWithProgress(file, 'categories', (progress) => {
+        setUploadProgresses(prev => ({ ...prev, [category]: progress }));
+      });
+      onUpdateCategoryImage(category, downloadUrl);
+      showNotification(`Updated banner for ${category}.`, 'success');
+    } catch {
+      showNotification('Failed to upload category image.', 'error');
+    } finally {
+      setUploadProgresses(prev => {
+        const next = { ...prev };
+        delete next[category];
+        return next;
+      });
+    }
+  };
+
+  const handleSubCategoryImageUpload = async (subCategory: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !onUpdateSubCategoryImage) return;
+    const localPreview = URL.createObjectURL(file);
+    setPreviewUrls(prev => ({ ...prev, [subCategory]: localPreview }));
+    setUploadProgresses(prev => ({ ...prev, [subCategory]: 0 }));
+    try {
+      const downloadUrl = await uploadFileWithProgress(file, 'subcategories', (progress) => {
+        setUploadProgresses(prev => ({ ...prev, [subCategory]: progress }));
+      });
+      onUpdateSubCategoryImage(subCategory, downloadUrl);
+      showNotification(`Updated image for ${subCategory}.`, 'success');
+    } catch {
+      showNotification('Failed to upload subcategory image.', 'error');
+    } finally {
+      setUploadProgresses(prev => {
+        const next = { ...prev };
+        delete next[subCategory];
+        return next;
+      });
+    }
+  };
+
+  const handleNewCategoryImgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const downloadUrl = await uploadFileRobustly(file, 'categories');
+      setNewCategoryForm(prev => ({ ...prev, image: downloadUrl }));
+      showNotification('Category banner uploaded.', 'success');
+    } catch {
+      showNotification('Failed to upload banner.', 'error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleAddCategorySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryForm.name) return;
+    const subCats = newCategoryForm.subCatsString.split(',').map(s => s.trim()).filter(s => s !== '');
+    onAddCategory(
+      newCategoryForm.name,
+      newCategoryForm.image || 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=1000',
+      subCats
+    );
+    setNewCategoryForm({ name: '', image: '', subCatsString: '' });
+    setShowAddCategoryModal(false);
+    showNotification(`Added category "${newCategoryForm.name}".`, 'success');
+  };
+
+  const handleDeleteCategorySilent = async (categoryName: string) => {
+    setLocalCategories(prev => prev.filter(c => c !== categoryName));
+    setLocalCategorySubCategories(prev => {
+      const next = { ...prev };
+      delete next[categoryName];
+      return next;
+    });
+    if (onDeleteCategory) {
+      onDeleteCategory(categoryName);
+    }
+    try {
+      const q = query(collection(db, 'categories'), where('name', '==', categoryName));
+      const snap = await getDocs(q);
+      await Promise.all(snap.docs.map(d => deleteDoc(doc(db, 'categories', d.id))));
+      await deleteDoc(doc(db, 'categories', categoryName)).catch(() => {});
+      await updateDoc(doc(db, 'settings', 'taxonomy'), {
+        [`categories.${categoryName}`]: deleteField(),
+        [`categoryImages.${categoryName}`]: deleteField(),
+        [`categorySubCategories.${categoryName}`]: deleteField(),
+        updatedAt: new Date().toISOString()
+      }).catch(() => {});
+      showNotification(`Deleted category "${categoryName}".`, 'info');
+    } catch (err: any) {
+      showNotification('Failed to delete category: ' + (err.message || ''), 'error');
+    }
+  };
+
+  const handleAddSubCategory = (category: string) => {
+    const val = newSubCategoryInputs[category]?.trim();
+    if (!val) return;
+    const current = localCategorySubCategories[category] || {};
+    if (!current[val]) {
+      const updated = { ...current, [val]: [] };
+      setLocalCategorySubCategories(prev => ({ ...prev, [category]: updated }));
+      onUpdateCategorySubCategories(category, updated);
+    }
+    setNewSubCategoryInputs(prev => ({ ...prev, [category]: '' }));
+  };
+
+  const handleDeleteSubcategorySilent = async (categoryName: string, subCategoryName: string) => {
+    const current = localCategorySubCategories[categoryName] || {};
+    const updated = { ...current };
+    delete updated[subCategoryName];
+    setLocalCategorySubCategories(prev => ({ ...prev, [categoryName]: updated }));
+    onUpdateCategorySubCategories(categoryName, updated);
+    try {
+      await updateDoc(doc(db, 'settings', 'taxonomy'), {
+        [`categorySubCategories.${categoryName}.${subCategoryName}`]: deleteField(),
+        updatedAt: new Date().toISOString()
+      }).catch(() => {});
+      showNotification(`Removed group "${subCategoryName}".`, 'info');
+    } catch {
+      // handled via onUpdateCategorySubCategories
+    }
+  };
+
+  const handleAddNestedSubCategory = (category: string, subCategory: string) => {
+    const key = `${category}-${subCategory}`;
+    const val = newNestedSubCategoryInputs[key]?.trim();
+    if (!val) return;
+    const current = localCategorySubCategories[category] || {};
+    const nested = current[subCategory] || [];
+    if (!nested.includes(val)) {
+      const updated = { ...current, [subCategory]: [...nested, val] };
+      setLocalCategorySubCategories(prev => ({ ...prev, [category]: updated }));
+      onUpdateCategorySubCategories(category, updated);
+    }
+    setNewNestedSubCategoryInputs(prev => ({ ...prev, [key]: '' }));
+  };
+
+  const handleRemoveNestedSubCategorySilent = async (category: string, subCategory: string, itemToRemove: string) => {
+    const current = localCategorySubCategories[category] || {};
+    const nested = (current[subCategory] || []).filter(i => i !== itemToRemove);
+    const updated = { ...current, [subCategory]: nested };
+    setLocalCategorySubCategories(prev => ({ ...prev, [category]: updated }));
+    onUpdateCategorySubCategories(category, updated);
+    try {
+      await updateDoc(doc(db, 'settings', 'taxonomy'), {
+        [`categorySubCategories.${category}.${subCategory}`]: nested,
+        [`subCategoryImages.${itemToRemove}`]: deleteField(),
+        updatedAt: new Date().toISOString()
+      }).catch(() => {});
+    } catch {
+      // handled via onUpdateCategorySubCategories
+    }
+  };
+
+  // Filtered Lists
+  const filteredVendors = useMemo(() => {
+    return vendors.filter(v => {
+      const matchesText =
+        !vendorSearch.trim() ||
+        v.name.toLowerCase().includes(vendorSearch.toLowerCase()) ||
+        v.category.toLowerCase().includes(vendorSearch.toLowerCase()) ||
+        (v.location || '').toLowerCase().includes(vendorSearch.toLowerCase()) ||
+        (v.contactEmail || '').toLowerCase().includes(vendorSearch.toLowerCase());
+      const matchesCat = vendorCategoryFilter === 'ALL' || v.category === vendorCategoryFilter;
+      const matchesVer =
+        vendorVerifyFilter === 'all' ||
+        (vendorVerifyFilter === 'verified' && v.isVerified) ||
+        (vendorVerifyFilter === 'unverified' && !v.isVerified);
+      return matchesText && matchesCat && matchesVer;
+    });
+  }, [vendors, vendorSearch, vendorCategoryFilter, vendorVerifyFilter]);
+
+  const filteredBookings = useMemo(() => {
+    return bookings
+      .filter(b => {
+        const vendor = vendors.find(v => v.id === b.vendorId);
+        const vendorName = vendor?.name || '';
+        const matchesText =
+          !bookingSearch.trim() ||
+          (b.clientName || '').toLowerCase().includes(bookingSearch.toLowerCase()) ||
+          (b.eventName || '').toLowerCase().includes(bookingSearch.toLowerCase()) ||
+          vendorName.toLowerCase().includes(bookingSearch.toLowerCase()) ||
+          (b.date || '').includes(bookingSearch);
+        const matchesStatus =
+          bookingStatusFilter === 'all' ||
+          (bookingStatusFilter === 'paid' ? b.paymentStatus === 'paid' : b.status === bookingStatusFilter);
+        return matchesText && matchesStatus;
+      })
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  }, [bookings, vendors, bookingSearch, bookingStatusFilter]);
+
+  const filteredUsers = useMemo(() => {
+    return users.filter(u => {
+      const role = ((u as any).role || 'client').toLowerCase();
+      const email = ((u as any).email || u.username || '').toLowerCase();
+      const name = (u.name || '').toLowerCase();
+      const matchesText =
+        !userSearch.trim() ||
+        name.includes(userSearch.toLowerCase()) ||
+        email.includes(userSearch.toLowerCase()) ||
+        u.id.toLowerCase().includes(userSearch.toLowerCase());
+      const matchesRole = userRoleFilter === 'all' || role === userRoleFilter;
+      return matchesText && matchesRole;
+    });
+  }, [users, userSearch, userRoleFilter]);
+
+  const inputClass = 'w-full px-3.5 py-2.5 bg-black/80 border border-white/10 rounded-xl focus:border-[#D4AF37] outline-none font-medium text-xs text-white transition-all placeholder-zinc-500';
+  const labelClass = 'block text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1.5';
+
+  const navItems: Array<{ id: AdminTab; label: string; badge?: number }> = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'vendors', label: 'Vendors' },
+    { id: 'bookings', label: 'Bookings' },
+    { id: 'categories', label: 'Taxonomy' },
+    { id: 'visuals', label: 'Visuals' },
+    { id: 'messages', label: 'Messages', badge: processedSupportThreads.unreadCount > 0 ? processedSupportThreads.unreadCount : undefined },
+    { id: 'users', label: 'Users' }
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-zinc-100 overflow-x-hidden pb-28">
+      {/* Sleek Compact Luxury Top Bar */}
+      <header className="sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-xl border-b border-white/[0.06]">
+        <div className="max-w-5xl mx-auto px-3 sm:px-5 pt-10 sm:pt-11 pb-2.5 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#D4AF37] to-[#AA820A] text-black flex items-center justify-center shadow-[0_0_15px_rgba(212,175,55,0.3)] shrink-0">
+                <ShieldCheck className="w-4 h-4" />
               </div>
-
-              {typeof uploadProgresses['hero'] === 'number' && (
-                <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20">
-                  <div className="w-12 h-12 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_20px_rgba(212,175,55,0.4)]" />
-                  <div className="text-[#D4AF37] font-bold text-xs mt-3 tracking-widest">{Math.round(uploadProgresses['hero'])}%</div>
-                  <span className="text-zinc-400 text-[10px] mt-1 uppercase tracking-widest">Uploading to Cloud Storage...</span>
-                </div>
-              )}
-            </div>
-
-            {/* Drag & Drop Upload Zone */}
-            <div
-              onDragOver={(e) => { e.preventDefault(); setIsHeroDragging(true); }}
-              onDragLeave={() => setIsHeroDragging(false)}
-              onDrop={async (e) => {
-                e.preventDefault();
-                setIsHeroDragging(false);
-                const file = e.dataTransfer.files?.[0];
-                if (file) await handleProcessHeroFile(file);
-              }}
-              onClick={() => heroImageInputRef.current?.click()}
-              className={`mt-6 p-6 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-2 ${
-                isHeroDragging
-                  ? 'border-[#D4AF37] bg-[#D4AF37]/10'
-                  : 'border-white/10 hover:border-[#D4AF37]/50 bg-black/40 hover:bg-black/60'
-              }`}
-            >
-              <Upload className="w-6 h-6 text-[#D4AF37]" />
-              <p className="text-xs font-bold text-white">
-                Drag and drop a new hero background here, or <span className="text-[#D4AF37] underline">browse files</span>
-              </p>
-              <p className="text-[10px] text-zinc-400">
-                Supports high-resolution PNG, JPG, WebP, or MP4 video (recommended 1920x1080 or wider)
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Previously Uploaded Hero Images Gallery Section */}
-        <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl p-6 md:p-8 space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-5">
-            <div>
-              <div className="flex items-center gap-2">
-                <ImageIcon className="w-5 h-5 text-[#D4AF37]" />
-                <h3 className="text-lg font-bold font-[Cinzel] text-white">Previously Uploaded Hero Images</h3>
-                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
-                  {allDisplayHeroImages.length} Visuals
-                </span>
+              <div className="min-w-0">
+                <h1 className="text-sm sm:text-base font-bold font-[Cinzel] text-white tracking-wider truncate">
+                  Executive Control
+                </h1>
+                <p className="text-[8px] text-[#D4AF37]/80 uppercase tracking-[0.25em] font-black">
+                  Simcha Master Suite
+                </p>
               </div>
-              <p className="text-xs text-zinc-400 mt-1">
-                Select any image below to immediately set it as the active background for the hero section.
-              </p>
             </div>
 
-            {/* Filter Chips */}
-            <div className="flex items-center gap-1.5 bg-black/60 p-1 rounded-xl border border-white/5 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
-                onClick={() => setHeroFilterTab('all')}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                  heroFilterTab === 'all' ? 'bg-[#D4AF37] text-black font-black' : 'text-zinc-400 hover:text-white'
-                }`}
+                onClick={handleOpenNewVendorModal}
+                className="h-7 px-3 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black text-[9px] font-black uppercase tracking-widest flex items-center gap-1 transition-all cursor-pointer"
               >
-                All ({allDisplayHeroImages.length})
+                <Plus className="w-3 h-3" />
+                <span className="hidden xs:inline">Vendor</span>
               </button>
               <button
                 type="button"
-                onClick={() => setHeroFilterTab('uploaded')}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                  heroFilterTab === 'uploaded' ? 'bg-[#D4AF37] text-black font-black' : 'text-zinc-400 hover:text-white'
-                }`}
+                onClick={onBack}
+                className="h-7 px-3 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-zinc-300 hover:text-white text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all cursor-pointer"
               >
-                Uploaded ({uploadedCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setHeroFilterTab('curated')}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                  heroFilterTab === 'curated' ? 'bg-[#D4AF37] text-black font-black' : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                Curated ({curatedCount})
+                <ArrowLeft className="w-3 h-3 text-[#D4AF37]" />
+                <span>Marketplace</span>
               </button>
             </div>
           </div>
 
-          {/* Search Bar */}
-          <div className="bg-black/50 p-3 rounded-xl border border-white/5 flex items-center gap-3">
-            <Search className="w-4 h-4 text-zinc-400 shrink-0" />
-            <input
-              type="text"
-              placeholder="Filter previously uploaded hero images by title or keyword..."
-              value={heroSearchTerm}
-              onChange={(e) => setHeroSearchTerm(e.target.value)}
-              className="bg-transparent border-none outline-none text-xs w-full text-white placeholder:text-zinc-500"
-            />
-            {heroSearchTerm && (
-              <button
-                type="button"
-                onClick={() => setHeroSearchTerm('')}
-                className="text-zinc-500 hover:text-white p-1 cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Gallery Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredHeroImages.map((heroItem: HeroImage) => {
-              const isActive = heroItem.url === heroBackgroundUrl;
-              const isActivating = isActivatingHeroUrl === heroItem.url;
-              const isEditing = editingHeroId === heroItem.id;
-
+          {/* Compact Segmented Pill Bar — Fits Cleanly Without Wasted Space */}
+          <nav aria-label="Admin Navigation" className="grid grid-cols-4 sm:grid-cols-7 gap-1 bg-[#111] p-1 rounded-2xl border border-white/[0.06]">
+            {navItems.map(item => {
+              const isActive = activeTab === item.id;
               return (
-                <div
-                  key={heroItem.id || heroItem.url}
-                  className={`group bg-black/60 rounded-xl overflow-hidden border transition-all duration-300 flex flex-col relative ${
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveTab(item.id)}
+                  className={`relative h-7 px-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
                     isActive
-                      ? 'border-[#D4AF37] ring-2 ring-[#D4AF37]/50 shadow-[0_0_25px_rgba(212,175,55,0.25)]'
-                      : 'border-white/10 hover:border-[#D4AF37]/50 hover:shadow-xl'
+                      ? 'bg-[#D4AF37] text-black shadow-[0_2px_10px_rgba(212,175,55,0.3)]'
+                      : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
                   }`}
                 >
-                  {/* Visual Preview Container */}
-                  <div
-                    className="relative aspect-[16/9] w-full bg-zinc-950 overflow-hidden cursor-pointer"
-                    onClick={() => !isActive && handleSelectActiveHero(heroItem.url, heroItem.name)}
-                  >
-                    {renderMedia(heroItem.url, "w-full h-full object-cover transition-transform duration-700 group-hover:scale-105")}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-80" />
-
-                    {/* Active Ribbon Badge */}
-                    {isActive ? (
-                      <div className="absolute top-3 left-3 flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-[#FFE885] via-[#D4AF37] to-[#A37B0D] text-black font-black text-[9px] uppercase tracking-widest shadow-lg">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                        <span>Active Background</span>
-                      </div>
-                    ) : (
-                      <div className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-zinc-400 text-[8px] font-mono uppercase tracking-wider">
-                        {heroItem.isDefault ? 'Curated' : 'Uploaded'}
-                      </div>
-                    )}
-
-                    {/* Hover Quick Action to Activate */}
-                    {!isActive && (
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleSelectActiveHero(heroItem.url, heroItem.name); }}
-                          disabled={isActivating}
-                          className="px-4 py-2 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 shadow-xl transform scale-95 group-hover:scale-100 transition-transform cursor-pointer"
-                        >
-                          {isActivating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                          <span>Set as Active</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Quick Expand Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setPreviewHeroModal(heroItem); }}
-                      className="absolute top-3 right-3 p-1.5 rounded-full bg-black/70 hover:bg-[#D4AF37] hover:text-black text-white border border-white/10 transition-colors cursor-pointer"
-                      title="Preview Simulated Landing Hero"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  {/* Card Info & Actions Footer */}
-                  <div className="p-4 flex-1 flex flex-col justify-between gap-3">
-                    <div>
-                      {isEditing ? (
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            value={editingHeroName}
-                            onChange={(e) => setEditingHeroName(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSaveRenameHero(heroItem)}
-                            autoFocus
-                            className="bg-black border border-[#D4AF37] text-white text-xs px-2.5 py-1 rounded w-full outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleSaveRenameHero(heroItem)}
-                            className="p-1 text-[#D4AF37] hover:text-white cursor-pointer"
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-2">
-                          <h4 className="font-bold text-white text-xs font-[Cinzel] truncate" title={heroItem.name}>
-                            {heroItem.name || 'Untitled Hero Visual'}
-                          </h4>
-                          <button
-                            type="button"
-                            onClick={() => handleStartRenameHero(heroItem)}
-                            className="text-zinc-500 hover:text-[#D4AF37] p-1 cursor-pointer"
-                            title="Rename visual"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between mt-1.5 text-[9px] text-zinc-400 font-mono">
-                        <span>{heroItem.uploadedAt ? new Date(heroItem.uploadedAt).toLocaleDateString() : 'Platform Preset'}</span>
-                        {heroItem.fileSize && (
-                          <span>{(heroItem.fileSize / (1024 * 1024)).toFixed(1)} MB</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Action Bar */}
-                    <div className="pt-2 border-t border-white/5 flex items-center justify-between gap-2">
-                      {isActive ? (
-                        <div className="flex-1 py-1.5 px-3 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] font-black text-[9px] uppercase tracking-widest text-center flex items-center justify-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Active Background</span>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleSelectActiveHero(heroItem.url, heroItem.name)}
-                          disabled={isActivating}
-                          className="flex-1 py-1.5 px-3 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-[9px] uppercase tracking-widest transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
-                        >
-                          {isActivating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                          <span>Set as Active</span>
-                        </button>
-                      )}
-
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(heroItem.url);
-                            showNotification("Image URL copied to clipboard!", "info");
-                          }}
-                          className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/5 rounded-full transition-colors cursor-pointer"
-                          title="Copy Image URL"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteHeroImage(heroItem)}
-                          disabled={isActive}
-                          className={`p-1.5 rounded-full transition-colors ${
-                            isActive
-                              ? 'text-zinc-700 cursor-not-allowed opacity-40'
-                              : 'text-zinc-400 hover:text-red-400 hover:bg-red-500/10 cursor-pointer'
-                          }`}
-                          title={isActive ? "Active background cannot be removed" : "Remove from library"}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  <span className="truncate">{item.label}</span>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[8px] font-black leading-tight ${
+                      isActive ? 'bg-black text-[#D4AF37]' : 'bg-[#D4AF37] text-black'
+                    }`}>
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
               );
             })}
+          </nav>
+        </div>
+      </header>
 
-            {filteredHeroImages.length === 0 && (
-              <div className="col-span-full py-16 text-center border-2 border-dashed border-white/5 rounded-2xl">
-                <ImageIcon className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
-                <h4 className="text-sm font-bold text-white font-[Cinzel]">No Hero Images Found</h4>
-                <p className="text-xs text-zinc-400 mt-1 max-w-sm mx-auto">
-                  {heroSearchTerm
-                    ? `No images match "${heroSearchTerm}". Try another search term.`
-                    : "No hero images in this category yet. Upload a high-resolution background to get started."}
+      {/* Main Content Container — Constrained Width, Zero Horizontal Overflow */}
+      <main className="max-w-5xl mx-auto px-3 sm:px-5 pt-4 space-y-4">
+        {/* ==================== TAB 1: OVERVIEW ==================== */}
+        {activeTab === 'overview' && (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            {/* Compact 2x2 / 4-col Executive Metric Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="bg-[#111] p-3.5 rounded-2xl border border-[#D4AF37]/20 flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Paid Volume</span>
+                  <BarChart3 className="w-3.5 h-3.5 text-[#D4AF37]/60" />
+                </div>
+                <p className="text-lg sm:text-xl font-bold text-white font-mono mt-1.5">
+                  ${totalPaidVolume.toLocaleString()}
                 </p>
-                {heroSearchTerm && (
+              </div>
+
+              <div className="bg-gradient-to-br from-[#171307] to-[#111] p-3.5 rounded-2xl border border-[#D4AF37]/35 flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[8px] font-black uppercase tracking-widest text-[#D4AF37]">Commission</span>
+                  <Wallet className="w-3.5 h-3.5 text-[#D4AF37]" />
+                </div>
+                <p className="text-lg sm:text-xl font-bold text-[#D4AF37] font-mono mt-1.5">
+                  ${totalCommission.toLocaleString()}
+                </p>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('vendors')}
+                className="bg-[#111] hover:bg-[#161616] p-3.5 rounded-2xl border border-white/[0.07] hover:border-[#D4AF37]/40 transition-all cursor-pointer flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Professionals</span>
+                  <span className="text-[8px] font-bold text-[#D4AF37] uppercase tracking-wider">Tap to view</span>
+                </div>
+                <p className="text-lg sm:text-xl font-bold text-white font-mono mt-1.5">
+                  {vendors.length}
+                </p>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('bookings')}
+                className="bg-[#111] hover:bg-[#161616] p-3.5 rounded-2xl border border-white/[0.07] hover:border-[#D4AF37]/40 transition-all cursor-pointer flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Bookings</span>
+                  <span className="text-[8px] font-bold text-[#D4AF37] uppercase tracking-wider">Tap to view</span>
+                </div>
+                <p className="text-lg sm:text-xl font-bold text-white font-mono mt-1.5">
+                  {bookings.length}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Access Control Rows ("Tap to view") */}
+            <div className="bg-[#111] rounded-2xl border border-white/[0.07] divide-y divide-white/[0.05] overflow-hidden">
+              <div className="px-4 py-2.5 bg-black/40 flex items-center justify-between">
+                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#D4AF37]">
+                  Platform Control Modules
+                </span>
+                <span className="text-[8px] text-zinc-500 uppercase tracking-widest font-bold">
+                  Full App Authority
+                </span>
+              </div>
+
+              {[
+                {
+                  id: 'vendors' as AdminTab,
+                  title: 'Vendor Profiles, Pricing & Stripe',
+                  subtitle: 'Edit businesses, down payments, commission %, verification & Stripe payouts',
+                  icon: ShoppingBag
+                },
+                {
+                  id: 'bookings' as AdminTab,
+                  title: 'Bookings & Payment Ledger',
+                  subtitle: 'Confirm reservations, adjust amounts, toggle paid status & inspect events',
+                  icon: Calendar
+                },
+                {
+                  id: 'categories' as AdminTab,
+                  title: 'Marketplace Categories & Subcategories',
+                  subtitle: 'Reorder categories, upload vertical banners & manage nested classifications',
+                  icon: ListTree
+                },
+                {
+                  id: 'visuals' as AdminTab,
+                  title: 'Landing Hero & Community Moments',
+                  subtitle: 'Switch active hero background, upload custom visuals & publish highlights',
+                  icon: Camera
+                },
+                {
+                  id: 'messages' as AdminTab,
+                  title: 'Concierge Support Inbox',
+                  subtitle: 'Direct client & vendor support threads with voice, photo & instant replies',
+                  icon: MessageSquare,
+                  badge: processedSupportThreads.unreadCount
+                },
+                {
+                  id: 'users' as AdminTab,
+                  title: 'User Accounts & Role Permissions',
+                  subtitle: 'Elevate users to Vendor or Admin, pre-authorize emails & scrub orphaned data',
+                  icon: UserCheck
+                }
+              ].map(row => {
+                const Icon = row.icon;
+                return (
+                  <button
+                    key={row.id}
+                    type="button"
+                    onClick={() => setActiveTab(row.id)}
+                    className="w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-white/[0.03] active:bg-white/[0.05] transition-colors text-left cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-black border border-[#D4AF37]/25 flex items-center justify-center text-[#D4AF37] shrink-0 group-hover:border-[#D4AF37] transition-colors">
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-white group-hover:text-[#D4AF37] transition-colors truncate">
+                            {row.title}
+                          </p>
+                          {row.badge !== undefined && row.badge > 0 && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-[#D4AF37] text-black text-[8px] font-black uppercase">
+                              {row.badge} New
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-zinc-400 truncate mt-0.5">
+                          {row.subtitle}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-[9px] font-bold text-[#D4AF37]/80 group-hover:text-[#D4AF37] uppercase tracking-wider">
+                        Tap to view
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-[#D4AF37] group-hover:translate-x-0.5 transition-all" />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Global Search Calendar Quota & System Maintenance Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Search Date Quota Settings */}
+              <div className="bg-[#111] p-4 rounded-2xl border border-white/[0.07] space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-[#D4AF37]" />
+                    <h3 className="text-xs font-bold font-[Cinzel] text-white">Client Date Search Limits</h3>
+                  </div>
+                  <span className="text-[8px] text-[#D4AF37] font-black uppercase tracking-widest bg-[#D4AF37]/10 px-2 py-0.5 rounded-full border border-[#D4AF37]/20">
+                    Anti-Scraping
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className={labelClass}>Max Dates / Window</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={localMaxSearchDates}
+                      onChange={e => setLocalMaxSearchDates(Math.max(1, Number(e.target.value) || 1))}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Reset Window (Hours)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={720}
+                      value={localSearchDateResetHours}
+                      onChange={e => setLocalSearchDateResetHours(Math.max(1, Number(e.target.value) || 1))}
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
                   <button
                     type="button"
-                    onClick={() => setHeroSearchTerm('')}
-                    className="mt-3 text-xs text-[#D4AF37] hover:underline cursor-pointer"
+                    onClick={async () => {
+                      if (onUpdateSearchCalendarSettings) {
+                        await onUpdateSearchCalendarSettings({
+                          maxSearchDates: localMaxSearchDates,
+                          searchDateResetHours: localSearchDateResetHours,
+                          resetAllNow: false
+                        });
+                      } else {
+                        await setDoc(doc(db, 'settings', 'searchCalendar'), {
+                          maxSearchDates: localMaxSearchDates,
+                          searchDateResetHours: localSearchDateResetHours,
+                          updatedAt: new Date().toISOString()
+                        }, { merge: true });
+                        showNotification('Search calendar limits saved.', 'success');
+                      }
+                    }}
+                    className="flex-1 h-8 rounded-full bg-[#D4AF37] text-black font-black text-[9px] uppercase tracking-widest hover:bg-[#E5C76B] transition-all cursor-pointer"
                   >
-                    Clear Search
+                    Save Limits
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (onUpdateSearchCalendarSettings) {
+                        await onUpdateSearchCalendarSettings({
+                          maxSearchDates: localMaxSearchDates,
+                          searchDateResetHours: localSearchDateResetHours,
+                          resetAllNow: true
+                        });
+                      } else {
+                        await setDoc(doc(db, 'settings', 'searchCalendar'), {
+                          maxSearchDates: localMaxSearchDates,
+                          searchDateResetHours: localSearchDateResetHours,
+                          globalResetTimestamp: Date.now(),
+                          updatedAt: new Date().toISOString()
+                        }, { merge: true });
+                        showNotification('Reset all client date search quotas.', 'success');
+                      }
+                    }}
+                    className="h-8 px-3 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-zinc-200 font-black text-[9px] uppercase tracking-widest flex items-center gap-1 transition-all cursor-pointer"
+                    title="Immediately reset every client's used date search count"
+                  >
+                    <RefreshCw className="w-3 h-3 text-[#D4AF37]" />
+                    <span>Reset Quotas</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Database Integrity & Orphaned Data Scrub */}
+              <div className="bg-[#111] p-4 rounded-2xl border border-white/[0.07] flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-[#D4AF37]" />
+                      <h3 className="text-xs font-bold font-[Cinzel] text-white">Database Integrity</h3>
+                    </div>
+                    <span className="text-[8px] text-emerald-400 font-black uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                      Firestore Sync
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-zinc-400 mt-1.5 leading-relaxed">
+                    Cross-check Firestore roles, users, and vendor profiles against active Firebase Auth accounts and remove orphaned records.
+                  </p>
+                  {cleanupResult && (
+                    <div className="mt-2 p-2 bg-black/60 rounded-xl border border-emerald-500/30 text-[9px] text-emerald-400 grid grid-cols-3 gap-1 font-mono">
+                      <span>Roles: -{cleanupResult.deletedUserRolesCount}</span>
+                      <span>Users: -{cleanupResult.deletedUsersCount}</span>
+                      <span>Vendors: -{cleanupResult.deletedVendorsCount}</span>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRunOrphanedCleanup}
+                  disabled={isRunningCleanup}
+                  className="w-full h-8 rounded-full bg-white/[0.06] hover:bg-red-500/20 border border-white/10 hover:border-red-500/40 text-zinc-200 hover:text-red-300 font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isRunningCleanup ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Scanning Firestore...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3 h-3 text-red-400" />
+                      <span>Scrub Orphaned Records</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Compact Conversion Pulse & 14-Day Activity Chart */}
+            <div className="bg-[#111] p-4 rounded-2xl border border-white/[0.07] space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold font-[Cinzel] text-white">Marketplace Funnel & Activity</h3>
+                  <p className="text-[10px] text-zinc-400">Real-time client discovery to booking conversion</p>
+                </div>
+                {isLoadingAnalytics && <Loader2 className="w-3.5 h-3.5 text-[#D4AF37] animate-spin" />}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="bg-black/50 p-2.5 rounded-xl border border-white/5">
+                  <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">1. Profile Views</span>
+                  <p className="text-base font-bold text-white font-mono mt-0.5">{analyticsStats.view_vendor}</p>
+                </div>
+                <div className="bg-black/50 p-2.5 rounded-xl border border-white/5">
+                  <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">2. Added to Plan</span>
+                  <p className="text-base font-bold text-[#D4AF37] font-mono mt-0.5">
+                    {analyticsStats.add_to_plan} <span className="text-[9px] text-zinc-500">({analyticsStats.planRate.toFixed(0)}%)</span>
+                  </p>
+                </div>
+                <div className="bg-black/50 p-2.5 rounded-xl border border-white/5">
+                  <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">3. Inquiries</span>
+                  <p className="text-base font-bold text-white font-mono mt-0.5">{analyticsStats.submit_booking_request}</p>
+                </div>
+                <div className="bg-black/50 p-2.5 rounded-xl border border-white/5">
+                  <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">4. Paid Orders</span>
+                  <p className="text-base font-bold text-emerald-400 font-mono mt-0.5">{analyticsStats.payment_completed}</p>
+                </div>
+              </div>
+
+              <div className="h-36 w-full pt-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={bookingChartData} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1f1f22" vertical={false} />
+                    <XAxis dataKey="date" stroke="#71717a" fontSize={9} axisLine={false} tickLine={false} />
+                    <YAxis stroke="#71717a" fontSize={9} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#111', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '12px', fontSize: '10px' }}
+                      itemStyle={{ color: '#D4AF37' }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="requests"
+                      name="Inquiries"
+                      stroke="#D4AF37"
+                      strokeWidth={2}
+                      dot={{ r: 2.5, fill: '#D4AF37', strokeWidth: 0 }}
+                      activeDot={{ r: 4, fill: '#E5C76B' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== TAB 2: VENDOR DIRECTORY & CONTROL ==================== */}
+        {activeTab === 'vendors' && (
+          <div className="space-y-3 animate-in fade-in duration-300">
+            {/* Compact Filter & Action Bar */}
+            <div className="bg-[#111] p-3 rounded-2xl border border-white/[0.07] flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
+                <input
+                  type="text"
+                  placeholder="Search vendors by name, category, city, or email..."
+                  value={vendorSearch}
+                  onChange={e => setVendorSearch(e.target.value)}
+                  className="w-full bg-black/60 border border-white/10 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#D4AF37]"
+                />
+                {vendorSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setVendorSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+                  >
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Search Calendar Settings Card */}
-        <div className="bg-[#111] rounded-2xl border border-white/5 p-6 shadow-xl">
-          <div className="flex items-center gap-2 mb-2">
-            <Calendar className="w-4 h-4 text-[#D4AF37]" />
-            <h3 className="text-sm font-bold font-[Cinzel] text-white">Search Date Availability Controls</h3>
-          </div>
-          <p className="text-xs text-zinc-400 mb-4">
-            Configure how many dates clients may search and how often their quota resets.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>Max Search Dates</label>
-              <input
-                type="number"
-                min="1"
-                max="31"
-                value={localMaxSearchDates}
-                onChange={(e) => {
-                  const next = Math.max(1, parseInt(e.target.value, 10) || 1);
-                  setLocalMaxSearchDates(next);
-                  onUpdateSearchCalendarSettings?.({ maxSearchDates: next, searchDateResetHours: localSearchDateResetHours });
-                }}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Search Date Reset Hours</label>
-              <input
-                type="number"
-                min="0"
-                max="720"
-                value={localSearchDateResetHours}
-                onChange={(e) => {
-                  const next = Math.max(0, parseInt(e.target.value, 10) || 0);
-                  setLocalSearchDateResetHours(next);
-                  onUpdateSearchCalendarSettings?.({ maxSearchDates: localMaxSearchDates, searchDateResetHours: next });
-                }}
-                className={inputClass}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={vendorCategoryFilter}
+                  onChange={e => setVendorCategoryFilter(e.target.value)}
+                  className="bg-black/60 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] font-bold text-zinc-200 focus:outline-none focus:border-[#D4AF37] flex-1 sm:flex-initial"
+                >
+                  <option value="ALL">All Categories</option>
+                  {localCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
 
-  if (!isAuthenticated) {
-    return (
-      <main className="min-h-screen bg-black flex items-center justify-center p-4">
-        <div className="bg-[#111] rounded-2xl p-8 max-w-md w-full shadow-2xl border border-[#D4AF37]/20">
-          <div className="text-center mb-8">
-            <div className="bg-black w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-[#D4AF37]/30">
-              <ShieldCheck className="w-8 h-8 text-[#D4AF37]" />
-            </div>
-            <h2 className="text-2xl font-bold font-[Cinzel] text-[#D4AF37]">Admin Access</h2>
-            <p className="text-zinc-400 text-sm">System Restricted Area</p>
-          </div>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className={labelClass}>Access Code</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3.5 w-5 h-5 text-zinc-400" />
-                <input type="password" value={accessCode} onChange={(e) => setAccessCode(e.target.value)} placeholder="Enter code" className={inputClass + " pl-10"} />
+                <select
+                  value={vendorVerifyFilter}
+                  onChange={e => setVendorVerifyFilter(e.target.value as any)}
+                  className="bg-black/60 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] font-bold text-zinc-200 focus:outline-none focus:border-[#D4AF37]"
+                >
+                  <option value="all">All Status</option>
+                  <option value="verified">Verified</option>
+                  <option value="unverified">Unverified</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={handleOpenNewVendorModal}
+                  className="h-8 px-3.5 rounded-xl bg-[#D4AF37] text-black font-black text-[9px] uppercase tracking-widest flex items-center gap-1 shrink-0 hover:bg-[#E5C76B] transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>New</span>
+                </button>
               </div>
-              {error && <p className="text-zinc-400 text-xs mt-2 font-bold">{error}</p>}
             </div>
-            <button type="submit" className="w-full bg-[#D4AF37] text-black font-bold py-3 rounded-full hover:bg-[#E5C76B] transition-all shadow-lg mt-2">Unlock Panel</button>
-            <button type="button" onClick={onBack} className="w-full text-zinc-400 text-xs font-bold py-2 hover:text-[#D4AF37] transition-colors uppercase tracking-widest">Back to Marketplace</button>
-          </form>
-        </div>
-      </main>
-    );
-  }
 
-  return (
-    <div className="min-h-screen bg-black text-zinc-100">
-      <div className="bg-black">
-        <div className="max-w-7xl mx-auto px-4 pt-9 pb-4 sm:pt-10 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3">
-             <div className="bg-[#D4AF37] p-2 rounded-xl text-black shadow-lg"><ShieldCheck className="w-6 h-6" /></div>
-             <div>
-               <h1 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Simcha Admin</h1>
-               <p className="text-[10px] text-zinc-400 uppercase tracking-widest">Platform Management</p>
-             </div>
-          </div>
-          <div className="flex gap-4 sm:gap-6">
-            <button onClick={onBack} className="text-zinc-400 hover:text-[#D4AF37] font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors px-3 py-1.5 rounded-full hover:bg-white/5"><ArrowLeft className="w-4 h-4" /> Back to Marketplace</button>
-            <button onClick={onBack} className="text-zinc-400 hover:text-zinc-200 font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-colors px-3 py-1.5 rounded-full hover:bg-white/5"><LogOut className="w-4 h-4" /> Exit Admin</button>
-          </div>
-        </div>
-      </div>
-
-      <main className="max-w-7xl mx-auto px-4 py-12">
-        {/* Stats Section */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-            <div className="bg-[#111] p-6 rounded-2xl border border-[#D4AF37]/10 shadow-xl">
-                <p className="text-[10px] font-black text-[#D4AF37]/60 uppercase tracking-widest mb-2">Total Volume</p>
-                <div className="flex items-center justify-between">
-                    <h3 className="text-3xl font-bold text-white">${totalPaidVolume.toLocaleString()}</h3>
-                    <BarChart3 className="w-8 h-8 text-[#D4AF37]/20" />
+            {/* Pill-Shaped Vendor Cards — Zero Horizontal Scroll */}
+            <div className="space-y-2">
+              {filteredVendors.length === 0 ? (
+                <div className="bg-[#111] rounded-2xl border border-dashed border-white/10 py-10 px-4 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-400">No Matching Professionals</p>
                 </div>
-            </div>
-            <div className="bg-[#111] p-6 rounded-2xl border border-[#D4AF37]/10 shadow-xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-[#D4AF37]/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110"></div>
-                <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-widest mb-2">Platform Revenue (Dynamic)</p>
-                <div className="flex items-center justify-between">
-                    <h3 className="text-3xl font-bold text-[#D4AF37]">${totalCommission.toLocaleString()}</h3>
-                    <Wallet className="w-8 h-8 text-[#D4AF37]/40" />
-                </div>
-            </div>
-            <div className="bg-[#111] p-6 rounded-2xl border border-[#D4AF37]/10 shadow-xl">
-                <p className="text-[10px] font-black text-[#D4AF37]/60 uppercase tracking-widest mb-2">Active Professionals</p>
-                <div className="flex items-center justify-between">
-                    <h3 className="text-3xl font-bold text-white">{vendors.length}</h3>
-                    <User className="w-8 h-8 text-[#D4AF37]/20" />
-                </div>
-            </div>
-            <div className="bg-[#111] p-6 rounded-2xl border border-emerald-500/20 shadow-xl relative">
-                <div className="flex items-center justify-between mb-2">
-                    <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Registered Vendor Roles</p>
-                    <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                        <ShieldCheck className="w-2.5 h-2.5" /> Whitelisted
-                    </span>
-                </div>
-                <div className="flex items-center justify-between">
-                    <h3 className="text-3xl font-bold text-emerald-400">{vendorUserRoles.length}</h3>
-                    <UserCheck className="w-8 h-8 text-emerald-500/30" />
-                </div>
-            </div>
-        </div>
-
-        {/* Tab Navigation */}
-        <nav aria-label="Admin Navigation" className="flex justify-start md:justify-center mb-10 overflow-x-auto pb-3 scrollbar-none">
-            <div className="bg-[#111] p-1.5 rounded-xl border border-white/5 flex shrink-0 gap-1">
-                {['manage', 'invite', 'users', 'moderation', 'bookings', 'messages', 'stripe', 'posts', 'hero', 'categories', 'analytics', 'add'].map(tab => {
-                    const pendingVendorsCount = vendors.filter(v => !v.isVerified && !removedModerationIds.includes(v.id)).length;
-                    const pendingUsersCount = users.filter(u => !(u as any).isApproved && !removedModerationIds.includes(u.id)).length;
-                    const totalPendingCount = pendingVendorsCount + pendingUsersCount;
-
-                    const getTabLabel = (t: string) => {
-                        if (t === 'add') return editingVendor ? 'Edit Professional' : 'Add New';
-                        if (t === 'manage') return 'Professionals';
-                        if (t === 'invite') return 'Invite Vendor';
-                        if (t === 'users') return 'User Directory';
-                        if (t === 'moderation') return 'Moderation Queue';
-                        if (t === 'analytics') return 'Funnel Insights';
-                        if (t === 'bookings') return 'Platform Bookings';
-                        if (t === 'messages') return 'Inbox';
-                        if (t === 'stripe') return 'Stripe Hub';
-                        if (t === 'posts') return 'Moments';
-                        if (t === 'hero') return 'Hero Backgrounds';
-                        if (t === 'categories') return 'Taxonomy';
-                        return t;
-                    };
-
-                    const isActive = activeTab === tab;
-                    return (
-                        <button 
-                            key={tab} 
-                            onClick={() => {
-                                setActiveTab(tab as any);
-                                setFilterText(''); // reset search on change
-                                if (tab !== 'add') setEditingVendor(null);
-                            }} 
-                            className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-200 flex items-center gap-2 shrink-0 ${
-                                isActive 
-                                    ? 'bg-[#D4AF37] text-black shadow-lg font-black' 
-                                    : 'text-zinc-400 hover:text-white hover:bg-white/[0.02]'
-                            }`}
-                        >
-                            <span>{getTabLabel(tab)}</span>
-                            {tab === 'invite' && vendorUserRoles.length > 0 && (
-                                <span className={`px-1.5 py-0.5 text-[8px] font-bold rounded-full ${
-                                    isActive ? 'bg-black text-[#D4AF37]' : 'bg-[#D4AF37] text-black'
-                                }`}>
-                                    {vendorUserRoles.length}
-                                </span>
-                            )}
-                            {tab === 'hero' && allDisplayHeroImages.length > 0 && (
-                                <span className={`px-1.5 py-0.5 text-[8px] font-bold rounded-full ${
-                                    isActive ? 'bg-black text-[#D4AF37]' : 'bg-[#D4AF37] text-black'
-                                }`}>
-                                    {allDisplayHeroImages.length}
-                                </span>
-                            )}
-                            {tab === 'moderation' && totalPendingCount > 0 && (
-                                <span className={`px-1.5 py-0.5 text-[8px] font-bold rounded-full ${
-                                    isActive ? 'bg-black text-[#D4AF37]' : 'bg-[#D4AF37] text-black animate-pulse'
-                                }`}>
-                                    {totalPendingCount}
-                                </span>
-                            )}
-                        </button>
-                    );
-                })}
-            </div>
-        </nav>
-
-        {activeTab === 'add' && (
-            <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl max-w-4xl mx-auto animate-in fade-in duration-300">
-                <div className="bg-black p-6 border-b border-[#D4AF37]/20 flex items-center justify-between">
-                    <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">New Professional</h2><p className="text-zinc-400 text-xs">Invite a new service provider to the platform.</p></div>
-                    <Plus className="w-8 h-8 text-[#D4AF37]/20" />
-                </div>
-                <form onSubmit={handleVendorSubmit} className="p-8 space-y-10">
-                    <div className="space-y-6">
-                        <h3 className="text-xs font-black text-[#D4AF37] uppercase tracking-[0.2em] border-b border-[#D4AF37]/10 pb-2 flex items-center gap-2"><User className="w-4 h-4" /> Business Identity</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-6">
-                                <div><label className={labelClass}>Business Name</label><input required type="text" className={inputClass} value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} /></div>
-                                <div><label className={labelClass}>Contact Email</label><input required type="email" className={inputClass} value={formData.contactEmail} onChange={(e) => setFormData({...formData, contactEmail: e.target.value})} placeholder="professional@example.com" /></div>
-                                <div><label className={labelClass}>Primary Category</label><select className={inputClass + " bg-black"} value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}>{categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div>
-                            </div>
-                            <div className="space-y-4">
-                                <label className={labelClass}>Business Profile Image</label>
-                                <div onClick={() => vendorFileInputRef.current?.click()} className="h-44 bg-black border-2 border-dashed border-[#D4AF37]/20 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-[#D4AF37]/50 transition-all overflow-hidden relative">
-                                    {formData.image ? <>{renderMedia(formData.image, "w-full h-full object-cover")}</> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-zinc-400 font-bold uppercase tracking-widest text-[9px]">Select Image</p></div>}
-                                </div>
-                                <input type="file" accept="image/*,video/*" className="hidden" ref={vendorFileInputRef} onChange={handleVendorFileUpload} />
-                            </div>
-                        </div>
-                        <div><label className={labelClass}>Elevator Pitch / Description</label><textarea required rows={4} className={inputClass + " resize-none"} value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} /></div>
-                    </div>
-
-                    <div className="space-y-6">
-                        <h3 className="text-xs font-black text-[#D4AF37] uppercase tracking-[0.2em] border-b border-[#D4AF37]/10 pb-2 flex items-center gap-2"><Tag className="w-4 h-4" /> Detailed Classification</h3>
-                        <div className="grid grid-cols-1 gap-8">
-                            {Object.entries(categorySubCategories[formData.category] || {}).map(([classification, options]) => (
-                                <div key={classification} className="space-y-3 bg-black/30 p-5 rounded-xl border border-white/5">
-                                    <h4 className="text-[10px] font-black text-[#D4AF37]/60 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                        <ChevronRight className="w-3 h-3" /> {classification}
-                                    </h4>
-                                    <div className="flex flex-wrap gap-2">
-                                        {(options as string[]).map(option => (
-                                            <button
-                                                key={option}
-                                                type="button"
-                                                onClick={() => toggleSubCategorySelection(option)}
-                                                className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${
-                                                    formData.subCategories.includes(option)
-                                                        ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
-                                                        : 'bg-black text-zinc-400 border-white/10 hover:border-[#D4AF37]/50'
-                                                }`}
-                                            >
-                                                {option}
-                                            </button>
-                                        ))}
-                                        {(options as string[]).length === 0 && <p className="text-[9px] text-zinc-400 italic">No specific options defined yet.</p>}
-                                    </div>
-                                </div>
-                            ))}
-                            {Object.keys(categorySubCategories[formData.category] || {}).length === 0 && (
-                                <div className="py-6 bg-black/40 rounded-xl border border-dashed border-[#D4AF37]/10 text-center">
-                                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">No detailed classifications defined for {formData.category}</p>
-                                    <button type="button" onClick={() => setActiveTab('categories')} className="text-[9px] text-[#D4AF37] hover:underline mt-2 uppercase tracking-widest">Configure Taxonomy</button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="space-y-6">
-                        <h3 className="text-xs font-black text-[#D4AF37] uppercase tracking-[0.2em] border-b border-[#D4AF37]/10 pb-2 flex items-center gap-2"><DollarSign className="w-4 h-4" /> Financial Terms</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className={labelClass}>Commission Percentage (%)</label>
-                                <div className="relative">
-                                    <Tag className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" />
-                                    <input required type="number" min="0" max="100" className={inputClass + " pl-10"} value={formData.commissionRate} onChange={(e) => setFormData({...formData, commissionRate: e.target.value})} />
-                                </div>
-                                <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-2">The percentage of each sale that goes to the platform.</p>
-                            </div>
-                            <div>
-                                <label className={labelClass}>Down Payment ($) <span className="text-zinc-400 font-normal lowercase">(optional)</span></label>
-                                <div className="relative">
-                                    <DollarSign className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" />
-                                    <input type="number" min="0" placeholder="Optional down payment (vendors set prices via packages)" className={inputClass + " pl-10"} value={formData.priceStart} onChange={(e) => setFormData({...formData, priceStart: e.target.value})} />
-                                </div>
-                                <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-2">Optional deposit required if the vendor requests a down payment.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="space-y-6">
-                        <h3 className="text-xs font-black text-[#D4AF37] uppercase tracking-[0.2em] border-b border-[#D4AF37]/10 pb-2 flex items-center gap-2"><MapPin className="w-4 h-4" /> Logistics</h3>
-                        <div className="grid grid-cols-1 gap-6">
-                            <div>
-                                <label className={labelClass}>Location (City, State / Full Address)</label>
-                                <LocationAutocomplete
-                                    id="admin-vendor-location"
-                                    required
-                                    floating={false}
-                                    placeholder="Type address or city, state..."
-                                    value={formData.location}
-                                    onChange={(val) => setFormData({...formData, location: val})}
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="space-y-6">
-                        <h3 className="text-xs font-black text-[#D4AF37] uppercase tracking-[0.2em] border-b border-[#D4AF37]/10 pb-2 flex items-center gap-2"><Key className="w-4 h-4" /> Credential Configuration</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="relative">
-                                <label className={labelClass}>Portal Username</label>
-                                <div className="relative">
-                                    <User className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" />
-                                    <input required type="text" className={inputClass + " pl-10"} placeholder="e.g. janes_catering" value={formData.username} onChange={(e) => setFormData({...formData, username: e.target.value})} />
-                                </div>
-                            </div>
-                            <div className="relative">
-                                <label className={labelClass}>Portal Password</label>
-                                <div className="relative">
-                                    <Key className="absolute left-3 top-3 w-4 h-4 text-[#D4AF37]/50" />
-                                    <input required type="text" className={inputClass + " pl-10"} placeholder="Temporary password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="pt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <button type="submit" disabled={isUploading || isOnboarding} className="w-full bg-black text-[#D4AF37] border border-[#D4AF37] font-bold py-4 rounded-full hover:bg-[#D4AF37]/10 transition-all shadow-xl font-[Cinzel] text-lg uppercase tracking-widest disabled:opacity-50">
-                            {editingVendor ? 'Update Professional' : 'Save Professional'}
-                        </button>
-                        {!editingVendor && (
-                            <button type="button" onClick={(e) => handleVendorSubmit(e as any, true)} disabled={isUploading || isOnboarding} className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-full hover:bg-[#E5C76B] transition-all shadow-xl font-[Cinzel] text-lg uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50">
-                                {isOnboarding ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
-                                Save & Start Stripe Onboarding
-                            </button>
-                        )}
-                    </div>
-                </form>
-            </div>
-        )}
-
-        {activeTab === 'invite' && (
-            <div className="space-y-10 max-w-4xl mx-auto animate-in fade-in duration-300">
-                {/* Invite Form Card */}
-                <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/20 shadow-2xl p-8">
-                    <div className="flex items-center gap-3 mb-6 border-b border-[#D4AF37]/10 pb-4">
-                        <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                            <Mail className="w-5 h-5 text-[#D4AF37]" />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-bold font-[Cinzel] text-[#D4AF37]">Invite Vendor Account</h2>
-                            <p className="text-xs text-zinc-400">Assign vendor permissions directly to an email address in the user_roles Firestore collection.</p>
-                        </div>
-                    </div>
-
-                    <form onSubmit={handleInviteVendor} className="space-y-6">
-                        <div className="space-y-2">
-                            <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest">
-                                Vendor Email Address
-                            </label>
-                            <div className="relative">
-                                <input 
-                                    type="email"
-                                    required
-                                    value={inviteEmail}
-                                    onChange={(e) => setInviteEmail(e.target.value)}
-                                    placeholder="vendor@example.com"
-                                    className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white placeholder-zinc-400 focus:outline-none focus:border-[#D4AF37] transition-colors"
-                                />
-                            </div>
-                            <p className="text-[11px] text-zinc-400 leading-relaxed">
-                                • If an account with this email already exists, their account role will immediately elevate to <strong className="text-emerald-400 font-bold">vendor</strong>.<br />
-                                • If no account exists yet, a pre-authorized document will be stored in <code className="text-[#D4AF37] bg-black px-1.5 py-0.5 rounded text-[10px]">user_roles</code>. When they register with this email, they will automatically gain vendor access.
-                            </p>
-                        </div>
-
-                        <button 
-                            type="submit" 
-                            disabled={isInvitingVendor}
-                            className="w-full md:w-auto bg-[#D4AF37] text-black font-bold px-8 py-3.5 rounded-full hover:bg-[#E5C76B] transition-all shadow-lg font-[Cinzel] text-sm uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                            {isInvitingVendor ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-                            Assign Vendor Role
-                        </button>
-                    </form>
-                </div>
-
-                {/* Currently Registered & Invited Vendors Visual Indicator Table */}
-                <div className="bg-[#111] rounded-2xl border border-white/10 shadow-xl p-8">
-                    <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
-                        <div>
-                            <h3 className="text-lg font-bold font-[Cinzel] text-white flex items-center gap-2">
-                                <ShieldCheck className="w-5 h-5 text-emerald-400" /> Currently Whitelisted & Registered Vendors
-                            </h3>
-                            <p className="text-xs text-zinc-400 mt-0.5">Live list of all records in the <code className="text-zinc-300">user_roles</code> Firestore collection with vendor permissions.</p>
-                        </div>
-                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                            {vendorUserRoles.length} Authorized
-                        </span>
-                    </div>
-
-                    {vendorUserRoles.length === 0 ? (
-                        <div className="text-center py-12 text-zinc-400 text-sm bg-black/30 rounded-xl border border-dashed border-white/5">
-                            No vendor roles currently stored in user_roles. Use the form above to invite your first vendor.
-                        </div>
-                    ) : (
-                        <TableContainer>
-                            <table className="w-full text-left border-collapse text-xs">
-                                <thead>
-                                    <tr className="border-b border-white/10 bg-black/40 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
-                                        <th className="p-4">Email / ID</th>
-                                        <th className="p-4">Role Status</th>
-                                        <th className="p-4">Date Added</th>
-                                        <th className="p-4 text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5">
-                                    {vendorUserRoles.map(roleItem => {
-                                        const isInviteOnly = roleItem.isInvite || roleItem.id.startsWith('invite_');
-                                        const displayEmail = roleItem.email || roleItem.id;
-                                        const matchedUser = users.find(u => u.id === roleItem.id || ((u as any).email || (u as any).username)?.trim().toLowerCase() === roleItem.email?.trim().toLowerCase());
-
-                                        return (
-                                            <tr key={roleItem.id} className="hover:bg-white/5 transition-colors">
-                                                <td className="p-4">
-                                                    <div className="font-bold text-white flex items-center gap-2">
-                                                        {displayEmail}
-                                                        {matchedUser && (
-                                                            <span className="text-[10px] text-zinc-400 font-normal">
-                                                                ({matchedUser.name})
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-[10px] text-zinc-400 font-mono">ID: {roleItem.id}</div>
-                                                </td>
-                                                <td className="p-4">
-                                                    {isInviteOnly ? (
-                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                                            <Clock className="w-3 h-3" /> Invited (Pending Registration)
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                                                            <ShieldCheck className="w-3 h-3" /> Registered Vendor Account
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="p-4 text-zinc-400 text-[11px]">
-                                                    {roleItem.updatedAt || roleItem.createdAt || roleItem.invitedAt ? (
-                                                        new Date(roleItem.updatedAt || roleItem.createdAt || roleItem.invitedAt).toLocaleDateString()
-                                                    ) : 'Active'}
-                                                </td>
-                                                <td className="p-4 text-right">
-                                                    <button 
-                                                        onClick={() => handleRevokeVendorRole(roleItem.id, displayEmail)}
-                                                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors"
-                                                    >
-                                                        Revoke Role
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </TableContainer>
-                    )}
-                </div>
-
-                {/* Currently Registered Vendors Collection Table */}
-                <div className="bg-[#111] rounded-2xl border border-white/10 shadow-xl p-8">
-                    <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
-                        <div>
-                            <h3 className="text-lg font-bold font-[Cinzel] text-white flex items-center gap-2">
-                                <ShoppingBag className="w-5 h-5 text-[#D4AF37]" /> Marketplace Vendor Profiles ({vendors.length})
-                            </h3>
-                            <p className="text-xs text-zinc-400 mt-0.5">Profiles currently published or saved in the <code className="text-zinc-300">vendors</code> Firestore collection.</p>
-                        </div>
-                        <button 
-                            onClick={() => setActiveTab('manage')}
-                            className="px-4 py-2 rounded-full text-xs font-bold bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37] hover:text-black transition-all"
-                        >
-                            Manage All Profiles →
-                        </button>
-                    </div>
-
-                    {vendors.length === 0 ? (
-                        <div className="text-center py-12 text-zinc-400 text-sm bg-black/30 rounded-xl border border-dashed border-white/5">
-                            No vendor profiles in the 'vendors' collection yet.
-                        </div>
-                    ) : (
-                        <TableContainer>
-                            <table className="w-full text-left border-collapse text-xs">
-                                <thead>
-                                    <tr className="border-b border-white/10 bg-black/40 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
-                                        <th className="p-4">Business Name</th>
-                                        <th className="p-4">Category</th>
-                                        <th className="p-4">Contact Email</th>
-                                        <th className="p-4">Location</th>
-                                        <th className="p-4 text-right">Verification</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5">
-                                    {vendors.slice(0, 10).map(v => (
-                                        <tr key={v.id} className="hover:bg-white/5 transition-colors">
-                                            <td className="p-4 font-bold text-white">
-                                                {v.name}
-                                                <div className="text-[10px] text-zinc-400 font-mono">ID: {v.id}</div>
-                                            </td>
-                                            <td className="p-4">
-                                                <span className="px-2 py-0.5 rounded text-[10px] bg-white/5 border border-white/10 text-zinc-300">
-                                                    {v.category}
-                                                </span>
-                                            </td>
-                                            <td className="p-4 text-zinc-300">{v.contactEmail || 'N/A'}</td>
-                                            <td className="p-4 text-zinc-400">{v.location || 'N/A'}</td>
-                                            <td className="p-4 text-right">
-                                                {v.isVerified ? (
-                                                    <span className="inline-flex items-center gap-1 text-emerald-400 font-bold text-[10px]">
-                                                        <ShieldCheck className="w-3 h-3" /> Verified
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-amber-400 text-[10px] font-bold">Unverified</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </TableContainer>
-                    )}
-                </div>
-            </div>
-        )}
-
-        {activeTab === 'manage' && (
-            <div className="space-y-4 animate-in fade-in duration-300">
-                <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
-                    <Search className="w-5 h-5 text-zinc-400" />
-                    <input 
-                        type="text" 
-                        placeholder="Filter professionals by name, category, or location..." 
-                        value={filterText}
-                        onChange={(e) => setFilterText(e.target.value)}
-                        className="bg-transparent border-none outline-none text-sm w-full text-white" 
-                    />
-                </div>
-                <TableContainer>
-                    <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                            <tr className="border-b border-white/10 bg-black/40 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Professional</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Classification</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Location</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Down Payment</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Contact Email</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Stripe Status</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                            {vendors
-                                .filter(v => 
-                                    v.name.toLowerCase().includes(filterText.toLowerCase()) || 
-                                    v.category.toLowerCase().includes(filterText.toLowerCase()) || 
-                                    v.location.toLowerCase().includes(filterText.toLowerCase())
-                                )
-                                .map(v => (
-                                    <tr key={v.id} className="hover:bg-white/[0.02] active:bg-white/[0.03] transition-colors duration-150">
-                                        <td className="p-4 font-bold text-zinc-100">
-                                            <div className="flex items-center gap-3">
-                                                <img src={v.image} className="w-10 h-10 rounded-lg object-cover bg-black border border-white/10 shrink-0" />
-                                                <div>
-                                                    <div className="font-bold text-white text-sm flex items-center gap-1.5">
-                                                        {v.name}
-                                                        {v.isVerified && <ShieldCheck className="w-3.5 h-3.5 text-[#D4AF37] fill-[#D4AF37]/10" />}
-                                                    </div>
-                                                    <span className="text-[9px] text-zinc-400 uppercase tracking-widest">{v.category}</span>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="p-4">
-                                            <div className="flex flex-wrap gap-1 max-w-[200px]">
-                                                {v.subCategories?.slice(0, 3).map(s => (
-                                                    <span key={s} className="bg-white/5 px-2 py-0.5 rounded text-[8px] font-black uppercase text-zinc-400 tracking-widest">{s}</span>
-                                                ))}
-                                                {(v.subCategories?.length || 0) > 3 && <span className="text-[8px] text-zinc-400 font-bold">+{v.subCategories!.length - 3}</span>}
-                                                {(!v.subCategories || v.subCategories.length === 0) && <span className="text-zinc-400 italic">None</span>}
-                                            </div>
-                                        </td>
-                                        <td className="p-4 text-zinc-400 font-medium">
-                                            {v.location}
-                                        </td>
-                                        <td className="p-4 text-[#D4AF37] font-bold font-mono">
-                                            {(v.downPayment ?? v.priceStart) > 0 ? `$${(v.downPayment ?? v.priceStart).toLocaleString()}` : <span className="text-zinc-500 font-sans text-[10px] uppercase tracking-wider">Optional / Package</span>}
-                                        </td>
-                                        <td className="p-4 text-zinc-400 font-mono text-[11px]">
-                                            {v.contactEmail || 'N/A'}
-                                        </td>
-                                        <td className="p-4">
-                                            {v.stripeAccountId ? (
-                                                <span className="inline-flex items-center gap-1.5 bg-[#D4AF37]/15 border border-[#D4AF37]/20 px-2 py-1 rounded text-[8px] font-black text-[#D4AF37] uppercase tracking-widest" title={`Stripe Account ID: ${v.stripeAccountId}`}>
-                                                    <CheckSquare className="w-3 h-3" /> Stripe Active
-                                                </span>
-                                            ) : (
-                                                <button onClick={() => handleStripeOnboard(v.id, v.contactEmail || '')} className="inline-flex items-center gap-1.5 bg-zinc-400/10 border border-zinc-400/20 hover:bg-zinc-700/25 px-2.5 py-1 rounded-full text-[8px] font-black text-zinc-400 uppercase tracking-widest transition-all cursor-pointer" title="Initiate Connection">
-                                                    <CreditCard className="w-3 h-3" /> Connect Stripe
-                                                </button>
-                                            )}
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            <div className="flex items-center justify-end gap-1">
-                                                <button onClick={() => onLoginAsVendor(v.id)} title="Login to Portal" className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 rounded-full transition-all"><LogIn className="w-4 h-4" /></button>
-                                                <button onClick={() => handleEditVendor(v)} title="Edit Professional" className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 rounded-full transition-all"><Edit2 className="w-4 h-4" /></button>
-                                                <button onClick={() => onToggleVerify(v.id)} title="Toggle Verification" className={`p-2 rounded-full transition-all ${v.isVerified ? 'text-[#D4AF37] hover:bg-[#D4AF37]/10' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}><ShieldCheck className="w-4 h-4" /></button>
-                                                <button onClick={() => handleDeleteVendor(v.id, v.name)} title="Remove Professional" className="p-2 text-zinc-400 hover:text-zinc-400 hover:bg-zinc-400/10 rounded-full transition-all"><Trash2 className="w-4 h-4" /></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            {vendors.filter(v => 
-                                v.name.toLowerCase().includes(filterText.toLowerCase()) || 
-                                v.category.toLowerCase().includes(filterText.toLowerCase()) || 
-                                v.location.toLowerCase().includes(filterText.toLowerCase())
-                            ).length === 0 && (
-                                <tr>
-                                    <td colSpan={7} className="p-8 text-center text-zinc-400 uppercase tracking-widest text-[10px]">No professionals found</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </TableContainer>
-            </div>
-        )}
-
-        {activeTab === 'posts' && (
-            <div className="space-y-12 max-w-5xl mx-auto animate-in fade-in duration-300">
-                <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl overflow-hidden">
-                    <div className="bg-black p-6 border-b border-[#D4AF37]/20 flex items-center justify-between">
-                        <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Moment Publisher</h2><p className="text-zinc-400 text-xs">Establish new visual highlights.</p></div>
-                        <Camera className="w-8 h-8 text-[#D4AF37]/20" />
-                    </div>
-                    <form onSubmit={handlePostSubmit} className="p-8 space-y-8">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-6">
-                                <div><label className={labelClass}>Visual Title</label><input required type="text" className={inputClass} value={postForm.title} onChange={(e) => setPostForm({...postForm, title: e.target.value})} placeholder="e.g. Brooklyn Gala" /></div>
-                                <div><label className={labelClass}>Brief Context</label><textarea required rows={4} className={inputClass + " resize-none"} value={postForm.description} onChange={(e) => setPostForm({...postForm, description: e.target.value})} placeholder="Contextual description..." /></div>
-                                <div>
-                                    <label className={labelClass}>Associate Professional</label>
-                                    <select className={inputClass + " bg-black"} value={postForm.vendorId} onChange={(e) => setPostForm({...postForm, vendorId: e.target.value})}>
-                                        <option value="">Independent Highlight</option>
-                                        {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="space-y-6">
-                                <label className={labelClass}>Source File</label>
-                                <div onClick={() => postFileInputRef.current?.click()} className="aspect-square bg-black border-2 border-dashed border-[#D4AF37]/20 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:border-[#D4AF37]/50 transition-all overflow-hidden relative group">
-                                    {isUploading ? (
-                                        <Loader2 className="w-10 h-10 text-[#D4AF37] animate-spin" />
-                                    ) : postForm.url ? (
-                                        <>{postForm.type === 'video' || isVideo(postForm.url) ? <video controls autoPlay muted loop playsInline src={postForm.url} className="w-full h-full object-cover" /> : <img src={postForm.url} className="w-full h-full object-cover" alt="" />}</>
-                                    ) : (
-                                        <div className="text-center p-8">
-                                            <Upload className="w-12 h-12 text-[#D4AF37]/30 mx-auto mb-4" />
-                                            <p className="text-zinc-400 font-bold uppercase tracking-widest text-[10px]">Upload Visual Asset</p>
-                                        </div>
-                                    )}
-                                </div>
-                                <input type="file" ref={postFileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileUpload} />
-                            </div>
-                        </div>
-                        <button type="submit" disabled={isUploading || !postForm.url} className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-full hover:bg-[#E5C76B] transition-all shadow-xl text-lg disabled:opacity-30">Publish Highlight</button>
-                    </form>
-                </div>
-            </div>
-        )}
-
-        {activeTab === 'hero' && (
-          <div className="space-y-12 max-w-5xl mx-auto pb-20 animate-in fade-in duration-300">
-            {renderHeroBackgroundSection(true)}
-          </div>
-        )}
-
-        {activeTab === 'categories' && (
-          <div className="space-y-12 max-w-5xl mx-auto pb-20 animate-in fade-in duration-300">
-              {/* Hero Visual System & Previously Uploaded Backgrounds */}
-              {renderHeroBackgroundSection(false)}
-
-              {/* Add New Category */}
-              <div className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 shadow-2xl overflow-hidden">
-                  <div className="bg-black p-6 border-b border-[#D4AF37]/20 flex items-center justify-between">
-                      <div><h2 className="text-xl font-bold text-[#D4AF37] font-[Cinzel]">Taxonomy Expansion</h2><p className="text-zinc-400 text-xs">Establish a new service category for the platform.</p></div>
-                      <FolderPlus className="w-8 h-8 text-[#D4AF37]/20" />
-                  </div>
-                  <form onSubmit={handleAddCategorySubmit} className="p-8 space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                          <div className="space-y-6">
-                              <div><label className={labelClass}>Vertical Title</label><input required type="text" className={inputClass} placeholder="e.g. Sound & Lighting" value={newCategoryForm.name} onChange={e => setNewCategoryForm({...newCategoryForm, name: e.target.value})} /></div>
-                              <div>
-                                <label className={labelClass}>Initial Classification Groups</label>
-                                <input type="text" className={inputClass} placeholder="Style, Tier, Gear (comma separated)" value={newCategoryForm.subCatsString} onChange={e => setNewCategoryForm({...newCategoryForm, subCatsString: e.target.value})} />
-                                <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-2">These serve as headers for granular sub-categories.</p>
-                              </div>
-                          </div>
-                          <div className="space-y-4">
-                              <label className={labelClass}>Vertical Hero Asset</label>
-                              <div onClick={() => newCatImageInputRef.current?.click()} className="h-44 bg-black border-2 border-dashed border-[#D4AF37]/20 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-[#D4AF37]/50 transition-all overflow-hidden relative">
-                                {newCategoryForm.image ? <>{renderMedia(newCategoryForm.image, "w-full h-full object-cover")}</> : <div className="text-center p-4"><ImageIcon className="w-8 h-8 text-[#D4AF37]/30 mx-auto mb-2" /><p className="text-zinc-400 font-bold uppercase tracking-widest text-[9px]">Select Banner</p></div>}
-                              </div>
-                              <input type="file" accept="image/*,video/*" className="hidden" ref={el => { newCatImageInputRef.current = el; }} onChange={handleNewCategoryImgUpload} />
-                          </div>
-                      </div>
-                      <button type="submit" className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-full hover:bg-[#E5C76B] transition-all text-xs uppercase tracking-[0.2em]">Commit New Vertical</button>
-                  </form>
-              </div>
-
-              {/* Advanced Taxonomy Management */}
-              <div className="space-y-8">
-                <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                    <div className="flex items-center gap-3">
-                        <ListTree className="w-6 h-6 text-[#D4AF37]" />
-                        <h3 className="text-xl font-bold font-[Cinzel] text-white">Active Taxonomy Control</h3>
-                    </div>
-                    {onSeedTaxonomy && (
-                        <button 
-                            type="button" 
-                            disabled={isSeedingTaxonomy}
-                            onClick={handleSeed} 
-                            className="px-4 py-2 bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37] hover:bg-[#D4AF37] hover:text-black transition-all rounded-full text-[10px] font-bold uppercase tracking-widest cursor-pointer shadow-[0_0_15px_rgba(212,175,55,0.2)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                        >
-                            {isSeedingTaxonomy ? (
-                              <>
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                                Seeding Database...
-                              </>
-                            ) : (
-                              'Seed Taxonomy'
-                            )}
-                        </button>
-                    )}
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {localCategories.map((cat, index) => (
-                        <div key={cat} className="bg-[#111] rounded-2xl border border-[#D4AF37]/10 overflow-hidden flex flex-col shadow-2xl group relative">
-                            <div className="relative h-44 bg-black">
-                                {renderMedia(previewUrls[cat] || categoryImages[cat], "w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700")}
-                                <div className="absolute inset-0 bg-gradient-to-t from-[#111] via-transparent to-black/30"></div>
-                                
-                                <div className="absolute top-4 left-4 flex items-center gap-1 bg-black/80 px-2.5 py-1.5 rounded-full border border-[#D4AF37]/20 backdrop-blur-sm z-10">
-                                    <span className="text-[#D4AF37] font-mono text-[10px] font-bold px-1 select-none">Rank #{index + 1}</span>
-                                    <button 
-                                        disabled={index === 0}
-                                        onClick={() => handleMoveCategory(cat, 'up')}
-                                        className="p-1 rounded-full text-[#D4AF37] hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:text-[#D4AF37] transition-colors cursor-pointer"
-                                        title="Move Up"
-                                    >
-                                        <ArrowUp className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button 
-                                        disabled={index === localCategories.length - 1}
-                                        onClick={() => handleMoveCategory(cat, 'down')}
-                                        className="p-1 rounded-full text-[#D4AF37] hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:text-[#D4AF37] transition-colors cursor-pointer"
-                                        title="Move Down"
-                                    >
-                                        <ArrowDown className="w-3.5 h-3.5" />
-                                    </button>
-                                </div>
-
-                                <div className="absolute top-4 right-4 flex gap-2">
-                                    <button 
-                                        onClick={() => categoryImageInputRefs.current[cat]?.click()} 
-                                        className="bg-black/60 hover:bg-[#D4AF37] hover:text-black p-2 rounded-full text-zinc-300 transition-all border border-white/10" 
-                                        title="Modify Banner"
-                                    >
-                                        <Camera className="w-4 h-4" />
-                                    </button>
-                                    <button 
-                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteCategory(cat); }}
-                                        className="bg-black/60 hover:bg-zinc-800 hover:text-white p-2 rounded-full text-zinc-400 transition-all border border-white/10" 
-                                        title="Delete Category"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </div>
-                                <input type="file" accept="image/*,video/*" className="hidden" ref={el => { categoryImageInputRefs.current[cat] = el; }} onChange={(e) => handleCategoryImageUpload(cat, e)} />
-                                <h3 className="absolute bottom-4 left-6 text-2xl font-bold font-[Cinzel] text-[#D4AF37]">{cat}</h3>
-                                
-                                {typeof uploadProgresses[cat] === 'number' && (
-                                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
-                                    <div className="w-12 h-12 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_15px_rgba(212,175,55,0.3)]"></div>
-                                    <div className="text-[#D4AF37] font-bold text-xs mt-3 tracking-widest">{Math.round(uploadProgresses[cat])}%</div>
-                                  </div>
-                                )}
-                            </div>
-                            
-                            <div className="p-6 space-y-6">
-                                <div className="space-y-2">
-                                    <label className={labelClass}>Establish New Classification Group</label>
-                                    <div className="flex gap-2">
-                                        <input type="text" className={inputClass + " py-2 text-xs"} placeholder="e.g. Menu Grade, Room Type..." value={newSubCategoryInputs[cat] || ''} onChange={(e) => setNewSubCategoryInputs({...newSubCategoryInputs, [cat]: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && handleAddSubCategory(cat)} />
-                                        <button onClick={() => handleAddSubCategory(cat)} className="bg-[#D4AF37] text-black p-2 rounded-full hover:bg-[#E5C76B] transition-colors"><Plus className="w-5 h-5" /></button>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4">
-                                   {Object.entries(localCategorySubCategories[cat] || {}).map(([sub, nestedItems]) => {
-                                      const nestedKey = `${cat}-${sub}`;
-                                      const items = nestedItems as string[];
-                                      return (
-                                          <div key={sub} className="bg-black/30 rounded-xl border border-white/5 overflow-hidden">
-                                              <div className="p-3 flex items-center justify-between border-b border-white/5 bg-black/20">
-                                                  <div className="flex items-center gap-2">
-                                                      <Layers className="w-3.5 h-3.5 text-[#D4AF37]/50" />
-                                                      <span className="text-[10px] font-black uppercase text-zinc-300 tracking-widest">{sub}</span>
-                                                  </div>
-                                                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteSubcategory(cat, sub); }} aria-label="Delete subcategory" className="text-zinc-400/30 hover:text-zinc-400 p-1 rounded-full hover:bg-white/10 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                                              </div>
-                                              <div className="p-4 space-y-4">
-                                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                                                      {items.map(item => (
-                                                          <div key={item} className="relative group overflow-hidden bg-black/40 rounded-xl border border-white/5 aspect-square flex flex-col">
-                                                              <div className="flex-1 relative">
-                                                                  {(previewUrls[item] || subCategoryImages[item]) ? (
-                                                                      <>{renderMedia(previewUrls[item] || subCategoryImages[item], "w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity")}</>
-                                                                  ) : (
-                                                                      <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
-                                                                          <ImageIcon className="w-6 h-6 text-zinc-400" />
-                                                                      </div>
-                                                                  )}
-                                                                  <button onClick={() => subCategoryImageInputRefs.current[item]?.click()} className="absolute inset-0 m-auto w-8 h-8 bg-black/60 hover:bg-[#D4AF37] hover:text-black rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all border border-white/10" title="Modify Image"><Camera className="w-4 h-4" /></button>
-                                                                  <input type="file" accept="image/*,video/*" className="hidden" ref={el => { subCategoryImageInputRefs.current[item] = el; }} onChange={(e) => handleSubCategoryImageUpload(item, e)} />
-                                                                  
-                                                                  {typeof uploadProgresses[item] === 'number' && (
-                                                                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 transition-opacity">
-                                                                      <div className="w-6 h-6 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shadow-[0_0_10px_rgba(212,175,55,0.3)]"></div>
-                                                                      <div className="text-[#D4AF37] font-bold text-[8px] mt-2 tracking-widest">{Math.round(uploadProgresses[item])}%</div>
-                                                                    </div>
-                                                                  )}
-                                                              </div>
-                                                              <div className="p-2 bg-black border-t border-white/5 flex items-center justify-between">
-                                                                  <span className="text-[10px] font-bold text-zinc-300 truncate">{item}</span>
-                                                                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRemoveNestedSubCategory(cat, sub, item); }} className="text-zinc-400/50 hover:text-zinc-400 p-1 rounded-full hover:bg-white/10 transition-colors shrink-0 ml-2" title="Remove subcategory"><Trash2 className="w-3 h-3" /></button>
-                                                              </div>
-                                                          </div>
-                                                      ))}
-                                                      {items.length === 0 && <span className="text-[9px] text-zinc-400 italic col-span-full">No specific sub-category options added.</span>}
-                                                  </div>
-                                                  <div className="flex gap-2 pt-1">
-                                                      <input type="text" className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-[10px] text-zinc-400 outline-none focus:border-[#D4AF37]/40" placeholder={`Add ${sub} option...`} value={newNestedSubCategoryInputs[nestedKey] || ''} onChange={(e) => setNewNestedSubCategoryInputs({...newNestedSubCategoryInputs, [nestedKey]: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && handleAddNestedSubCategory(cat, sub)} />
-                                                      <button onClick={() => handleAddNestedSubCategory(cat, sub)} className="bg-[#D4AF37]/10 text-[#D4AF37] px-2.5 py-1 rounded-full hover:bg-[#D4AF37] hover:text-black transition-all"><Plus className="w-4 h-4" /></button>
-                                                  </div>
-                                              </div>
-                                          </div>
-                                      );
-                                   })}
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-              </div>
-          </div>
-        )}
-
-        {activeTab === 'bookings' && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                    <div>
-                        <h2 className="text-2xl font-bold font-[Cinzel] text-white">Platform Bookings</h2>
-                        <p className="text-xs text-zinc-400 mt-1">Unified transactional records across the entire marketplace.</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
-                            Total Bookings: {bookings.length}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
-                    <Search className="w-5 h-5 text-zinc-400" />
-                    <input 
-                        type="text" 
-                        placeholder="Filter bookings by client name, event name, or professional..." 
-                        value={filterText}
-                        onChange={(e) => setFilterText(e.target.value)}
-                        className="bg-transparent border-none outline-none text-sm w-full text-white" 
-                    />
-                </div>
-
-                <TableContainer>
-                    <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                            <tr className="border-b border-white/10 bg-black/40 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Client & Event</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Professional</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Date</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Transaction Amount</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Payment Status</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Confirmation</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                            {bookings
-                                .filter(b => {
-                                    const vendor = vendors.find(v => v.id === b.vendorId);
-                                    const vendorName = vendor?.name || 'Unknown';
-                                    return (
-                                        b.clientName.toLowerCase().includes(filterText.toLowerCase()) ||
-                                        b.eventName.toLowerCase().includes(filterText.toLowerCase()) ||
-                                        vendorName.toLowerCase().includes(filterText.toLowerCase())
-                                    );
-                                })
-                                .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-                                .map(b => {
-                                    const vendor = vendors.find(v => v.id === b.vendorId);
-                                    return (
-                                        <tr key={b.id} className="hover:bg-white/[0.02] active:bg-white/[0.03] transition-colors duration-150">
-                                            <td className="p-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="bg-black p-2 rounded-lg border border-white/5 text-[#D4AF37] shrink-0">
-                                                        <LayoutList className="w-4 h-4" />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-bold text-white text-sm">{b.clientName}</h4>
-                                                        <span className="text-[10px] text-zinc-400 uppercase tracking-widest">{b.eventName}</span>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="p-4 font-semibold text-[#D4AF37] text-sm">
-                                                {vendor?.name || 'Unknown'}
-                                            </td>
-                                            <td className="p-4 text-zinc-400 font-mono text-[11px]">
-                                                {b.date}
-                                            </td>
-                                            <td className="p-4 font-bold text-white text-sm font-mono">
-                                                ${b.amount.toLocaleString()}
-                                            </td>
-                                            <td className="p-4">
-                                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
-                                                    b.paymentStatus === 'paid' 
-                                                        ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' 
-                                                        : 'bg-zinc-400/10 text-zinc-400 border-zinc-400/20'
-                                                }`}>
-                                                    {b.paymentStatus}
-                                                </span>
-                                            </td>
-                                            <td className="p-4">
-                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
-                                                    b.status === 'confirmed' 
-                                                        ? 'bg-green-500/15 text-green-400 border-green-500/20' 
-                                                        : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20'
-                                                }`}>
-                                                    {b.status}
-                                                </span>
-                                            </td>
-                                            <td className="p-4 text-right">
-                                                <button 
-                                                    onClick={() => onUpdateBookingStatus(b.id, b.status === 'confirmed' ? 'pending' : 'confirmed')}
-                                                    className={`p-2 rounded-full transition-all ${
-                                                        b.status === 'confirmed' 
-                                                            ? 'bg-[#D4AF37]/10 text-[#D4AF37]' 
-                                                            : 'bg-white/5 text-zinc-400 hover:text-[#D4AF37]'
-                                                    }`}
-                                                    title="Toggle Confirmation"
-                                                >
-                                                    <ShieldCheck className="w-4 h-4" />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            {bookings.filter(b => {
-                                const vendor = vendors.find(v => v.id === b.vendorId);
-                                const vendorName = vendor?.name || 'Unknown';
-                                return (
-                                    b.clientName.toLowerCase().includes(filterText.toLowerCase()) ||
-                                    b.eventName.toLowerCase().includes(filterText.toLowerCase()) ||
-                                    vendorName.toLowerCase().includes(filterText.toLowerCase())
-                                );
-                            }).length === 0 && (
-                                <tr>
-                                    <td colSpan={7} className="p-8 text-center text-zinc-400 uppercase tracking-widest text-[10px]">No bookings logged</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </TableContainer>
-            </div>
-        )}
-
-        {activeTab === 'stripe' && (
-            <div className="space-y-8 animate-in fade-in duration-300">
-                <div className="bg-[#111] p-8 rounded-3xl border border-[#D4AF37]/10 shadow-2xl">
-                    <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37] mb-6">Stripe Connection Hub</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div className="bg-black/40 p-6 rounded-2xl border border-white/5">
-                            <p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest mb-1">Connected Vendors</p>
-                            <h4 className="text-3xl font-bold text-white">{vendors.filter(v => !!v.stripeAccountId).length}</h4>
-                        </div>
-                        <div className="bg-black/40 p-6 rounded-2xl border border-white/5">
-                            <p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest mb-1">Pending Connections</p>
-                            <h4 className="text-3xl font-bold text-white">{vendors.filter(v => !v.stripeAccountId).length}</h4>
-                        </div>
-                        <div className="bg-black/40 p-6 rounded-2xl border border-white/5">
-                            <p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest mb-1">Platform Revenue</p>
-                            <h4 className="text-3xl font-bold text-[#D4AF37]">${totalCommission.toLocaleString()}</h4>
-                        </div>
-                    </div>
-
-                    <div className="space-y-4">
-                        <h4 className="text-xs font-black text-zinc-400 uppercase tracking-widest border-b border-white/5 pb-2">Vendor Stripe Status</h4>
-                        {vendors.map(v => (
-                            <div key={v.id} className="flex items-center justify-between p-4 bg-black/20 rounded-xl border border-white/5">
-                                <div className="flex items-center gap-4">
-                                    <img src={v.image} className="w-10 h-10 rounded-lg object-cover" />
-                                    <div>
-                                        <p className="text-sm font-bold text-white">{v.name}</p>
-                                        <p className="text-[9px] text-zinc-400 uppercase tracking-widest">{v.contactEmail}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                    {v.stripeAccountId ? (
-                                        <div className="flex flex-col items-end">
-                                            <span className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest flex items-center gap-1">
-                                                <ShieldCheck className="w-3 h-3" /> Connected
-                                            </span>
-                                            <span className="text-[8px] text-zinc-400 font-mono">{v.stripeAccountId}</span>
-                                            <button 
-                                                onClick={() => handleManualStripeId(v.id)}
-                                                className="text-[8px] text-[#D4AF37] hover:underline mt-1 uppercase tracking-widest font-bold"
-                                            >
-                                                Change ID
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center gap-2">
-                                            <button 
-                                                onClick={() => handleStripeOnboard(v.id, v.contactEmail || '')}
-                                                className="px-4 py-2 bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-[#D4AF37] hover:text-black transition-all"
-                                            >
-                                                Initiate Onboarding
-                                            </button>
-                                            <button 
-                                                onClick={() => handleManualStripeId(v.id)}
-                                                className="p-2 bg-white/5 text-zinc-400 border border-white/10 rounded-full hover:text-white transition-all"
-                                                title="Manually Set ID"
-                                            >
-                                                <Settings className="w-3 h-3" />
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {activeTab === 'users' && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-                {/* Database Integrity & Orphaned Data Cleanup Card */}
-                <div className="bg-[#111] p-6 rounded-2xl border border-[#D4AF37]/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
-                    <div>
-                        <div className="flex items-center gap-2 mb-1">
-                            <ShieldCheck className="w-5 h-5 text-[#D4AF37]" />
-                            <h3 className="text-base font-bold font-[Cinzel] text-white">Database Integrity & Cleanup</h3>
-                        </div>
-                        <p className="text-xs text-zinc-400 max-w-xl">
-                            Scan Firestore collections (<code className="text-[#D4AF37]">user_roles</code>, <code className="text-[#D4AF37]">users</code>, <code className="text-[#D4AF37]">vendors</code>) and cross-reference with active Firebase Auth accounts to scrub orphaned data.
-                        </p>
-                        {cleanupResult && (
-                            <div className="mt-3 p-3 bg-black/60 rounded-xl border border-emerald-500/30 text-xs text-emerald-400 flex flex-wrap gap-4">
-                                <div><strong>Deleted Roles:</strong> {cleanupResult.deletedUserRolesCount}</div>
-                                <div><strong>Deleted Users:</strong> {cleanupResult.deletedUsersCount}</div>
-                                <div><strong>Deleted Vendors:</strong> {cleanupResult.deletedVendorsCount}</div>
-                                <div><strong>Deleted Posts:</strong> {cleanupResult.deletedPostsCount}</div>
-                                <div><strong>Active Auth Users:</strong> {cleanupResult.activeAuthUsersCount}</div>
-                            </div>
-                        )}
-                    </div>
-                    <button
-                        onClick={handleRunOrphanedCleanup}
-                        disabled={isRunningCleanup}
-                        className="px-5 py-2.5 rounded-full bg-gradient-to-r from-red-900/80 to-red-600/80 hover:from-red-800 hover:to-red-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-lg hover:shadow-red-900/40 disabled:opacity-50 shrink-0 cursor-pointer"
+              ) : (
+                filteredVendors.map(v => {
+                  const downPaymentVal = v.downPayment ?? v.priceStart ?? 0;
+                  return (
+                    <div
+                      key={v.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleOpenEditVendorModal(v)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleOpenEditVendorModal(v);
+                        }
+                      }}
+                      className="w-full bg-[#111] hover:bg-[#161616] border border-white/[0.08] hover:border-[#D4AF37]/50 rounded-full px-3.5 sm:px-5 py-2.5 flex items-center justify-between gap-3 transition-all duration-200 cursor-pointer group shadow-md active:scale-[0.995]"
                     >
-                        {isRunningCleanup ? (
-                            <>
-                                <Loader2 className="w-4 h-4 animate-spin text-white" />
-                                <span>Scanning Firestore...</span>
-                            </>
-                        ) : (
-                            <>
-                                <Trash2 className="w-4 h-4 text-white" />
-                                <span>Scrub Orphaned Data</span>
-                            </>
-                        )}
-                    </button>
-                </div>
-
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                    <div>
-                        <h2 className="text-2xl font-bold font-[Cinzel] text-white">User Directory</h2>
-                        <p className="text-xs text-zinc-400 mt-1">Manage active platform registrants and client profiles.</p>
-                    </div>
-                    <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
-                        Total Users: {users.length}
-                    </div>
-                </div>
-
-                <div className="bg-[#111] p-4 rounded-xl border border-white/5 flex items-center gap-4 mb-6">
-                    <Search className="w-5 h-5 text-zinc-400" />
-                    <input 
-                        type="text" 
-                        placeholder="Filter users by name or email..." 
-                        value={filterText}
-                        onChange={(e) => setFilterText(e.target.value)}
-                        className="bg-transparent border-none outline-none text-sm w-full text-white" 
-                    />
-                </div>
-
-                <TableContainer>
-                    <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                            <tr className="border-b border-white/10 bg-black/40 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">User Profile</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">User ID</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Contact Email</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Account Status</th>
-                                <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                            {users
-                                .filter(u => 
-                                    (u.name || '').toLowerCase().includes(filterText.toLowerCase()) || 
-                                    (u.username || '').toLowerCase().includes(filterText.toLowerCase())
-                                )
-                                .map(u => (
-                                    <tr key={u.id} className="hover:bg-white/[0.02] active:bg-white/[0.03] transition-colors duration-150">
-                                        <td className="p-4">
-                                            <div className="flex items-center gap-3">
-                                                {u.photoURL ? (
-                                                    <img src={u.photoURL} className="w-9 h-9 rounded-full object-cover bg-black border border-white/10 shrink-0" />
-                                                ) : (
-                                                    <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-700 border border-white/10 flex items-center justify-center font-bold text-white text-xs uppercase shrink-0">
-                                                        {(u.name || u.username || 'U').slice(0, 2)}
-                                                    </div>
-                                                )}
-                                                <div>
-                                                    <h4 className="font-bold text-white text-sm">{u.name || 'Anonymous User'}</h4>
-                                                    <span className="text-[9px] text-zinc-400 uppercase tracking-widest">
-                                                        {(u as any).role || 'Client'}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="p-4 font-mono text-zinc-400 text-[10px]">
-                                            {u.id}
-                                        </td>
-                                        <td className="p-4 text-zinc-300 font-mono text-xs">
-                                            {u.username || 'N/A'}
-                                        </td>
-                                        <td className="p-4">
-                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
-                                                (u as any).isApproved || (u as any).role === 'admin'
-                                                    ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' 
-                                                    : 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20'
-                                            }`}>
-                                                {(u as any).isApproved || (u as any).role === 'admin' ? 'Approved' : 'Deactivated'}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            <div className="flex items-center justify-end gap-1">
-                                                {!(u as any).isApproved && (u as any).role !== 'admin' && (
-                                                    <button 
-                                                        onClick={async () => {
-                                                            setModerationActioning(prev => ({ ...prev, [u.id]: 'approve' }));
-                                                            await new Promise(r => setTimeout(r, 800));
-                                                            try {
-                                                                await updateDoc(doc(db, 'users', u.id), { isApproved: true });
-                                                                showNotification('User profile approved successfully.', 'success');
-                                                            } catch (err: any) {
-                                                                showNotification('Failed to approve: ' + err.message, 'info');
-                                                            } finally {
-                                                                setModerationActioning(prev => { const c = { ...prev }; delete c[u.id]; return c; });
-                                                            }
-                                                        }}
-                                                        title="Approve User Account" 
-                                                        className="p-2 text-zinc-400 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 rounded-full transition-all"
-                                                    >
-                                                        <ShieldCheck className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                                <button 
-                                                    onClick={async () => {
-                                                        if (window.confirm(`Are you sure you want to permanently delete user ${u.name || u.username}?`)) {
-                                                            try {
-                                                                await deleteDoc(doc(db, 'users', u.id));
-                                                                showNotification('User profile deleted successfully.', 'success');
-                                                            } catch (err: any) {
-                                                                showNotification('Failed to delete user: ' + err.message, 'info');
-                                                            }
-                                                        }
-                                                    }}
-                                                    title="Permanently Delete User" 
-                                                    className="p-2 text-zinc-400 hover:text-zinc-400 hover:bg-zinc-400/10 rounded-full transition-all"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            {users.filter(u => 
-                                (u.name || '').toLowerCase().includes(filterText.toLowerCase()) || 
-                                (u.username || '').toLowerCase().includes(filterText.toLowerCase())
-                            ).length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="p-8 text-center text-zinc-400 uppercase tracking-widest text-[10px]">No users registered</td>
-                                </tr>
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <img
+                          src={v.image}
+                          alt={v.name}
+                          className="w-10 h-10 rounded-full object-cover bg-black border border-[#D4AF37]/30 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs sm:text-sm font-bold text-white group-hover:text-[#D4AF37] transition-colors truncate font-[Cinzel]">
+                              {v.name}
+                            </span>
+                            {v.isVerified ? (
+                              <ShieldCheck className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                            ) : (
+                              <span className="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[7px] font-black uppercase shrink-0">
+                                Unverified
+                              </span>
                             )}
-                        </tbody>
-                    </table>
-                </TableContainer>
+                            {v.stripeAccountId && (
+                              <span className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 text-[7px] font-black uppercase shrink-0">
+                                Stripe
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-zinc-400 truncate mt-0.5">
+                            <span className="text-[#D4AF37]/90 font-semibold">{v.category}</span>
+                            {v.location && (
+                              <>
+                                <span>•</span>
+                                <span className="truncate">{v.location}</span>
+                              </>
+                            )}
+                            {downPaymentVal > 0 && (
+                              <>
+                                <span className="hidden md:inline">•</span>
+                                <span className="hidden md:inline text-zinc-300 font-mono">
+                                  ${downPaymentVal.toLocaleString()} deposit
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            onLoginAsVendor(v.id);
+                          }}
+                          title="Enter Vendor Portal"
+                          className="h-7 px-2.5 rounded-full bg-white/[0.05] hover:bg-[#D4AF37] text-zinc-300 hover:text-black border border-white/10 text-[8px] font-black uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <LogIn className="w-3 h-3" />
+                          <span className="hidden sm:inline">Portal</span>
+                        </button>
+                        <span className="text-[9px] font-bold text-[#D4AF37]/85 group-hover:text-[#D4AF37] uppercase tracking-wider hidden xs:inline">
+                          Tap to view
+                        </span>
+                        <div className="w-6 h-6 rounded-full bg-white/[0.04] group-hover:bg-[#D4AF37] text-zinc-400 group-hover:text-black flex items-center justify-center transition-all">
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
+          </div>
         )}
 
-        {activeTab === 'moderation' && (() => {
-            const pendingVendors = vendors.filter(v => !v.isVerified && !removedModerationIds.includes(v.id));
-            const pendingUsers = users.filter(u => !(u as any).isApproved && (u as any).role !== 'admin' && !removedModerationIds.includes(u.id));
-            
-            const moderationQueueItems = [
-                ...pendingVendors.map((v, idx) => ({
-                    queueKey: `vendor-${v.id}-${idx}`,
-                    id: v.id,
-                    type: 'professional' as const,
-                    name: v.name,
-                    email: v.contactEmail || 'N/A',
-                    category: v.category,
-                    image: v.image,
-                    details: `${v.location} • Starting $${v.priceStart.toLocaleString()}`,
-                    raw: v,
-                })),
-                ...pendingUsers.map((u, idx) => ({
-                    queueKey: `user-${u.id}-${idx}`,
-                    id: u.id,
-                    type: 'client' as const,
-                    name: u.name || 'Anonymous Client',
-                    email: u.username || 'N/A',
-                    category: 'Client Access Request',
-                    image: u.photoURL || '',
-                    details: `Privileges: ${(u as any).role || 'Client'}`,
-                    raw: u,
-                }))
-            ];
+        {/* ==================== TAB 3: PLATFORM BOOKINGS ==================== */}
+        {activeTab === 'bookings' && (
+          <div className="space-y-3 animate-in fade-in duration-300">
+            {/* Search & Status Filter Pills */}
+            <div className="bg-[#111] p-3 rounded-2xl border border-white/[0.07] space-y-2.5">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
+                <input
+                  type="text"
+                  placeholder="Search bookings by client, event, vendor, or date..."
+                  value={bookingSearch}
+                  onChange={e => setBookingSearch(e.target.value)}
+                  className="w-full bg-black/60 border border-white/10 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#D4AF37]"
+                />
+                {bookingSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setBookingSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
 
-            const handleApproveAction = async (itemId: string, type: 'professional' | 'client') => {
-                setModerationActioning(prev => ({ ...prev, [itemId]: 'approve' }));
-                await new Promise(r => setTimeout(r, 850));
-                
-                try {
-                    if (type === 'professional') {
-                        await updateDoc(doc(db, 'vendors', itemId), { isVerified: true });
-                        showNotification('Service provider approved and listed.', 'success');
-                    } else {
-                        await updateDoc(doc(db, 'users', itemId), { isApproved: true });
-                        showNotification('Client credentials authorized.', 'success');
-                    }
-                    setRemovedModerationIds(prev => [...prev, itemId]);
-                } catch (err: any) {
-                    showNotification('Approval update failed: ' + err.message, 'info');
-                } finally {
-                    setModerationActioning(prev => { const c = { ...prev }; delete c[itemId]; return c; });
-                }
-            };
-
-            const handleRejectAction = async (itemId: string, type: 'professional' | 'client', name: string) => {
-                if (!window.confirm(`Are you sure you want to decline registration for ${name}?`)) return;
-                setModerationActioning(prev => ({ ...prev, [itemId]: 'reject' }));
-                await new Promise(r => setTimeout(r, 850));
-                
-                try {
-                    if (type === 'professional') {
-                        await deleteDoc(doc(db, 'vendors', itemId));
-                        showNotification('Provider application declined and deleted.', 'success');
-                    } else {
-                        await deleteDoc(doc(db, 'users', itemId));
-                        showNotification('Client request declined and deleted.', 'success');
-                    }
-                    setRemovedModerationIds(prev => [...prev, itemId]);
-                } catch (err: any) {
-                    showNotification('Rejection failed: ' + err.message, 'info');
-                } finally {
-                    setModerationActioning(prev => { const c = { ...prev }; delete c[itemId]; return c; });
-                }
-            };
-
-            return (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                        <div>
-                            <h2 className="text-2xl font-bold font-[Cinzel] text-white">Moderation Queue</h2>
-                            <p className="text-xs text-zinc-400 mt-1">Audit and authorize incoming vendor and client registrants.</p>
-                        </div>
-                        <div className="bg-[#111] px-4 py-2 rounded-xl border border-white/5 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
-                            Pending Audit: {moderationQueueItems.length}
-                        </div>
-                    </div>
-
-                    <TableContainer>
-                        <table className="w-full text-left border-collapse text-xs">
-                            <thead>
-                                <tr className="border-b border-white/10 bg-black/40 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
-                                    <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Applicant profile</th>
-                                    <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Request Type</th>
-                                    <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Credential Email</th>
-                                    <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10">Summary / Particulars</th>
-                                    <th className="p-4 sticky top-0 bg-[#0c0c0c] z-10 text-right">Moderation Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="relative divide-y divide-white/5">
-                                <AnimatePresence mode="popLayout">
-                                    {moderationQueueItems.map(item => {
-                                        const action = moderationActioning[item.id];
-                                        return (
-                                            <motion.tr 
-                                                key={item.queueKey}
-                                                layout
-                                                initial={{ opacity: 0, y: 12 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                exit={{ 
-                                                    opacity: 0, 
-                                                    x: action === 'approve' ? 120 : -120,
-                                                    backgroundColor: action === 'approve' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                                                    transition: { duration: 0.4, ease: 'easeOut' }
-                                                }}
-                                                className="hover:bg-white/[0.02] active:bg-white/[0.03] transition-colors duration-150 relative"
-                                            >
-                                                <td className="p-4">
-                                                    <div className="flex items-center gap-3">
-                                                        {item.image ? (
-                                                            <img src={item.image} className="w-10 h-10 rounded-lg object-cover bg-black border border-white/10 shrink-0" />
-                                                        ) : (
-                                                            <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-white/10 flex items-center justify-center font-bold text-zinc-400 text-xs shrink-0">
-                                                                {item.name.slice(0, 2).toUpperCase()}
-                                                            </div>
-                                                        )}
-                                                        <div>
-                                                            <h4 className="font-bold text-white text-sm">{item.name}</h4>
-                                                            <span className="text-[9px] text-zinc-400 uppercase tracking-widest">{item.category}</span>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="p-4">
-                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
-                                                        item.type === 'professional'
-                                                            ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' 
-                                                            : 'bg-zinc-400/10 text-zinc-400 border-zinc-400/20'
-                                                    }`}>
-                                                        {item.type}
-                                                    </span>
-                                                </td>
-                                                <td className="p-4 text-zinc-300 font-mono text-xs">
-                                                    {item.email}
-                                                </td>
-                                                <td className="p-4 text-zinc-400">
-                                                    {item.details}
-                                                </td>
-                                                <td className="p-4 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        <button 
-                                                            onClick={() => handleApproveAction(item.id, item.type)}
-                                                            disabled={!!action}
-                                                            className={`p-2 rounded-full transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
-                                                                action === 'approve'
-                                                                    ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
-                                                                    : 'text-zinc-400 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 cursor-pointer'
-                                                            }`}
-                                                            title="Approve Registration"
-                                                        >
-                                                            {action === 'approve' ? (
-                                                                <motion.div
-                                                                    initial={{ scale: 0.5, rotate: -45 }}
-                                                                    animate={{ scale: 1.1, rotate: 0 }}
-                                                                    className="bg-[#D4AF37] text-black p-1 rounded-full"
-                                                                >
-                                                                    <ShieldCheck className="w-3.5 h-3.5 stroke-[3.5]" />
-                                                                </motion.div>
-                                                            ) : (
-                                                                <ShieldCheck className="w-5 h-5" />
-                                                            )}
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => handleRejectAction(item.id, item.type, item.name)}
-                                                            disabled={!!action}
-                                                            className={`p-2 rounded-full transition-all flex items-center justify-center min-w-[36px] min-h-[36px] ${
-                                                                action === 'reject'
-                                                                    ? 'bg-zinc-800 text-zinc-400'
-                                                                    : 'text-zinc-400 hover:text-zinc-400 hover:bg-zinc-400/10 cursor-pointer'
-                                                            }`}
-                                                            title="Decline registration"
-                                                        >
-                                                            {action === 'reject' ? (
-                                                                <motion.div
-                                                                    initial={{ scale: 0.5 }}
-                                                                    animate={{ scale: [1.1, 1] }}
-                                                                    className="bg-zinc-700 text-white p-1 rounded-full"
-                                                                >
-                                                                    <X className="w-3.5 h-3.5 stroke-[3.5]" />
-                                                                </motion.div>
-                                                            ) : (
-                                                                <X className="w-5 h-5" />
-                                                            )}
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </motion.tr>
-                                        );
-                                    })}
-                                </AnimatePresence>
-                                {moderationQueueItems.length === 0 && (
-                                    <tr>
-                                        <td colSpan={5} className="p-8 text-center text-zinc-400 uppercase tracking-widest text-[10px]">Audit complete! Moderation queue is empty</td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </TableContainer>
-                </div>
-            );
-        })()}
-
-        {activeTab === 'messages' && (() => {
-            type AdminThreadBucket = {
-                cid: string;
-                cids: Set<string>;
-                isAdminSupport: boolean;
-                clientDetails: { id: string; name: string; email: string; avatar: string };
-                otherUser: { id: string; name: string; email: string; role: 'vendor' | 'client'; avatar: string };
-                messages: Message[];
-                msg: Message;
-            };
-
-            const uidToEmail: Record<string, string> = {};
-            const emailToUid: Record<string, string> = {};
-            const uidToName: Record<string, string> = {};
-            const emailToName: Record<string, string> = {};
-            const uidToAvatar: Record<string, string> = {};
-            const emailToAvatar: Record<string, string> = {};
-
-            users.forEach(u => {
-                const uEmail = (u.username || (u as any).email || '').trim();
-                const uEmailLower = uEmail.toLowerCase();
-                if (u.id && uEmailLower) {
-                    uidToEmail[u.id] = uEmail;
-                    emailToUid[uEmailLower] = u.id;
-                }
-                if (u.name && u.name !== 'Client' && u.name !== 'Guest') {
-                    if (u.id) uidToName[u.id] = u.name;
-                    if (uEmailLower) emailToName[uEmailLower] = u.name;
-                }
-                if (u.photoURL) {
-                    if (u.id) uidToAvatar[u.id] = u.photoURL;
-                    if (uEmailLower) emailToAvatar[uEmailLower] = u.photoURL;
-                }
-            });
-
-            allAdminSupportMessages.forEach(m => {
-                if (!m) return;
-                const rawOther = m.senderId === 'admin' ? m.receiverId : m.senderId;
-                const validUid = rawOther && rawOther !== 'admin' && rawOther !== 'client_legacy' && !rawOther.includes('@') ? rawOther : '';
-                const validEmail = (m.clientEmail && m.clientEmail.includes('@') ? m.clientEmail : (rawOther && rawOther.includes('@') ? rawOther : '')).trim();
-                const validEmailLower = validEmail.toLowerCase();
-
-                if (validUid && validEmailLower) {
-                    if (!uidToEmail[validUid]) uidToEmail[validUid] = validEmail;
-                    if (!emailToUid[validEmailLower]) emailToUid[validEmailLower] = validUid;
-                }
-                if (m.clientName && m.clientName !== 'Client' && m.clientName !== 'Guest' && m.clientName !== 'User') {
-                    if (validUid && !uidToName[validUid]) uidToName[validUid] = m.clientName;
-                    if (validEmailLower && !emailToName[validEmailLower]) emailToName[validEmailLower] = m.clientName;
-                }
-            });
-
-            const buckets: AdminThreadBucket[] = [];
-            const seenMsgIds = new Set<string>();
-
-            allAdminSupportMessages.forEach(m => {
-                if (!m) return;
-                if (m.id && seenMsgIds.has(m.id)) return;
-                if (m.id) seenMsgIds.add(m.id);
-
-                // Strictly only Admin Support conversations
-                const isAdminSupport = Boolean(
-                    m.senderId === 'admin' ||
-                    m.receiverId === 'admin' ||
-                    m.participants?.includes('admin') ||
-                    m.isAdminInquiry ||
-                    (m.conversationId && m.conversationId.split('_').includes('admin'))
-                );
-                if (!isAdminSupport) return;
-
-                const rawOther = m.senderId === 'admin' ? m.receiverId : m.senderId;
-                const directUid = rawOther && rawOther !== 'admin' && rawOther !== 'client_legacy' && !rawOther.includes('@') ? rawOther : '';
-                const directEmail = (m.clientEmail && m.clientEmail.includes('@') ? m.clientEmail : (rawOther && rawOther.includes('@') ? rawOther : '')).trim();
-                const directEmailLower = directEmail.toLowerCase();
-
-                const resolvedUid = directUid || (directEmailLower ? emailToUid[directEmailLower] || '' : '');
-                const resolvedEmail = directEmail || (resolvedUid ? uidToEmail[resolvedUid] || '' : '');
-                const resolvedEmailLower = resolvedEmail.toLowerCase();
-
-                const resolvedName =
-                    (m.clientName && m.clientName !== 'Client' && m.clientName !== 'Guest' && m.clientName !== 'User' ? m.clientName : '') ||
-                    (resolvedUid ? uidToName[resolvedUid] : '') ||
-                    (resolvedEmailLower ? emailToName[resolvedEmailLower] : '') ||
-                    m.clientName ||
-                    (resolvedEmail ? resolvedEmail.split('@')[0] : 'Client');
-
-                const resolvedAvatar =
-                    (resolvedUid ? uidToAvatar[resolvedUid] : '') ||
-                    (resolvedEmailLower ? emailToAvatar[resolvedEmailLower] : '') ||
-                    '';
-
-                const rawCid = m.conversationId || (resolvedUid ? ['admin', resolvedUid].sort().join('_') : `admin_${resolvedEmailLower || 'unknown'}`);
-                const canonicalCid =
-                    m.conversationId && !m.conversationId.includes('client_legacy')
-                        ? m.conversationId
-                        : resolvedUid
-                        ? ['admin', resolvedUid].sort().join('_')
-                        : rawCid;
-
-                const clientDetails = {
-                    id: resolvedUid || rawOther || '',
-                    name: resolvedName,
-                    email: resolvedEmail,
-                    avatar: resolvedAvatar
-                };
-
-                const otherUser = {
-                    id: resolvedUid || rawOther || resolvedEmail,
-                    name: resolvedName,
-                    email: resolvedEmail,
-                    role: 'client' as const,
-                    avatar: resolvedAvatar
-                };
-
-                // Find if an existing bucket represents the exact same user
-                let bucket = buckets.find(b => {
-                    const bClientUid = b.clientDetails.id && b.clientDetails.id !== 'client_legacy' && b.clientDetails.id !== 'admin' && !b.clientDetails.id.includes('@') ? b.clientDetails.id : '';
-                    const bEmailLower = (b.clientDetails.email || '').trim().toLowerCase();
-                    if (resolvedUid && bClientUid && resolvedUid === bClientUid) return true;
-                    if (resolvedEmailLower && bEmailLower && resolvedEmailLower === bEmailLower) return true;
-                    if (b.cids.has(rawCid) || b.cids.has(canonicalCid)) return true;
-                    return false;
-                });
-
-                if (!bucket) {
-                    bucket = {
-                        cid: canonicalCid,
-                        cids: new Set([rawCid, canonicalCid]),
-                        isAdminSupport: true,
-                        clientDetails,
-                        otherUser,
-                        messages: [],
-                        msg: { ...m, conversationId: canonicalCid }
-                    };
-                    buckets.push(bucket);
-                } else {
-                    bucket.cids.add(rawCid);
-                    bucket.cids.add(canonicalCid);
-                    if (bucket.cid.includes('client_legacy') && !canonicalCid.includes('client_legacy')) {
-                        bucket.cid = canonicalCid;
-                    }
-                    if ((!bucket.clientDetails.id || bucket.clientDetails.id === 'client_legacy') && resolvedUid) {
-                        bucket.clientDetails.id = resolvedUid;
-                    }
-                    if (!bucket.clientDetails.email && resolvedEmail) {
-                        bucket.clientDetails.email = resolvedEmail;
-                    }
-                    if ((bucket.clientDetails.name === 'Client' || bucket.clientDetails.name === 'User') && resolvedName !== 'Client') {
-                        bucket.clientDetails.name = resolvedName;
-                    }
-                    if (!bucket.clientDetails.avatar && resolvedAvatar) {
-                        bucket.clientDetails.avatar = resolvedAvatar;
-                    }
-                    if ((!bucket.otherUser.id || bucket.otherUser.id === 'client_legacy') && otherUser.id && otherUser.id !== 'client_legacy') {
-                        bucket.otherUser = otherUser;
-                    }
-                }
-
-                bucket.messages.push(m);
-            });
-
-            const processedList = buckets.map(bucket => {
-                bucket.messages.sort((a, b) => {
-                    const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-                    const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-                    return tA - tB;
-                });
-                const latest = bucket.messages[bucket.messages.length - 1] || bucket.msg;
-                const msg = { ...latest, conversationId: bucket.cid };
-                const hasUnread = bucket.messages.some(m => m.senderId !== 'admin' && !m.isRead);
-
-                return {
-                    msg,
-                    cid: bucket.cid,
-                    cids: bucket.cids,
-                    messages: bucket.messages,
-                    isAdminSupport: true,
-                    hasUnread,
-                    clientDetails: bucket.clientDetails,
-                    otherUser: bucket.otherUser
-                };
-            });
-
-            const filteredList = processedList.filter(item => {
-                const matchesSearch = convoSearchQuery === '' ||
-                    item.clientDetails.name.toLowerCase().includes(convoSearchQuery.toLowerCase()) ||
-                    item.clientDetails.email.toLowerCase().includes(convoSearchQuery.toLowerCase()) ||
-                    (item.msg.text || '').toLowerCase().includes(convoSearchQuery.toLowerCase());
-
-                const matchesRead = convoReadFilter === 'all' ||
-                    (convoReadFilter === 'unread' && item.hasUnread) ||
-                    (convoReadFilter === 'read' && !item.hasUnread);
-
-                return matchesSearch && matchesRead;
-            });
-
-            filteredList.sort((a, b) => {
-                const timeA = a.msg.timestamp ? new Date(a.msg.timestamp).getTime() : 0;
-                const timeB = b.msg.timestamp ? new Date(b.msg.timestamp).getTime() : 0;
-                if (convoSortBy === 'recent') {
-                    return timeB - timeA;
-                } else if (convoSortBy === 'oldest') {
-                    return timeA - timeB;
-                } else {
-                    return a.clientDetails.name.localeCompare(b.clientDetails.name);
-                }
-            });
-
-            const getInitials = (name?: string): string => {
-                if (!name || !name.trim()) return 'U';
-                const parts = name.trim().split(/\s+/);
-                if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-                return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-            };
-
-            return (
-                <div className="space-y-4 animate-in fade-in duration-500">
-                    {/* Compact Search & Filter Bar */}
-                    <div className="bg-[#111] p-4 rounded-2xl border border-white/5 flex flex-col md:flex-row gap-3">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                            <input
-                                type="text"
-                                value={convoSearchQuery}
-                                onChange={(e) => setConvoSearchQuery(e.target.value)}
-                                placeholder="Search support inquiries..."
-                                className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-8 py-2.5 text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-[#D4AF37] transition-all"
-                            />
-                            {convoSearchQuery && (
-                                <button 
-                                    onClick={() => setConvoSearchQuery('')}
-                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10"
-                                >
-                                    <X className="w-3.5 h-3.5" />
-                                </button>
-                            )}
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <select
-                                value={convoReadFilter}
-                                onChange={(e) => setConvoReadFilter(e.target.value as any)}
-                                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
-                            >
-                                <option value="all">All Status</option>
-                                <option value="unread">Unread</option>
-                                <option value="read">Read</option>
-                            </select>
-                            <select
-                                value={convoSortBy}
-                                onChange={(e) => setConvoSortBy(e.target.value as any)}
-                                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
-                            >
-                                <option value="recent">Newest First</option>
-                                <option value="oldest">Oldest First</option>
-                                <option value="alphabetical">Name A-Z</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    {/* Pill-Shaped Photo-Background Conversation List */}
-                    <div className="space-y-3">
-                        {filteredList.length === 0 ? (
-                            <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
-                                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No Active Support Chats</p>
-                            </div>
-                        ) : (
-                            filteredList.map(({ msg, cid, hasUnread, clientDetails, otherUser }, idx) => {
-                                const displayPhoto = otherUser.avatar || clientDetails.avatar;
-                                const displayName = clientDetails.name || otherUser.name || 'Client';
-                                const initials = getInitials(displayName);
-                                const isVoice = msg.type === 'voice' || !!msg.audioUrl;
-                                const isImg = msg.type === 'image' || !!msg.imageUrl;
-                                const isVid = msg.type === 'file' && msg.fileType?.startsWith('video/');
-                                const isDoc = msg.type === 'file' && !msg.fileType?.startsWith('video/');
-
-                                const handleOpenAdminThread = () => {
-                                    setSelectedInquiryEmail(otherUser.email);
-                                    setSelectedConversationId(cid);
-                                    if (cid) {
-                                        markChatAsRead(cid, 'admin').catch(console.error);
-                                    }
-                                };
-
-                                return (
-                                    <div
-                                        key={cid ? `${cid}-${idx}` : `${otherUser.id}-${idx}`}
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={handleOpenAdminThread}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' || e.key === ' ') {
-                                                e.preventDefault();
-                                                handleOpenAdminThread();
-                                            }
-                                        }}
-                                        className={`simcha-event-card relative w-full overflow-hidden rounded-full border transition-all duration-300 cursor-pointer group flex items-center justify-between gap-3 px-5 sm:px-7 py-3.5 sm:py-4 min-h-[68px] sm:min-h-[74px] shadow-xl active:scale-[0.99] ${
-                                            hasUnread || idx === 0
-                                                ? 'border-[#D4AF37] shadow-[0_0_24px_rgba(212,175,55,0.18)]'
-                                                : 'border-[#D4AF37]/35 hover:border-[#D4AF37]/80'
-                                        }`}
-                                    >
-                                        {/* Full Background: Contact Photo OR Initials Pattern */}
-                                        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-                                            {displayPhoto ? (
-                                                <>
-                                                    <img
-                                                        src={displayPhoto}
-                                                        alt={displayName}
-                                                        className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
-                                                    />
-                                                    <div className="absolute inset-0 simcha-event-card-overlay" />
-                                                </>
-                                            ) : (
-                                                <div className="w-full h-full bg-gradient-to-r from-[#0c0c0c] via-[#151208] to-[#0c0c0c] flex items-center justify-center relative">
-                                                    <span className="font-[Cinzel] font-black text-5xl sm:text-6xl tracking-[0.25em] text-[#D4AF37]/15 select-none">
-                                                        {initials}
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Left Side: Initials Badge (when no photo) + Name + Latest Message */}
-                                        <div className="relative z-10 flex items-center gap-3 min-w-0 flex-1">
-                                            {!displayPhoto && (
-                                                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs sm:text-sm shadow-inner">
-                                                    {initials}
-                                                </div>
-                                            )}
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-bold text-sm sm:text-base text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
-                                                        {displayName}
-                                                    </span>
-                                                    {hasUnread && (
-                                                        <span className="bg-[#D4AF37] text-black text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest shrink-0 shadow-sm">
-                                                            New
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-1.5 text-xs text-zinc-200/90 truncate mt-0.5 drop-shadow-sm">
-                                                    {(msg.senderId === 'admin' || (msg as any).sender_role === 'admin') && (
-                                                        (msg.isRead || Object.keys((msg as any).read_by || {}).some(k => k !== 'admin' && k !== msg.senderId)) ? (
-                                                            <span title="Seen" className="inline-flex items-center shrink-0">
-                                                                <CheckCheck className="w-3.5 h-3.5 text-[#34B7F1] shrink-0" />
-                                                            </span>
-                                                        ) : (
-                                                            <span title="Sent" className="inline-flex items-center shrink-0">
-                                                                <Check className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                                                            </span>
-                                                        )
-                                                    )}
-                                                    {isVoice ? (
-                                                        <>
-                                                            <Mic className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
-                                                            <span className="truncate">Voice note</span>
-                                                        </>
-                                                    ) : isImg ? (
-                                                        <>
-                                                            <ImageIcon className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
-                                                            <span className="truncate">{msg.text && msg.text !== 'Sent an image' ? msg.text : 'Photo'}</span>
-                                                        </>
-                                                    ) : isVid ? (
-                                                        <>
-                                                            <Play className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
-                                                            <span className="truncate">{msg.text && msg.text !== 'Sent a video' ? msg.text : 'Video'}</span>
-                                                        </>
-                                                    ) : isDoc ? (
-                                                        <>
-                                                            <FileText className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
-                                                            <span className="truncate">{msg.fileName || 'Document'}</span>
-                                                        </>
-                                                    ) : (
-                                                        <span className="truncate">{msg.text || 'Tap to open chat'}</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Right Side: Date + Chevron */}
-                                        <div className="relative z-10 flex items-center gap-2 shrink-0">
-                                            {msg.timestamp && (
-                                                <span className="simcha-event-pill px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-bold text-zinc-100 border border-white/15">
-                                                    {new Date(msg.timestamp).toLocaleDateString()}
-                                                </span>
-                                            )}
-                                            <div className="w-7 h-7 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
-                                                <ChevronRight className="w-3.5 h-3.5" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
-                    </div>
-
-                    {selectedConversationId && (() => {
-                        const matchedBucket = processedList.find(
-                            item => item.cid === selectedConversationId || item.cids?.has(selectedConversationId)
-                        );
-                        const conversationMessages = matchedBucket
-                            ? matchedBucket.messages
-                            : allAdminSupportMessages.filter(m => 
-                                (selectedConversationId && (m.conversationId === selectedConversationId || [m.senderId, m.receiverId].sort().join('_') === selectedConversationId)) ||
-                                (!selectedConversationId && m.clientEmail === selectedInquiryEmail)
-                            );
-                        const lastMsg = conversationMessages[conversationMessages.length - 1];
-                        const otherId = matchedBucket?.clientDetails.id || matchedBucket?.otherUser.id || (lastMsg ? getOtherUserId(lastMsg) : '');
-                        const otherUser = matchedBucket?.otherUser || (lastMsg ? getOtherUserDetails(otherId, lastMsg) : { id: selectedInquiryEmail || '', name: 'User', email: selectedInquiryEmail || '', role: 'client' as const, avatar: '' });
-
-                        return (
-                            <ChatModal
-                                isOpen={true}
-                                vendor={null}
-                                isAdminMode={true}
-                                onClose={() => {
-                                    setSelectedConversationId(null);
-                                    setSelectedInquiryEmail(null);
-                                }}
-                                onSendMessage={async (payload) => {
-                                    await onSendMessage({
-                                        ...payload,
-                                        senderId: 'admin',
-                                        receiverId: payload.receiverId || otherId || otherUser.id || otherUser.email,
-                                        conversationId: payload.conversationId || matchedBucket?.cid || selectedConversationId,
-                                        clientEmail: payload.clientEmail || otherUser.email || (lastMsg?.clientEmail || ''),
-                                        clientName: payload.clientName || otherUser.name || (lastMsg?.clientName || 'Client'),
-                                        isAdminInquiry: true,
-                                        isRead: false
-                                    });
-                                }}
-                                showNotification={showNotification}
-                                messages={allAdminSupportMessages}
-                                user={{
-                                    id: 'admin',
-                                    name: 'Admin support',
-                                    username: 'Admin'
-                                }}
-                                recipientUid={otherId || otherUser.id || otherUser.email}
-                                recipientName={otherUser.name || 'User'}
-                                recipientEmail={otherUser.email}
-                                recipientImage={otherUser.avatar}
-                                conversationIdOverride={matchedBucket?.cid || selectedConversationId}
-                                isAdminReplying={true}
-                                vendors={vendors}
-                                customConversations={filteredList.map(item => {
-                                    const rawText = item.msg?.text;
-                                    const safeText = typeof rawText === 'string'
-                                        ? rawText
-                                        : (rawText && typeof rawText === 'object' && typeof (rawText as any).text === 'string' ? (rawText as any).text : '');
-                                    const lastMsgSentByAdmin = Boolean(
-                                        item.msg && (item.msg.senderId === 'admin' || (item.msg as any).sender_role === 'admin')
-                                    );
-                                    const lastMsgReadByOther = Boolean(
-                                        item.msg && (
-                                            item.msg.isRead ||
-                                            Object.keys((item.msg as any).read_by || {}).some(k => k !== 'admin' && k !== item.msg.senderId)
-                                        )
-                                    );
-                                    return {
-                                        id: item.cid,
-                                        contactId: item.clientDetails.id || item.otherUser.id || item.otherUser.email || item.cid,
-                                        name: item.clientDetails.name || item.otherUser.name || 'User',
-                                        email: item.clientDetails.email || item.otherUser.email,
-                                        category: 'Support Inquiry',
-                                        image: item.clientDetails.avatar || item.otherUser.avatar,
-                                        isAdmin: false,
-                                        lastMessage: safeText,
-                                        lastMessageType: item.msg?.type,
-                                        lastMessageTime: item.msg?.timestamp,
-                                        lastMessageIsSent: lastMsgSentByAdmin,
-                                        lastMessageIsRead: lastMsgReadByOther,
-                                        unreadCount: item.hasUnread ? 1 : 0,
-                                        conversationId: item.cid
-                                    };
-                                })}
-                            />
-                        );
-                    })()}
-                </div>
-            );
-        })()}
-
-        {activeTab === 'analytics' && (
-            <div className="space-y-8 animate-in fade-in duration-500">
-                {/* Visual Title Header */}
-                <div className="bg-[#111] border border-[#D4AF37]/15 p-8 rounded-3xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-8 opacity-5">
-                        <BarChart3 className="w-36 h-36 text-[#D4AF37]" />
-                    </div>
-                    <div className="relative z-10 max-w-2xl">
-                        <span className="text-[#D4AF37] text-[10px] font-black uppercase tracking-widest bg-[#D4AF37]/10 px-3 py-1 rounded-full border border-[#D4AF37]/20">
-                            Operational Intel
-                        </span>
-                        <h2 className="text-3xl font-bold font-[Cinzel] text-white mt-4 tracking-tight">Booking Funnel Conversion Index</h2>
-                        <p className="text-sm text-zinc-400 mt-2 leading-relaxed">
-                            Monitor client discovery loops, plan additions, submission conversion rates, and revenue acquisitions. Driven in real-time by integrated Firebase Analytics log streams.
-                        </p>
-                    </div>
-                </div>
-
-                {/* KPI Metrics List */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
-                        <div className="absolute top-4 right-4 bg-zinc-400/10 p-2 rounded-lg border border-zinc-400/20">
-                            <Search className="w-5 h-5 text-zinc-400" />
-                        </div>
-                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">1. Discovery</p>
-                        <h3 className="text-3xl font-bold text-white mt-4 font-mono">{analyticsStats.view_vendor}</h3>
-                        <p className="text-xs text-zinc-400 mt-1">Vendor list & profile views</p>
-                    </div>
-                    
-                    <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
-                        <div className="absolute top-4 right-4 bg-[#D4AF37]/10 p-2 rounded-lg border border-[#D4AF37]/25">
-                            <ShoppingBag className="w-5 h-5 text-[#D4AF37]" />
-                        </div>
-                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">2. Plan Intent</p>
-                        <h3 className="text-3xl font-bold text-[#D4AF37] mt-4 font-mono">{analyticsStats.add_to_plan}</h3>
-                        <p className="text-xs text-zinc-400 mt-1">{analyticsStats.planRate.toFixed(1)}% loop add-to-plan rate</p>
-                    </div>
-
-                    <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
-                        <div className="absolute top-4 right-4 bg-zinc-400/10 p-2 rounded-lg border border-[#D4AF37]/20">
-                            <Calendar className="w-5 h-5 text-[#D4AF37]" />
-                        </div>
-                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">3. Book Requests</p>
-                        <h3 className="text-3xl font-bold text-white mt-4 font-mono">{analyticsStats.submit_booking_request}</h3>
-                        <p className="text-xs text-zinc-400 mt-1">{analyticsStats.requestRate.toFixed(1)}% plan conversion rate</p>
-                    </div>
-
-                    <div className="bg-[#111] p-6 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group hover:border-[#D4AF37]/20 transition-all">
-                        <div className="absolute top-4 right-4 bg-[#D4AF37]/10 p-2 rounded-lg border border-[#D4AF37]/20">
-                            <DollarSign className="w-5 h-5 text-[#D4AF37]" />
-                        </div>
-                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">4. Acquisitions</p>
-                        <h3 className="text-3xl font-bold text-[#D4AF37] mt-4 font-mono">{analyticsStats.payment_completed}</h3>
-                        <p className="text-xs text-zinc-400 mt-1">{analyticsStats.purchaseRate.toFixed(1)}% booking close rate</p>
-                    </div>
-                </div>
-
-                {/* Funnel Graph Visualizer */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="lg:col-span-2 bg-[#111] p-8 rounded-2xl border border-white/5 shadow-2xl flex flex-col justify-between">
-                        <div>
-                            <h3 className="text-lg font-bold font-[Cinzel] text-white">Funnel Leakage & Progress Chart</h3>
-                            <p className="text-xs text-zinc-400 mt-1">Mathematical representation of client conversion phases.</p>
-                        </div>
-
-                        {/* Interactive Bars representing Funnel Volume */}
-                        <div className="space-y-6 mt-8">
-                            {/* Discovery step */}
-                            <div>
-                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">
-                                    <span>Step 1: Discovery (Total Card Views)</span>
-                                    <span>{analyticsStats.view_vendor} Views (100%)</span>
-                                </div>
-                                <div className="h-4 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
-                                    <div className="h-full bg-[#D4AF37] rounded-full transition-all duration-1000" style={{ width: '105%' }}></div>
-                                </div>
-                            </div>
-
-                            {/* Plan step */}
-                            <div>
-                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">
-                                    <span>Step 2: Micro-Conversion (Added to Event Plan)</span>
-                                    <span>{analyticsStats.add_to_plan} Added ({analyticsStats.planRate.toFixed(1)}%)</span>
-                                </div>
-                                <div className="h-4 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
-                                    <div className="h-full bg-[#D4AF37] rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.max(0, analyticsStats.planRate))}%` }}></div>
-                                </div>
-                            </div>
-
-                            {/* Booking requests step */}
-                            <div>
-                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">
-                                    <span>Step 3: Intent (Booking Inquiry Sent)</span>
-                                    <span>{analyticsStats.submit_booking_request} Enquiries ({analyticsStats.view_vendor > 0 ? ((analyticsStats.submit_booking_request / analyticsStats.view_vendor) * 100).toFixed(1) : 0}%)</span>
-                                </div>
-                                <div className="h-4 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
-                                    <div className="h-full bg-[#D4AF37] rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.max(0, analyticsStats.view_vendor > 0 ? (analyticsStats.submit_booking_request / analyticsStats.view_vendor) * 100 : 0))}%` }}></div>
-                                </div>
-                            </div>
-
-                            {/* Acquisition/Checkout step */}
-                            <div>
-                                <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">
-                                    <span>Step 4: Ultimate Acquisition (Securely Paid)</span>
-                                    <span>{analyticsStats.payment_completed} Orders ({analyticsStats.view_vendor > 0 ? ((analyticsStats.payment_completed / analyticsStats.view_vendor) * 100).toFixed(1) : 0}%)</span>
-                                </div>
-                                <div className="h-4 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
-                                    <div className="h-full bg-[#D4AF37] rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.max(0, analyticsStats.view_vendor > 0 ? (analyticsStats.payment_completed / analyticsStats.view_vendor) * 100 : 0))}%` }}></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="mt-8 pt-6 border-t border-white/5 flex flex-wrap gap-6 items-center justify-between text-xs text-zinc-400">
-                            <div>
-                                <span className="text-white font-bold font-mono">Overall Close Target:</span> {analyticsStats.overallRate.toFixed(2)}% of visitors convert to revenue.
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="inline-block w-2.5 h-2.5 bg-[#D4AF37] rounded-full"></span> Discovery
-                                <span className="inline-block w-2.5 h-2.5 bg-[#D4AF37] rounded-full"></span> Interest
-                                <span className="inline-block w-2.5 h-2.5 bg-[#D4AF37] rounded-full"></span> Intent
-                                <span className="inline-block w-2.5 h-2.5 bg-[#D4AF37] rounded-full"></span> Purchase
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Circular Conversion Stats */}
-                    <div className="bg-[#111] p-8 rounded-2xl border border-white/5 shadow-2xl flex flex-col justify-between">
-                        <div>
-                            <h3 className="text-lg font-bold font-[Cinzel] text-white">Conversion Funnel Ratios</h3>
-                            <p className="text-xs text-zinc-400 mt-1">Leakage between steps & segments.</p>
-                        </div>
-                        
-                        <div className="space-y-6 mt-6">
-                            <div className="p-4 bg-zinc-900/60 rounded-xl border border-white/5 flex items-center justify-between">
-                                <div>
-                                    <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider">Interest Rate</h4>
-                                    <p className="text-[10px] text-zinc-400 mt-1">From viewing cards to adding items to plan</p>
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-xl font-bold font-mono text-[#D4AF37]">{analyticsStats.planRate.toFixed(1)}%</span>
-                                </div>
-                            </div>
-
-                            <div className="p-4 bg-zinc-900/60 rounded-xl border border-white/5 flex items-center justify-between">
-                                <div>
-                                    <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider">Plan Commitment</h4>
-                                    <p className="text-[10px] text-zinc-400 mt-1">From adding to plan to submitting booking inquiries</p>
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-xl font-bold font-mono text-[#D4AF37]">{analyticsStats.requestRate.toFixed(1)}%</span>
-                                </div>
-                            </div>
-
-                            <div className="p-4 bg-zinc-900/60 rounded-xl border border-white/5 flex items-center justify-between">
-                                <div>
-                                    <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider">Acquisition Fulfillment</h4>
-                                    <p className="text-[10px] text-zinc-400 mt-1">From sent inquiries to fully completed payments</p>
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-xl font-bold font-mono text-[#D4AF37]">{analyticsStats.purchaseRate.toFixed(1)}%</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest text-center mt-6">
-                            Secure Zero-Trust ABAC Logging
-                        </div>
-                    </div>
-                </div>
-
-                {/* Booking Trends Line Chart */}
-                <div className="bg-[#111] p-8 rounded-2xl border border-white/5 shadow-2xl">
-                    <div className="mb-6">
-                        <h3 className="text-lg font-bold font-[Cinzel] text-white">Booking Request Trends (Last 30 Days)</h3>
-                        <p className="text-xs text-zinc-400 mt-1">Daily booking request volume identifying platform activity peaks.</p>
-                    </div>
-                    <div className="h-[300px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={bookingChartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                                <XAxis 
-                                    dataKey="date" 
-                                    stroke="#a1a1aa" 
-                                    fontSize={10}
-                                    tickMargin={10}
-                                    axisLine={false}
-                                    tickLine={false}
-                                />
-                                <YAxis 
-                                    stroke="#a1a1aa" 
-                                    fontSize={10}
-                                    tickMargin={10}
-                                    axisLine={false}
-                                    tickLine={false}
-                                />
-                                <Tooltip 
-                                    contentStyle={{ backgroundColor: '#111', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '8px' }}
-                                    itemStyle={{ color: '#D4AF37' }}
-                                />
-                                <Line 
-                                    type="monotone" 
-                                    dataKey="requests" 
-                                    name="Booking Requests"
-                                    stroke="#D4AF37" 
-                                    strokeWidth={2}
-                                    dot={{ r: 3, fill: '#D4AF37', strokeWidth: 0 }}
-                                    activeDot={{ r: 5, fill: '#E5C76B' }}
-                                />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                {/* Tracking Logs Records Table */}
-                <div className="bg-[#111] rounded-2xl border border-white/5 overflow-hidden">
-                    <div className="p-6 border-b border-white/5 bg-black/40 flex justify-between items-center">
-                        <div>
-                            <h3 className="text-lg font-bold font-[Cinzel] text-white">Live Firebase Analytics Logs</h3>
-                            <p className="text-xs text-zinc-400 mt-1">Real-time log entries captured through analytics hooks.</p>
-                        </div>
-                        <span className="text-[10px] bg-[#D4AF37]/10 text-[#D4AF37] px-3 py-1 font-bold uppercase tracking-widest border border-[#D4AF37]/20 rounded-full flex items-center gap-1.5 font-bold">
-                            <span className="w-1.5 h-1.5 bg-[#D4AF37] rounded-full animate-pulse"></span> Live Broadcast
-                        </span>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                        {isLoadingAnalytics ? (
-                            <div className="py-20 text-center flex flex-col items-center justify-center gap-4">
-                                <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
-                                <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Streaming Firebase records...</span>
-                            </div>
-                        ) : analyticsLogs.length === 0 ? (
-                            <div className="py-20 text-center opacity-40">
-                                <BarChart3 className="w-12 h-12 mx-auto text-[#D4AF37]/40 mb-3" />
-                                <p className="text-sm">No live analytics records logged yet.</p>
-                            </div>
-                        ) : (
-                            <table className="w-full text-left border-collapse text-xs">
-                                <thead>
-                                    <tr className="border-b border-white/5 bg-black/20 text-zinc-400 font-bold uppercase tracking-widest text-[9px]">
-                                        <th className="p-4 bg-[#111]">Timestamp</th>
-                                        <th className="p-4 bg-[#111]">Event Name</th>
-                                        <th className="p-4 bg-[#111]">User Email</th>
-                                        <th className="p-4 bg-[#111]">Payload Summary</th>
-                                        <th className="p-4 bg-[#111]">Path</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5">
-                                    {analyticsLogs.map(log => (
-                                        <tr key={log.id} className="hover:bg-white/[0.02] transition-colors font-mono text-[11px] text-zinc-300">
-                                            <td className="p-4 text-zinc-400">
-                                                {log.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A'}
-                                            </td>
-                                            <td className="p-4">
-                                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${
-                                                    log.eventName === 'payment_completed' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' :
-                                                    log.eventName === 'submit_booking_request' ? 'bg-zinc-400/10 text-[#D4AF37] border-[#D4AF37]/20' :
-                                                    log.eventName === 'add_to_plan' ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20' :
-                                                    'bg-zinc-400/10 text-zinc-400 border-zinc-400/20'
-                                                }`}>
-                                                    {log.eventName}
-                                                </span>
-                                            </td>
-                                            <td className="p-4 text-zinc-400 text-xs font-sans">
-                                                {log.userEmail || 'Anonymous Guest'}
-                                            </td>
-                                            <td className="p-4 max-w-xs truncate text-[10px]" title={JSON.stringify(log.params)}>
-                                                {log.params ? Object.entries(log.params).map(([k, v]) => `${k}: ${v}`).join(' | ') : 'None'}
-                                            </td>
-                                            <td className="p-4 text-zinc-400">
-                                                {log.path || '/'}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-                </div>
+              <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+                {(['all', 'pending', 'confirmed', 'paid', 'cancelled'] as const).map(st => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setBookingStatusFilter(st)}
+                    className={`h-6 px-3 rounded-full text-[8px] font-black uppercase tracking-widest transition-all shrink-0 cursor-pointer ${
+                      bookingStatusFilter === st
+                        ? 'bg-[#D4AF37] text-black'
+                        : 'bg-black/50 text-zinc-400 hover:text-white border border-white/5'
+                    }`}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Pill-Shaped Booking Cards ("Tap to view") */}
+            <div className="space-y-2">
+              {filteredBookings.length === 0 ? (
+                <div className="bg-[#111] rounded-2xl border border-dashed border-white/10 py-10 px-4 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-400">No Bookings Found</p>
+                </div>
+              ) : (
+                filteredBookings.map(b => {
+                  const vendor = vendors.find(v => v.id === b.vendorId);
+                  return (
+                    <div
+                      key={b.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleOpenBookingSheet(b)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleOpenBookingSheet(b);
+                        }
+                      }}
+                      className="w-full bg-[#111] hover:bg-[#161616] border border-white/[0.08] hover:border-[#D4AF37]/50 rounded-full px-4 sm:px-5 py-2.5 flex items-center justify-between gap-3 transition-all cursor-pointer group shadow-md"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border ${
+                          b.status === 'confirmed'
+                            ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                            : b.status === 'cancelled'
+                            ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                            : 'bg-[#D4AF37]/15 border-[#D4AF37]/30 text-[#D4AF37]'
+                        }`}>
+                          <Calendar className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs sm:text-sm font-bold text-white group-hover:text-[#D4AF37] transition-colors truncate">
+                              {b.clientName}
+                            </span>
+                            <span className="text-[10px] text-zinc-500">•</span>
+                            <span className="text-[11px] font-semibold text-[#D4AF37] truncate">
+                              {vendor?.name || 'Vendor'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-zinc-400 truncate mt-0.5">
+                            <span className="truncate">{b.eventName}</span>
+                            <span>•</span>
+                            <span className="font-mono text-zinc-300">{b.date}</span>
+                            <span>•</span>
+                            <span className="font-mono font-bold text-white">${b.amount.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider border ${
+                          b.paymentStatus === 'paid'
+                            ? 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30'
+                            : 'bg-white/5 text-zinc-400 border-white/10'
+                        }`}>
+                          {b.paymentStatus}
+                        </span>
+                        <span className="text-[9px] font-bold text-[#D4AF37]/85 group-hover:text-[#D4AF37] uppercase tracking-wider hidden sm:inline">
+                          Tap to view
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-[#D4AF37]" />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== TAB 4: TAXONOMY (CATEGORIES & SUBCATEGORIES) ==================== */}
+        {activeTab === 'categories' && (
+          <div className="space-y-3 animate-in fade-in duration-300">
+            {/* Top Action Bar */}
+            <div className="bg-[#111] p-3.5 rounded-2xl border border-white/[0.07] flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <h2 className="text-xs sm:text-sm font-bold font-[Cinzel] text-white">Marketplace Taxonomy</h2>
+                <p className="text-[10px] text-zinc-400">Tap any category to manage banners, rank order, and subcategories</p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {onSeedTaxonomy && (
+                  <button
+                    type="button"
+                    disabled={isSeedingTaxonomy}
+                    onClick={handleSeed}
+                    className="h-7 px-3 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-zinc-300 text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {isSeedingTaxonomy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-[#D4AF37]" />}
+                    <span>Seed Defaults</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAddCategoryModal(true)}
+                  className="h-7 px-3 rounded-full bg-[#D4AF37] text-black text-[9px] font-black uppercase tracking-wider flex items-center gap-1 hover:bg-[#E5C76B] transition-all cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Add Category</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Collapsible Pill-Style Category Cards */}
+            <div className="space-y-2">
+              {localCategories.map((cat, index) => {
+                const isExpanded = expandedCategory === cat;
+                const catBanner = previewUrls[cat] || categoryImages[cat];
+                const subGroups = localCategorySubCategories[cat] || {};
+
+                return (
+                  <div
+                    key={cat}
+                    className="bg-[#111] rounded-2xl border border-white/[0.08] overflow-hidden transition-all"
+                  >
+                    {/* Compact Category Row Header */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setExpandedCategory(isExpanded ? null : cat)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setExpandedCategory(isExpanded ? null : cat);
+                        }
+                      }}
+                      className="p-3 flex items-center justify-between gap-3 hover:bg-white/[0.02] cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl overflow-hidden bg-black border border-[#D4AF37]/30 shrink-0 relative">
+                          {renderMedia(catBanner, 'w-full h-full object-cover')}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-mono font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded border border-[#D4AF37]/20">
+                              #{index + 1}
+                            </span>
+                            <h3 className="text-xs sm:text-sm font-bold font-[Cinzel] text-white truncate">
+                              {cat}
+                            </h3>
+                          </div>
+                          <p className="text-[10px] text-zinc-400 truncate mt-0.5">
+                            {Object.keys(subGroups).length === 0 ? 'Tap to configure subcategories' : Object.keys(subGroups).join(' • ')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() => handleMoveCategory(cat, 'up')}
+                          className="p-1.5 rounded-full text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 disabled:opacity-25 cursor-pointer"
+                          title="Move Up"
+                        >
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === localCategories.length - 1}
+                          onClick={() => handleMoveCategory(cat, 'down')}
+                          className="p-1.5 rounded-full text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 disabled:opacity-25 cursor-pointer"
+                          title="Move Down"
+                        >
+                          <ArrowDown className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => categoryImageInputRefs.current[cat]?.click()}
+                          className="p-1.5 rounded-full text-zinc-400 hover:text-[#D4AF37] hover:bg-white/5 cursor-pointer"
+                          title="Change Banner"
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                        </button>
+                        <input
+                          type="file"
+                          accept="image/*,video/*"
+                          className="hidden"
+                          ref={el => { categoryImageInputRefs.current[cat] = el; }}
+                          onChange={e => handleCategoryImageUpload(cat, e)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCategorySilent(cat)}
+                          className="p-1.5 rounded-full text-zinc-500 hover:text-red-400 hover:bg-red-500/10 cursor-pointer"
+                          title="Delete Category"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedCategory(isExpanded ? null : cat)}
+                          className="ml-1 px-2 py-1 rounded-full bg-white/[0.04] text-[8px] font-black text-[#D4AF37] uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>{isExpanded ? 'Close' : 'Tap to view'}</span>
+                          <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Expanded Subcategory & Option Editor */}
+                    {isExpanded && (
+                      <div className="p-3.5 border-t border-white/[0.06] bg-black/40 space-y-3">
+                        {/* Add New Classification Group */}
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            className={inputClass + ' py-1.5'}
+                            placeholder="Add classification group (e.g. Style, Tier, Service Type)..."
+                            value={newSubCategoryInputs[cat] || ''}
+                            onChange={e => setNewSubCategoryInputs({ ...newSubCategoryInputs, [cat]: e.target.value })}
+                            onKeyDown={e => e.key === 'Enter' && handleAddSubCategory(cat)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddSubCategory(cat)}
+                            className="px-3 rounded-xl bg-[#D4AF37] text-black font-black text-[9px] uppercase tracking-wider shrink-0 hover:bg-[#E5C76B] cursor-pointer"
+                          >
+                            Add Group
+                          </button>
+                        </div>
+
+                        {Object.entries(subGroups).map(([sub, nestedItems]) => {
+                          const nestedKey = `${cat}-${sub}`;
+                          const items = nestedItems as string[];
+                          return (
+                            <div key={sub} className="bg-[#111] rounded-xl border border-white/[0.06] p-3 space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <Layers className="w-3.5 h-3.5 text-[#D4AF37]" />
+                                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-200">{sub}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSubcategorySilent(cat, sub)}
+                                  className="text-zinc-500 hover:text-red-400 p-1 rounded-full hover:bg-red-500/10 transition-colors cursor-pointer"
+                                  title="Delete group"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+
+                              {/* Compact Sub-option Pills with Thumbnail + Camera + Remove */}
+                              <div className="flex flex-wrap gap-1.5">
+                                {items.map(item => {
+                                  const itemImg = previewUrls[item] || subCategoryImages[item];
+                                  return (
+                                    <div
+                                      key={item}
+                                      className="inline-flex items-center gap-1.5 bg-black border border-white/10 rounded-full pl-1.5 pr-2 py-1"
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => subCategoryImageInputRefs.current[item]?.click()}
+                                        className="w-5 h-5 rounded-full overflow-hidden bg-zinc-900 border border-[#D4AF37]/40 flex items-center justify-center shrink-0 hover:border-[#D4AF37] cursor-pointer"
+                                        title="Upload option photo"
+                                      >
+                                        {itemImg ? (
+                                          <img src={itemImg} alt={item} className="w-full h-full object-cover" />
+                                        ) : (
+                                          <Camera className="w-2.5 h-2.5 text-[#D4AF37]" />
+                                        )}
+                                      </button>
+                                      <input
+                                        type="file"
+                                        accept="image/*,video/*"
+                                        className="hidden"
+                                        ref={el => { subCategoryImageInputRefs.current[item] = el; }}
+                                        onChange={e => handleSubCategoryImageUpload(item, e)}
+                                      />
+                                      <span className="text-[10px] font-semibold text-zinc-200">{item}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveNestedSubCategorySilent(cat, sub, item)}
+                                        className="text-zinc-500 hover:text-red-400 ml-0.5 cursor-pointer"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="flex gap-1.5">
+                                <input
+                                  type="text"
+                                  className="flex-1 bg-black/60 border border-white/10 rounded-lg px-2.5 py-1.5 text-[10px] text-white outline-none focus:border-[#D4AF37]"
+                                  placeholder={`Add option to ${sub}...`}
+                                  value={newNestedSubCategoryInputs[nestedKey] || ''}
+                                  onChange={e => setNewNestedSubCategoryInputs({ ...newNestedSubCategoryInputs, [nestedKey]: e.target.value })}
+                                  onKeyDown={e => e.key === 'Enter' && handleAddNestedSubCategory(cat, sub)}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddNestedSubCategory(cat, sub)}
+                                  className="px-2.5 py-1 rounded-lg bg-[#D4AF37]/15 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black text-[9px] font-black uppercase cursor-pointer transition-all"
+                                >
+                                  + Add
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== TAB 5: VISUALS (HERO & COMMUNITY MOMENTS) ==================== */}
+        {activeTab === 'visuals' && (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            {/* Hero Background Manager */}
+            <div className="bg-[#111] p-4 rounded-2xl border border-white/[0.07] space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <h2 className="text-xs sm:text-sm font-bold font-[Cinzel] text-white">Landing Page Hero Background</h2>
+                  <p className="text-[10px] text-zinc-400">Tap any visual below to set it as the live marketplace hero</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={isUploading}
+                  onClick={() => heroFileInputRef.current?.click()}
+                  className="h-7 px-3 rounded-full bg-[#D4AF37] text-black font-black text-[9px] uppercase tracking-wider flex items-center gap-1.5 hover:bg-[#E5C76B] transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                  <span>Upload Hero</span>
+                </button>
+                <input
+                  type="file"
+                  ref={heroFileInputRef}
+                  className="hidden"
+                  accept="image/*,video/*"
+                  onChange={handleHeroFileUpload}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+                {allDisplayHeroImages.map(img => {
+                  const isActive = heroBackgroundUrl === img.url;
+                  return (
+                    <div
+                      key={img.id || img.url}
+                      onClick={() => handleSelectHeroImage(img)}
+                      className={`group relative rounded-xl overflow-hidden border transition-all cursor-pointer aspect-[16/10] bg-black ${
+                        isActive
+                          ? 'border-[#D4AF37] ring-2 ring-[#D4AF37]/30'
+                          : 'border-white/10 hover:border-[#D4AF37]/50'
+                      }`}
+                    >
+                      {renderMedia(img.url, 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-500')}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+                      {isActive && (
+                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full bg-[#D4AF37] text-black text-[7px] font-black uppercase tracking-widest flex items-center gap-0.5">
+                          <Check className="w-2.5 h-2.5 stroke-[3]" /> Active
+                        </span>
+                      )}
+                      {!img.isDefault && (
+                        <button
+                          type="button"
+                          onClick={e => handleRemoveHeroImageFromLibrary(img, e)}
+                          className="absolute top-1.5 right-1.5 p-1 rounded-full bg-black/70 text-zinc-300 hover:bg-red-500 hover:text-white transition-colors"
+                          title="Delete custom hero"
+                        >
+                          <Trash2 className="w-2.5 h-2.5" />
+                        </button>
+                      )}
+                      <p className="absolute bottom-1.5 left-2 right-2 text-[9px] font-bold text-white truncate">
+                        {img.name}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Community Moments Manager */}
+            <div className="bg-[#111] p-4 rounded-2xl border border-white/[0.07] space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-xs sm:text-sm font-bold font-[Cinzel] text-white">Community Moments Feed</h2>
+                  <p className="text-[10px] text-zinc-400">Manage visual highlights published in the Simcha feed</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMomentModal(true)}
+                  className="h-7 px-3 rounded-full bg-[#D4AF37] text-black font-black text-[9px] uppercase tracking-wider flex items-center gap-1 hover:bg-[#E5C76B] transition-all cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Publish Moment</span>
+                </button>
+              </div>
+
+              {posts.length === 0 ? (
+                <div className="py-8 text-center text-zinc-500 text-xs border border-dashed border-white/10 rounded-xl">
+                  No moments published yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                  {posts.map(post => {
+                    const assocVendor = vendors.find(v => v.id === post.vendorId);
+                    return (
+                      <div key={post.id} className="relative group rounded-xl overflow-hidden border border-white/10 bg-black aspect-square">
+                        {renderMedia(post.url, 'w-full h-full object-cover')}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onRemovePost(post.id);
+                            showNotification('Moment removed.', 'info');
+                          }}
+                          className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-zinc-300 hover:bg-red-500 hover:text-white transition-all cursor-pointer"
+                          title="Delete Moment"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                        <div className="absolute bottom-2 left-2.5 right-2.5">
+                          <p className="text-[10px] font-bold text-white truncate">{post.title}</p>
+                          {assocVendor && (
+                            <p className="text-[8px] text-[#D4AF37] truncate">{assocVendor.name}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== TAB 6: MESSAGES (CONCIERGE INBOX) ==================== */}
+        {activeTab === 'messages' && (() => {
+          const { list, allAdminSupportMessages, getOtherUserId, getOtherUserDetails } = processedSupportThreads;
+          const filteredList = list.filter(item => {
+            const matchesSearch =
+              !convoSearchQuery.trim() ||
+              item.clientDetails.name.toLowerCase().includes(convoSearchQuery.toLowerCase()) ||
+              item.clientDetails.email.toLowerCase().includes(convoSearchQuery.toLowerCase()) ||
+              (item.msg.text || '').toLowerCase().includes(convoSearchQuery.toLowerCase());
+            const matchesRead =
+              convoReadFilter === 'all' ||
+              (convoReadFilter === 'unread' && item.hasUnread) ||
+              (convoReadFilter === 'read' && !item.hasUnread);
+            return matchesSearch && matchesRead;
+          });
+
+          const getInitials = (name?: string): string => {
+            if (!name || !name.trim()) return 'U';
+            const parts = name.trim().split(/\s+/);
+            if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+          };
+
+          return (
+            <div className="space-y-3 animate-in fade-in duration-300">
+              <div className="bg-[#111] p-3 rounded-2xl border border-white/[0.07] flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
+                  <input
+                    type="text"
+                    value={convoSearchQuery}
+                    onChange={e => setConvoSearchQuery(e.target.value)}
+                    placeholder="Search support threads..."
+                    className="w-full bg-black/60 border border-white/10 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#D4AF37]"
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  {(['all', 'unread', 'read'] as const).map(f => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setConvoReadFilter(f)}
+                      className={`h-7 px-3 rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all ${
+                        convoReadFilter === f
+                          ? 'bg-[#D4AF37] text-black'
+                          : 'bg-black/50 text-zinc-400 hover:text-white border border-white/5'
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {filteredList.length === 0 ? (
+                  <div className="bg-[#111] rounded-2xl border border-dashed border-white/10 py-10 px-4 text-center">
+                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-400">No Support Conversations</p>
+                  </div>
+                ) : (
+                  filteredList.map(({ msg, cid, cids, hasUnread, clientDetails, otherUser }, idx) => {
+                    const displayPhoto = otherUser.avatar || clientDetails.avatar;
+                    const displayName = clientDetails.name || otherUser.name || 'Client';
+                    const initials = getInitials(displayName);
+                    const isVoice = msg.type === 'voice' || !!msg.audioUrl;
+                    const isImg = msg.type === 'image' || !!msg.imageUrl;
+
+                    const handleOpenAdminThread = () => {
+                      setLocallyReadThreadCids(prev => {
+                        const next = new Set(prev);
+                        next.add(cid);
+                        cids.forEach(c => next.add(c));
+                        return next;
+                      });
+                      setSelectedInquiryEmail(otherUser.email);
+                      setSelectedConversationId(cid);
+                      cids.forEach(c => {
+                        if (c) markChatAsRead(c, 'admin').catch(() => {});
+                      });
+                    };
+
+                    return (
+                      <div
+                        key={cid ? `${cid}-${idx}` : `${otherUser.id}-${idx}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={handleOpenAdminThread}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleOpenAdminThread();
+                          }
+                        }}
+                        className={`w-full bg-[#111] hover:bg-[#161616] rounded-full px-4 sm:px-5 py-2.5 border transition-all cursor-pointer group flex items-center justify-between gap-3 ${
+                          hasUnread
+                            ? 'border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
+                            : 'border-white/[0.08] hover:border-[#D4AF37]/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          {displayPhoto ? (
+                            <img src={displayPhoto} alt={displayName} className="w-10 h-10 rounded-full object-cover border border-[#D4AF37]/40 shrink-0" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs">
+                              {initials}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs sm:text-sm text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate">
+                                {displayName}
+                              </span>
+                              {hasUnread && (
+                                <span className="bg-[#D4AF37] text-black text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest shrink-0">
+                                  New
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 truncate mt-0.5">
+                              {msg.senderId === 'admin' && (
+                                msg.isRead ? (
+                                  <CheckCheck className="w-3.5 h-3.5 text-[#34B7F1] shrink-0" />
+                                ) : (
+                                  <Check className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                                )
+                              )}
+                              {isVoice ? (
+                                <span className="inline-flex items-center gap-1 truncate"><Mic className="w-3 h-3 text-[#D4AF37]" /> Voice note</span>
+                              ) : isImg ? (
+                                <span className="inline-flex items-center gap-1 truncate"><ImageIcon className="w-3 h-3 text-[#D4AF37]" /> Photo</span>
+                              ) : (
+                                <span className="truncate">{msg.text || 'Tap to view conversation'}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {msg.timestamp && (
+                            <span className="text-[9px] font-mono text-zinc-400 hidden sm:inline">
+                              {new Date(msg.timestamp).toLocaleDateString()}
+                            </span>
+                          )}
+                          <span className="text-[9px] font-bold text-[#D4AF37] uppercase tracking-wider">
+                            Tap to view
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-[#D4AF37]" />
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {selectedConversationId && (() => {
+                const matchedBucket = list.find(
+                  item => item.cid === selectedConversationId || item.cids?.has(selectedConversationId)
+                );
+                const conversationMessages = matchedBucket
+                  ? matchedBucket.messages
+                  : allAdminSupportMessages.filter(m =>
+                      (selectedConversationId && (m.conversationId === selectedConversationId || [m.senderId, m.receiverId].sort().join('_') === selectedConversationId)) ||
+                      (!selectedConversationId && m.clientEmail === selectedInquiryEmail)
+                    );
+                const lastMsg = conversationMessages[conversationMessages.length - 1];
+                const otherId = matchedBucket?.clientDetails.id || matchedBucket?.otherUser.id || (lastMsg ? getOtherUserId(lastMsg) : '');
+                const otherUser = matchedBucket?.otherUser || (lastMsg ? getOtherUserDetails(otherId, lastMsg) : { id: selectedInquiryEmail || '', name: 'User', email: selectedInquiryEmail || '', role: 'client' as const, avatar: '' });
+
+                return (
+                  <ChatModal
+                    isOpen={true}
+                    vendor={null}
+                    isAdminMode={true}
+                    onClose={() => {
+                      setSelectedConversationId(null);
+                      setSelectedInquiryEmail(null);
+                    }}
+                    onSendMessage={async payload => {
+                      await onSendMessage({
+                        ...payload,
+                        senderId: 'admin',
+                        receiverId: payload.receiverId || otherId || otherUser.id || otherUser.email,
+                        conversationId: payload.conversationId || matchedBucket?.cid || selectedConversationId,
+                        clientEmail: payload.clientEmail || otherUser.email || (lastMsg?.clientEmail || ''),
+                        clientName: payload.clientName || otherUser.name || (lastMsg?.clientName || 'Client'),
+                        isAdminInquiry: true,
+                        isRead: false
+                      });
+                    }}
+                    showNotification={showNotification}
+                    messages={allAdminSupportMessages}
+                    user={{
+                      id: 'admin',
+                      name: 'Admin support',
+                      username: 'Admin'
+                    }}
+                    recipientUid={otherId || otherUser.id || otherUser.email}
+                    recipientName={otherUser.name || 'User'}
+                    recipientEmail={otherUser.email}
+                    recipientImage={otherUser.avatar}
+                    conversationIdOverride={matchedBucket?.cid || selectedConversationId}
+                    isAdminReplying={true}
+                    vendors={vendors}
+                    customConversations={filteredList.map(item => ({
+                      id: item.cid,
+                      contactId: item.clientDetails.id || item.otherUser.id || item.otherUser.email || item.cid,
+                      name: item.clientDetails.name || item.otherUser.name || 'User',
+                      email: item.clientDetails.email || item.otherUser.email,
+                      category: 'Support Inquiry',
+                      image: item.clientDetails.avatar || item.otherUser.avatar,
+                      isAdmin: false,
+                      lastMessage: typeof item.msg?.text === 'string' ? item.msg.text : '',
+                      lastMessageType: item.msg?.type,
+                      lastMessageTime: item.msg?.timestamp,
+                      lastMessageIsSent: item.msg?.senderId === 'admin',
+                      lastMessageIsRead: Boolean(item.msg?.isRead),
+                      unreadCount: item.hasUnread ? 1 : 0,
+                      conversationId: item.cid
+                    }))}
+                  />
+                );
+              })()}
+            </div>
+          );
+        })()}
+
+        {/* ==================== TAB 7: USERS & ROLES ==================== */}
+        {activeTab === 'users' && (
+          <div className="space-y-3 animate-in fade-in duration-300">
+            {/* Quick Pre-Authorize Vendor by Email Bar */}
+            <form onSubmit={handleInviteVendor} className="bg-[#111] p-3 rounded-2xl border border-[#D4AF37]/25 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="flex items-center gap-2 flex-1">
+                <UserPlus className="w-4 h-4 text-[#D4AF37] shrink-0 ml-1" />
+                <input
+                  type="email"
+                  required
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  placeholder="Grant Vendor access by email (pre-authorizes or elevates user)..."
+                  className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#D4AF37]"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isInvitingVendor}
+                className="h-8 px-4 rounded-xl bg-[#D4AF37] text-black font-black text-[9px] uppercase tracking-widest hover:bg-[#E5C76B] transition-all shrink-0 cursor-pointer disabled:opacity-50"
+              >
+                {isInvitingVendor ? 'Saving...' : 'Grant Vendor Role'}
+              </button>
+            </form>
+
+            {/* Search & Role Filter */}
+            <div className="bg-[#111] p-3 rounded-2xl border border-white/[0.07] flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
+                <input
+                  type="text"
+                  placeholder="Search users by name or email..."
+                  value={userSearch}
+                  onChange={e => setUserSearch(e.target.value)}
+                  className="w-full bg-black/60 border border-white/10 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#D4AF37]"
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                {(['all', 'client', 'vendor', 'admin'] as const).map(r => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setUserRoleFilter(r)}
+                    className={`h-7 px-3 rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all ${
+                      userRoleFilter === r
+                        ? 'bg-[#D4AF37] text-black'
+                        : 'bg-black/50 text-zinc-400 hover:text-white border border-white/5'
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Pill-Shaped User Directory Cards ("Tap to view") */}
+            <div className="space-y-2">
+              {filteredUsers.length === 0 ? (
+                <div className="bg-[#111] rounded-2xl border border-dashed border-white/10 py-10 px-4 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-400">No Matching Users</p>
+                </div>
+              ) : (
+                filteredUsers.map(u => {
+                  const role = ((u as any).role || 'client').toLowerCase();
+                  const email = (u as any).email || u.username || '';
+                  return (
+                    <div
+                      key={u.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        setConfirmDeleteUserId(null);
+                        setSelectedUserForSheet(u);
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setConfirmDeleteUserId(null);
+                          setSelectedUserForSheet(u);
+                        }
+                      }}
+                      className="w-full bg-[#111] hover:bg-[#161616] border border-white/[0.08] hover:border-[#D4AF37]/50 rounded-full px-4 sm:px-5 py-2.5 flex items-center justify-between gap-3 transition-all cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        {u.photoURL ? (
+                          <img src={u.photoURL} alt="" className="w-9 h-9 rounded-full object-cover bg-black border border-white/15 shrink-0" />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-zinc-900 border border-[#D4AF37]/30 flex items-center justify-center font-bold text-[#D4AF37] text-xs uppercase shrink-0">
+                            {(u.name || email || 'U').slice(0, 2)}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs sm:text-sm font-bold text-white group-hover:text-[#D4AF37] transition-colors truncate">
+                              {u.name || 'Platform User'}
+                            </span>
+                            <span className={`px-2 py-0.2 rounded-full text-[8px] font-black uppercase tracking-wider border ${
+                              role === 'admin'
+                                ? 'bg-[#D4AF37]/20 text-[#D4AF37] border-[#D4AF37]/40'
+                                : role === 'vendor'
+                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                : 'bg-white/5 text-zinc-400 border-white/10'
+                            }`}>
+                              {role}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-zinc-400 font-mono truncate mt-0.5">
+                            {email || u.id}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[9px] font-bold text-[#D4AF37]/85 group-hover:text-[#D4AF37] uppercase tracking-wider">
+                          Tap to view
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-[#D4AF37]" />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
         )}
       </main>
 
-      {/* Fullscreen Media Viewer */}
-      <AnimatePresence>
-        {fullscreenMedia && (
-          <motion.div 
-            role="dialog"
-            aria-modal="true"
-            aria-label="Media Preview"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-sm"
-          >
-            <button 
-              onClick={() => setFullscreenMedia(null)}
-              className="absolute top-4 right-4 text-white hover:text-[#D4AF37] bg-black/50 p-3 rounded-full backdrop-blur-md border border-white/10 transition-all shadow-xl z-10"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            {fullscreenMedia.type === 'image' ? (
-              <img src={fullscreenMedia.url} alt="Fullscreen View" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
-            ) : (
-              <video src={fullscreenMedia.url} controls autoPlay className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl bg-black" />
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Hero Simulation / Fullscreen Preview Modal */}
-      <AnimatePresence>
-        {previewHeroModal && (
+      {/* ==================== MODAL 1: VENDOR CREATE / EDIT SHEET ==================== */}
+      {(selectedVendorForSheet || isCreatingNewVendor) && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
+          onClick={() => {
+            setSelectedVendorForSheet(null);
+            setIsCreatingNewVendor(false);
+          }}
+        >
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-6"
-            onClick={() => setPreviewHeroModal(null)}
+            {...vendorSheetDrag.dragModalProps}
+            onClick={e => e.stopPropagation()}
+            className="w-full sm:max-w-lg max-h-[88vh] bg-[#0e0e0e] border-t sm:border border-[#D4AF37]/30 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
           >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-[#111] border-2 border-[#D4AF37]/40 rounded-2xl max-w-5xl w-full overflow-hidden shadow-2xl flex flex-col"
-            >
-              {/* Modal Header */}
-              <div className="p-4 bg-black border-b border-[#D4AF37]/20 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <Camera className="w-5 h-5 text-[#D4AF37]" />
-                  <span className="font-bold text-white font-[Cinzel] text-sm">
-                    Landing Page Hero Simulation — {previewHeroModal.name}
-                  </span>
+            <div {...vendorSheetDrag.dragHandleProps} className="pt-2 px-4 pb-3 border-b border-white/[0.07] bg-black/60 shrink-0">
+              <ModalDragIndicator />
+              <div className="flex items-center justify-between mt-1">
+                <div>
+                  <h3 className="text-sm font-bold font-[Cinzel] text-[#D4AF37]">
+                    {isCreatingNewVendor ? 'Add New Professional' : formData.name || 'Vendor Control'}
+                  </h3>
+                  <p className="text-[9px] text-zinc-400 uppercase tracking-widest">
+                    {isCreatingNewVendor ? 'Create Marketplace Profile' : `ID: ${selectedVendorForSheet?.id}`}
+                  </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  {previewHeroModal.url !== heroBackgroundUrl ? (
+                <div className="flex items-center gap-1.5">
+                  {selectedVendorForSheet && !isCreatingNewVendor && (
                     <button
                       type="button"
-                      onClick={() => handleSelectActiveHero(previewHeroModal.url, previewHeroModal.name)}
-                      className="px-4 py-2 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-xs uppercase tracking-widest flex items-center gap-1.5 transition-all shadow-lg cursor-pointer"
+                      onClick={() => {
+                        const vid = selectedVendorForSheet.id;
+                        setSelectedVendorForSheet(null);
+                        onLoginAsVendor(vid);
+                      }}
+                      className="h-7 px-2.5 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer"
                     >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Activate This Background</span>
+                      <LogIn className="w-3 h-3" />
+                      <span>Open Portal</span>
                     </button>
-                  ) : (
-                    <span className="px-3 py-1.5 rounded-full bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30 text-xs font-bold uppercase tracking-wider">
-                      Currently Active
-                    </span>
                   )}
                   <button
                     type="button"
-                    onClick={() => setPreviewHeroModal(null)}
-                    className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    onClick={() => {
+                      setSelectedVendorForSheet(null);
+                      setIsCreatingNewVendor(false);
+                    }}
+                    className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white cursor-pointer"
                   >
-                    <X className="w-5 h-5" />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
+            </div>
 
-              {/* Simulated Landing Page Hero */}
-              <div className="relative aspect-[16/9] md:aspect-[21/9] w-full bg-black overflow-hidden flex flex-col items-center justify-center text-center p-6 select-none">
-                {renderMedia(previewHeroModal.url, "absolute inset-0 w-full h-full object-cover")}
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/30 pointer-events-none" />
+            <form onSubmit={e => handleVendorSubmit(e, false)} className="p-4 overflow-y-auto space-y-4 flex-1">
+              {/* Quick Toggles Row (Verified & Kosher) */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextVal = !formData.isVerified;
+                    setFormData(prev => ({ ...prev, isVerified: nextVal }));
+                    if (selectedVendorForSheet && !isCreatingNewVendor) {
+                      onToggleVerify(selectedVendorForSheet.id);
+                    }
+                  }}
+                  className={`p-2.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                    formData.isVerified
+                      ? 'bg-[#D4AF37]/15 border-[#D4AF37]/40 text-[#D4AF37]'
+                      : 'bg-black/60 border-white/10 text-zinc-400'
+                  }`}
+                >
+                  <span className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5" /> Verified
+                  </span>
+                  <span className="text-[9px] font-bold uppercase">{formData.isVerified ? 'Yes' : 'No'}</span>
+                </button>
 
-                <div className="relative z-10 max-w-2xl mx-auto flex flex-col items-center gap-3">
-                  <h2 className="font-bold font-[Cinzel] tracking-[0.015em] leading-tight text-white drop-shadow-[0_2px_15px_rgba(0,0,0,0.9)]">
-                    <span className="block text-2xl sm:text-4xl md:text-5xl">Celebrate Your</span>
-                    <span className="block text-2xl sm:text-4xl md:text-5xl text-[#D4AF37]">Simcha.</span>
-                    <span className="block text-2xl sm:text-4xl md:text-5xl">Book Perfection.</span>
-                  </h2>
-                  <p className="text-zinc-200 text-xs sm:text-sm font-light max-w-md drop-shadow">
-                    From world-class kosher caterers to soulful bands, create your complete simcha in one place.
-                  </p>
-                  <div className="mt-4 px-6 py-3 rounded-full bg-black/80 border border-[#D4AF37]/40 text-zinc-300 text-xs font-mono flex items-center gap-3 shadow-2xl">
-                    <Calendar className="w-4 h-4 text-[#D4AF37]" />
-                    <span>Search by vendor, venue, or event date...</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFormData(prev => ({
+                      ...prev,
+                      kosherStatus: prev.kosherStatus === 'Kosher Certified' ? 'Non-Kosher' : 'Kosher Certified'
+                    }))
+                  }
+                  className={`p-2.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                    formData.kosherStatus === 'Kosher Certified'
+                      ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-400'
+                      : 'bg-black/60 border-white/10 text-zinc-400'
+                  }`}
+                >
+                  <span className="text-[10px] font-black uppercase tracking-wider">Kosher</span>
+                  <span className="text-[9px] font-bold uppercase">
+                    {formData.kosherStatus === 'Kosher Certified' ? 'Certified' : 'Standard'}
+                  </span>
+                </button>
+              </div>
+
+              {/* Photo + Core Identity */}
+              <div className="flex items-center gap-3">
+                <div
+                  onClick={() => vendorFileInputRef.current?.click()}
+                  className="w-16 h-16 rounded-2xl bg-black border border-dashed border-[#D4AF37]/40 hover:border-[#D4AF37] flex items-center justify-center overflow-hidden shrink-0 cursor-pointer relative group"
+                >
+                  {formData.image ? (
+                    renderMedia(formData.image, 'w-full h-full object-cover')
+                  ) : (
+                    <Camera className="w-5 h-5 text-[#D4AF37]/60" />
+                  )}
+                </div>
+                <input type="file" accept="image/*,video/*" className="hidden" ref={vendorFileInputRef} onChange={handleVendorFileUpload} />
+
+                <div className="flex-1 space-y-2">
+                  <div>
+                    <label className={labelClass}>Business Name</label>
+                    <input
+                      required
+                      type="text"
+                      value={formData.name}
+                      onChange={e => setFormData({ ...formData, name: e.target.value })}
+                      className={inputClass}
+                      placeholder="e.g. Royal Glatt Catering"
+                    />
                   </div>
                 </div>
               </div>
 
-              {/* Modal Footer */}
-              <div className="p-4 bg-black/60 border-t border-white/5 flex items-center justify-between text-xs text-zinc-400">
-                <span className="truncate max-w-md font-mono text-[11px] text-zinc-500">
-                  {previewHeroModal.url}
-                </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className={labelClass}>Primary Category</label>
+                  <select
+                    value={formData.category}
+                    onChange={e => setFormData({ ...formData, category: e.target.value })}
+                    className={inputClass}
+                  >
+                    {localCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Contact Email</label>
+                  <input
+                    required
+                    type="email"
+                    value={formData.contactEmail}
+                    onChange={e => setFormData({ ...formData, contactEmail: e.target.value })}
+                    className={inputClass}
+                    placeholder="vendor@example.com"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className={labelClass}>Commission (%)</label>
+                  <input
+                    required
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formData.commissionRate}
+                    onChange={e => setFormData({ ...formData, commissionRate: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Down Payment ($ Optional)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.priceStart}
+                    onChange={e => setFormData({ ...formData, priceStart: e.target.value })}
+                    className={inputClass}
+                    placeholder="Optional deposit"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className={labelClass}>Location</label>
+                <LocationAutocomplete
+                  id="admin-sheet-vendor-location"
+                  required
+                  floating={false}
+                  placeholder="City, State or Address..."
+                  value={formData.location}
+                  onChange={val => setFormData({ ...formData, location: val })}
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>Description / Bio</label>
+                <textarea
+                  required
+                  rows={2}
+                  value={formData.description}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
+                  className={inputClass + ' resize-none'}
+                  placeholder="Describe the vendor's offerings..."
+                />
+              </div>
+
+              {/* Subcategories Selector */}
+              {Object.keys(localCategorySubCategories[formData.category] || {}).length > 0 && (
+                <div className="bg-black/50 p-3 rounded-xl border border-white/[0.06] space-y-2">
+                  <span className={labelClass}>Subcategories ({formData.category})</span>
+                  {Object.entries(localCategorySubCategories[formData.category] || {}).map(([group, opts]) => (
+                    <div key={group} className="space-y-1">
+                      <p className="text-[8px] font-bold text-[#D4AF37]/70 uppercase tracking-widest">{group}</p>
+                      <div className="flex flex-wrap gap-1">
+                        {(opts as string[]).map(option => {
+                          const active = formData.subCategories.includes(option);
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() => toggleSubCategorySelection(option)}
+                              className={`px-2.5 py-1 rounded-full text-[9px] font-bold transition-all cursor-pointer border ${
+                                active
+                                  ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                                  : 'bg-black text-zinc-400 border-white/10 hover:border-[#D4AF37]/40'
+                              }`}
+                            >
+                              {option}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Credentials */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className={labelClass}>Portal Username</label>
+                  <input
+                    type="text"
+                    value={formData.username}
+                    onChange={e => setFormData({ ...formData, username: e.target.value })}
+                    className={inputClass}
+                    placeholder="Username / Email"
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Portal Password</label>
+                  <input
+                    type="text"
+                    value={formData.password}
+                    onChange={e => setFormData({ ...formData, password: e.target.value })}
+                    className={inputClass}
+                    placeholder="Password"
+                  />
+                </div>
+              </div>
+
+              {/* Stripe Control Block (For Existing Vendor) */}
+              {selectedVendorForSheet && !isCreatingNewVendor && (
+                <div className="bg-black/60 p-3 rounded-xl border border-white/[0.07] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5 text-[#D4AF37]" />
+                      <span className="text-[10px] font-black uppercase tracking-wider text-white">Stripe Connect</span>
+                    </div>
+                    {selectedVendorForSheet.stripeAccountId ? (
+                      <span className="text-[9px] font-mono text-emerald-400">{selectedVendorForSheet.stripeAccountId}</span>
+                    ) : (
+                      <span className="text-[9px] text-zinc-500 uppercase font-bold">Not Connected</span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={isOnboarding}
+                      onClick={() => handleStripeOnboard(selectedVendorForSheet.id, formData.contactEmail)}
+                      className="h-7 px-3 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all"
+                    >
+                      {selectedVendorForSheet.stripeAccountId ? 'Re-Run Onboarding' : 'Start Onboarding'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowManualStripeInput(!showManualStripeInput)}
+                      className="h-7 px-3 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 text-[9px] font-bold uppercase tracking-wider cursor-pointer"
+                    >
+                      Set ID Manually
+                    </button>
+                    {selectedVendorForSheet.stripeAccountId && (
+                      confirmResetStripeVendorId === selectedVendorForSheet.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleResetVendorStripe(selectedVendorForSheet)}
+                            className="h-7 px-2.5 rounded-full bg-red-500 text-white text-[8px] font-black uppercase cursor-pointer"
+                          >
+                            Confirm Reset
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmResetStripeVendorId(null)}
+                            className="h-7 px-2 rounded-full bg-white/10 text-zinc-300 text-[8px] font-bold uppercase cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmResetStripeVendorId(selectedVendorForSheet.id)}
+                          className="h-7 px-2.5 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-red-400 text-[9px] font-bold uppercase cursor-pointer"
+                        >
+                          Reset Stripe
+                        </button>
+                      )
+                    )}
+                  </div>
+
+                  {showManualStripeInput && (
+                    <div className="flex gap-1.5 pt-1">
+                      <input
+                        type="text"
+                        value={manualStripeInput}
+                        onChange={e => setManualStripeInput(e.target.value)}
+                        placeholder="acct_123456789..."
+                        className={inputClass + ' py-1.5 font-mono'}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveManualStripeId(selectedVendorForSheet)}
+                        className="px-3 rounded-xl bg-[#D4AF37] text-black font-black text-[9px] uppercase shrink-0 cursor-pointer"
+                      >
+                        Save ID
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Footer Actions */}
+              <div className="pt-2 flex items-center justify-between gap-2">
+                {selectedVendorForSheet && !isCreatingNewVendor && (
+                  confirmDeleteVendorId === selectedVendorForSheet.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmDeleteVendor(selectedVendorForSheet)}
+                        className="h-9 px-3 rounded-full bg-red-600 text-white text-[9px] font-black uppercase tracking-wider cursor-pointer"
+                      >
+                        Confirm Delete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteVendorId(null)}
+                        className="h-9 px-3 rounded-full bg-white/10 text-zinc-300 text-[9px] font-bold uppercase cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteVendorId(selectedVendorForSheet.id)}
+                      className="h-9 px-3.5 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-[9px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </button>
+                  )
+                )}
+
                 <button
-                  type="button"
-                  onClick={() => setPreviewHeroModal(null)}
-                  className="px-4 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-white font-bold text-xs cursor-pointer"
+                  type="submit"
+                  disabled={isUploading}
+                  className="flex-1 h-9 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-[10px] uppercase tracking-widest shadow-lg transition-all cursor-pointer"
                 >
-                  Close Preview
+                  {isCreatingNewVendor ? 'Create Vendor Profile' : 'Save Changes'}
                 </button>
               </div>
-            </motion.div>
+            </form>
           </motion.div>
-        )}
-      </AnimatePresence>
+        </div>,
+        document.body
+      )}
+
+      {/* ==================== MODAL 2: BOOKING INSPECTOR SHEET ==================== */}
+      {selectedBookingForSheet && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
+          onClick={() => setSelectedBookingForSheet(null)}
+        >
+          <motion.div
+            {...bookingSheetDrag.dragModalProps}
+            onClick={e => e.stopPropagation()}
+            className="w-full sm:max-w-md bg-[#0e0e0e] border-t sm:border border-[#D4AF37]/30 rounded-t-3xl sm:rounded-3xl shadow-2xl p-4 space-y-4"
+          >
+            <div {...bookingSheetDrag.dragHandleProps}>
+              <ModalDragIndicator />
+              <div className="flex items-center justify-between mt-1">
+                <div>
+                  <h3 className="text-sm font-bold font-[Cinzel] text-[#D4AF37]">{selectedBookingForSheet.clientName}</h3>
+                  <p className="text-[10px] text-zinc-400">{selectedBookingForSheet.eventName}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedBookingForSheet(null)}
+                  className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Status & Payment Controls */}
+            <div className="space-y-2">
+              <label className={labelClass}>Booking Confirmation Status</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(['pending', 'confirmed', 'cancelled'] as const).map(st => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => onUpdateBookingStatus(selectedBookingForSheet.id, st)}
+                    className={`h-8 rounded-xl text-[9px] font-black uppercase tracking-wider border transition-all cursor-pointer ${
+                      selectedBookingForSheet.status === st
+                        ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                        : 'bg-black/60 text-zinc-400 border-white/10 hover:text-white'
+                    }`}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-black/50 rounded-xl border border-white/[0.06]">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-white">Payment Status</p>
+                <p className="text-[9px] text-zinc-400">Currently marked as {selectedBookingForSheet.paymentStatus}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleToggleBookingPaymentStatus(selectedBookingForSheet)}
+                className={`h-7 px-3 rounded-full text-[9px] font-black uppercase tracking-wider border cursor-pointer transition-all ${
+                  selectedBookingForSheet.paymentStatus === 'paid'
+                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                    : 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30'
+                }`}
+              >
+                Mark as {selectedBookingForSheet.paymentStatus === 'paid' ? 'Unpaid' : 'Paid'}
+              </button>
+            </div>
+
+            {/* Editable Date & Amount */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className={labelClass}>Event Date</label>
+                <input
+                  type="date"
+                  value={editingBookingDate}
+                  onChange={e => setEditingBookingDate(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Amount ($)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={editingBookingAmount}
+                  onChange={e => setEditingBookingAmount(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-1">
+              {confirmDeleteBookingId === selectedBookingForSheet.id ? (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBooking(selectedBookingForSheet.id)}
+                    className="h-8 px-3 rounded-full bg-red-600 text-white text-[9px] font-black uppercase cursor-pointer"
+                  >
+                    Confirm Delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteBookingId(null)}
+                    className="h-8 px-2.5 rounded-full bg-white/10 text-zinc-300 text-[9px] font-bold uppercase cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteBookingId(selectedBookingForSheet.id)}
+                  className="h-8 px-3 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-[9px] font-black uppercase flex items-center gap-1 cursor-pointer"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Delete</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSaveBookingDetails}
+                className="flex-1 h-8 rounded-full bg-[#D4AF37] text-black font-black text-[9px] uppercase tracking-widest hover:bg-[#E5C76B] transition-all cursor-pointer"
+              >
+                Save Booking Changes
+              </button>
+            </div>
+          </motion.div>
+        </div>,
+        document.body
+      )}
+
+      {/* ==================== MODAL 3: USER ROLE & ACCOUNT SHEET ==================== */}
+      {selectedUserForSheet && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
+          onClick={() => setSelectedUserForSheet(null)}
+        >
+          <motion.div
+            {...userSheetDrag.dragModalProps}
+            onClick={e => e.stopPropagation()}
+            className="w-full sm:max-w-md bg-[#0e0e0e] border-t sm:border border-[#D4AF37]/30 rounded-t-3xl sm:rounded-3xl shadow-2xl p-4 space-y-4"
+          >
+            <div {...userSheetDrag.dragHandleProps}>
+              <ModalDragIndicator />
+              <div className="flex items-center justify-between mt-1">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold font-[Cinzel] text-white truncate">
+                    {selectedUserForSheet.name || 'User Account'}
+                  </h3>
+                  <p className="text-[10px] text-zinc-400 font-mono truncate">
+                    {(selectedUserForSheet as any).email || selectedUserForSheet.username || selectedUserForSheet.id}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserForSheet(null)}
+                  className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className={labelClass}>Platform Access Role</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(['client', 'vendor', 'admin'] as const).map(r => {
+                  const currentRole = ((selectedUserForSheet as any).role || 'client').toLowerCase();
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => handleChangeUserRole(selectedUserForSheet, r)}
+                      className={`h-8 rounded-xl text-[9px] font-black uppercase tracking-wider border transition-all cursor-pointer ${
+                        currentRole === r
+                          ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                          : 'bg-black/60 text-zinc-400 border-white/10 hover:text-white'
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between">
+              {confirmDeleteUserId === selectedUserForSheet.id ? (
+                <div className="flex items-center gap-1.5 w-full">
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteUserAccount(selectedUserForSheet)}
+                    className="flex-1 h-8 rounded-full bg-red-600 text-white text-[9px] font-black uppercase cursor-pointer"
+                  >
+                    Confirm Delete User
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteUserId(null)}
+                    className="h-8 px-3 rounded-full bg-white/10 text-zinc-300 text-[9px] font-bold uppercase cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteUserId(selectedUserForSheet.id)}
+                  className="w-full h-8 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete User Account</span>
+                </button>
+              )}
+            </div>
+          </motion.div>
+        </div>,
+        document.body
+      )}
+
+      {/* ==================== MODAL 4: ADD NEW CATEGORY SHEET ==================== */}
+      {showAddCategoryModal && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
+          onClick={() => setShowAddCategoryModal(false)}
+        >
+          <motion.div
+            {...addCategoryModalDrag.dragModalProps}
+            onClick={e => e.stopPropagation()}
+            className="w-full sm:max-w-md bg-[#0e0e0e] border-t sm:border border-[#D4AF37]/30 rounded-t-3xl sm:rounded-3xl shadow-2xl p-4 space-y-4"
+          >
+            <div {...addCategoryModalDrag.dragHandleProps}>
+              <ModalDragIndicator />
+              <div className="flex items-center justify-between mt-1">
+                <h3 className="text-sm font-bold font-[Cinzel] text-[#D4AF37]">Add Marketplace Category</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleAddCategorySubmit} className="space-y-3">
+              <div>
+                <label className={labelClass}>Category Name</label>
+                <input
+                  required
+                  type="text"
+                  value={newCategoryForm.name}
+                  onChange={e => setNewCategoryForm({ ...newCategoryForm, name: e.target.value })}
+                  placeholder="e.g. Sound & Lighting"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Initial Subcategory Groups (comma separated)</label>
+                <input
+                  type="text"
+                  value={newCategoryForm.subCatsString}
+                  onChange={e => setNewCategoryForm({ ...newCategoryForm, subCatsString: e.target.value })}
+                  placeholder="Style, Tier, Equipment"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Banner Image</label>
+                <div
+                  onClick={() => newCatImageInputRef.current?.click()}
+                  className="h-28 bg-black border border-dashed border-[#D4AF37]/30 rounded-xl flex items-center justify-center cursor-pointer overflow-hidden"
+                >
+                  {newCategoryForm.image ? (
+                    renderMedia(newCategoryForm.image, 'w-full h-full object-cover')
+                  ) : (
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-[#D4AF37]" /> Select Banner
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept="image/*,video/*"
+                  className="hidden"
+                  ref={el => { newCatImageInputRef.current = el; }}
+                  onChange={handleNewCategoryImgUpload}
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full h-9 rounded-full bg-[#D4AF37] text-black font-black text-[10px] uppercase tracking-widest hover:bg-[#E5C76B] transition-all cursor-pointer"
+              >
+                Create Category
+              </button>
+            </form>
+          </motion.div>
+        </div>,
+        document.body
+      )}
+
+      {/* ==================== MODAL 5: PUBLISH COMMUNITY MOMENT SHEET ==================== */}
+      {showMomentModal && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
+          onClick={() => setShowMomentModal(false)}
+        >
+          <motion.div
+            {...momentModalDrag.dragModalProps}
+            onClick={e => e.stopPropagation()}
+            className="w-full sm:max-w-md bg-[#0e0e0e] border-t sm:border border-[#D4AF37]/30 rounded-t-3xl sm:rounded-3xl shadow-2xl p-4 space-y-4"
+          >
+            <div {...momentModalDrag.dragHandleProps}>
+              <ModalDragIndicator />
+              <div className="flex items-center justify-between mt-1">
+                <h3 className="text-sm font-bold font-[Cinzel] text-[#D4AF37]">Publish Community Moment</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowMomentModal(false)}
+                  className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handlePostSubmit} className="space-y-3">
+              <div>
+                <label className={labelClass}>Title</label>
+                <input
+                  required
+                  type="text"
+                  value={postForm.title}
+                  onChange={e => setPostForm({ ...postForm, title: e.target.value })}
+                  placeholder="e.g. Lakewood Grand Wedding"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Caption / Context</label>
+                <textarea
+                  required
+                  rows={2}
+                  value={postForm.description}
+                  onChange={e => setPostForm({ ...postForm, description: e.target.value })}
+                  placeholder="Brief highlight description..."
+                  className={inputClass + ' resize-none'}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Featured Vendor (Optional)</label>
+                <select
+                  value={postForm.vendorId}
+                  onChange={e => setPostForm({ ...postForm, vendorId: e.target.value })}
+                  className={inputClass}
+                >
+                  <option value="">Independent Highlight</option>
+                  {vendors.map(v => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Photo or Video</label>
+                <div
+                  onClick={() => postFileInputRef.current?.click()}
+                  className="h-32 bg-black border border-dashed border-[#D4AF37]/30 rounded-xl flex items-center justify-center cursor-pointer overflow-hidden"
+                >
+                  {isUploading ? (
+                    <Loader2 className="w-5 h-5 text-[#D4AF37] animate-spin" />
+                  ) : postForm.url ? (
+                    renderMedia(postForm.url, 'w-full h-full object-cover')
+                  ) : (
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-1.5">
+                      <Upload className="w-4 h-4 text-[#D4AF37]" /> Upload Visual
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  ref={postFileInputRef}
+                  className="hidden"
+                  accept="image/*,video/*"
+                  onChange={handlePostFileUpload}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isUploading || !postForm.url}
+                className="w-full h-9 rounded-full bg-[#D4AF37] text-black font-black text-[10px] uppercase tracking-widest hover:bg-[#E5C76B] transition-all cursor-pointer disabled:opacity-40"
+              >
+                Publish Highlight
+              </button>
+            </form>
+          </motion.div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

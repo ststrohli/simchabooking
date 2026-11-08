@@ -126,18 +126,43 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate, isVendor
   }, [currentView, isVendorView, pillX, pillRotate, pillScaleX]);
 
   useEffect(() => {
-    const handleResize = () => {
+    const syncPillPosition = () => {
       const targetX = getTargetX(currentView);
       if (targetX !== null) {
         pillX.set(targetX);
       }
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [currentView, pillX]);
+
+    syncPillPosition();
+    const rafId = requestAnimationFrame(syncPillPosition);
+    const settleTimer = setTimeout(syncPillPosition, 320);
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      ro = new ResizeObserver(() => {
+        syncPillPosition();
+      });
+      ro.observe(containerRef.current);
+      const activeBtn = buttonRefs.current[currentView];
+      if (activeBtn) ro.observe(activeBtn);
+    }
+
+    window.addEventListener('resize', syncPillPosition);
+    window.addEventListener('orientationchange', syncPillPosition);
+    window.visualViewport?.addEventListener('resize', syncPillPosition);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(settleTimer);
+      ro?.disconnect();
+      window.removeEventListener('resize', syncPillPosition);
+      window.removeEventListener('orientationchange', syncPillPosition);
+      window.visualViewport?.removeEventListener('resize', syncPillPosition);
+    };
+  }, [currentView, isVendorView, pillX]);
 
   return (
-    <nav aria-label="Bottom Navigation" className="fixed bottom-[9px] sm:bottom-5 left-2 right-2 sm:left-4 sm:right-4 max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl mx-auto z-50 transition-all duration-300">
+    <nav aria-label="Bottom Navigation" className="fixed bottom-[9px] sm:bottom-5 left-2 right-2 sm:left-4 sm:right-4 max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl mx-auto z-50">
       <div className="simcha-bottom-nav rounded-[32px] bg-gradient-to-b from-zinc-900/95 via-black/95 to-black/98 backdrop-blur-2xl border border-[#D4AF37]/35 shadow-[0_10px_30px_rgba(0,0,0,0.9),0_0_20px_rgba(212,175,55,0.12)] pb-[env(safe-area-inset-bottom)] sm:pb-0 overflow-hidden">
         <div ref={containerRef} className="flex justify-around items-center h-[60px] sm:h-[60px] px-2 relative z-10">
           {/* Sliding Gold Active Capsule */}

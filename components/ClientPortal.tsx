@@ -5,10 +5,12 @@ import {
   LayoutDashboard, ShoppingBag, Calendar, MessageSquare, LogOut, Trash2, 
   ChevronRight, ChevronDown, MapPin, Clock, CreditCard, Check, CheckCircle, CheckCheck, Bell, X, Menu, Send,
   FileText, Upload, Download, Loader2, Plus, Search, Edit3, ArrowLeft, ShieldCheck,
-  Mic, Image as ImageIcon, Play, DollarSign, User, AlertCircle, Layers
+  Mic, Image as ImageIcon, Play, DollarSign, User, AlertCircle, Layers,
+  Camera, Lock, Mail, Phone, Sparkles, RefreshCw, Eye, XCircle
 } from 'lucide-react';
 import { CartItem, Booking, Message, Vendor, UserAccount } from '../types';
-import { storage, db } from '../services/firebase';
+import { storage, db, auth, getDocSafe } from '../services/firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { markChatAsRead } from '../services/messagingService';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { uploadFileRobustly } from '../services/uploadService';
@@ -20,6 +22,144 @@ import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
 import { collection, doc, setDoc, updateDoc, deleteDoc, getDocs, query, where, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 
 const CLIENT_MODAL_TRANSITION = { duration: 1.15, ease: [0.25, 0.85, 0.35, 1] as const };
+
+type ClientSettingModalType =
+  | 'identity'
+  | 'celebration'
+  | 'plan_summary'
+  | 'bookings_summary'
+  | 'notifications'
+  | 'privacy'
+  | 'security'
+  | null;
+
+const ClientSettingSheetModal: React.FC<{
+  title: string;
+  subtitle: string;
+  badgeText?: string;
+  icon: any;
+  onClose: () => void;
+  headerRight?: React.ReactNode;
+  children: React.ReactNode;
+}> = ({
+  title,
+  subtitle,
+  badgeText = 'Client Settings',
+  icon: Icon,
+  onClose,
+  headerRight,
+  children,
+}) => {
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
+  const { backdropOpacity, isDismissing, dragModalProps, dragHandleProps, dismissWithSlideOut } = useModalDragDismiss(
+    onClose,
+    true
+  );
+
+  useEffect(() => {
+    if (isDismissing) {
+      document.body.style.overflow = '';
+    }
+  }, [isDismissing]);
+
+  const modalNode = (
+    <motion.div
+      style={{ opacity: backdropOpacity }}
+      transition={CLIENT_MODAL_TRANSITION}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu fixed inset-0 z-[160] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) dismissWithSlideOut();
+      }}
+    >
+      <motion.div
+        {...dragModalProps}
+        transition={CLIENT_MODAL_TRANSITION}
+        className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu bg-[#111] w-full sm:w-full sm:max-w-xl h-[92dvh] sm:h-auto sm:max-h-[88vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-[2.5rem] border-t-2 border-r border-l sm:border border-[#D4AF37]/30 shadow-2xl overflow-hidden relative flex flex-col mt-auto sm:mt-0 ${isDismissing ? 'pointer-events-none' : ''}`}
+      >
+        {/* Top bar drag indicator positioned across the top edge */}
+        <div
+          {...dragHandleProps}
+          data-drag-handle="true"
+          className="absolute top-0 left-0 right-14 z-30 pt-1.5 pb-4 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+        >
+          <div className="pl-14">
+            <ModalDragIndicator />
+          </div>
+        </div>
+
+        {/* Floating X Close Button */}
+        <button
+          type="button"
+          onClick={() => dismissWithSlideOut()}
+          aria-label="Close"
+          className="absolute top-4 right-4 z-[120] w-8 h-8 flex items-center justify-center bg-[#1a1a1a] hover:bg-[#262626] border border-[#D4AF37]/40 rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] shadow-xl cursor-pointer"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Sheet Header */}
+        <div
+          {...dragHandleProps}
+          data-drag-handle="true"
+          className="px-5 sm:px-6 pt-8 pb-4 border-b border-white/10 flex items-center justify-between gap-3 bg-black/50 pr-14 cursor-grab active:cursor-grabbing select-none"
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-11 h-11 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] shrink-0 shadow-inner">
+              <Icon className="w-5 h-5" />
+            </div>
+            <div className="min-w-0 text-left">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-[0.2em] bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
+                  {badgeText}
+                </span>
+              </div>
+              <h2 className="text-base sm:text-lg font-bold font-[Cinzel] text-white leading-tight truncate mt-1">
+                {title}
+              </h2>
+              <p className="text-[11px] text-zinc-400 font-medium truncate mt-0.5">{subtitle}</p>
+            </div>
+          </div>
+          {headerRight && (
+            <div className="shrink-0" onPointerDown={(e) => e.stopPropagation()}>
+              {headerRight}
+            </div>
+          )}
+        </div>
+
+        {/* Scrollable Sheet Body */}
+        <div data-modal-scroll className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 custom-scrollbar">
+          {children}
+        </div>
+
+        {/* Sleek Pill Footer Bar */}
+        <div className="px-5 py-3.5 bg-black border-t border-white/10 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+            <span className="w-2 h-2 rounded-full bg-[#D4AF37]" />
+            <span>Auto-Save Enabled</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => dismissWithSlideOut()}
+            className="h-10 px-8 bg-[#D4AF37] hover:bg-[#E5C76B] active:scale-95 text-black rounded-full font-black text-[10px] uppercase tracking-[0.2em] border border-[#D4AF37] transition-all flex items-center justify-center cursor-pointer shadow-lg"
+          >
+            Done
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+
+  return typeof document !== 'undefined' ? createPortal(modalNode, document.body) : modalNode;
+};
 
 const AccordionSection: React.FC<{
   title: string;
@@ -901,9 +1041,35 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
 
 
+  const [activeClientSettingModal, setActiveClientSettingModal] = useState<ClientSettingModalType>(null);
   const [editName, setEditName] = useState(user.name);
   const [editPhotoURL, setEditPhotoURL] = useState(user.photoURL || ''); 
   const [editPhotoStoragePath, setEditPhotoStoragePath] = useState(user.photoStoragePath || '');
+  const [editContactEmail, setEditContactEmail] = useState(user.username || '');
+  const [editPhone, setEditPhone] = useState('');
+  const [defaultEventName, setDefaultEventName] = useState('');
+  const [defaultLocation, setDefaultLocation] = useState('');
+  const [defaultEventTime, setDefaultEventTime] = useState('');
+  const [defaultNotes, setDefaultNotes] = useState('');
+
+  // iOS-style Notification & Privacy toggles
+  const [notifyEmailBookings, setNotifyEmailBookings] = useState(true);
+  const [notifyVendorMessages, setNotifyVendorMessages] = useState(true);
+  const [notifyOfferUpdates, setNotifyOfferUpdates] = useState(true);
+  const [notifyEventReminders, setNotifyEventReminders] = useState(true);
+  const [privacyReadReceipts, setPrivacyReadReceipts] = useState(true);
+  const [privacyShareEmail, setPrivacyShareEmail] = useState(true);
+  const [privacySaveHistory, setPrivacySaveHistory] = useState(true);
+
+  // Settings utilities & inline feedback states
+  const [testEmail, setTestEmail] = useState(user.username || '');
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [testEmailFeedback, setTestEmailFeedback] = useState<{ success?: boolean; error?: string } | null>(null);
+  const [passwordResetFeedback, setPasswordResetFeedback] = useState<{ sent?: boolean; error?: string } | null>(null);
+  const [isSendingPasswordReset, setIsSendingPasswordReset] = useState(false);
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
+  const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false);
+  const [profileSaveBanner, setProfileSaveBanner] = useState<string | null>(null);
 
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -917,6 +1083,151 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
   } | null>(null);
   const profilePhotoInputRef = useRef<HTMLInputElement>(null);
 
+  // Sync user prop updates and load extended client settings from localStorage + Firestore
+  useEffect(() => {
+    setEditName(user.name || '');
+    setEditPhotoURL(user.photoURL || '');
+    setEditPhotoStoragePath(user.photoStoragePath || '');
+    if (user.username && !editContactEmail) {
+      setEditContactEmail(user.username);
+    }
+    if (user.username && !testEmail) {
+      setTestEmail(user.username);
+    }
+  }, [user.name, user.photoURL, user.photoStoragePath, user.username]);
+
+  useEffect(() => {
+    if (!user.id) return;
+    // 1. Fast load from localStorage
+    try {
+      const localRaw = localStorage.getItem(`simcha_client_settings_${user.id}`) || localStorage.getItem('simcha_client_booking_defaults');
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw);
+        if (parsed.contactEmail) setEditContactEmail(parsed.contactEmail);
+        if (parsed.phone !== undefined) setEditPhone(parsed.phone);
+        if (parsed.defaultEventName !== undefined) setDefaultEventName(parsed.defaultEventName);
+        if (parsed.defaultLocation !== undefined) setDefaultLocation(parsed.defaultLocation);
+        if (parsed.defaultEventTime !== undefined) setDefaultEventTime(parsed.defaultEventTime);
+        if (parsed.defaultNotes !== undefined) setDefaultNotes(parsed.defaultNotes);
+        if (typeof parsed.notifyEmailBookings === 'boolean') setNotifyEmailBookings(parsed.notifyEmailBookings);
+        if (typeof parsed.notifyVendorMessages === 'boolean') setNotifyVendorMessages(parsed.notifyVendorMessages);
+        if (typeof parsed.notifyOfferUpdates === 'boolean') setNotifyOfferUpdates(parsed.notifyOfferUpdates);
+        if (typeof parsed.notifyEventReminders === 'boolean') setNotifyEventReminders(parsed.notifyEventReminders);
+        if (typeof parsed.privacyReadReceipts === 'boolean') setPrivacyReadReceipts(parsed.privacyReadReceipts);
+        if (typeof parsed.privacyShareEmail === 'boolean') setPrivacyShareEmail(parsed.privacyShareEmail);
+        if (typeof parsed.privacySaveHistory === 'boolean') setPrivacySaveHistory(parsed.privacySaveHistory);
+      }
+    } catch {}
+
+    // 2. Sync from Firestore users/{uid}
+    let isMounted = true;
+    getDocSafe(doc(db, 'users', user.id))
+      .then((snap) => {
+        if (!isMounted || !snap.exists()) return;
+        const data = snap.data() as any;
+        if (data.contactEmail) setEditContactEmail(data.contactEmail);
+        if (data.phone !== undefined) setEditPhone(data.phone);
+        if (data.defaultEventName !== undefined) setDefaultEventName(data.defaultEventName);
+        if (data.defaultLocation !== undefined) setDefaultLocation(data.defaultLocation);
+        if (data.defaultEventTime !== undefined) setDefaultEventTime(data.defaultEventTime);
+        if (data.defaultNotes !== undefined) setDefaultNotes(data.defaultNotes);
+        if (typeof data.notifyEmailBookings === 'boolean') setNotifyEmailBookings(data.notifyEmailBookings);
+        if (typeof data.notifyVendorMessages === 'boolean') setNotifyVendorMessages(data.notifyVendorMessages);
+        if (typeof data.notifyOfferUpdates === 'boolean') setNotifyOfferUpdates(data.notifyOfferUpdates);
+        if (typeof data.notifyEventReminders === 'boolean') setNotifyEventReminders(data.notifyEventReminders);
+        if (typeof data.privacyReadReceipts === 'boolean') setPrivacyReadReceipts(data.privacyReadReceipts);
+        if (typeof data.privacyShareEmail === 'boolean') setPrivacyShareEmail(data.privacyShareEmail);
+        if (typeof data.privacySaveHistory === 'boolean') setPrivacySaveHistory(data.privacySaveHistory);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [user.id]);
+
+  const persistClientSettings = (overrides: Record<string, any> = {}, showBannerMsg?: string) => {
+    const payload = {
+      clientName: overrides.name ?? editName,
+      contactEmail: overrides.contactEmail ?? (editContactEmail || user.username || ''),
+      phone: overrides.phone ?? editPhone,
+      defaultEventName: overrides.defaultEventName ?? defaultEventName,
+      defaultLocation: overrides.defaultLocation ?? defaultLocation,
+      defaultEventTime: overrides.defaultEventTime ?? defaultEventTime,
+      defaultNotes: overrides.defaultNotes ?? defaultNotes,
+      notifyEmailBookings: overrides.notifyEmailBookings ?? notifyEmailBookings,
+      notifyVendorMessages: overrides.notifyVendorMessages ?? notifyVendorMessages,
+      notifyOfferUpdates: overrides.notifyOfferUpdates ?? notifyOfferUpdates,
+      notifyEventReminders: overrides.notifyEventReminders ?? notifyEventReminders,
+      privacyReadReceipts: overrides.privacyReadReceipts ?? privacyReadReceipts,
+      privacyShareEmail: overrides.privacyShareEmail ?? privacyShareEmail,
+      privacySaveHistory: overrides.privacySaveHistory ?? privacySaveHistory,
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      if (user.id) {
+        localStorage.setItem(`simcha_client_settings_${user.id}`, JSON.stringify(payload));
+      }
+      localStorage.setItem('simcha_client_booking_defaults', JSON.stringify(payload));
+    } catch {}
+
+    if (user.id) {
+      setDoc(doc(db, 'users', user.id), payload, { merge: true }).catch(() => {});
+    }
+
+    if (showBannerMsg) {
+      setProfileSaveBanner(showBannerMsg);
+      window.setTimeout(() => {
+        setProfileSaveBanner((prev) => (prev === showBannerMsg ? null : prev));
+      }, 2400);
+    }
+  };
+
+  const flushIdentitySave = (showToast = false) => {
+    persistClientSettings({ name: editName }, showToast ? 'Identity & contact info saved' : undefined);
+    if (showToast || editName !== user.name || editPhotoURL !== (user.photoURL || '')) {
+      onUpdateProfile({ name: editName, photoURL: editPhotoURL, photoStoragePath: editPhotoStoragePath });
+    }
+  };
+
+  const handleSendClientTestEmail = async () => {
+    const target = (testEmail || editContactEmail || user.username || '').trim();
+    if (!target) return;
+    setIsSendingTestEmail(true);
+    setTestEmailFeedback(null);
+    try {
+      const response = await fetch(`${window.location.protocol}//${window.location.host}/api/email/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: target }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.details || data.error || 'Failed to send test email');
+      }
+      setTestEmailFeedback({ success: true });
+    } catch (err: any) {
+      setTestEmailFeedback({ error: err.message || 'Could not send test email' });
+    } finally {
+      setIsSendingTestEmail(false);
+    }
+  };
+
+  const handleSendPasswordReset = async () => {
+    const targetEmail = (user.username || editContactEmail || '').trim();
+    if (!targetEmail) return;
+    setIsSendingPasswordReset(true);
+    setPasswordResetFeedback(null);
+    try {
+      await sendPasswordResetEmail(auth, targetEmail);
+      setPasswordResetFeedback({ sent: true });
+    } catch (err: any) {
+      setPasswordResetFeedback({ error: err.message || 'Unable to send password reset email.' });
+    } finally {
+      setIsSendingPasswordReset(false);
+    }
+  };
+
   const handleProfilePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user.id) return;
@@ -929,10 +1240,14 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
       // Update local state and call parent update
       setEditPhotoURL(downloadURL);
       setEditPhotoStoragePath(storagePath);
+      setConfirmRemovePhoto(false);
       onUpdateProfile({ name: editName, photoURL: downloadURL, photoStoragePath: storagePath });
+      setProfileSaveBanner('Profile portrait updated');
+      window.setTimeout(() => setProfileSaveBanner(null), 2400);
     } catch (error: any) {
       console.error("Profile photo upload error:", error);
-      alert("Failed to upload profile photo: " + error.message);
+      setProfileSaveBanner('Failed to upload photo');
+      window.setTimeout(() => setProfileSaveBanner(null), 3000);
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -940,10 +1255,8 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
   const handleProfilePhotoDelete = async () => {
     if (!user.id || !editPhotoURL) return;
-    if (!window.confirm("Are you sure you want to remove your profile photo?")) return;
 
     try {
-      // Try to delete from storage if it's a storage URL
       if (editPhotoURL.includes('firebasestorage.googleapis.com')) {
         const decodedUrl = decodeURIComponent(editPhotoURL);
         const pathStart = decodedUrl.indexOf('/o/') + 3;
@@ -957,12 +1270,15 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
       
       setEditPhotoURL('');
       setEditPhotoStoragePath('');
+      setConfirmRemovePhoto(false);
       onUpdateProfile({ name: editName, photoURL: '', photoStoragePath: '' });
+      setProfileSaveBanner('Profile photo removed');
+      window.setTimeout(() => setProfileSaveBanner(null), 2400);
     } catch (error) {
       console.error("Profile photo delete error:", error);
-      // Still update UI/Auth if storage delete fails
       setEditPhotoURL('');
       setEditPhotoStoragePath('');
+      setConfirmRemovePhoto(false);
       onUpdateProfile({ name: editName, photoURL: '', photoStoragePath: '' });
     }
   };
@@ -1434,10 +1750,11 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         !!checkoutClientSecret ||
         !!selectedScopeTarget ||
         !!payTransitionInfo ||
-        !!chatTransitionTarget
+        !!chatTransitionTarget ||
+        (!!activeClientSettingModal && activeTab === 'profile')
       );
     }
-  }, [checkoutBookingInfo, checkoutClientSecret, selectedScopeTarget, payTransitionInfo, chatTransitionTarget]);
+  }, [checkoutBookingInfo, checkoutClientSecret, selectedScopeTarget, payTransitionInfo, chatTransitionTarget, activeClientSettingModal, activeTab]);
 
   useEffect(() => {
     return () => {
@@ -1521,15 +1838,84 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         </div>
 
         {activeTab === 'overview' && (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-[#111] p-5 rounded-3xl border border-white/5 shadow-2xl space-y-3">
-                <div className="bg-[#D4AF37]/10 p-2.5 w-fit rounded-2xl"><ShoppingBag className="w-5 h-5 text-[#D4AF37]" /></div>
-                <div><p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Items in Plan</p><h3 className="text-2xl font-bold text-white">{cart.length}</h3></div>
+          <div className="max-w-4xl mx-auto w-full space-y-5 animate-in fade-in duration-500">
+            <div className="space-y-2">
+              <div className="px-4 flex items-center justify-between">
+                <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                  Planner Overview
+                </span>
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                  Tap to view
+                </span>
               </div>
-              <div className="bg-[#111] p-5 rounded-3xl border border-white/5 shadow-2xl space-y-3">
-                <div className="bg-[#D4AF37]/10 p-2.5 w-fit rounded-2xl"><CheckCircle className="w-5 h-5 text-[#D4AF37]" /></div>
-                <div><p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Confirmed</p><h3 className="text-2xl font-bold text-white">{clientBookings.filter(b => b.status === 'confirmed').length}</h3></div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleTabChange('plan')}
+                  className="bg-[#111] p-3.5 rounded-[1.75rem] border border-[#D4AF37]/25 hover:border-[#D4AF37] shadow-xl text-left space-y-2 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="bg-[#D4AF37]/15 p-2 rounded-full border border-[#D4AF37]/35">
+                      <ShoppingBag className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 text-zinc-400 group-hover:text-[#D4AF37]" />
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">Planner</p>
+                    <h3 className="text-base sm:text-lg font-bold text-white font-[Cinzel] truncate">My Plan</h3>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleTabChange('events')}
+                  className="bg-[#111] p-3.5 rounded-[1.75rem] border border-[#D4AF37]/25 hover:border-[#D4AF37] shadow-xl text-left space-y-2 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="bg-[#D4AF37]/15 p-2 rounded-full border border-[#D4AF37]/35">
+                      <CheckCircle className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 text-zinc-400 group-hover:text-[#D4AF37]" />
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">Reservations</p>
+                    <h3 className="text-base sm:text-lg font-bold text-white font-[Cinzel] truncate">My Events</h3>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleTabChange('chats')}
+                  className="bg-[#111] p-3.5 rounded-[1.75rem] border border-[#D4AF37]/25 hover:border-[#D4AF37] shadow-xl text-left space-y-2 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="bg-[#D4AF37]/15 p-2 rounded-full border border-[#D4AF37]/35">
+                      <MessageSquare className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 text-zinc-400 group-hover:text-[#D4AF37]" />
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">Messages</p>
+                    <h3 className="text-base sm:text-lg font-bold text-white font-[Cinzel] truncate">Chats</h3>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleTabChange('profile')}
+                  className="bg-[#111] p-3.5 rounded-[1.75rem] border border-[#D4AF37]/25 hover:border-[#D4AF37] shadow-xl text-left space-y-2 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="bg-[#D4AF37]/15 p-2 rounded-full border border-[#D4AF37]/35">
+                      <User className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 text-zinc-400 group-hover:text-[#D4AF37]" />
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">Settings</p>
+                    <h3 className="text-base sm:text-lg font-bold text-white font-[Cinzel] truncate">Profile</h3>
+                  </div>
+                </button>
               </div>
             </div>
           </div>
@@ -1537,6 +1923,14 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
         {activeTab === 'plan' && (
           <div className="max-w-4xl mx-auto w-full space-y-2.5 animate-in slide-in-from-bottom-5 duration-500">
+            <div className="px-4 flex items-center justify-between">
+              <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                Planned Vendors
+              </span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                Tap to view
+              </span>
+            </div>
             {cart.length === 0 ? (
               <div className="text-center py-14 bg-[#0a0a0a] rounded-full border border-dashed border-white/10 px-6">
                 <ShoppingBag className="w-10 h-10 mx-auto mb-2 text-[#D4AF37]" />
@@ -1681,6 +2075,14 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                 })}
               </div>
             </div>
+            <div className="px-4 flex items-center justify-between pt-0.5">
+              <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                {selectedEventCategory === 'All' ? 'Event Reservations' : `${selectedEventCategory} Reservations`}
+              </span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                Tap to view
+              </span>
+            </div>
 
             {filteredClientBookings.length === 0 ? (
               <div className="py-14 text-center bg-[#0a0a0a] rounded-full border border-dashed border-white/10 px-6">
@@ -1802,7 +2204,15 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
         )}
 
         {activeTab === 'chats' && (
-          <div className="space-y-3 animate-in fade-in duration-500">
+          <div className="space-y-2.5 animate-in fade-in duration-500 max-w-4xl mx-auto w-full">
+            <div className="px-4 flex items-center justify-between">
+              <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                Direct Conversations
+              </span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                Tap to view
+              </span>
+            </div>
             {chatThreads.length === 0 ? (
               <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
                 <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No Active Chats</p>
@@ -1973,102 +2383,1024 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
             )}
           </div>
         )}
-        {activeTab === 'profile' && (
-          <div className="max-w-2xl mx-auto animate-in fade-in duration-500">
-            <div className="bg-[#111] rounded-3xl border border-white/5 p-8 shadow-2xl space-y-8">
-              <div className="flex flex-col items-center text-center space-y-6">
-                <div className="relative group">
-                  <div className="w-32 h-32 rounded-full bg-[#D4AF37]/20 flex items-center justify-center text-[#D4AF37] text-5xl font-bold border-2 border-[#D4AF37]/30 overflow-hidden shadow-2xl">
+        {activeTab === 'profile' && (() => {
+          const activeNotificationCount = [
+            notifyEmailBookings,
+            notifyVendorMessages,
+            notifyOfferUpdates,
+            notifyEventReminders,
+          ].filter(Boolean).length;
+
+          const confirmedBookingsCount = clientBookings.filter((b) => b.status === 'confirmed').length;
+          const paidBookingsCount = clientBookings.filter((b) => b.paymentStatus === 'paid').length;
+          const totalBookedAmount = clientBookings
+            .filter((b) => b.status !== 'cancelled')
+            .reduce((sum, b) => sum + (b.amount || 0), 0);
+
+          const SettingRow = ({
+            icon: RowIcon,
+            title,
+            subtitle,
+            badge,
+            badgeActive = false,
+            onClick,
+            rightNode,
+          }: {
+            icon: any;
+            title: string;
+            subtitle: string;
+            badge?: string;
+            badgeActive?: boolean;
+            onClick?: () => void;
+            rightNode?: React.ReactNode;
+          }) => {
+            const Wrapper: any = onClick ? 'button' : 'div';
+            return (
+              <Wrapper
+                type={onClick ? 'button' : undefined}
+                onClick={onClick}
+                className={`w-full px-4 py-3 flex items-center justify-between gap-3 text-left transition-all ${
+                  onClick ? 'hover:bg-white/[0.04] active:scale-[0.995] cursor-pointer group' : ''
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-9 h-9 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/35 flex items-center justify-center text-[#D4AF37] shrink-0 transition-transform group-hover:scale-105">
+                    <RowIcon className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs sm:text-sm font-bold text-white leading-tight truncate">{title}</div>
+                    <div className="text-[10px] sm:text-[11px] text-zinc-400 font-medium leading-tight truncate mt-0.5">{subtitle}</div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-2 shrink-0">
+                  {rightNode ? (
+                    rightNode
+                  ) : (
+                    <>
+                      {badge && (
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all ${
+                            badgeActive
+                              ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-sm'
+                              : 'bg-black/60 text-zinc-300 border-white/10 group-hover:border-[#D4AF37]/40'
+                          }`}
+                        >
+                          {badge}
+                        </span>
+                      )}
+                      <div className="w-6 h-6 rounded-full bg-black/50 border border-white/10 group-hover:border-[#D4AF37]/40 flex items-center justify-center text-zinc-400 group-hover:text-[#D4AF37] transition-all">
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </Wrapper>
+            );
+          };
+
+          const IOSToggleSwitch = ({
+            checked,
+            onChange,
+            label,
+          }: {
+            checked: boolean;
+            onChange: (next: boolean) => void;
+            label: string;
+          }) => (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={checked}
+              aria-label={label}
+              onClick={() => onChange(!checked)}
+              className={`relative inline-flex items-center h-5 w-9 shrink-0 cursor-pointer rounded-full border transition-all duration-200 ease-in-out outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                checked
+                  ? 'bg-[#D4AF37] border-[#D4AF37] shadow-[0_0_10px_rgba(212,175,55,0.3)]'
+                  : 'bg-zinc-900 border-white/15'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full shadow-sm transition-transform duration-200 ease-in-out ${
+                  checked ? 'translate-x-4 bg-black' : 'translate-x-0.5 bg-zinc-400'
+                }`}
+              />
+            </button>
+          );
+
+          return (
+            <div className="animate-in fade-in duration-500 max-w-2xl mx-auto pb-24 space-y-4">
+              {/* Hidden File Input for Portrait Upload */}
+              <input
+                type="file"
+                ref={profilePhotoInputRef}
+                onChange={handleProfilePhotoUpload}
+                className="hidden"
+                accept="image/*"
+              />
+
+              {/* Subtle Floating Save Confirmation Pill */}
+              <AnimatePresence>
+                {profileSaveBanner && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="bg-[#D4AF37]/15 border border-[#D4AF37]/40 rounded-full px-4 py-2 flex items-center justify-center gap-2 text-[#D4AF37] text-[10px] font-black uppercase tracking-widest shadow-lg"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{profileSaveBanner}</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Top Compact Client Account Identity Card (Apple-ID System Settings Style) */}
+              <div
+                onClick={() => setActiveClientSettingModal('identity')}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setActiveClientSettingModal('identity');
+                  }
+                }}
+                className="bg-[#111] rounded-[2rem] border border-[#D4AF37]/30 shadow-2xl p-4 flex items-center justify-between gap-3.5 hover:border-[#D4AF37]/60 transition-all cursor-pointer group"
+              >
+                <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      profilePhotoInputRef.current?.click();
+                    }}
+                    className="relative w-13 h-13 sm:w-14 sm:h-14 rounded-full overflow-hidden bg-black border-2 border-[#D4AF37]/50 shrink-0 shadow-lg flex items-center justify-center text-[#D4AF37] text-lg font-bold group/avatar"
+                    title="Tap to change portrait"
+                  >
                     {editPhotoURL ? (
-                      <img src={editPhotoURL} className="w-full h-full object-cover" />
+                      <img src={editPhotoURL} className="w-full h-full object-cover" alt={editName || user.name} />
                     ) : (
-                      user.name[0]
+                      <span>{(editName || user.name || 'C')[0].toUpperCase()}</span>
                     )}
-                    {isUploadingPhoto && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                        <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
+                    {isUploadingPhoto ? (
+                      <div className="absolute inset-0 bg-black/75 flex items-center justify-center">
+                        <Loader2 className="w-4 h-4 text-[#D4AF37] animate-spin" />
+                      </div>
+                    ) : (
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center">
+                        <Camera className="w-3.5 h-3.5 text-[#D4AF37]" />
                       </div>
                     )}
                   </div>
-                  
-                  <div className="absolute -bottom-2 -right-2 flex gap-2">
-                    <input 
-                      type="file" 
-                      ref={profilePhotoInputRef}
-                      onChange={handleProfilePhotoUpload}
-                      className="hidden"
-                      accept="image/*"
-                    />
-                    <button 
-                      onClick={() => profilePhotoInputRef.current?.click()}
-                      className="p-3 bg-[#D4AF37] text-black rounded-full shadow-xl hover:scale-110 transition-transform"
-                      title="Upload Photo"
-                    >
-                      <Upload className="w-4 h-4" />
-                    </button>
-                    {editPhotoURL && (
-                      <button 
-                        onClick={handleProfilePhotoDelete}
-                        className="p-3 bg-zinc-800 text-white rounded-full shadow-xl hover:scale-110 transition-transform"
-                        title="Remove Photo"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-[0.18em] bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
+                        <ShieldCheck className="w-2.5 h-2.5" /> Client Profile
+                      </span>
+                    </div>
+                    <h2 className="text-sm sm:text-base font-bold font-[Cinzel] text-white truncate mt-1">
+                      {editName || user.name || 'Simcha Host'}
+                    </h2>
+                    <p className="text-[11px] text-zinc-400 font-medium truncate">
+                      {editContactEmail || user.username}
+                      {defaultLocation ? ` • ${defaultLocation}` : editPhone ? ` • ${editPhone}` : ''}
+                    </p>
                   </div>
                 </div>
 
-                <div>
-                  <h3 className="text-2xl font-bold text-white font-[Cinzel]">{user.name}</h3>
-                  <p className="text-zinc-400 text-xs uppercase tracking-widest">{user.username}</p>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="hidden sm:inline-flex px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-black/60 text-[#D4AF37] border border-[#D4AF37]/30 group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                    Edit
+                  </span>
+                  <div className="w-7 h-7 rounded-full bg-black/60 border border-white/10 group-hover:border-[#D4AF37]/50 flex items-center justify-center text-[#D4AF37] transition-all">
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-6">
-                {onToggleThemeMode && (
-                  <div className="flex flex-col items-center justify-center gap-2.5 py-1 text-center w-full">
-                    <span className="text-xs font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.2em] text-center">App Preference</span>
-                    <div className="flex items-center justify-center w-full">
-                      <ThemeModeSwitch
-                        themeMode={themeMode}
-                        onToggleThemeMode={onToggleThemeMode}
+              {/* GROUP 1: ACCOUNT & DEFAULTS */}
+              <div className="space-y-1.5">
+                <div className="px-4 flex items-center justify-between">
+                  <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                    Account & Defaults
+                  </span>
+                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                    Tap to view
+                  </span>
+                </div>
+                <div className="bg-[#111] rounded-[1.75rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
+                  <SettingRow
+                    icon={User}
+                    title="Personal Info"
+                    subtitle="Name, photo, email & phone"
+                    onClick={() => setActiveClientSettingModal('identity')}
+                  />
+                  <SettingRow
+                    icon={Calendar}
+                    title="Booking Defaults"
+                    subtitle="Event title, venue, start time & notes"
+                    onClick={() => setActiveClientSettingModal('celebration')}
+                  />
+                  <SettingRow
+                    icon={ShoppingBag}
+                    title="My Plan"
+                    subtitle="Saved vendors & estimated total"
+                    onClick={() => setActiveClientSettingModal('plan_summary')}
+                  />
+                  <SettingRow
+                    icon={CreditCard}
+                    title="Bookings & Payments"
+                    subtitle="Confirmed events & checkout"
+                    onClick={() => setActiveClientSettingModal('bookings_summary')}
+                  />
+                </div>
+              </div>
+
+              {/* GROUP 2: ALERTS & PRIVACY */}
+              <div className="space-y-1.5">
+                <div className="px-4 flex items-center justify-between">
+                  <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                    Alerts & Privacy
+                  </span>
+                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                    Tap to view
+                  </span>
+                </div>
+                <div className="bg-[#111] rounded-[1.75rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
+                  <SettingRow
+                    icon={Bell}
+                    title="Alerts & Email"
+                    subtitle="Bookings, chats, offers & reminders"
+                    onClick={() => setActiveClientSettingModal('notifications')}
+                  />
+                  <SettingRow
+                    icon={ShieldCheck}
+                    title="Privacy & Chat"
+                    subtitle="Read receipts, email sharing & cache"
+                    onClick={() => setActiveClientSettingModal('privacy')}
+                  />
+                </div>
+              </div>
+
+              {/* GROUP 3: SYSTEM & SECURITY */}
+              <div className="space-y-1.5">
+                <div className="px-4 flex items-center justify-between">
+                  <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                    System & Security
+                  </span>
+                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                    Tap to view
+                  </span>
+                </div>
+                <div className="bg-[#111] rounded-[1.75rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
+                  {onToggleThemeMode && (
+                    <SettingRow
+                      icon={Eye}
+                      title="Appearance"
+                      subtitle="Dark or light luxury theme"
+                      rightNode={
+                        <ThemeModeSwitch
+                          themeMode={themeMode}
+                          onToggleThemeMode={onToggleThemeMode}
+                        />
+                      }
+                    />
+                  )}
+                  {onOpenAdminChat && (
+                    <SettingRow
+                      icon={MessageSquare}
+                      title="Concierge Support"
+                      subtitle="Live chat with our support team"
+                      badge="Chat"
+                      badgeActive={true}
+                      onClick={() => {
+                        const adminThread = chatThreads.find(([vid]) => vid === 'admin');
+                        const conId =
+                          adminThread?.[1]?.lastMessage?.conversationId ||
+                          `${user.id}_admin`;
+                        onOpenAdminChat(conId, adminThread?.[1]?.messages);
+                      }}
+                    />
+                  )}
+                  <SettingRow
+                    icon={Lock}
+                    title="Security & Password"
+                    subtitle="Password reset & account access"
+                    badge="Manage"
+                    onClick={() => {
+                      setConfirmDeleteAccount(false);
+                      setPasswordResetFeedback(null);
+                      setActiveClientSettingModal('security');
+                    }}
+                  />
+                  <SettingRow
+                    icon={LogOut}
+                    title="Sign Out"
+                    subtitle="End current client session"
+                    badge="Exit"
+                    onClick={onLogout}
+                  />
+                </div>
+              </div>
+
+              {/* ===================================================================== */}
+              {/* BOTTOM DRAG-DISMISS SETTING SHEETS (iOS System Sheet Style)           */}
+              {/* ===================================================================== */}
+
+              {/* 1. PERSONAL INFO SHEET */}
+              {activeClientSettingModal === 'identity' && (
+                <ClientSettingSheetModal
+                  title="Personal Info"
+                  subtitle="Your name, portrait & contact details"
+                  badgeText="Profile"
+                  icon={User}
+                  onClose={() => {
+                    flushIdentitySave(false);
+                    setConfirmRemovePhoto(false);
+                    setActiveClientSettingModal(null);
+                  }}
+                >
+                  {/* Portrait Upload & Removal Card */}
+                  <div className="bg-black/60 rounded-[1.5rem] border border-[#D4AF37]/30 p-3.5 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative w-13 h-13 rounded-full overflow-hidden bg-black border-2 border-[#D4AF37]/50 shrink-0 shadow-lg flex items-center justify-center text-[#D4AF37] text-xl font-bold">
+                        {editPhotoURL ? (
+                          <img src={editPhotoURL} className="w-full h-full object-cover" alt="" />
+                        ) : (
+                          <span>{(editName || user.name || 'C')[0].toUpperCase()}</span>
+                        )}
+                        {isUploadingPhoto && (
+                          <div className="absolute inset-0 bg-black/75 flex items-center justify-center">
+                            <Loader2 className="w-4 h-4 text-[#D4AF37] animate-spin" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left">
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate">Profile Photo</h4>
+                        <p className="text-[10px] text-zinc-400 leading-tight">
+                          Shown in your planner & vendor chats
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => profilePhotoInputRef.current?.click()}
+                        disabled={isUploadingPhoto}
+                        className="h-9 px-3.5 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-[9px] uppercase tracking-widest flex items-center gap-1.5 shrink-0 cursor-pointer transition-all shadow-md"
+                      >
+                        {isUploadingPhoto ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+                        <span>{editPhotoURL ? 'Change' : 'Upload'}</span>
+                      </button>
+
+                      {editPhotoURL && !confirmRemovePhoto && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmRemovePhoto(true)}
+                          className="h-9 w-9 rounded-full bg-zinc-900 hover:bg-red-500/20 text-zinc-300 hover:text-red-300 border border-white/15 hover:border-red-500/40 flex items-center justify-center shrink-0 cursor-pointer transition-all"
+                          title="Remove Photo"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {editPhotoURL && confirmRemovePhoto && (
+                        <button
+                          type="button"
+                          onClick={handleProfilePhotoDelete}
+                          className="h-9 px-3 rounded-full bg-red-600 hover:bg-red-500 text-white font-black text-[9px] uppercase tracking-widest flex items-center gap-1 shrink-0 cursor-pointer transition-all"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Confirm</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Personal Contact Fields */}
+                  <div className="bg-black/50 rounded-[1.5rem] border border-white/10 p-4 space-y-3.5 text-left">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-[0.18em] pl-2 block">
+                        Full Name
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full h-10 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-xs sm:text-sm font-bold text-white outline-none transition-all"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onBlur={() => flushIdentitySave(false)}
+                        placeholder="Your Full Name"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-[0.18em] pl-2 block">
+                        Contact Email
+                      </label>
+                      <div className="relative">
+                        <Mail className="w-3.5 h-3.5 text-[#D4AF37]/70 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="email"
+                          className="w-full h-10 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full pl-10 pr-4 text-xs sm:text-sm font-bold text-white outline-none transition-all"
+                          value={editContactEmail}
+                          onChange={(e) => setEditContactEmail(e.target.value)}
+                          onBlur={() => persistClientSettings({ contactEmail: editContactEmail })}
+                          placeholder="email@example.com"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-[0.18em] pl-2 block">
+                          Phone (Optional)
+                        </label>
+                        <div className="relative">
+                          <Phone className="w-3.5 h-3.5 text-[#D4AF37]/70 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="tel"
+                            className="w-full h-10 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full pl-10 pr-4 text-xs sm:text-sm font-bold text-white outline-none transition-all"
+                            value={editPhone}
+                            onChange={(e) => setEditPhone(e.target.value)}
+                            onBlur={() => persistClientSettings({ phone: editPhone })}
+                            placeholder="(732) 555-0199"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-[0.18em] pl-2 block">
+                          Primary City
+                        </label>
+                        <div className="relative">
+                          <MapPin className="w-3.5 h-3.5 text-[#D4AF37]/70 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            className="w-full h-10 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full pl-10 pr-4 text-xs sm:text-sm font-bold text-white outline-none transition-all"
+                            value={defaultLocation}
+                            onChange={(e) => setDefaultLocation(e.target.value)}
+                            onBlur={() => persistClientSettings({ defaultLocation })}
+                            placeholder="Lakewood, Brooklyn..."
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => flushIdentitySave(true)}
+                        className="w-full h-10 bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black rounded-full uppercase tracking-[0.18em] text-[10px] shadow-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Save Profile</span>
+                      </button>
+                    </div>
+                  </div>
+                </ClientSettingSheetModal>
+              )}
+
+              {/* 2. BOOKING DEFAULTS SHEET */}
+              {activeClientSettingModal === 'celebration' && (
+                <ClientSettingSheetModal
+                  title="Booking Defaults"
+                  subtitle="Auto-fill your details when booking vendors"
+                  badgeText="Auto-Fill"
+                  icon={Calendar}
+                  onClose={() => {
+                    persistClientSettings();
+                    setActiveClientSettingModal(null);
+                  }}
+                >
+                  <div className="bg-black/50 rounded-[1.5rem] border border-white/10 p-4 space-y-3.5 text-left">
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-[0.18em] pl-2 block">
+                        Default Celebration / Title
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full h-10 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-xs sm:text-sm font-bold text-white outline-none transition-all"
+                        value={defaultEventName}
+                        onChange={(e) => setDefaultEventName(e.target.value)}
+                        onBlur={() => persistClientSettings({ defaultEventName })}
+                        placeholder="e.g. Friedman Wedding, Bar Mitzvah..."
+                      />
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {['Wedding', 'Bar Mitzvah', 'Bat Mitzvah', 'Vort', 'Sheva Brachos', 'Bris'].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => {
+                              setDefaultEventName(preset);
+                              persistClientSettings({ defaultEventName: preset }, 'Default celebration saved');
+                            }}
+                            className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border transition-all cursor-pointer ${
+                              defaultEventName === preset
+                                ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
+                                : 'bg-black/60 text-zinc-300 border-white/15 hover:border-[#D4AF37]/50'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-[0.18em] pl-2 block">
+                          Default Venue / City
+                        </label>
+                        <input
+                          type="text"
+                          className="w-full h-10 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-xs sm:text-sm font-bold text-white outline-none transition-all"
+                          value={defaultLocation}
+                          onChange={(e) => setDefaultLocation(e.target.value)}
+                          onBlur={() => persistClientSettings({ defaultLocation })}
+                          placeholder="e.g. Lakewood, NJ"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-[0.18em] pl-2 block">
+                          Preferred Start Time
+                        </label>
+                        <input
+                          type="text"
+                          className="w-full h-10 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-xs sm:text-sm font-bold text-white outline-none transition-all"
+                          value={defaultEventTime}
+                          onChange={(e) => setDefaultEventTime(e.target.value)}
+                          onBlur={() => persistClientSettings({ defaultEventTime })}
+                          placeholder="e.g. 6:00 PM"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-[0.18em] pl-2 block">
+                        Default Booking Notes
+                      </label>
+                      <textarea
+                        rows={3}
+                        className="w-full bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-[1.25rem] p-3.5 text-xs sm:text-sm outline-none resize-none text-zinc-200 leading-relaxed transition-all"
+                        value={defaultNotes}
+                        onChange={(e) => setDefaultNotes(e.target.value)}
+                        onBlur={() => persistClientSettings({ defaultNotes })}
+                        placeholder="Optional notes included automatically when booking vendors..."
                       />
                     </div>
                   </div>
-                )}
+                </ClientSettingSheetModal>
+              )}
 
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Full Name</label>
-                  <input 
-                    type="text" 
-                    value={editName} 
-                    onChange={e => setEditName(e.target.value)} 
-                    className="w-full bg-black border border-[#D4AF37]/30 rounded-xl px-4 py-4 text-sm text-white outline-none focus:border-[#D4AF37]" 
-                    placeholder="Your Name" 
-                  />
-                </div>
+              {/* 3. MY PLAN SUMMARY SHEET */}
+              {activeClientSettingModal === 'plan_summary' && (
+                <ClientSettingSheetModal
+                  title="My Plan"
+                  subtitle="Saved vendors ready for booking"
+                  badgeText="Planner"
+                  icon={ShoppingBag}
+                  onClose={() => setActiveClientSettingModal(null)}
+                >
+                  <div className="bg-black/60 rounded-[1.5rem] border border-[#D4AF37]/30 p-4 space-y-3.5 text-left">
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div className="bg-[#111] rounded-2xl p-3.5 border border-white/10">
+                        <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Vendors</p>
+                        <p className="text-xl font-bold text-white mt-0.5 tabular-nums">{cart.length}</p>
+                      </div>
+                      <div className="bg-[#111] rounded-2xl p-3.5 border border-[#D4AF37]/30">
+                        <p className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest">Est. Total</p>
+                        <p className="text-xl font-bold text-[#D4AF37] mt-0.5 tabular-nums">${subtotal.toLocaleString()}</p>
+                      </div>
+                    </div>
 
-                <div className="pt-4 flex flex-col gap-4">
-                  <button 
-                    onClick={() => onUpdateProfile({ name: editName, photoURL: editPhotoURL, photoStoragePath: editPhotoStoragePath })}
-                    className="w-full bg-[#D4AF37] text-black font-black py-4 rounded-full hover:bg-[#E5C76B] transition-all uppercase tracking-[0.2em] text-xs shadow-xl"
-                  >
-                    Save Profile Info
-                  </button>
-                  
-                  <div className="pt-8 border-t border-white/5">
-                    <button 
-                      onClick={onDeleteAccount}
-                      className="w-full bg-zinc-800 text-zinc-400 border border-zinc-400/20 font-black py-4 rounded-full hover:bg-zinc-800 hover:text-white transition-all uppercase tracking-[0.2em] text-xs"
+                    {cart.length > 0 ? (
+                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
+                        {cart.map((item, idx) => (
+                          <div
+                            key={`${item.vendor.id}-${idx}`}
+                            className="bg-[#111] rounded-2xl p-3 border border-white/10 flex items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <img src={item.vendor.image} alt="" className="w-9 h-9 rounded-full object-cover border border-[#D4AF37]/40 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-white truncate">{item.vendor.name}</p>
+                                <p className="text-[10px] text-zinc-400 truncate">
+                                  {item.date || 'No date'} • ${item.amount.toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveClientSettingModal(null);
+                                onEditCartItem(idx);
+                              }}
+                              className="px-3 py-1 rounded-full bg-white/5 hover:bg-[#D4AF37] text-zinc-300 hover:text-black text-[9px] font-black uppercase tracking-widest border border-white/15 transition-all cursor-pointer shrink-0"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-6 text-center text-xs text-zinc-400">
+                        Your plan is empty. Browse vendors to add packages.
+                      </div>
+                    )}
+
+                    <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveClientSettingModal(null);
+                          handleTabChange('plan');
+                        }}
+                        className="flex-1 h-10 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-[10px] uppercase tracking-[0.18em] transition-all cursor-pointer shadow-lg"
+                      >
+                        Open Plan
+                      </button>
+                      {cart.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveClientSettingModal(null);
+                            onProcessCart();
+                          }}
+                          className="flex-1 h-10 rounded-full bg-white/10 hover:bg-white/15 text-white border border-[#D4AF37]/40 font-black text-[10px] uppercase tracking-[0.18em] transition-all cursor-pointer"
+                        >
+                          Send Requests
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </ClientSettingSheetModal>
+              )}
+
+              {/* 4. BOOKINGS & PAYMENTS SHEET */}
+              {activeClientSettingModal === 'bookings_summary' && (
+                <ClientSettingSheetModal
+                  title="Bookings & Payments"
+                  subtitle="Confirmed reservations & payment status"
+                  badgeText="Events"
+                  icon={CreditCard}
+                  onClose={() => setActiveClientSettingModal(null)}
+                >
+                  <div className="bg-black/60 rounded-[1.5rem] border border-[#D4AF37]/30 p-4 space-y-3.5 text-left">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-[#111] rounded-2xl p-3 border border-white/10">
+                        <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">Confirmed</p>
+                        <p className="text-lg font-bold text-white mt-0.5 tabular-nums">{confirmedBookingsCount}</p>
+                      </div>
+                      <div className="bg-[#111] rounded-2xl p-3 border border-white/10">
+                        <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">Paid</p>
+                        <p className="text-lg font-bold text-emerald-400 mt-0.5 tabular-nums">{paidBookingsCount}</p>
+                      </div>
+                      <div className="bg-[#111] rounded-2xl p-3 border border-[#D4AF37]/30">
+                        <p className="text-[8px] font-black text-[#D4AF37] uppercase tracking-widest">Total</p>
+                        <p className="text-lg font-bold text-[#D4AF37] mt-0.5 tabular-nums">${totalBookedAmount.toLocaleString()}</p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveClientSettingModal(null);
+                        handleTabChange('events');
+                      }}
+                      className="w-full h-10 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-[10px] uppercase tracking-[0.18em] transition-all cursor-pointer shadow-lg"
                     >
-                      Delete Account
+                      View All Events
                     </button>
                   </div>
-                </div>
-              </div>
+                </ClientSettingSheetModal>
+              )}
+
+              {/* 5. ALERTS & EMAIL SHEET */}
+              {activeClientSettingModal === 'notifications' && (
+                <ClientSettingSheetModal
+                  title="Alerts & Email"
+                  subtitle="Choose which updates you receive"
+                  badgeText="Alerts"
+                  icon={Bell}
+                  onClose={() => {
+                    persistClientSettings();
+                    setActiveClientSettingModal(null);
+                  }}
+                >
+                  <div className="bg-black/60 rounded-[1.5rem] border border-[#D4AF37]/30 divide-y divide-white/10 overflow-hidden text-left">
+                    <div className="px-4 py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate">Booking Updates</h4>
+                        <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                          Confirmations & status changes
+                        </p>
+                      </div>
+                      <IOSToggleSwitch
+                        label="Booking Updates"
+                        checked={notifyEmailBookings}
+                        onChange={(next) => {
+                          setNotifyEmailBookings(next);
+                          persistClientSettings({ notifyEmailBookings: next });
+                        }}
+                      />
+                    </div>
+
+                    <div className="px-4 py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate">Vendor Messages</h4>
+                        <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                          New chats, voice notes & files
+                        </p>
+                      </div>
+                      <IOSToggleSwitch
+                        label="Vendor Messages"
+                        checked={notifyVendorMessages}
+                        onChange={(next) => {
+                          setNotifyVendorMessages(next);
+                          persistClientSettings({ notifyVendorMessages: next });
+                        }}
+                      />
+                    </div>
+
+                    <div className="px-4 py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate">Price Offers</h4>
+                        <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                          Vendor replies to custom offers
+                        </p>
+                      </div>
+                      <IOSToggleSwitch
+                        label="Price Offers"
+                        checked={notifyOfferUpdates}
+                        onChange={(next) => {
+                          setNotifyOfferUpdates(next);
+                          persistClientSettings({ notifyOfferUpdates: next });
+                        }}
+                      />
+                    </div>
+
+                    <div className="px-4 py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate">Event Reminders</h4>
+                        <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                          Upcoming date & balance reminders
+                        </p>
+                      </div>
+                      <IOSToggleSwitch
+                        label="Event Reminders"
+                        checked={notifyEventReminders}
+                        onChange={(next) => {
+                          setNotifyEventReminders(next);
+                          persistClientSettings({ notifyEventReminders: next });
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Compact Email Test Bar */}
+                  <div className="bg-black/60 rounded-[1.5rem] border border-white/10 p-3.5 space-y-2.5 text-left">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">
+                        Test Email Delivery
+                      </h4>
+                      <span className="text-[10px] text-zinc-400">Verify inbox</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 relative min-w-0">
+                        <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#D4AF37]" />
+                        <input
+                          type="email"
+                          placeholder="your@email.com"
+                          className="w-full h-9 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full pl-9 pr-3 text-xs text-white outline-none transition-all"
+                          value={testEmail}
+                          onChange={(e) => setTestEmail(e.target.value)}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSendClientTestEmail}
+                        disabled={isSendingTestEmail}
+                        className="h-9 px-4 bg-[#D4AF37] hover:bg-[#E5C76B] text-black rounded-full font-black text-[9px] uppercase tracking-widest border border-[#D4AF37] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer shrink-0"
+                      >
+                        {isSendingTestEmail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3 h-3" />}
+                        <span>{isSendingTestEmail ? 'Sending' : 'Send'}</span>
+                      </button>
+                    </div>
+                    {testEmailFeedback?.success && (
+                      <div className="bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-3.5 py-2 rounded-full flex items-center gap-2">
+                        <CheckCircle className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                        <span className="text-[9px] font-bold text-[#D4AF37] uppercase tracking-widest">
+                          Test email sent!
+                        </span>
+                      </div>
+                    )}
+                    {testEmailFeedback?.error && (
+                      <div className="bg-red-500/10 border border-red-500/30 p-2.5 rounded-xl text-[10px] text-red-300">
+                        {testEmailFeedback.error}
+                      </div>
+                    )}
+                  </div>
+                </ClientSettingSheetModal>
+              )}
+
+              {/* 6. PRIVACY & CHAT SHEET */}
+              {activeClientSettingModal === 'privacy' && (
+                <ClientSettingSheetModal
+                  title="Privacy & Chat"
+                  subtitle="Message visibility & saved preferences"
+                  badgeText="Privacy"
+                  icon={ShieldCheck}
+                  onClose={() => {
+                    persistClientSettings();
+                    setActiveClientSettingModal(null);
+                  }}
+                >
+                  <div className="bg-black/60 rounded-[1.5rem] border border-[#D4AF37]/30 divide-y divide-white/10 overflow-hidden text-left">
+                    <div className="px-4 py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate">Read Receipts</h4>
+                        <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                          Show when you view messages
+                        </p>
+                      </div>
+                      <IOSToggleSwitch
+                        label="Read Receipts"
+                        checked={privacyReadReceipts}
+                        onChange={(next) => {
+                          setPrivacyReadReceipts(next);
+                          persistClientSettings({ privacyReadReceipts: next });
+                        }}
+                      />
+                    </div>
+
+                    <div className="px-4 py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate">Share Email in Chats</h4>
+                        <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                          Include email on new inquiries
+                        </p>
+                      </div>
+                      <IOSToggleSwitch
+                        label="Share Email in Chats"
+                        checked={privacyShareEmail}
+                        onChange={(next) => {
+                          setPrivacyShareEmail(next);
+                          persistClientSettings({ privacyShareEmail: next });
+                        }}
+                      />
+                    </div>
+
+                    <div className="px-4 py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate">Save Recent Searches</h4>
+                        <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                          Remember filters & dates
+                        </p>
+                      </div>
+                      <IOSToggleSwitch
+                        label="Save Recent Searches"
+                        checked={privacySaveHistory}
+                        onChange={(next) => {
+                          setPrivacySaveHistory(next);
+                          persistClientSettings({ privacySaveHistory: next });
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-black/60 rounded-[1.5rem] border border-white/10 px-4 py-3 flex items-center justify-between gap-3 text-left">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-xs sm:text-sm font-bold text-white truncate">Search Cache</h4>
+                      <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                        Reset saved category & date filters
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          sessionStorage.clear();
+                        } catch {}
+                        setProfileSaveBanner('Filter cache cleared');
+                        window.setTimeout(() => setProfileSaveBanner(null), 2400);
+                      }}
+                      className="h-8 px-3.5 rounded-full bg-white/5 hover:bg-[#D4AF37] text-zinc-200 hover:text-black border border-white/15 font-black text-[9px] uppercase tracking-widest shrink-0 cursor-pointer transition-all flex items-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Clear</span>
+                    </button>
+                  </div>
+                </ClientSettingSheetModal>
+              )}
+
+              {/* 7. SECURITY & PASSWORD SHEET */}
+              {activeClientSettingModal === 'security' && (
+                <ClientSettingSheetModal
+                  title="Security & Password"
+                  subtitle="Login credentials & account access"
+                  badgeText="Security"
+                  icon={Lock}
+                  onClose={() => {
+                    setConfirmDeleteAccount(false);
+                    setActiveClientSettingModal(null);
+                  }}
+                >
+                  <div className="bg-black/60 rounded-[1.5rem] border border-[#D4AF37]/30 p-4 space-y-3.5 text-left">
+                    <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+                      <div className="min-w-0">
+                        <p className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest">Signed-In Account</p>
+                        <p className="text-xs sm:text-sm font-bold text-white mt-0.5 truncate">{user.username}</p>
+                      </div>
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[9px] font-black uppercase tracking-widest shrink-0">
+                        Active
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate">Password Reset</h4>
+                        <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                          Send reset link to your email
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSendPasswordReset}
+                        disabled={isSendingPasswordReset}
+                        className="h-9 px-4 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-[9px] uppercase tracking-widest shrink-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 shadow-md"
+                      >
+                        {isSendingPasswordReset ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                        <span>{isSendingPasswordReset ? 'Sending' : 'Reset'}</span>
+                      </button>
+                    </div>
+
+                    {passwordResetFeedback?.sent && (
+                      <div className="bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-3.5 py-2 rounded-full flex items-center gap-2">
+                        <CheckCircle className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                        <span className="text-[9px] font-bold text-[#D4AF37] uppercase tracking-widest">
+                          Reset link sent to your email!
+                        </span>
+                      </div>
+                    )}
+                    {passwordResetFeedback?.error && (
+                      <div className="bg-red-500/10 border border-red-500/30 p-2.5 rounded-xl text-[10px] text-red-300">
+                        {passwordResetFeedback.error}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Danger Zone: Delete Account */}
+                  <div className="bg-black/60 rounded-[1.5rem] border border-red-500/25 p-4 space-y-3 text-left">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-red-400 truncate">Delete Account</h4>
+                        <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                          Permanently remove your profile
+                        </p>
+                      </div>
+                      {!confirmDeleteAccount && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteAccount(true)}
+                          className="h-8 px-3.5 rounded-full bg-zinc-900 hover:bg-red-950/40 text-red-400 border border-red-500/30 font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer shrink-0"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+
+                    {confirmDeleteAccount && (
+                      <div className="space-y-2 pt-1 border-t border-red-500/20">
+                        <p className="text-[10px] font-bold text-red-300">
+                          Confirm permanent account deletion?
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveClientSettingModal(null);
+                              onDeleteAccount();
+                            }}
+                            className="flex-1 h-9 rounded-full bg-red-600 hover:bg-red-500 text-white font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer shadow-lg"
+                          >
+                            Confirm Delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteAccount(false)}
+                            className="px-4 h-9 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </ClientSettingSheetModal>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
       </main>
       {/* Embedded Stripe Paywall Modal — Opens immediately on Pay and shows luxury loader if session is still resolving */}
       {checkoutBookingInfo && (

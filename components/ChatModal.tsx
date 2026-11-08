@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -1808,17 +1809,38 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
 
-  return (
-    <div 
-      role="dialog" 
-      aria-modal="true" 
-      aria-label="WhatsApp Style Messaging" 
-      className="fixed inset-0 z-[200] flex items-center justify-center p-0 md:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
-    >
-      {/* Main WhatsApp Window Container */}
-      <div className="fixed inset-0 z-[200] w-full h-[100dvh] bg-[#0b0b0b] rounded-none md:relative md:max-w-4xl lg:max-w-5xl md:h-[88vh] md:max-h-[820px] md:rounded-2xl md:border md:border-[#D4AF37]/30 md:shadow-[0_20px_60px_rgba(0,0,0,0.95)] flex overflow-hidden font-sans select-none">
+  const chatModalNode = (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div 
+          key="chat-modal-backdrop"
+          role="dialog" 
+          aria-modal="true" 
+          aria-label="WhatsApp Style Messaging" 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.25, ease: 'easeOut' }}
+          className="fixed inset-0 z-[320] flex items-stretch md:items-center justify-center p-0 md:p-4 bg-black/85 backdrop-blur-md overflow-hidden"
+        >
+          {/* Main WhatsApp Window Container with Smooth Luxury Slide-Up Animation */}
+          <motion.div
+            key="chat-modal-window"
+            initial={{ y: '100%', scale: 0.96, opacity: 0.7 }}
+            animate={{ y: 0, scale: 1, opacity: 1 }}
+            exit={{ y: '100%', scale: 0.96, opacity: 0 }}
+            transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+            className="relative z-[320] w-full h-[100dvh] max-h-[100dvh] bg-[#0b0b0b] rounded-none md:max-w-4xl lg:max-w-5xl md:h-[88vh] md:max-h-[820px] md:rounded-2xl md:border md:border-[#D4AF37]/30 md:shadow-[0_20px_60px_rgba(0,0,0,0.95)] flex overflow-hidden font-sans select-none will-change-transform transform-gpu"
+          >
         
         {/* ================= LEFT COLUMN: CONVERSATION LIST (PILL STYLE) ================= */}
         <div 
@@ -2783,44 +2805,48 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             </>
           )}
         </div>
-      </div>
-
-      {/* Fullscreen Media Modal */}
-      <AnimatePresence>
-        {fullscreenMedia && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-md"
-          >
-            <button 
-              type="button"
-              onClick={() => setFullscreenMedia(null)}
-              className="absolute top-4 right-4 text-white hover:text-[#D4AF37] bg-black/60 p-3 rounded-full backdrop-blur-md border border-white/10 transition-all shadow-xl z-10"
-              aria-label="Close fullscreen media"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            {fullscreenMedia.type === 'image' ? (
-              <img 
-                src={fullscreenMedia.url} 
-                alt="Fullscreen" 
-                className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
-              />
-            ) : (
-              <video 
-                src={fullscreenMedia.url} 
-                controls
-                autoPlay
-                className="max-w-full max-h-full rounded-xl shadow-2xl"
-              />
-            )}
           </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+
+          {/* Fullscreen Media Modal */}
+          <AnimatePresence>
+            {fullscreenMedia && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-md"
+              >
+                <button 
+                  type="button"
+                  onClick={() => setFullscreenMedia(null)}
+                  className="absolute top-4 right-4 text-white hover:text-[#D4AF37] bg-black/60 p-3 rounded-full backdrop-blur-md border border-white/10 transition-all shadow-xl z-10"
+                  aria-label="Close fullscreen media"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+                {fullscreenMedia.type === 'image' ? (
+                  <img 
+                    src={fullscreenMedia.url} 
+                    alt="Fullscreen" 
+                    className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
+                  />
+                ) : (
+                  <video 
+                    src={fullscreenMedia.url} 
+                    controls
+                    autoPlay
+                    className="max-w-full max-h-full rounded-xl shadow-2xl"
+                  />
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
+
+  return typeof document !== 'undefined' ? createPortal(chatModalNode, document.body) : chatModalNode;
 };
 
 export default ChatModal;

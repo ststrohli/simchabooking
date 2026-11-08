@@ -86,6 +86,9 @@ export interface Vendor {
     summary: string;
     start: string;
     end: string;
+    location?: string;
+    description?: string;
+    isCustom?: boolean;
   }>;
   reviews?: Review[];
   services?: VendorService[];

@@ -483,14 +483,22 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
         setActiveShowcaseServiceId(null);
         setIsTimePickerOpen(false);
         setWatchDialMode('hour');
+        let savedDefaults: Record<string, string> = {};
+        try {
+          const raw = localStorage.getItem('simcha_client_booking_defaults');
+          if (raw) savedDefaults = JSON.parse(raw);
+        } catch {}
+
         if (initialDetails) {
             setFormData({ 
-              eventName: initialDetails.eventName || '', 
-              clientName: initialDetails.clientName || '', 
-              contactEmail: initialDetails.contactEmail || '', 
-              eventLocation: initialDetails.eventLocation || '', 
-              eventTime: initialDetails.eventTime ? formatTime12h(initialDetails.eventTime) : '', 
-              notes: initialDetails.notes || '' 
+              eventName: initialDetails.eventName || savedDefaults.defaultEventName || '', 
+              clientName: initialDetails.clientName || savedDefaults.clientName || '', 
+              contactEmail: initialDetails.contactEmail || savedDefaults.contactEmail || '', 
+              eventLocation: initialDetails.eventLocation || (isVenue && vendor ? vendor.location : (savedDefaults.defaultLocation || '')), 
+              eventTime: initialDetails.eventTime
+                ? formatTime12h(initialDetails.eventTime)
+                : (savedDefaults.defaultEventTime ? formatTime12h(savedDefaults.defaultEventTime) : ''), 
+              notes: initialDetails.notes || savedDefaults.defaultNotes || '' 
             });
             const rawSelectedIds = initialDetails.selectedServiceIds || [];
             const allVendorServices = vendor?.services || [];
@@ -511,12 +519,12 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
             setQuantities(initialDetails.selectedServiceQuantities || {});
         } else {
             setFormData({ 
-              eventName: '', 
-              clientName: '', 
-              contactEmail: '', 
-              eventLocation: isVenue && vendor ? vendor.location : '', 
-              eventTime: '', 
-              notes: '' 
+              eventName: savedDefaults.defaultEventName || '', 
+              clientName: savedDefaults.clientName || '', 
+              contactEmail: savedDefaults.contactEmail || '', 
+              eventLocation: isVenue && vendor ? vendor.location : (savedDefaults.defaultLocation || ''), 
+              eventTime: savedDefaults.defaultEventTime ? formatTime12h(savedDefaults.defaultEventTime) : '', 
+              notes: savedDefaults.defaultNotes || '' 
             });
             setSelectedServiceIds([]);
             setQuantities({});

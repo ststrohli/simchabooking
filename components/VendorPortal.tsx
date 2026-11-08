@@ -271,14 +271,14 @@ const VendorEventScopeModal: React.FC<{
     true
   );
 
-  return (
+  const eventModalNode = (
     <motion.div
       style={{ opacity: backdropOpacity }}
       transition={EVENT_MODAL_TRANSITION}
       role="dialog"
       aria-modal="true"
       aria-labelledby="calendar-event-modal-title"
-      className={`fixed inset-0 z-[110] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
+      className={`fixed inset-0 z-[260] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-hidden ${isDismissing ? 'pointer-events-none' : ''}`}
       onClick={(e) => {
         if (e.target === e.currentTarget) dismissWithSlideOut();
       }}
@@ -536,6 +536,8 @@ const VendorEventScopeModal: React.FC<{
       </motion.div>
     </motion.div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(eventModalNode, document.body) : eventModalNode;
 };
 
 type ProfileSettingModalType = 'basic' | 'locations' | 'addons' | 'media' | 'offers' | 'privacy' | 'email' | null;
@@ -1321,6 +1323,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [stripeMessage, setStripeMessage] = useState<string | null>(null);
+  const [showStripePayoutsModal, setShowStripePayoutsModal] = useState(false);
+  const [confirmResetStripe, setConfirmResetStripe] = useState(false);
   
   // Email Debug State
   const [testEmail, setTestEmail] = useState('');
@@ -1383,6 +1387,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   // Calendar State
   const [viewDate, setViewDate] = useState(new Date());
   const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'week'>('month');
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
+  const [showAddCalendarEventForm, setShowAddCalendarEventForm] = useState(false);
+  const [newCalEventTitle, setNewCalEventTitle] = useState('');
+  const [newCalEventStart, setNewCalEventStart] = useState('6:00 PM');
+  const [newCalEventEnd, setNewCalEventEnd] = useState('10:00 PM');
+  const [newCalEventLocation, setNewCalEventLocation] = useState('');
+  const [newCalEventNotes, setNewCalEventNotes] = useState('');
+  const [newCalEventLockDate, setNewCalEventLockDate] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const isSyncingRef = useRef(false);
   const [syncStep, setSyncStep] = useState<'idle' | 'auth' | 'fetching' | 'saving' | 'success'>('idle');
@@ -1490,7 +1502,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             }
           }
 
-          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events`, {
+          const res = await fetch(`https://www.googleapis.com/calendar/v3/primary/events`.replace('/primary/events', '/calendars/primary/events'), {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -1512,13 +1524,21 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         }
       }
 
-      // ONE-WAY SYNC: Build detailed list of googleEvents to save to Firestore
-      const parsedGoogleEvents = activeEvents.map((e: any) => ({
-        id: e.id,
-        summary: e.summary || 'Busy (Google Calendar)',
-        start: e.start?.dateTime || e.start?.date || '',
-        end: e.end?.dateTime || e.end?.date || '',
-      }));
+      // ONE-WAY SYNC: Build detailed list of googleEvents to save to Firestore while preserving custom vendor events
+      const existingCustomEvents = (latestEditFormRef.current.googleEvents || vendor.googleEvents || []).filter(
+        (ce) => ce.isCustom || String(ce.id).startsWith('custom_')
+      );
+      const parsedGoogleEvents = [
+        ...existingCustomEvents,
+        ...activeEvents.map((e: any) => ({
+          id: e.id,
+          summary: e.summary || 'Busy (Google Calendar)',
+          start: e.start?.dateTime || e.start?.date || '',
+          end: e.end?.dateTime || e.end?.date || '',
+          location: e.location || '',
+          description: e.description || '',
+        })),
+      ];
       
       const currentUnavailable = vendor.unavailableDates || [];
       const googleDates: string[] = [];
@@ -1863,12 +1883,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   useEffect(() => {
     if (onActiveChatChangeRef.current) {
       onActiveChatChangeRef.current(
-        (!!selectedThreadEmail && activeTab === 'messages') ||
+        !!selectedThreadEmail ||
         !!selectedCalendarEvent ||
+        !!selectedCalendarDate ||
+        !!showStripePayoutsModal ||
         (!!activeProfileSettingModal && activeTab === 'profile')
       );
     }
-  }, [selectedThreadEmail, activeTab, selectedCalendarEvent, activeProfileSettingModal]);
+  }, [selectedThreadEmail, activeTab, selectedCalendarEvent, selectedCalendarDate, showStripePayoutsModal, activeProfileSettingModal]);
 
   useEffect(() => {
     return () => {
@@ -2823,52 +2845,30 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     }
   };
 
-  const handleVerifyStripeConnection = async () => {
-    if (!vendor.stripeAccountId) return;
-    
-    console.log('Current Vendor ID:', vendor.id);
-    setIsOnboarding(true);
-    setOnboardingError(null);
-    setStripeMessage(null);
+  const handleResetStripeConnection = async () => {
     try {
-      const response = await fetch('/api/stripe/force-verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          vendorId: vendor.id
-        }),
-      });
-      
-      let data;
-      try {
-        data = await response.json();
-      } catch (e) {
-        throw new Error("The server returned an invalid response.");
+      setIsOnboarding(true);
+      setOnboardingError(null);
+      setStripeMessage(null);
+      if (vendor.id) {
+        await updateDoc(doc(db, 'vendors', vendor.id), {
+          stripeConnected: false,
+          stripeAccountId: '',
+          onboardingComplete: false
+        }).catch(() => {});
       }
-
-      if (!response.ok) {
-        throw new Error(data.error || `Server error: ${response.status}`);
-      }
-
-      if (data.stripeConnected) {
-        setStripeMessage("Stripe Connection Verified! Your account is fully set up to receive payments.");
-        // Update local state immediately
-        if (onUpdateVendor) {
-          onUpdateVendor({
-            ...vendor,
-            stripeConnected: true
-          });
-        }
-      } else {
-        const missing = [];
-        if (!data.details.details_submitted) missing.push("Details Submitted");
-        if (!data.details.charges_enabled) missing.push("Charges Enabled");
-        if (!data.details.payouts_enabled) missing.push("Payouts Enabled");
-        setStripeMessage(`Stripe Connection Incomplete. Missing: ${missing.join(', ')}. Please complete onboarding in the Stripe Dashboard.`);
-      }
+      applyImmediateVendorUpdate((prev) => ({
+        ...prev,
+        stripeConnected: false,
+        stripeAccountId: '',
+        onboardingComplete: false
+      }));
+      setConfirmResetStripe(false);
+      setShowStripePayoutsModal(false);
+      showNotification('Stripe connection reset. You can connect a new Stripe account anytime.', 'info');
     } catch (error: any) {
-      console.error("Stripe Verification Error:", error);
-      setOnboardingError(error.message || "An error occurred while verifying Stripe connection.");
+      console.error('Error resetting Stripe connection:', error);
+      setOnboardingError(error.message || 'Failed to reset Stripe connection.');
     } finally {
       setIsOnboarding(false);
     }
@@ -2980,6 +2980,113 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     }
   };
 
+  const openCalendarDateSheet = (dateStr: string, openAddEvent = false) => {
+    setSelectedCalendarDate(dateStr);
+    setShowAddCalendarEventForm(openAddEvent);
+    if (openAddEvent) {
+      setNewCalEventTitle('');
+      setNewCalEventStart('6:00 PM');
+      setNewCalEventEnd('10:00 PM');
+      setNewCalEventLocation(editForm.location || vendor.location || '');
+      setNewCalEventNotes('');
+      setNewCalEventLockDate(true);
+    }
+  };
+
+  const handleAddCustomCalendarEvent = (targetDateStr: string) => {
+    const title = newCalEventTitle.trim() || 'Custom Event';
+    const startParts = parseEventTime24Parts(newCalEventStart);
+    const endParts = parseEventTime24Parts(newCalEventEnd);
+
+    const startVal = startParts
+      ? `${targetDateStr}T${startParts.hours}:${startParts.minutes}:00`
+      : targetDateStr;
+    const endVal = endParts
+      ? `${targetDateStr}T${endParts.hours}:${endParts.minutes}:00`
+      : targetDateStr;
+
+    const newEvent = {
+      id: `custom_${Date.now()}`,
+      summary: title,
+      start: startVal,
+      end: endVal,
+      location: newCalEventLocation.trim(),
+      description: newCalEventNotes.trim(),
+      isCustom: true,
+    };
+
+    const existingEvents = latestEditFormRef.current.googleEvents || vendor.googleEvents || [];
+    const currentUnavailable = latestEditFormRef.current.unavailableDates || vendor.unavailableDates || [];
+    const updatedUnavailable =
+      newCalEventLockDate && !currentUnavailable.includes(targetDateStr)
+        ? [...currentUnavailable, targetDateStr]
+        : currentUnavailable;
+
+    applyImmediateVendorUpdate((prev) => ({
+      ...prev,
+      googleEvents: [...existingEvents, newEvent],
+      unavailableDates: updatedUnavailable,
+    }));
+
+    setShowAddCalendarEventForm(false);
+    setNewCalEventTitle('');
+    setNewCalEventNotes('');
+    showNotification('Event added to calendar!', 'success');
+  };
+
+  const handleDeleteCustomCalendarEvent = (eventId: string) => {
+    const existingEvents = latestEditFormRef.current.googleEvents || vendor.googleEvents || [];
+    const updatedEvents = existingEvents.filter((e) => e.id !== eventId);
+    applyImmediateVendorUpdate((prev) => ({
+      ...prev,
+      googleEvents: updatedEvents,
+    }));
+    showNotification('Calendar event removed.', 'info');
+  };
+
+  const openClientChatFromCalendar = (clientEmail?: string, clientName?: string, clientUid?: string) => {
+    setSelectedCalendarDate(null);
+    setSelectedCalendarEvent(null);
+    setShowAddCalendarEventForm(false);
+
+    const emailClean = (clientEmail || '').trim();
+    const emailLower = emailClean.toLowerCase();
+    const matchedThread = messageThreads.find(([tKey, tData]) => {
+      if (clientUid && tData.clientUid === clientUid) return true;
+      if (emailLower && tData.email && tData.email.toLowerCase() === emailLower) return true;
+      if (emailLower && tKey.toLowerCase() === emailLower) return true;
+      return false;
+    });
+
+    if (matchedThread) {
+      const [tKey, tData] = matchedThread;
+      const conId =
+        tData.conversationId ||
+        tData.lastMessage?.conversationId ||
+        [vendor.id, tData.clientUid || tKey].sort().filter(Boolean).join('_');
+      setSelectedThreadContext({
+        key: tKey,
+        clientUid: tData.clientUid || tKey,
+        email: tData.email || emailClean,
+        name: tData.name || clientName || 'Client',
+        conversationId: conId,
+      });
+      setSelectedThreadEmail(tKey);
+    } else {
+      const dirEntry = emailLower ? clientDirectoryMap[emailLower] : undefined;
+      const targetUid = clientUid || dirEntry?.uid || emailClean || 'client_legacy';
+      const conId = [vendor.id, targetUid].sort().filter(Boolean).join('_');
+      setSelectedThreadContext({
+        key: targetUid,
+        clientUid: targetUid,
+        email: emailClean,
+        name: clientName || dirEntry?.name || 'Client',
+        conversationId: conId,
+      });
+      setSelectedThreadEmail(targetUid);
+    }
+  };
+
   const renderCalendar = () => {
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
@@ -2997,88 +3104,136 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     const weekStartName = startOfWeek.toLocaleString('default', { month: 'short', day: 'numeric' });
     const weekEndName = endOfWeek.toLocaleString('default', { month: 'short', day: 'numeric', year: 'numeric' });
 
+    const currentUnavailableDates = editForm.unavailableDates || vendor.unavailableDates || [];
+    const allCalendarGoogleEvents = editForm.googleEvents || vendor.googleEvents || [];
+
     // Render Month days
     const calendarDays = [];
     for (let i = 0; i < firstDay; i++) {
       calendarDays.push(
-        <div key={`pad-${i}`} className="min-h-[120px] md:min-h-[140px] bg-black border border-white/5 opacity-10"></div>
+        <div key={`pad-${i}`} className="min-h-[104px] sm:min-h-[126px] md:min-h-[138px] bg-[#070707] border-b border-r border-white/5 opacity-35" />
       );
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month, day);
       const dateStr = date.toLocaleDateString('en-CA');
-      const isBlocked = vendor.unavailableDates?.includes(dateStr);
+      const isBlocked = currentUnavailableDates.includes(dateStr);
       const isToday = dateStr === todayStr;
-      
-      const dailyBookings = bookings.filter(b => b.date === dateStr);
-      const dailyGoogleEvents = (vendor.googleEvents || []).filter(e => {
+      const isSelectedDay = selectedCalendarDate === dateStr;
+
+      const dailyBookings = bookings.filter((b) => b.date === dateStr && b.status !== 'cancelled');
+      const dailyGoogleEvents = allCalendarGoogleEvents.filter((e) => {
         const eventDates = getDatesForEventRange(e.start, e.end);
         return eventDates.includes(dateStr);
       });
+      const totalDayItems = dailyBookings.length + dailyGoogleEvents.length;
 
       calendarDays.push(
-        <div 
+        <div
           key={dateStr}
-          onClick={() => handleToggleDate(dateStr)}
-          className={`min-h-[120px] md:min-h-[140px] border p-2 md:p-3 transition-all cursor-pointer relative group flex flex-col justify-between ${
-            isBlocked 
-              ? 'bg-red-950/5 border-zinc-400/10 hover:border-zinc-400/30' 
-              : 'bg-black border-white/5 hover:border-[#D4AF37]/30'
-          } ${isToday ? 'ring-1 ring-[#D4AF37] ring-inset bg-[#D4AF37]/5' : ''}`}
+          onClick={() => openCalendarDateSheet(dateStr, false)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              openCalendarDateSheet(dateStr, false);
+            }
+          }}
+          className={`min-h-[104px] sm:min-h-[126px] md:min-h-[138px] border-b border-r p-1.5 sm:p-2.5 transition-all cursor-pointer relative group flex flex-col justify-between select-none ${
+            isBlocked
+              ? 'bg-red-950/[0.08] border-white/10 hover:bg-red-950/[0.14] hover:border-[#D4AF37]/45'
+              : 'bg-[#0a0a0a] border-white/5 hover:bg-[#121212] hover:border-[#D4AF37]/45'
+          } ${isToday ? 'ring-1 ring-[#D4AF37] ring-inset bg-[#D4AF37]/[0.05]' : ''} ${
+            isSelectedDay ? 'ring-2 ring-[#D4AF37] ring-inset' : ''
+          }`}
         >
-          <div className="flex justify-between items-center mb-1">
-            <span className={`text-xs font-black ${isToday ? 'text-[#D4AF37] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full' : isBlocked ? 'text-zinc-400/70' : 'text-zinc-400'}`}>{day}</span>
-            {isBlocked && <Lock className="w-3 h-3 text-zinc-400/60" />}
+          {/* Top Row: Day Number + Status Pill */}
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <span
+              className={`inline-flex items-center justify-center text-[10px] sm:text-[11px] font-black transition-all ${
+                isToday
+                  ? 'w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#D4AF37] text-black shadow-md'
+                  : isBlocked
+                  ? 'text-zinc-400'
+                  : 'text-zinc-200 group-hover:text-[#D4AF37]'
+              }`}
+            >
+              {day}
+            </span>
+
+            <div className="flex items-center gap-1">
+              {isBlocked && (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-[7px] sm:text-[8px] font-black uppercase tracking-wider text-red-300">
+                  <Lock className="w-2.5 h-2.5" />
+                  <span className="hidden sm:inline">Locked</span>
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-1.5 py-1 z-10 custom-scrollbar max-h-[80px]">
-             {dailyBookings.map(b => {
-               return (
-                 <div 
-                   key={b.id}
-                   onClick={(e) => {
-                     e.stopPropagation();
-                     handleSimchaBookingClick(b);
-                   }}
-                   className="bg-[#1a1a1a]/80 backdrop-blur-md border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 p-1.5 rounded-lg text-left text-[10px] leading-tight transition-all duration-300 cursor-pointer"
-                 >
-                   <div className="font-extrabold text-white truncate">{b.eventName || 'Event'}</div>
-                   <div className="text-[8px] text-[#D4AF37] truncate font-semibold">{b.clientName}</div>
-                   {b.eventTime && <div className="text-[7px] text-zinc-400 font-mono mt-0.5">{formatBookingTime12h(b.eventTime)}</div>}
-                 </div>
-               );
-             })}
-             {dailyGoogleEvents.map(e => {
-               const timeLabel = formatGoogleEventTime(e.start, e.end);
-               return (
-                 <div 
-                   key={e.id}
-                   onClick={(ev) => {
-                     ev.stopPropagation();
-                     handleGoogleEventClick(e);
-                   }}
-                   className="bg-[#0e0e0e] border border-white/10 hover:border-[#D4AF37]/40 p-1.5 rounded-lg text-left text-[10px] leading-tight transition-all duration-300 relative overflow-hidden group/gcal cursor-pointer"
-                 >
-                   <div className="absolute top-0 left-0 bottom-0 w-0.5 bg-[#D4AF37]"></div>
-                   <div className="pl-1.5">
-                     <div className="font-extrabold text-zinc-200 truncate group-hover/gcal:text-[#D4AF37] transition-colors">{e.summary || 'Busy (Google Calendar)'}</div>
-                     <div className="text-[7px] text-[#D4AF37]/80 truncate font-semibold flex items-center gap-1">
-                       <span className="w-1 h-1 rounded-full bg-[#D4AF37] inline-block animate-pulse"></span> Google Calendar
-                     </div>
-                     {timeLabel && <div className="text-[7px] text-zinc-400 font-mono mt-0.5">{timeLabel}</div>}
-                   </div>
-                 </div>
-               );
-             })}
-             {isBlocked && dailyBookings.length === 0 && dailyGoogleEvents.length === 0 && (
-               <div className="text-[8px] text-zinc-400/40 font-semibold uppercase tracking-wider text-center py-2">
-                 Blocked
-               </div>
-             )}
+          {/* Middle Event Stack (Google Calendar Pill Bars — Tapping an event pops up details immediately) */}
+          <div className="flex-1 space-y-1 overflow-y-auto custom-scrollbar max-h-[82px] z-10">
+            {dailyBookings.map((b) => {
+              const isConfirmed = b.status === 'confirmed';
+              const timeStr = b.eventTime ? formatBookingTime12h(b.eventTime) : '';
+              return (
+                <div
+                  key={b.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSimchaBookingClick(b);
+                  }}
+                  className={`px-2 py-1 rounded-full border text-left text-[9px] sm:text-[10px] leading-tight transition-all truncate flex items-center gap-1.5 shadow-sm ${
+                    isConfirmed
+                      ? 'bg-[#D4AF37]/20 border-[#D4AF37]/60 text-white hover:bg-[#D4AF37]/30'
+                      : 'bg-[#171717] border-[#D4AF37]/40 text-zinc-100 hover:border-[#D4AF37]'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      isConfirmed ? 'bg-emerald-400' : 'bg-[#D4AF37] animate-pulse'
+                    }`}
+                  />
+                  {timeStr && <span className="font-mono text-[8px] text-[#D4AF37] shrink-0 hidden sm:inline">{timeStr}</span>}
+                  <span className="font-bold truncate">{b.eventName || b.clientName}</span>
+                </div>
+              );
+            })}
+
+            {dailyGoogleEvents.map((e) => {
+              const timeLabel = formatGoogleEventTime(e.start, e.end);
+              const shortTime = timeLabel ? timeLabel.split(' - ')[0] : '';
+              return (
+                <div
+                  key={e.id}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    handleGoogleEventClick(e);
+                  }}
+                  className="px-2 py-1 rounded-full bg-black/80 border border-white/15 hover:border-[#D4AF37]/50 text-left text-[9px] sm:text-[10px] leading-tight transition-all truncate flex items-center gap-1.5 text-zinc-200"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] shrink-0" />
+                  {shortTime && <span className="font-mono text-[8px] text-zinc-400 shrink-0 hidden sm:inline">{shortTime}</span>}
+                  <span className="font-semibold truncate">{e.summary || 'Busy'}</span>
+                </div>
+              );
+            })}
+
+            {isBlocked && totalDayItems === 0 && (
+              <div className="h-full flex items-center justify-center py-2">
+                <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500">
+                  Locked
+                </span>
+              </div>
+            )}
           </div>
 
-          <div className="absolute inset-0 bg-[#D4AF37]/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+          {/* Subtle Bottom Hint on Hover */}
+          <div className="pt-1 flex items-center justify-end text-[7px] font-black uppercase tracking-widest text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span>Tap</span>
+          </div>
         </div>
       );
     }
@@ -3093,10 +3248,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
     const weekDaysGrid = weekDays.map((dayDate) => {
       const dateStr = dayDate.toLocaleDateString('en-CA');
-      const isBlocked = vendor.unavailableDates?.includes(dateStr);
+      const isBlocked = currentUnavailableDates.includes(dateStr);
       const isToday = dateStr === todayStr;
-      const dayBookings = bookings.filter(b => b.date === dateStr);
-      const dailyGoogleEvents = (vendor.googleEvents || []).filter(e => {
+      const dayBookings = bookings.filter((b) => b.date === dateStr && b.status !== 'cancelled');
+      const dailyGoogleEvents = allCalendarGoogleEvents.filter((e) => {
         const eventDates = getDatesForEventRange(e.start, e.end);
         return eventDates.includes(dateStr);
       });
@@ -3104,133 +3259,162 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       const dayNum = dayDate.getDate();
 
       return (
-        <div 
+        <div
           key={dateStr}
-          onClick={() => handleToggleDate(dateStr)}
-          className={`min-h-[400px] border-r border-white/5 flex flex-col transition-all cursor-pointer relative group ${
-            isToday ? 'bg-[#D4AF37]/2' : 'bg-black'
-          } hover:bg-white/[0.01]`}
+          onClick={() => openCalendarDateSheet(dateStr, false)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              openCalendarDateSheet(dateStr, false);
+            }
+          }}
+          className={`min-h-[340px] border-r border-white/5 flex flex-col transition-all cursor-pointer relative group select-none ${
+            isToday ? 'bg-[#D4AF37]/[0.04]' : isBlocked ? 'bg-red-950/[0.06]' : 'bg-[#0a0a0a]'
+          } hover:bg-[#121212]`}
         >
           {/* Weekday Column Header */}
-          <div className="p-4 border-b border-white/5 text-center flex flex-col items-center justify-center sticky top-0 bg-[#0c0c0c] z-20">
-            <span className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mb-1">{dayName}</span>
-            <span className={`w-8 h-8 flex items-center justify-center text-sm font-black rounded-full transition-all ${
-              isToday ? 'bg-[#D4AF37] text-black font-black' : 'text-white'
-            }`}>
+          <div className="p-2.5 border-b border-white/5 text-center flex flex-col items-center justify-center sticky top-0 bg-[#0d0d0d] z-20 gap-1">
+            <span className="text-[9px] font-black uppercase text-zinc-400 tracking-widest">{dayName}</span>
+            <span
+              className={`w-6 h-6 flex items-center justify-center text-xs font-black rounded-full transition-all ${
+                isToday ? 'bg-[#D4AF37] text-black shadow-md' : 'text-white group-hover:text-[#D4AF37]'
+              }`}
+            >
               {dayNum}
             </span>
+            {isBlocked && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-[8px] font-black uppercase tracking-widest text-red-300">
+                <Lock className="w-2.5 h-2.5" /> Locked
+              </span>
+            )}
           </div>
 
           {/* Weekday Body */}
-          <div className="flex-1 p-3 space-y-3 relative flex flex-col justify-start min-h-[300px]">
-            {isBlocked && dayBookings.length === 0 && dailyGoogleEvents.length === 0 && (
-              <div className="absolute inset-0 bg-red-950/5 flex flex-col items-center justify-center pointer-events-none p-4">
-                <Lock className="w-5 h-5 text-zinc-400/40 mb-2" />
-                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400/50">Unavailable</span>
+          <div className="flex-1 p-2 space-y-2 relative flex flex-col justify-start">
+            {dayBookings.map((b) => (
+              <div
+                key={b.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSimchaBookingClick(b);
+                }}
+                className="bg-[#161616] border border-[#D4AF37]/35 hover:border-[#D4AF37] p-2.5 rounded-2xl shadow-lg transition-all text-left cursor-pointer space-y-1"
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[8px] font-black uppercase tracking-widest text-[#D4AF37]">
+                    {b.status}
+                  </span>
+                  {b.eventTime && (
+                    <span className="text-[8px] font-mono text-zinc-400">{formatBookingTime12h(b.eventTime)}</span>
+                  )}
+                </div>
+                <h5 className="text-xs font-bold text-white truncate">{b.eventName || 'Celebration'}</h5>
+                <p className="text-[10px] text-zinc-400 truncate">{b.clientName}</p>
+              </div>
+            ))}
+
+            {dailyGoogleEvents.map((e) => {
+              const timeLabel = formatGoogleEventTime(e.start, e.end);
+              return (
+                <div
+                  key={e.id}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    handleGoogleEventClick(e);
+                  }}
+                  className="bg-black/80 border border-white/15 hover:border-[#D4AF37]/50 p-2.5 rounded-2xl shadow-lg transition-all text-left cursor-pointer space-y-1"
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[8px] font-black uppercase tracking-widest text-[#D4AF37] flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]" />
+                      {e.isCustom || String(e.id).startsWith('custom_') ? 'Custom' : 'Google'}
+                    </span>
+                    {timeLabel && <span className="text-[8px] font-mono text-zinc-400 truncate">{timeLabel}</span>}
+                  </div>
+                  <h5 className="text-xs font-bold text-zinc-200 truncate">{e.summary || 'Busy'}</h5>
+                </div>
+              );
+            })}
+
+            {dayBookings.length === 0 && dailyGoogleEvents.length === 0 && (
+              <div className="flex-1 flex flex-col items-center justify-center py-8 opacity-30 group-hover:opacity-70 transition-opacity">
+                {isBlocked ? (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-red-400 mb-1" />
+                    <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Locked</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5 text-[#D4AF37] mb-1" />
+                    <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Open</span>
+                  </>
+                )}
               </div>
             )}
-
-            <div className="space-y-3 z-10 w-full">
-              {dayBookings.length > 0 || dailyGoogleEvents.length > 0 ? (
-                <>
-                  {dayBookings.map(b => (
-                    <div 
-                      key={b.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSimchaBookingClick(b);
-                      }}
-                      className="bg-[#1a1a1a]/80 backdrop-blur-md border border-[#D4AF37]/30 hover:border-[#D4AF37]/60 p-3 rounded-2xl shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 group/card text-left cursor-pointer flex items-center justify-between gap-2"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37]">
-                            {b.status === 'confirmed' ? 'Confirmed' : b.status === 'cancelled' ? 'Cancelled' : 'Pending'}
-                          </span>
-                          {b.eventTime && <span className="text-[8px] font-mono text-zinc-400">• {formatBookingTime12h(b.eventTime)}</span>}
-                        </div>
-                        <h5 className="text-xs font-bold text-white mb-0.5 group-hover/card:text-[#D4AF37] transition-colors truncate">{b.eventName}</h5>
-                        <p className="text-[10px] text-zinc-400 truncate">{b.clientName}</p>
-                      </div>
-                      <div className="w-6 h-6 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover/card:bg-[#D4AF37] group-hover/card:text-black transition-all shrink-0">
-                        <ChevronRight className="w-3 h-3" />
-                      </div>
-                    </div>
-                  ))}
-
-                  {dailyGoogleEvents.map(e => {
-                    const timeLabel = formatGoogleEventTime(e.start, e.end);
-                    return (
-                      <div 
-                        key={e.id}
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          handleGoogleEventClick(e);
-                        }}
-                        className="bg-[#0c0c0c] border border-white/10 hover:border-[#D4AF37]/50 p-3 rounded-xl shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 group/gcard text-left relative overflow-hidden cursor-pointer"
-                      >
-                        <div className="absolute top-0 left-0 bottom-0 w-1 bg-[#D4AF37]"></div>
-                        <div className="pl-2">
-                          <div className="flex justify-between items-start mb-1">
-                            <span className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37] flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] inline-block animate-pulse"></span> Google Cal
-                            </span>
-                            {timeLabel && <span className="text-[8px] font-mono text-zinc-400">{timeLabel}</span>}
-                          </div>
-                          <h5 className="text-xs font-bold text-zinc-200 mb-0.5 group-hover/gcard:text-[#D4AF37] transition-colors truncate">{e.summary || 'Busy (Google Calendar)'}</h5>
-                          <p className="text-[10px] text-zinc-400">Imported Calendar Event</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </>
-              ) : (
-                <div className="py-12 flex flex-col items-center justify-center border border-dashed border-white/5 rounded-2xl opacity-10 group-hover:opacity-30 transition-opacity">
-                  <Plus className="w-6 h-6 text-zinc-400 mb-1" />
-                  <span className="text-[8px] font-black uppercase tracking-wider text-zinc-400">Available Slot</span>
-                </div>
-              )}
-            </div>
-
-            <div className="text-center opacity-0 group-hover:opacity-100 transition-opacity mt-auto pt-2">
-              <span className="text-[7px] font-black uppercase tracking-[0.2em] text-[#D4AF37]/60">
-                {isBlocked ? 'Click to Unlock' : 'Click to Block'}
-              </span>
-            </div>
           </div>
         </div>
       );
     });
 
     return (
-      <div className="bg-black rounded-3xl border border-white/5 shadow-2xl overflow-hidden animate-in fade-in duration-500">
-        {/* Upper Toolbar */}
-        <div className="p-6 md:p-8 bg-black/40 border-b border-white/5 flex flex-col xl:flex-row justify-between items-center gap-6">
-          <div className="flex flex-col items-center xl:items-start text-center xl:text-left">
-            <h3 className="text-xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider">
-              {calendarViewMode === 'month' ? `${monthName} ${year}` : `${weekStartName} - ${weekEndName}`}
-            </h3>
-            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Availability & Custom Bookings</p>
+      <div className="bg-[#0b0b0b] rounded-[2rem] border border-[#D4AF37]/25 shadow-2xl overflow-hidden animate-in fade-in duration-500 w-full">
+        {/* Compact Luxury Upper Toolbar — Smaller, Streamlined Controls Without Clutter */}
+        <div className="px-3.5 py-2.5 sm:px-5 sm:py-3 bg-[#111] border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
+          {/* Left: Month/Year Title + Compact Prev/Today/Next */}
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm sm:text-base font-bold font-[Cinzel] text-white tracking-wide leading-none">
+              {calendarViewMode === 'month' ? `${monthName} ${year}` : `${weekStartName} – ${weekEndName}`}
+            </h2>
+            <div className="h-7 bg-black/80 rounded-full px-0.5 border border-[#D4AF37]/25 flex items-center">
+              <button
+                type="button"
+                onClick={() => changeMonth(-1)}
+                className="w-6 h-6 rounded-full hover:bg-[#D4AF37] text-zinc-300 hover:text-black flex items-center justify-center transition-all cursor-pointer"
+                title="Previous"
+              >
+                <ChevronLeft className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewDate(new Date())}
+                className="px-2 h-6 rounded-full text-[8px] font-black uppercase tracking-widest text-[#D4AF37] hover:bg-[#D4AF37]/15 transition-colors cursor-pointer"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => changeMonth(1)}
+                className="w-6 h-6 rounded-full hover:bg-[#D4AF37] text-zinc-300 hover:text-black flex items-center justify-center transition-all cursor-pointer"
+                title="Next"
+              >
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-4">
-            {/* Monthly / Weekly Selector */}
-            <div className="flex bg-black/60 rounded-full p-1 border border-white/10">
-              <button 
+          {/* Right: Compact Pill Controls (Month/Week | + Event | Sync) */}
+          <div className="flex items-center gap-1.5">
+            {/* Month / Week Switcher Pill */}
+            <div className="h-7 bg-black/80 rounded-full p-0.5 border border-[#D4AF37]/25 flex items-center">
+              <button
+                type="button"
                 onClick={() => setCalendarViewMode('month')}
-                className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
-                  calendarViewMode === 'month' 
-                    ? 'bg-[#D4AF37] text-black font-black' 
+                className={`px-2.5 h-6 rounded-full text-[8px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                  calendarViewMode === 'month'
+                    ? 'bg-[#D4AF37] text-black shadow-sm'
                     : 'text-zinc-400 hover:text-white'
                 }`}
               >
                 Month
               </button>
-              <button 
+              <button
+                type="button"
                 onClick={() => setCalendarViewMode('week')}
-                className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
-                  calendarViewMode === 'week' 
-                    ? 'bg-[#D4AF37] text-black font-black' 
+                className={`px-2.5 h-6 rounded-full text-[8px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                  calendarViewMode === 'week'
+                    ? 'bg-[#D4AF37] text-black shadow-sm'
                     : 'text-zinc-400 hover:text-white'
                 }`}
               >
@@ -3238,124 +3422,103 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               </button>
             </div>
 
-            {/* Navigation buttons */}
-            <div className="flex gap-2 items-center">
-              <button onClick={() => changeMonth(-1)} className="p-3 bg-white/5 hover:bg-[#D4AF37] hover:text-black rounded-full border border-white/10 transition-all">
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button onClick={() => setViewDate(new Date())} className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest rounded-full border border-white/10">
-                Today
-              </button>
-              <button onClick={() => changeMonth(1)} className="p-3 bg-white/5 hover:bg-[#D4AF37] hover:text-black rounded-full border border-white/10 transition-all">
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+            {/* + Event Compact Pill Button */}
+            <button
+              type="button"
+              onClick={() => openCalendarDateSheet(selectedCalendarDate || todayStr, true)}
+              className="h-7 px-2.5 rounded-full bg-black/80 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/30 font-black text-[8px] uppercase tracking-widest flex items-center justify-center gap-1 transition-all cursor-pointer shadow-sm"
+            >
+              <Plus className="w-3 h-3 stroke-[2.5] shrink-0" />
+              <span>Event</span>
+            </button>
 
-            {/* Merge Google Calendar Integration Button */}
-            <button 
+            {/* Sync Compact Pill Button */}
+            <button
+              type="button"
               onClick={handleCalendarSync}
               disabled={isSyncing}
-              className={`text-black font-black flex items-center gap-2 px-5 py-2.5 rounded-full text-[10px] uppercase tracking-wider transition-all duration-300 transform hover:-translate-y-0.5 group ${
+              className={`h-7 px-2.5 rounded-full font-black flex items-center justify-center gap-1 text-[8px] uppercase tracking-widest transition-all cursor-pointer shadow-sm border ${
                 syncStep === 'success'
-                  ? 'bg-[#D4AF37] hover:bg-[#D4AF37] shadow-lg shadow-[#D4AF37]/20 text-white'
-                  : 'bg-[#D4AF37] hover:bg-[#b8952d] shadow-lg shadow-[#D4AF37]/10 hover:shadow-[#D4AF37]/20'
-              } ${isSyncing ? 'animate-pulse cursor-not-allowed pointer-events-none' : ''}`}
+                  ? 'bg-emerald-500 text-black border-emerald-400'
+                  : 'bg-[#D4AF37] hover:bg-[#E5C76B] text-black border-[#D4AF37]'
+              } ${isSyncing ? 'opacity-70 pointer-events-none' : ''}`}
             >
               {isSyncing ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-black" />
+                <Loader2 className="w-3 h-3 animate-spin text-black shrink-0" />
               ) : syncStep === 'success' ? (
-                <Check className="w-3.5 h-3.5 text-white" />
+                <Check className="w-3 h-3 text-black shrink-0" />
               ) : (
-                <RefreshCw className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-500" />
+                <RefreshCw className="w-3 h-3 shrink-0" />
               )}
-              {syncStep === 'idle' && 'Merge Google Calendar'}
-              {syncStep === 'auth' && 'Authenticating...'}
-              {syncStep === 'fetching' && 'Fetching Events...'}
-              {syncStep === 'saving' && 'Merging Dates...'}
-              {syncStep === 'success' && 'Calendar Merged!'}
+              <span>
+                {syncStep === 'idle' && 'Sync'}
+                {syncStep === 'auth' && 'Auth'}
+                {syncStep === 'fetching' && 'Syncing'}
+                {syncStep === 'saving' && 'Saving'}
+                {syncStep === 'success' && 'Synced'}
+              </span>
             </button>
           </div>
         </div>
 
-        {/* Google Calendar Integration Notice / Iframe Helper */}
-        {(calendarSyncError || (typeof window !== 'undefined' && window.self !== window.top)) && (
-          <div className="mx-6 md:mx-8 mt-6 p-5 bg-white/[0.02] border border-[#D4AF37]/10 rounded-2xl flex flex-col sm:flex-row items-start gap-4 animate-in slide-in-from-top duration-300">
-            <div className="p-2.5 bg-[#D4AF37]/10 text-[#D4AF37] rounded-xl shrink-0">
-              <Info className="w-4 h-4 animate-pulse" />
+        {/* Dismissible Auth Error Banner */}
+        {calendarSyncError && (
+          <div className="mx-4 my-2.5 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-full flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              <span className="text-[11px] text-red-200 font-medium truncate">{calendarSyncError}</span>
             </div>
-            <div className="flex-1 space-y-1.5">
-              <h4 className="text-xs font-black uppercase tracking-widest text-[#D4AF37]">
-                Google Calendar Integration Notice
-              </h4>
-              <p className="text-[11px] text-zinc-400 leading-relaxed font-medium">
-                {calendarSyncError ? (
-                  <span>
-                    <strong className="text-[#D4AF37]">Authentication notice:</strong> {calendarSyncError}
-                  </span>
-                ) : (
-                  "Since this application is running inside a preview frame (iframe), some browsers may block Google authentication popups or restrict third-party storage cookies."
-                )}
-                {" For the best experience, please open the application in a new browser tab to complete authentication smoothly."}
-              </p>
-              <div className="pt-2.5 flex flex-wrap items-center gap-3">
-                <button 
-                  onClick={() => window.open(window.location.href, '_blank')}
-                  className="bg-[#D4AF37] hover:bg-[#b8952d] text-black px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 group shadow-lg shadow-[#D4AF37]/5"
-                >
-                  <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                  Open App in New Tab
-                </button>
-                {calendarSyncError && (
-                  <button 
-                    onClick={() => setCalendarSyncError(null)}
-                    className="text-zinc-400 hover:text-zinc-300 px-3 py-1.5 rounded-full hover:bg-white/5 text-[9px] font-black uppercase tracking-widest transition-all"
-                  >
-                    Dismiss Notice
-                  </button>
-                )}
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => setCalendarSyncError(null)}
+              className="text-[9px] font-black uppercase tracking-widest text-zinc-300 hover:text-white px-2.5 py-1 rounded-full bg-white/5 shrink-0 cursor-pointer"
+            >
+              Dismiss
+            </button>
           </div>
         )}
 
         {/* Calendar Grid Container */}
         <div className="overflow-x-auto custom-scrollbar">
-          <div className={calendarViewMode === 'week' ? "min-w-[800px] lg:min-w-0" : ""}>
-            
-            {/* Week Days Headers for Month View */}
+          <div className={calendarViewMode === 'week' ? 'min-w-[740px] lg:min-w-0' : 'w-full'}>
             {calendarViewMode === 'month' && (
-              <div className="grid grid-cols-7 border-b border-white/5">
-                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                   <div key={d} className="py-4 text-center text-[10px] font-black uppercase text-[#D4AF37]/50 tracking-[0.2em]">{d}</div>
-                 ))}
+              <div className="grid grid-cols-7 bg-[#111] border-b border-white/10">
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
+                  <div
+                    key={d}
+                    className="py-2 text-center text-[9px] font-black uppercase text-[#D4AF37]/80 tracking-[0.2em]"
+                  >
+                    {d}
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* Actual Days Render */}
-            <div className={calendarViewMode === 'month' ? "grid grid-cols-7" : "grid grid-cols-7 border-b border-white/5"}>
-               {calendarViewMode === 'month' ? calendarDays : weekDaysGrid}
+            <div className="grid grid-cols-7">
+              {calendarViewMode === 'month' ? calendarDays : weekDaysGrid}
             </div>
-
           </div>
         </div>
 
-        {/* Legend / Footer */}
-        <div className="p-6 bg-black/60 flex flex-wrap gap-6 items-center border-t border-white/5">
-           <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-black border border-white/10"></div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Available</span>
-           </div>
-           <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-red-950/40 border border-zinc-400/20"></div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Blocked / Unavailable</span>
-           </div>
-           <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-[#1a1a1a] border border-[#D4AF37]/30"></div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Confirmed Booking</span>
-           </div>
-           <div className="ml-auto text-[10px] text-zinc-400 italic">
-             * Click any date or empty slot to toggle availability.
-           </div>
+        {/* Compact Legend Bar */}
+        <div className="px-4 py-2.5 sm:px-5 bg-[#111] flex flex-wrap items-center justify-between gap-2 border-t border-white/10">
+          <div className="flex flex-wrap items-center gap-3.5">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Confirmed</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#D4AF37]" />
+              <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Event</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-red-400/80" />
+              <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Locked</span>
+            </div>
+          </div>
+          <span className="text-[8px] font-bold text-zinc-400 uppercase tracking-widest">
+            Tap date to manage
+          </span>
         </div>
       </div>
     );
@@ -3398,6 +3561,597 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         />
       )}
 
+      {/* Unified Drag-Dismiss Day Inspector & Event Manager Sheet (Opens when tapping any date on the calendar) */}
+      {selectedCalendarDate && (() => {
+        const currentUnavailable = editForm.unavailableDates || vendor.unavailableDates || [];
+        const isDateLocked = currentUnavailable.includes(selectedCalendarDate);
+        const dayBookings = bookings.filter((b) => b.date === selectedCalendarDate);
+        const allGoogleEvents = editForm.googleEvents || vendor.googleEvents || [];
+        const dayGoogleEvents = allGoogleEvents.filter((e) => {
+          const eventDates = getDatesForEventRange(e.start, e.end);
+          return eventDates.includes(selectedCalendarDate);
+        });
+
+        const formattedDateTitle = parseDateTimeFriendly(selectedCalendarDate);
+        const bookedClientEmails = new Set(
+          dayBookings.map((b) => (b.contactEmail || '').trim().toLowerCase()).filter(Boolean)
+        );
+        const bookedClientUids = new Set(
+          dayBookings.map((b) => b.userId || b.clientId || '').filter(Boolean)
+        );
+
+        const dayMatchedThreads = messageThreads.filter(([tKey, tData]) => {
+          if (tData.clientUid && bookedClientUids.has(tData.clientUid)) return true;
+          if (tData.email && bookedClientEmails.has(tData.email.toLowerCase())) return true;
+          if (bookedClientEmails.has(tKey.toLowerCase())) return true;
+          return tData.messages.some((m) => m.text && m.text.includes(selectedCalendarDate));
+        });
+
+        const threadsToShow = dayMatchedThreads.length > 0 ? dayMatchedThreads : messageThreads.slice(0, 3);
+
+        return (
+          <VendorSettingSheetModal
+            title={formattedDateTitle}
+            subtitle={isDateLocked ? 'Locked for bookings' : 'Available for bookings'}
+            badgeText={isDateLocked ? 'Locked' : 'Available'}
+            icon={CalendarDays}
+            onClose={() => {
+              setSelectedCalendarDate(null);
+              setShowAddCalendarEventForm(false);
+            }}
+          >
+            {/* 1. COMPACT LOCK/UNLOCK + ADD EVENT PILL BAR */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  handleToggleDate(selectedCalendarDate);
+                  showNotification(
+                    isDateLocked ? 'Date unlocked & open for bookings!' : 'Date locked & marked unavailable.',
+                    'info'
+                  );
+                }}
+                className={`h-8 px-3 rounded-full font-black text-[8px] uppercase tracking-widest border transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm ${
+                  isDateLocked
+                    ? 'bg-red-500/20 hover:bg-red-500/30 text-red-200 border-red-500/45'
+                    : 'bg-[#151515] hover:bg-white/10 text-white border-[#D4AF37]/40'
+                }`}
+              >
+                {isDateLocked ? (
+                  <>
+                    <Unlock className="w-3 h-3 text-red-300 shrink-0" />
+                    <span className="truncate">Unlock Date</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3 h-3 text-[#D4AF37] shrink-0" />
+                    <span className="truncate">Lock Date</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowAddCalendarEventForm((prev) => !prev)}
+                className={`h-8 px-3 rounded-full font-black text-[8px] uppercase tracking-widest border transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm ${
+                  showAddCalendarEventForm
+                    ? 'bg-zinc-900 text-zinc-200 border-white/20'
+                    : 'bg-[#D4AF37] hover:bg-[#E5C76B] text-black border-[#D4AF37]'
+                }`}
+              >
+                {showAddCalendarEventForm ? (
+                  <>
+                    <X className="w-3 h-3 shrink-0" />
+                    <span className="truncate">Cancel</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3 h-3 stroke-[2.5] shrink-0" />
+                    <span className="truncate">Add Event</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* 2. INLINE ADD CUSTOM EVENT FORM */}
+            <AnimatePresence initial={false}>
+              {showAddCalendarEventForm && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  className="bg-black/75 rounded-[1.5rem] border border-[#D4AF37]/60 p-3.5 space-y-2.5 text-left shadow-2xl"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-widest">
+                      New Event
+                    </span>
+                    <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                      {selectedCalendarDate}
+                    </span>
+                  </div>
+
+                  <input
+                    type="text"
+                    autoFocus
+                    value={newCalEventTitle}
+                    onChange={(e) => setNewCalEventTitle(e.target.value)}
+                    placeholder="Event title (e.g. Friedman Wedding)..."
+                    className="w-full h-9 bg-[#111] border border-[#D4AF37]/35 focus:border-[#D4AF37] rounded-full px-3.5 text-xs font-bold text-white outline-none"
+                  />
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={newCalEventStart}
+                      onChange={(e) => setNewCalEventStart(e.target.value)}
+                      placeholder="Start (6:00 PM)"
+                      className="w-full h-9 bg-[#111] border border-white/15 focus:border-[#D4AF37] rounded-full px-3.5 text-xs font-bold text-white outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={newCalEventEnd}
+                      onChange={(e) => setNewCalEventEnd(e.target.value)}
+                      placeholder="End (10:00 PM)"
+                      className="w-full h-9 bg-[#111] border border-white/15 focus:border-[#D4AF37] rounded-full px-3.5 text-xs font-bold text-white outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={newCalEventLocation}
+                      onChange={(e) => setNewCalEventLocation(e.target.value)}
+                      placeholder="Location (optional)..."
+                      className="w-full h-9 bg-[#111] border border-white/15 focus:border-[#D4AF37] rounded-full px-3.5 text-xs font-semibold text-white outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={newCalEventNotes}
+                      onChange={(e) => setNewCalEventNotes(e.target.value)}
+                      placeholder="Notes (optional)..."
+                      className="w-full h-9 bg-[#111] border border-white/15 focus:border-[#D4AF37] rounded-full px-3.5 text-xs font-semibold text-white outline-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setNewCalEventLockDate((prev) => !prev)}
+                      className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-300 cursor-pointer"
+                    >
+                      <span
+                        className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                          newCalEventLockDate ? 'bg-[#D4AF37] border-[#D4AF37] text-black' : 'border-white/25'
+                        }`}
+                      >
+                        {newCalEventLockDate && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                      </span>
+                      <span>Lock date</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleAddCustomCalendarEvent(selectedCalendarDate)}
+                      className="h-8 px-4 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer shadow-md flex items-center gap-1"
+                    >
+                      <Check className="w-3 h-3 stroke-[2.5]" />
+                      <span>Save Event</span>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* 3. COMPACT SCHEDULED EVENTS (Tapping any event pops it up immediately) */}
+            <div className="space-y-1.5 text-left">
+              <div className="px-2 flex items-center justify-between">
+                <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.2em]">
+                  Scheduled Events
+                </span>
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                  Tap to view
+                </span>
+              </div>
+
+              {dayBookings.length === 0 && dayGoogleEvents.length === 0 ? (
+                <div className="bg-black/40 rounded-full border border-dashed border-white/10 py-4 px-4 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                    No events on this date
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {dayBookings.map((b) => {
+                    const clientPhoto = getClientPhoto(b);
+                    const initials = getClientInitials(b.clientName);
+                    return (
+                      <div
+                        key={b.id}
+                        onClick={() => handleSimchaBookingClick(b)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleSimchaBookingClick(b);
+                          }
+                        }}
+                        className="bg-black/70 hover:bg-[#161616] rounded-full border border-[#D4AF37]/35 hover:border-[#D4AF37] px-3.5 py-2.5 flex items-center justify-between gap-2.5 cursor-pointer transition-all group shadow-md"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          {clientPhoto ? (
+                            <img
+                              src={clientPhoto}
+                              alt={b.clientName}
+                              className="w-8 h-8 rounded-full object-cover border border-[#D4AF37]/50 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] font-[Cinzel] font-bold text-[10px] shrink-0">
+                              {initials}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-white group-hover:text-[#D4AF37] truncate">
+                                {b.eventName || b.clientName}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest border shrink-0 ${
+                                  b.status === 'confirmed'
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                    : b.status === 'pending'
+                                    ? 'bg-[#D4AF37]/20 text-[#D4AF37] border-[#D4AF37]/40'
+                                    : 'bg-red-500/20 text-red-300 border-red-500/40'
+                                }`}
+                              >
+                                {b.status}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-zinc-400 truncate">
+                              {b.clientName}
+                              {b.eventTime ? ` • ${formatBookingTime12h(b.eventTime)}` : ''}
+                              {` • $${b.amount.toLocaleString()}`}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              openClientChatFromCalendar(b.contactEmail, b.clientName, b.userId || b.clientId);
+                            }}
+                            className="h-7 px-2.5 rounded-full bg-[#D4AF37]/15 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/40 text-[8px] font-black uppercase tracking-widest flex items-center gap-1 cursor-pointer transition-all"
+                          >
+                            <MessageSquare className="w-2.5 h-2.5" />
+                            <span>Chat</span>
+                          </button>
+                          <ChevronRight className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {dayGoogleEvents.map((e) => {
+                    const timeLabel = formatGoogleEventTime(e.start, e.end);
+                    const isCustom = Boolean(e.isCustom || String(e.id).startsWith('custom_'));
+                    return (
+                      <div
+                        key={e.id}
+                        onClick={() => handleGoogleEventClick(e)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(ev) => {
+                          if (ev.key === 'Enter' || ev.key === ' ') {
+                            ev.preventDefault();
+                            handleGoogleEventClick(e);
+                          }
+                        }}
+                        className="bg-black/65 hover:bg-[#161616] rounded-full border border-white/15 hover:border-[#D4AF37]/50 px-3.5 py-2.5 flex items-center justify-between gap-2.5 cursor-pointer transition-all group"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/30 text-[7px] font-black uppercase tracking-widest text-[#D4AF37]">
+                              {isCustom ? 'Custom' : 'Google'}
+                            </span>
+                            <span className="text-xs font-bold text-white group-hover:text-[#D4AF37] truncate">
+                              {e.summary || 'Busy'}
+                            </span>
+                          </div>
+                          {(timeLabel || e.location) && (
+                            <p className="text-[10px] text-zinc-400 truncate mt-0.5">
+                              {timeLabel}
+                              {timeLabel && e.location ? ' • ' : ''}
+                              {e.location || ''}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isCustom && (
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                handleDeleteCustomCalendarEvent(e.id);
+                              }}
+                              className="h-7 w-7 rounded-full bg-red-500/15 hover:bg-red-500 text-red-300 hover:text-white border border-red-500/30 flex items-center justify-center cursor-pointer transition-all"
+                              title="Delete Event"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                          <ChevronRight className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 4. COMPACT CLIENT MESSAGES */}
+            <div className="space-y-1.5 text-left">
+              <div className="px-2 flex items-center justify-between">
+                <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.2em]">
+                  {dayMatchedThreads.length > 0 ? 'Date Messages' : 'Recent Chats'}
+                </span>
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                  Tap to view
+                </span>
+              </div>
+
+              {threadsToShow.length === 0 ? (
+                <div className="bg-black/40 rounded-full border border-dashed border-white/10 py-4 px-4 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                    No client messages yet
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {threadsToShow.map(([tKey, tData]) => {
+                    const clientPhoto = getThreadClientPhoto(tData.email || tKey, tData.clientUid);
+                    const initials = getClientInitials(tData.name);
+                    const unreadCount = tData.messages.filter(
+                      (m) => m.receiverId === vendor.id && !m.isRead && !locallyReadVendorMsgIds.has(m.id)
+                    ).length;
+
+                    return (
+                      <div
+                        key={tKey}
+                        onClick={() => openClientChatFromCalendar(tData.email || tKey, tData.name, tData.clientUid)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openClientChatFromCalendar(tData.email || tKey, tData.name, tData.clientUid);
+                          }
+                        }}
+                        className="bg-black/70 hover:bg-[#161616] rounded-full border border-[#D4AF37]/30 hover:border-[#D4AF37] px-3.5 py-2 flex items-center justify-between gap-2.5 cursor-pointer transition-all group"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          {clientPhoto ? (
+                            <img
+                              src={clientPhoto}
+                              alt={tData.name}
+                              className="w-7 h-7 rounded-full object-cover border border-[#D4AF37]/40 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-7 h-7 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] font-[Cinzel] font-bold text-[10px] shrink-0">
+                              {initials}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-white group-hover:text-[#D4AF37] truncate">
+                                {tData.name}
+                              </span>
+                              {unreadCount > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-[#D4AF37] text-black text-[8px] font-black">
+                                  {unreadCount}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-zinc-400 truncate">
+                              {tData.lastMessage?.text || 'Tap to open conversation'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="px-2.5 py-0.5 rounded-full bg-[#D4AF37]/15 text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black text-[8px] font-black uppercase tracking-widest transition-all">
+                            Chat
+                          </span>
+                          <ChevronRight className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </VendorSettingSheetModal>
+        );
+      })()}
+
+      {/* In-App Stripe Payouts & Connection Management Sheet */}
+      {showStripePayoutsModal && (() => {
+        const paidBookings = sortedBookings.filter((b) => b.paymentStatus === 'paid');
+        const grossPaid = paidBookings.reduce((sum, b) => sum + (b.amount || 0), 0);
+        const commRate = vendor.commissionRate || 5;
+        const netPaid = Math.round(grossPaid * (1 - commRate / 100));
+        const pendingTotal = sortedBookings
+          .filter((b) => b.status === 'pending')
+          .reduce((sum, b) => sum + (b.amount || 0), 0);
+
+        return (
+          <VendorSettingSheetModal
+            title="Stripe Payouts"
+            subtitle="In-app payout overview & Stripe Express management"
+            badgeText={vendor.stripeConnected ? 'Stripe Active' : 'Payout Setup'}
+            icon={CreditCard}
+            onClose={() => {
+              setShowStripePayoutsModal(false);
+              setConfirmResetStripe(false);
+            }}
+          >
+            {/* 1. Connection Status & Express Portal Pill Bar */}
+            <div className="bg-black/70 rounded-[1.5rem] border border-[#D4AF37]/35 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                  <CheckCircle className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs sm:text-sm font-bold text-white truncate">
+                      Stripe Express Connected
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-[8px] font-black uppercase tracking-widest text-emerald-300">
+                      Active
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-zinc-400 font-mono truncate mt-0.5">
+                    {vendor.stripeAccountId ? `Account: ${vendor.stripeAccountId}` : 'Direct payouts enabled'} • {100 - commRate}% Vendor Share
+                  </p>
+                </div>
+              </div>
+
+              {vendor.stripeAccountId && (
+                <button
+                  type="button"
+                  onClick={handleStripeDashboard}
+                  disabled={isOnboarding}
+                  className="h-9 px-3.5 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shrink-0 cursor-pointer transition-all shadow-md"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span>Stripe Portal</span>
+                </button>
+              )}
+            </div>
+
+            {/* 2. Even 3-Card Payout Summary Grid */}
+            <div className="grid grid-cols-3 gap-2.5 text-left">
+              <div className="bg-black/60 rounded-[1.35rem] border border-[#D4AF37]/25 p-3">
+                <p className="text-[8px] font-black uppercase tracking-widest text-zinc-400 truncate">Gross Paid</p>
+                <p className="text-base sm:text-lg font-bold font-[Cinzel] text-white tabular-nums mt-0.5">
+                  ${grossPaid.toLocaleString()}
+                </p>
+              </div>
+              <div className="bg-black/60 rounded-[1.35rem] border border-[#D4AF37]/40 p-3">
+                <p className="text-[8px] font-black uppercase tracking-widest text-[#D4AF37] truncate">Net Payout</p>
+                <p className="text-base sm:text-lg font-bold font-[Cinzel] text-[#D4AF37] tabular-nums mt-0.5">
+                  ${netPaid.toLocaleString()}
+                </p>
+              </div>
+              <div className="bg-black/60 rounded-[1.35rem] border border-white/10 p-3">
+                <p className="text-[8px] font-black uppercase tracking-widest text-zinc-400 truncate">Pipeline</p>
+                <p className="text-base sm:text-lg font-bold font-[Cinzel] text-zinc-200 tabular-nums mt-0.5">
+                  ${pendingTotal.toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            {/* 3. Recent Paid Bookings List */}
+            <div className="space-y-2 text-left">
+              <div className="px-2 flex items-center justify-between">
+                <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.2em]">
+                  Recent Payout Transactions
+                </span>
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                  Tap to view
+                </span>
+              </div>
+
+              {paidBookings.length === 0 ? (
+                <div className="bg-black/40 rounded-[1.5rem] border border-dashed border-white/10 py-6 px-4 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                    No completed card payouts yet
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar pr-1">
+                  {paidBookings.slice(0, 8).map((b) => {
+                    const netAmt = Math.round((b.amount || 0) * (1 - commRate / 100));
+                    return (
+                      <div
+                        key={b.id}
+                        onClick={() => handleSimchaBookingClick(b)}
+                        className="bg-black/65 hover:bg-[#161616] rounded-full border border-white/10 hover:border-[#D4AF37]/45 px-4 py-2.5 flex items-center justify-between gap-3 cursor-pointer transition-all"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-white truncate">
+                            {b.clientName} • {b.eventName || 'Celebration'}
+                          </p>
+                          <p className="text-[10px] text-zinc-400 truncate">{b.date}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-xs font-bold font-[Cinzel] text-emerald-400 tabular-nums">
+                            +${netAmt.toLocaleString()}
+                          </span>
+                          <p className="text-[8px] text-zinc-500 uppercase tracking-widest">Paid</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 4. Protected Reset Stripe Connection Section (Requires Explicit Confirmation) */}
+            <div className="pt-2 border-t border-white/10 text-left">
+              {!confirmResetStripe ? (
+                <div className="flex items-center justify-between gap-3 px-2">
+                  <span className="text-[10px] text-zinc-400">
+                    Need to switch or reconnect your Stripe account?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmResetStripe(true)}
+                    className="h-8 px-3.5 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all shrink-0"
+                  >
+                    Reset Stripe
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-red-950/30 border border-red-500/45 rounded-[1.5rem] p-4 space-y-3 animate-in fade-in duration-200">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-bold text-red-200">
+                        Are you sure you want to reset your Stripe connection?
+                      </h4>
+                      <p className="text-[10px] text-red-300/80 mt-0.5 leading-relaxed">
+                        Disconnecting Stripe will require completing the Stripe onboarding process again before you can receive payouts.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmResetStripe(false)}
+                      className="h-8 px-4 rounded-full bg-white/10 hover:bg-white/15 text-zinc-200 text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleResetStripeConnection}
+                      disabled={isOnboarding}
+                      className="h-8 px-4 rounded-full bg-red-600 hover:bg-red-500 text-white text-[9px] font-black uppercase tracking-widest cursor-pointer transition-all shadow-md"
+                    >
+                      Yes, Reset Stripe
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </VendorSettingSheetModal>
+        );
+      })()}
+
       {/* Desktop Sidebar (BottomNav handles mobile navigation) */}
       <aside className="hidden md:flex md:w-72 bg-[#0a0a0a] border-r border-[#D4AF37]/10 flex-col md:sticky md:top-[68px] md:h-[calc(100dvh-68px)] shadow-2xl">
         <div className="p-6 md:p-8 md:pt-10 flex items-center justify-between border-b border-white/5">
@@ -3419,400 +4173,711 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       </aside>
 
       {/* Main Container */}
-      <main className="flex-1 bg-[#050505] relative pb-36 md:pb-10">
-        <div className="px-4 pt-9 pb-1 md:px-10 md:pt-10 md:pb-2">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-lg md:text-2xl font-bold font-[Cinzel] text-white capitalize tracking-tight leading-none">{activeTab === 'bookings' ? 'Bookings' : activeTab}</h1>
-              <p className="text-[#D4AF37]/60 text-[9px] font-black uppercase tracking-[0.4em] mt-1">{vendor.name}</p>
-            </div>
-            <div className="flex items-center gap-4">
-               {pendingRequests > 0 && (
-                 <div className="hidden sm:flex items-center gap-2 bg-zinc-800 border border-zinc-400/30 px-3 py-1.5 rounded-full animate-pulse">
-                   <Bell className="w-3.5 h-3.5 text-zinc-400" />
-                   <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">{pendingRequests} Pending</span>
-                 </div>
-               )}
+      <main className="flex-1 bg-[#050505] relative pb-36 md:pb-10 min-w-0">
+        {activeTab !== 'calendar' && (
+          <div className="px-4 pt-9 pb-1 md:px-10 md:pt-10 md:pb-2">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-lg md:text-2xl font-bold font-[Cinzel] text-white capitalize tracking-tight leading-none">{activeTab === 'bookings' ? 'Bookings' : activeTab}</h1>
+                <p className="text-[#D4AF37]/60 text-[9px] font-black uppercase tracking-[0.4em] mt-1">{vendor.name}</p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        <div className="px-4 pt-2 pb-4 md:px-10 md:pt-4 md:pb-10 max-w-7xl mx-auto space-y-6">
-          {activeTab === 'overview' && (
-            <div className="space-y-8">
-              {isLoading ? (
-                <>
-                  {/* Skeletons */}
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-4 md:gap-6 animate-in fade-in duration-350">
-                    <ShimmerCard />
-                    <ShimmerCard />
-                    <ShimmerCard />
-                    <ShimmerCard />
+        <div
+          className={
+            activeTab === 'calendar'
+              ? 'px-2 pt-11 pb-8 sm:px-4 sm:pt-12 md:px-6 md:pt-10 w-full max-w-none space-y-4'
+              : 'px-4 pt-2 pb-4 md:px-10 md:pt-4 md:pb-10 max-w-7xl mx-auto space-y-6'
+          }
+        >
+          {activeTab === 'overview' && (() => {
+            const confirmedBookingsList = sortedBookings.filter(b => b.status === 'confirmed' || b.status === 'completed');
+            const paidBookingsList = sortedBookings.filter(b => b.paymentStatus === 'paid');
+            const paidRevenue = paidBookingsList.reduce((sum, b) => sum + (b.amount || 0), 0);
+            const pendingRevenue = sortedBookings
+              .filter(b => b.status === 'pending')
+              .reduce((sum, b) => sum + (b.amount || 0), 0);
+            const offerCount = sortedBookings.filter(
+              b => b.status === 'pending' && (b.isOffer || (typeof b.offeredPrice === 'number' && b.offeredPrice > 0))
+            ).length;
+            const unreadChatsCount = messages.filter(
+              m => m.receiverId === vendor.id && !m.isRead && !locallyReadVendorMsgIds.has(m.id)
+            ).length;
+            const downPaymentValue = editForm.downPayment ?? vendor.downPayment ?? 0;
+            const avgBookingValue =
+              confirmedBookingsList.length > 0
+                ? Math.round(totalRevenue / confirmedBookingsList.length)
+                : downPaymentValue;
+            const packagesCount = (editForm.services || vendor.services || []).length;
+            const showcaseCount = (editForm.gallery || vendor.gallery || []).length;
+
+            return (
+              <div className="max-w-3xl mx-auto w-full pb-20 space-y-5">
+                {isLoading ? (
+                  <div className="space-y-4 animate-in fade-in duration-350">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <ShimmerCard />
+                      <ShimmerCard />
+                      <ShimmerCard />
+                      <ShimmerCard />
+                    </div>
+                    <ShimmerChart />
+                    <ShimmerTable />
                   </div>
-                  <ShimmerChart />
-                  <ShimmerTable />
-                </>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
-                  className="space-y-8"
-                >
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-4 md:gap-6">
-                    <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-[#D4AF37]/20 transition-all">
-                      <div className="bg-[#D4AF37]/10 p-3 w-fit rounded-2xl group-hover:bg-[#D4AF37]/20 transition-colors"><DollarSign className="w-6 h-6 text-[#D4AF37]" /></div>
-                      <div><p className="text-[10px] text-zinc-300 font-black uppercase tracking-widest">Earnings</p><h3 className="text-3xl font-bold text-white">${totalRevenue.toLocaleString()}</h3></div>
-                    </div>
-                    <div 
-                      onClick={() => setActiveTab('bookings')}
-                      className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-zinc-400/20 transition-all cursor-pointer"
-                    >
-                      <div className={`p-3 w-fit rounded-2xl transition-colors ${pendingRequests > 0 ? 'bg-zinc-800 group-hover:bg-zinc-700' : 'bg-[#D4AF37]/10'}`}>
-                        <Users className={`w-6 h-6 ${pendingRequests > 0 ? 'text-zinc-400' : 'text-[#D4AF37]'}`} />
-                      </div>
-                      <div>
-                        <p className="text-zinc-300 font-black uppercase tracking-widest text-[10px]">Action Required</p>
-                        <h3 className={`text-3xl font-bold ${pendingRequests > 0 ? 'text-zinc-400' : 'text-white'}`}>{pendingRequests} Requests</h3>
-                      </div>
-                    </div>
-                    <div 
-                      onClick={() => setActiveTab('messages')}
-                      className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4 group hover:border-[#D4AF37]/25 transition-all cursor-pointer"
-                    >
-                      <div className={`p-3 w-fit rounded-2xl transition-colors ${messages.filter(m => m.receiverId === vendor.id && !m.isRead).length > 0 ? 'bg-zinc-400/10 group-hover:bg-zinc-800' : 'bg-[#D4AF37]/10'}`}>
-                        <MessageSquare className={`w-6 h-6 ${messages.filter(m => m.receiverId === vendor.id && !m.isRead).length > 0 ? 'text-zinc-400' : 'text-[#D4AF37]'}`} />
-                      </div>
-                      <div>
-                        <p className="text-zinc-300 font-black uppercase tracking-widest text-[10px]">Client Inquiries</p>
-                        <h3 className="text-3xl font-bold text-white font-mono">
-                          {messages.filter(m => m.receiverId === vendor.id && !m.isRead).length || 0} Unread
-                        </h3>
-                      </div>
-                    </div>
-                    <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl space-y-4">
-                      <div className="bg-[#D4AF37]/10 p-3 w-fit rounded-2xl"><TrendingUp className="w-6 h-6 text-[#D4AF37]" /></div>
-                      <div><p className="text-zinc-300 font-black uppercase tracking-widest text-[10px]">Active Presence</p><h3 className="text-3xl font-bold text-white">Live Catalog</h3></div>
-                    </div>
-
-                    {/* Stripe Connect Card */}
-                    <div className={`relative bg-[#111] p-6 rounded-3xl border shadow-2xl space-y-4 transition-all ${vendor.stripeAccountId ? 'border-[#D4AF37]/20' : 'border-[#D4AF37]/20'}`}>
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                    className="space-y-5"
+                  >
+                    {/* 1. EXECUTIVE STOREFRONT & STRIPE PAYOUT BAR */}
+                    <div className="bg-[#111] rounded-[2rem] border border-[#D4AF37]/30 shadow-2xl p-4 sm:p-5 space-y-3 relative overflow-hidden">
                       {isOnboarding && (
-                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-3xl flex flex-col items-center justify-center z-10 animate-in fade-in duration-300">
-                          <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin mb-3" />
-                          <p className="text-[10px] font-black uppercase tracking-widest text-white">Connecting Stripe...</p>
-                          <p className="text-[9px] text-zinc-400 mt-1">Please wait while we verify your account</p>
+                        <div className="absolute inset-0 bg-black/80 backdrop-blur-md rounded-[2rem] flex flex-col items-center justify-center z-20 animate-in fade-in duration-200">
+                          <Loader2 className="w-7 h-7 text-[#D4AF37] animate-spin mb-2" />
+                          <p className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">
+                            Connecting Stripe Express...
+                          </p>
                         </div>
                       )}
-                      
-                      <div className={`p-3 w-fit rounded-2xl ${vendor.stripeAccountId ? 'bg-[#D4AF37]/10' : 'bg-[#D4AF37]/10'}`}>
-                        <CreditCard className={`w-6 h-6 ${vendor.stripeAccountId ? 'text-[#D4AF37]' : 'text-[#D4AF37]'}`} />
-                      </div>
-                      <div className="flex justify-between items-end">
-                        <div>
-                          <p className="text-zinc-300 font-black uppercase tracking-widest text-[10px]">Stripe Payments</p>
-                          <h3 className="text-xl font-bold text-white">
-                            {vendor.stripeConnected === true ? 'Connected' : (vendor.stripeAccountId ? 'Pending / Incomplete' : 'Not Connected')}
-                          </h3>
-                        </div>
-                          <div className="flex flex-col items-end gap-2">
-                            {!vendor.stripeConnected ? (
-                              <button 
-                                onClick={handleStripeConnect}
-                                disabled={isOnboarding}
-                                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#E5C76B] transition-all cursor-pointer px-4 py-2 rounded-full border border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
-                              >
-                                {isOnboarding ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-                                Connect Stripe
-                              </button>
-                            ) : (
-                              <div className="flex flex-col items-end gap-2">
-                                <button 
-                                  onClick={handleVerifyStripeConnection}
-                                  disabled={isOnboarding}
-                                  className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#E5C76B] transition-colors cursor-pointer px-4 py-2 rounded-full border border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
-                                >
-                                  {isOnboarding ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                                  Refresh Connection Status
-                                </button>
-                                <button 
-                                  onClick={handleStripeDashboard}
-                                  disabled={isOnboarding}
-                                  className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-white transition-colors cursor-pointer px-3 py-1.5 rounded-full border border-zinc-700 hover:border-zinc-500"
-                                >
-                                  {isOnboarding ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
-                                  Dashboard
-                                </button>
-                              </div>
-                            )}
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
+                        <div
+                          onClick={() => setActiveTab('profile')}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setActiveTab('profile');
+                            }
+                          }}
+                          className="flex items-center gap-3.5 min-w-0 flex-1 cursor-pointer group"
+                        >
+                          <div className="relative w-12 h-12 sm:w-13 sm:h-13 rounded-full overflow-hidden bg-black border-2 border-[#D4AF37]/50 shrink-0 shadow-lg">
+                            <img src={editForm.image || vendor.image} alt={vendor.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                           </div>
+                          <div className="min-w-0 flex-1 text-left">
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-[0.18em] bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/35">
+                                <ShieldCheck className="w-2.5 h-2.5" /> Live Storefront
+                              </span>
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest bg-white/5 text-zinc-300 border border-white/10">
+                                {vendor.category}
+                              </span>
+                            </div>
+                            <h2 className="text-base sm:text-lg font-bold font-[Cinzel] text-white truncate mt-1 group-hover:text-[#D4AF37] transition-colors">
+                              {editForm.name || vendor.name}
+                            </h2>
+                            <p className="text-[11px] text-zinc-400 font-medium truncate">
+                              {downPaymentValue > 0
+                                ? `Down Payment $${downPaymentValue.toLocaleString()}`
+                                : editForm.location || vendor.location || 'Verified Simcha Vendor'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Even Symmetrical 2-Button Pill Bar (Stripe Payouts In-App Popup + Settings) */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {!vendor.stripeConnected ? (
+                            <button
+                              type="button"
+                              onClick={handleStripeConnect}
+                              disabled={isOnboarding}
+                              className="h-8 px-3.5 rounded-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black text-[8px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md"
+                            >
+                              <CreditCard className="w-3 h-3 shrink-0" />
+                              <span className="truncate">Connect Stripe</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmResetStripe(false);
+                                setShowStripePayoutsModal(true);
+                              }}
+                              disabled={isOnboarding}
+                              className="h-8 px-3.5 rounded-full bg-[#D4AF37]/15 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/40 text-[8px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                              <span className="truncate">Stripe Payouts</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('profile')}
+                            className="h-8 px-3.5 rounded-full bg-black/70 hover:bg-[#D4AF37] text-zinc-200 hover:text-black border border-white/15 hover:border-[#D4AF37] text-[8px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                          >
+                            <Settings className="w-3 h-3 shrink-0" />
+                            <span className="truncate">Settings</span>
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-[9px] text-zinc-300 italic">
-                        {vendor.stripeAccountId 
-                          ? "Your account is linked. You can receive direct payments from clients."
-                          : "Connect your bank account to receive split payments automatically."}
-                      </p>
 
                       {stripeMessage && (
-                        <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                          <div className="flex items-start gap-3">
-                            <Info className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                            <div className="flex-1">
-                              <p className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-1">Stripe Update</p>
-                              <p className="text-[10px] text-green-400 leading-relaxed font-bold">{stripeMessage}</p>
-                            </div>
-                            <button onClick={() => setStripeMessage(null)} aria-label="Dismiss message" className="p-1 rounded-full hover:bg-green-500/20">
-                              <X className="w-3 h-3 text-green-500/50 hover:text-green-500" />
-                            </button>
-                          </div>
+                        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-full px-4 py-2 flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold text-emerald-300 truncate">{stripeMessage}</span>
+                          <button type="button" onClick={() => setStripeMessage(null)} className="text-emerald-300/70 hover:text-emerald-200">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       )}
 
                       {onboardingError && (
-                        <div className="bg-zinc-400/10 border border-zinc-400/20 rounded-xl p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                          <div className="flex items-start gap-3">
-                            <AlertCircle className="w-4 h-4 text-zinc-400 flex-shrink-0 mt-0.5" />
-                            <div className="flex-1">
-                              <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Connection Error</p>
-                              <p className="text-[10px] text-zinc-400 leading-relaxed font-bold">{onboardingError}</p>
-                            </div>
-                          </div>
-                          
-                          <div className="pt-3 border-t border-zinc-400/10 space-y-3">
-                            <div className="flex items-center gap-2">
-                              <div className="h-px flex-1 bg-zinc-800"></div>
-                              <p className="text-[9px] text-zinc-400/60 uppercase tracking-widest font-black">Secure Express Onboarding</p>
-                              <div className="h-px flex-1 bg-zinc-800"></div>
-                            </div>
-                            
-                            <div className="bg-black/20 rounded-xl p-3 space-y-2 border border-zinc-400/10">
-                              <p className="text-[10px] text-zinc-300 leading-relaxed">
-                                Click <strong className="text-white">Connect Stripe</strong> above to securely enter bank account and tax details directly on Stripe's Express onboarding page.
-                              </p>
-                              <p className="text-[9px] text-zinc-400 leading-relaxed">
-                                Once completed, event payments (Credit Cards & ACH Direct Debit) will be automatically split and routed directly to your connected bank account.
-                              </p>
-                            </div>
-                          </div>
-
-                          <button 
-                            type="button"
-                            onClick={() => setOnboardingError(null)}
-                            className="w-full py-2 text-[8px] font-black uppercase tracking-widest text-zinc-400/60 hover:text-zinc-400 transition-colors border border-zinc-400/10 rounded-full hover:bg-zinc-800/50"
-                          >
-                            Dismiss
+                        <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-3 flex items-start justify-between gap-2">
+                          <p className="text-[10px] font-bold text-red-300 leading-snug">{onboardingError}</p>
+                          <button type="button" onClick={() => setOnboardingError(null)} className="text-red-300/70 hover:text-red-200 shrink-0">
+                            <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       )}
                     </div>
-                  </div>
 
-                  {/* Performance Analytics Chart Component */}
-                  <div className="bg-[#111] p-6 md:p-8 rounded-3xl border border-white/5 shadow-2xl space-y-6">
-                    <div>
-                      <h4 className="text-base font-bold font-[Cinzel] text-[#D4AF37] uppercase tracking-wider">Performance Analytics</h4>
-                      <p className="text-xs text-zinc-300">Monthly scale of gross revenue and client acquisition values.</p>
+                    {/* 2. EVEN 4-CARD LUXURY QUICK ACCESS GRID (No Cluttered Counts) */}
+                    <div className="space-y-2">
+                      <div className="px-4 flex items-center justify-between">
+                        <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                          Executive Overview
+                        </span>
+                        <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                          Tap to view
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+                        {/* Card 1: Revenue */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStatusFilter('confirmed');
+                            setActiveTab('bookings');
+                          }}
+                          className="bg-[#111] rounded-[1.75rem] border border-[#D4AF37]/25 hover:border-[#D4AF37] p-3.5 text-left transition-all cursor-pointer group shadow-xl flex flex-col justify-between min-h-[96px]"
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <div className="w-8 h-8 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/35 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                              <DollarSign className="w-3.5 h-3.5" />
+                            </div>
+                            <ChevronRight className="w-3.5 h-3.5 text-zinc-400 group-hover:text-[#D4AF37] transition-colors" />
+                          </div>
+                          <div className="mt-2.5">
+                            <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest truncate">Revenue</p>
+                            <h3 className="text-lg sm:text-xl font-bold text-white font-[Cinzel] tabular-nums truncate mt-0.5">
+                              ${totalRevenue.toLocaleString()}
+                            </h3>
+                          </div>
+                        </button>
+
+                        {/* Card 2: Bookings & Pipeline */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStatusFilter('pending');
+                            setActiveTab('bookings');
+                          }}
+                          className="bg-[#111] rounded-[1.75rem] border border-[#D4AF37]/25 hover:border-[#D4AF37] p-3.5 text-left transition-all cursor-pointer group shadow-xl flex flex-col justify-between min-h-[96px]"
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <div className="w-8 h-8 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/35 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                              <Users className="w-3.5 h-3.5" />
+                            </div>
+                            <ChevronRight className="w-3.5 h-3.5 text-zinc-400 group-hover:text-[#D4AF37] transition-colors" />
+                          </div>
+                          <div className="mt-2.5">
+                            <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest truncate">Bookings</p>
+                            <h3 className="text-base sm:text-lg font-bold text-white font-[Cinzel] truncate mt-0.5">
+                              Requests
+                            </h3>
+                          </div>
+                        </button>
+
+                        {/* Card 3: Messages */}
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('messages')}
+                          className="bg-[#111] rounded-[1.75rem] border border-[#D4AF37]/25 hover:border-[#D4AF37] p-3.5 text-left transition-all cursor-pointer group shadow-xl flex flex-col justify-between min-h-[96px]"
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <div className="w-8 h-8 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/35 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                              <MessageSquare className="w-3.5 h-3.5" />
+                            </div>
+                            <ChevronRight className="w-3.5 h-3.5 text-zinc-400 group-hover:text-[#D4AF37] transition-colors" />
+                          </div>
+                          <div className="mt-2.5">
+                            <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest truncate">Messages</p>
+                            <h3 className="text-base sm:text-lg font-bold text-white font-[Cinzel] truncate mt-0.5">
+                              Client Inbox
+                            </h3>
+                          </div>
+                        </button>
+
+                        {/* Card 4: Calendar & Schedule */}
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('calendar')}
+                          className="bg-[#111] rounded-[1.75rem] border border-[#D4AF37]/25 hover:border-[#D4AF37] p-3.5 text-left transition-all cursor-pointer group shadow-xl flex flex-col justify-between min-h-[96px]"
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <div className="w-8 h-8 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/35 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                              <CalendarDays className="w-3.5 h-3.5" />
+                            </div>
+                            <ChevronRight className="w-3.5 h-3.5 text-zinc-400 group-hover:text-[#D4AF37] transition-colors" />
+                          </div>
+                          <div className="mt-2.5">
+                            <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest truncate">Schedule</p>
+                            <h3 className="text-base sm:text-lg font-bold text-white font-[Cinzel] truncate mt-0.5">
+                              Calendar
+                            </h3>
+                          </div>
+                        </button>
+                      </div>
                     </div>
 
-                    <div 
-                      ref={chartContainerRef}
-                      className="w-full h-[250px] md:h-[400px] relative bg-black/20 rounded-2xl p-2 border border-white/5"
-                    >
-                      <svg 
-                        width="100%" 
-                        height="100%" 
-                        viewBox={`0 0 ${chartSize.width} ${chartSize.height}`}
-                        className="w-full h-full select-none"
+                    {/* 3. COMPACT REVENUE & PIPELINE PULSE */}
+                    <div className="bg-[#111] p-4 sm:p-5 rounded-[2rem] border border-[#D4AF37]/25 shadow-2xl space-y-3.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                            Revenue & Booking Pulse
+                          </span>
+                          <p className="text-[11px] text-zinc-400">
+                            Monthly gross earnings & confirmed celebration velocity
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="px-3 py-1 rounded-full bg-black/60 border border-[#D4AF37]/30 text-[9px] font-black uppercase tracking-widest text-[#D4AF37] tabular-nums">
+                            Avg ${avgBookingValue.toLocaleString()}
+                          </span>
+                          <span className="px-3 py-1 rounded-full bg-black/60 border border-white/10 text-[9px] font-black uppercase tracking-widest text-zinc-300 tabular-nums">
+                            Pipeline ${pendingRevenue.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        ref={chartContainerRef}
+                        className="w-full h-[145px] sm:h-[175px] relative bg-black/40 rounded-[1.5rem] p-2 border border-white/5"
                       >
-                        <defs>
-                          <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#D4AF37" stopOpacity="0.35" />
-                            <stop offset="100%" stopColor="#D4AF37" stopOpacity="0.0" />
-                          </linearGradient>
-                        </defs>
-                        
-                        {/* Grid Background Lines */}
-                        {Array.from({ length: 5 }).map((_, index) => {
-                          const ratio = index / 4;
-                          const isIntermediate = index === 1 || index === 3;
-                          const yVal = chartPoints.padding.top + ratio * chartPoints.chartH;
-                          
-                          return (
-                            <g key={index} className={isIntermediate ? "hidden md:block" : ""}>
-                              <line 
-                                x1={chartPoints.padding.left} 
-                                y1={yVal} 
-                                x2={chartPoints.padding.left + chartPoints.chartW} 
-                                y2={yVal} 
-                                style={{ stroke: 'rgba(255,255,255,0.03)', strokeWidth: 1 }} 
+                        <svg
+                          width="100%"
+                          height="100%"
+                          viewBox={`0 0 ${chartSize.width} ${chartSize.height}`}
+                          className="w-full h-full select-none"
+                        >
+                          <defs>
+                            <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#D4AF37" stopOpacity="0.38" />
+                              <stop offset="100%" stopColor="#D4AF37" stopOpacity="0.0" />
+                            </linearGradient>
+                          </defs>
+
+                          {Array.from({ length: 3 }).map((_, index) => {
+                            const ratio = index / 2;
+                            const yVal = chartPoints.padding.top + ratio * chartPoints.chartH;
+                            return (
+                              <g key={index}>
+                                <line
+                                  x1={chartPoints.padding.left}
+                                  y1={yVal}
+                                  x2={chartPoints.padding.left + chartPoints.chartW}
+                                  y2={yVal}
+                                  style={{ stroke: 'rgba(255,255,255,0.04)', strokeWidth: 1 }}
+                                />
+                                <text
+                                  x={chartPoints.padding.left - 10}
+                                  y={yVal + 4}
+                                  className="fill-zinc-500 text-[9px] font-mono text-right"
+                                  textAnchor="end"
+                                >
+                                  ${Math.round(chartPoints.maxRevenue * (1 - ratio)).toLocaleString()}
+                                </text>
+                              </g>
+                            );
+                          })}
+
+                          {chartPoints.areaPath && (
+                            <path d={chartPoints.areaPath} fill="url(#chartGrad)" className="transition-all duration-500" />
+                          )}
+                          {chartPoints.linePath && (
+                            <path d={chartPoints.linePath} fill="none" stroke="#D4AF37" strokeWidth={2.5} className="transition-all duration-500" />
+                          )}
+
+                          {chartPoints.points.map((p, idx) => (
+                            <g key={idx} className="group/dot">
+                              <circle
+                                cx={p.x}
+                                cy={p.y}
+                                r={4}
+                                className="fill-[#D4AF37] stroke-black stroke-2 hover:scale-150 cursor-pointer transition-all duration-300"
                               />
-                              <text 
-                                x={chartPoints.padding.left - 12} 
-                                y={yVal + 4} 
-                                className="fill-zinc-600 text-[9px] font-mono text-right"
-                                textAnchor="end"
+                              <text
+                                x={p.x}
+                                y={p.y - 10}
+                                className="fill-[#D4AF37] font-bold font-mono text-[9px] text-center hidden md:group-hover/dot:block"
+                                textAnchor="middle"
                               >
-                                ${Math.round(chartPoints.maxRevenue * (1 - ratio)).toLocaleString()}
+                                ${p.data.revenue.toLocaleString()}
                               </text>
                             </g>
-                          );
-                        })}
+                          ))}
 
-                        {/* Area fill */}
-                        {chartPoints.areaPath && (
-                          <path d={chartPoints.areaPath} fill="url(#chartGrad)" className="transition-all duration-500" />
-                        )}
-
-                        {/* Line stroke */}
-                        {chartPoints.linePath && (
-                          <path d={chartPoints.linePath} fill="none" stroke="#D4AF37" strokeWidth={2.5} className="transition-all duration-500" />
-                        )}
-
-                        {/* SVG Data Coordinates Dots */}
-                        {chartPoints.points.map((p, idx) => (
-                          <g key={idx} className="group/dot">
-                            <circle 
-                              cx={p.x} 
-                              cy={p.y} 
-                              r={4.5} 
-                              className="fill-[#D4AF37] stroke-black stroke-2 hover:scale-150 cursor-pointer transition-all duration-300" 
-                            />
-                            <text
-                              x={p.x}
-                              y={p.y - 12}
-                              className="fill-[#D4AF37] font-bold font-mono text-[9px] text-center hidden md:group-hover/dot:block"
-                              textAnchor="middle"
-                            >
-                              ${p.data.revenue.toLocaleString()}
-                            </text>
-                          </g>
-                        ))}
-
-                        {/* Custom Tick Density Reduction on Mobile for X-Axis */}
-                        {chartPoints.points.map((p, idx) => {
-                          const isOdd = idx % 2 !== 0;
-                          return (
-                            <text
-                              key={idx}
-                              x={p.x}
-                              y={chartSize.height - 10}
-                              className={`fill-zinc-400 text-[10px] font-black uppercase tracking-wider ${isOdd ? "hidden md:block" : ""}`}
-                              textAnchor="middle"
-                            >
-                              {p.data.name}
-                            </text>
-                          );
-                        })}
-                      </svg>
+                          {chartPoints.points.map((p, idx) => {
+                            const isOdd = idx % 2 !== 0;
+                            return (
+                              <text
+                                key={idx}
+                                x={p.x}
+                                y={chartSize.height - 8}
+                                className={`fill-zinc-400 text-[9px] font-black uppercase tracking-wider ${isOdd ? 'hidden sm:block' : ''}`}
+                                textAnchor="middle"
+                              >
+                                {p.data.name}
+                              </text>
+                            );
+                          })}
+                        </svg>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Upcoming Booking/events Widget on Dashboard */}
-                  <div className="bg-[#111] rounded-3xl border border-white/5 shadow-2xl overflow-hidden">
-                    <div className="p-6 border-b border-white/5 bg-black/20 flex justify-between items-center">
-                      <h4 className="text-sm font-bold text-[#D4AF37] font-[Cinzel] uppercase tracking-widest">Upcoming Booking/events</h4>
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab('bookings')}
-                        className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#E5C76B] transition-colors cursor-pointer px-3 py-1.5 rounded-full border border-[#D4AF37]/20 hover:bg-[#D4AF37]/10"
-                      >
-                        View All Booking/events
-                      </button>
-                    </div>
-                    <div className="p-4 sm:p-6 space-y-2.5">
+                    {/* 4. UPCOMING BOOKINGS & REQUESTS (PILL-SHAPED CARDS WITH 'TAP TO VIEW') */}
+                    <div className="space-y-2.5">
+                      <div className="px-4 flex items-center justify-between">
+                        <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                          Upcoming Bookings & Requests
+                        </span>
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                            Tap to view
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('bookings')}
+                            className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#FFE885] transition-colors cursor-pointer"
+                          >
+                            View All →
+                          </button>
+                        </div>
+                      </div>
+
                       {sortedBookings.slice(0, 3).length === 0 ? (
-                        <div className="py-12 text-center opacity-30">
-                          <Calendar className="w-8 h-8 mx-auto mb-2 text-[#D4AF37]" />
-                          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-300">No upcoming booking/events scheduled</p>
+                        <div className="bg-[#111] rounded-full border border-dashed border-white/10 py-8 px-6 text-center">
+                          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-400">
+                            No upcoming bookings yet
+                          </p>
                         </div>
                       ) : (
-                        sortedBookings.slice(0, 3).map((b, idx) => {
-                          const clientPhoto = getClientPhoto(b);
-                          const initials = getClientInitials(b.clientName);
-                          return (
-                            <div
-                              key={b.id}
-                              role="button"
-                              tabIndex={0}
-                              onClick={() => handleSimchaBookingClick(b)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  handleSimchaBookingClick(b);
-                                }
-                              }}
-                              className={`simcha-event-card relative w-full overflow-hidden rounded-full border transition-all duration-300 cursor-pointer group flex items-center justify-between gap-3 px-5 sm:px-6 py-3 sm:py-3.5 min-h-[62px] shadow-xl active:scale-[0.99] ${
-                                idx === 0
-                                  ? 'border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
-                                  : 'border-[#D4AF37]/35 hover:border-[#D4AF37]/80'
-                              }`}
-                            >
-                              <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-                                {clientPhoto ? (
-                                  <>
-                                    <img
-                                      src={clientPhoto}
-                                      alt={b.clientName}
-                                      className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
-                                    />
-                                    <div className="absolute inset-0 simcha-event-card-overlay" />
-                                  </>
-                                ) : (
-                                  <div className="w-full h-full bg-gradient-to-r from-[#0c0c0c] via-[#151208] to-[#0c0c0c] flex items-center justify-center relative">
-                                    <span className="font-[Cinzel] font-black text-4xl sm:text-5xl tracking-[0.25em] text-[#D4AF37]/15 select-none">
-                                      {initials}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="relative z-10 flex items-center gap-3 min-w-0 flex-1">
-                                {!clientPhoto && (
-                                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs shadow-inner">
-                                    {initials}
-                                  </div>
-                                )}
-                                <div className="min-w-0 flex-1">
-                                  <p className="font-bold text-sm text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
-                                    {b.clientName}
-                                  </p>
-                                  <div className="flex items-center gap-2 text-[10px] text-zinc-200/90 truncate mt-0.5">
-                                    <span className="flex items-center gap-1 font-semibold text-white shrink-0">
-                                      <Calendar className="w-2.5 h-2.5 text-[#D4AF37]" /> {b.date}
-                                    </span>
-                                    {b.eventTime && (
-                                      <span className="flex items-center gap-1 text-zinc-300 truncate">
-                                        <Clock className="w-2.5 h-2.5 text-[#D4AF37]" /> {formatBookingTime12h(b.eventTime)}
+                        <div className="space-y-2.5">
+                          {sortedBookings.slice(0, 3).map((b, idx) => {
+                            const clientPhoto = getClientPhoto(b);
+                            const initials = getClientInitials(b.clientName);
+                            return (
+                              <div
+                                key={b.id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => handleSimchaBookingClick(b)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    handleSimchaBookingClick(b);
+                                  }
+                                }}
+                                className={`simcha-event-card relative w-full overflow-hidden rounded-full border transition-all duration-300 cursor-pointer group flex items-center justify-between gap-3 px-5 sm:px-6 py-3 sm:py-3.5 min-h-[62px] shadow-xl active:scale-[0.99] ${
+                                  idx === 0
+                                    ? 'border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
+                                    : 'border-[#D4AF37]/35 hover:border-[#D4AF37]/80'
+                                }`}
+                              >
+                                <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                                  {clientPhoto ? (
+                                    <>
+                                      <img
+                                        src={clientPhoto}
+                                        alt={b.clientName}
+                                        className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                                      />
+                                      <div className="absolute inset-0 simcha-event-card-overlay" />
+                                    </>
+                                  ) : (
+                                    <div className="w-full h-full bg-gradient-to-r from-[#0c0c0c] via-[#151208] to-[#0c0c0c] flex items-center justify-center relative">
+                                      <span className="font-[Cinzel] font-black text-4xl sm:text-5xl tracking-[0.25em] text-[#D4AF37]/15 select-none">
+                                        {initials}
                                       </span>
-                                    )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="relative z-10 flex items-center gap-3 min-w-0 flex-1">
+                                  {!clientPhoto && (
+                                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs shadow-inner">
+                                      {initials}
+                                    </div>
+                                  )}
+                                  <div className="min-w-0 flex-1 text-left">
+                                    <p className="font-bold text-sm text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
+                                      {b.clientName}
+                                    </p>
+                                    <div className="flex items-center gap-2 text-[10px] text-zinc-200/90 truncate mt-0.5">
+                                      <span className="flex items-center gap-1 font-semibold text-white shrink-0">
+                                        <Calendar className="w-2.5 h-2.5 text-[#D4AF37]" /> {b.date}
+                                      </span>
+                                      {b.eventTime && (
+                                        <span className="flex items-center gap-1 text-zinc-300 truncate">
+                                          <Clock className="w-2.5 h-2.5 text-[#D4AF37]" /> {formatBookingTime12h(b.eventTime)}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="relative z-10 flex items-center gap-2 shrink-0">
+                                  <span className="simcha-event-pill px-2.5 py-0.5 rounded-full text-[10px] font-bold text-[#D4AF37] font-[Cinzel] border border-[#D4AF37]/40 tabular-nums hidden xs:inline-block">
+                                    ${(b.amount || 0).toLocaleString()}
+                                  </span>
+                                  <span
+                                    className={`px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${
+                                      b.status === 'confirmed'
+                                        ? 'bg-green-500/25 text-green-300 border-green-500/45'
+                                        : b.status === 'pending'
+                                        ? 'simcha-event-pill text-[#D4AF37] border-[#D4AF37]/45'
+                                        : 'bg-red-500/25 text-red-300 border-red-500/45'
+                                    }`}
+                                  >
+                                    {b.status}
+                                  </span>
+                                  <div className="w-7 h-7 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                                    <ChevronRight className="w-3.5 h-3.5" />
                                   </div>
                                 </div>
                               </div>
-
-                              <div className="relative z-10 flex items-center gap-2 shrink-0">
-                                <span className={`px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${
-                                  b.status === 'confirmed'
-                                    ? 'bg-green-500/25 text-green-300 border-green-500/45'
-                                    : b.status === 'pending'
-                                    ? 'simcha-event-pill text-[#D4AF37] border-[#D4AF37]/45'
-                                    : 'bg-red-500/25 text-red-300 border-red-500/45'
-                                }`}>
-                                  {b.status}
-                                </span>
-                                <div className="w-7 h-7 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
-                                  <ChevronRight className="w-3.5 h-3.5" />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
-                  </div>
-                </motion.div>
-              )}
-            </div>
-          )}
+
+                    {/* 5. RECENT CLIENT INQUIRIES (PILL-SHAPED CARDS WITH 'TAP TO VIEW') */}
+                    <div className="space-y-2.5">
+                      <div className="px-4 flex items-center justify-between">
+                        <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                          Recent Client Chats
+                        </span>
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                            Tap to view
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('messages')}
+                            className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#FFE885] transition-colors cursor-pointer"
+                          >
+                            View All →
+                          </button>
+                        </div>
+                      </div>
+
+                      {messageThreads.slice(0, 3).length === 0 ? (
+                        <div className="bg-[#111] rounded-full border border-dashed border-white/10 py-8 px-6 text-center">
+                          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-400">
+                            No active client conversations
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {messageThreads.slice(0, 3).map(([threadKey, data], idx) => {
+                            const unreadInThread = data.messages.filter(
+                              m => m.receiverId === vendor.id && !m.isRead && !locallyReadVendorMsgIds.has(m.id)
+                            ).length;
+                            const clientPhoto = getThreadClientPhoto(data.email || threadKey, data.clientUid);
+                            const initials = getClientInitials(data.name);
+                            const lastMsg = data.lastMessage;
+
+                            const handleOpenFromOverview = () => {
+                              const conId =
+                                data.conversationId ||
+                                lastMsg.conversationId ||
+                                [vendor.id, data.clientUid].sort().filter(Boolean).join('_');
+                              setSelectedThreadContext({
+                                key: threadKey,
+                                clientUid: data.clientUid || threadKey,
+                                email: data.email || '',
+                                name: data.name || 'Client',
+                                conversationId: conId,
+                              });
+                              setSelectedThreadEmail(threadKey);
+                            };
+
+                            return (
+                              <div
+                                key={`overview-chat-${threadKey}`}
+                                role="button"
+                                tabIndex={0}
+                                onClick={handleOpenFromOverview}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    handleOpenFromOverview();
+                                  }
+                                }}
+                                className={`simcha-event-card relative w-full overflow-hidden rounded-full border transition-all duration-300 cursor-pointer group flex items-center justify-between gap-3 px-5 sm:px-6 py-3 sm:py-3.5 min-h-[62px] shadow-xl active:scale-[0.99] ${
+                                  unreadInThread > 0 || idx === 0
+                                    ? 'border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
+                                    : 'border-[#D4AF37]/35 hover:border-[#D4AF37]/80'
+                                }`}
+                              >
+                                <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                                  {clientPhoto ? (
+                                    <>
+                                      <img
+                                        src={clientPhoto}
+                                        alt={data.name}
+                                        className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                                      />
+                                      <div className="absolute inset-0 simcha-event-card-overlay" />
+                                    </>
+                                  ) : (
+                                    <div className="w-full h-full bg-gradient-to-r from-[#0c0c0c] via-[#151208] to-[#0c0c0c] flex items-center justify-center relative">
+                                      <span className="font-[Cinzel] font-black text-4xl sm:text-5xl tracking-[0.25em] text-[#D4AF37]/15 select-none">
+                                        {initials}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="relative z-10 flex items-center gap-3 min-w-0 flex-1">
+                                  {!clientPhoto && (
+                                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center shrink-0 text-[#D4AF37] font-[Cinzel] font-bold text-xs shadow-inner">
+                                      {initials}
+                                    </div>
+                                  )}
+                                  <div className="min-w-0 flex-1 text-left">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-sm text-white font-[Cinzel] group-hover:text-[#D4AF37] transition-colors truncate drop-shadow-sm">
+                                        {data.name}
+                                      </span>
+                                      {unreadInThread > 0 && (
+                                        <span className="bg-[#D4AF37] text-black text-[8px] font-black px-2 py-0.5 rounded-full shrink-0">
+                                          {unreadInThread} New
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-zinc-200/90 truncate mt-0.5">
+                                      {lastMsg.text || 'Media / Voice attachment'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="relative z-10 flex items-center gap-2 shrink-0">
+                                  <span className="simcha-event-pill px-2.5 py-1 rounded-full text-[9px] font-bold text-zinc-100 border border-white/15">
+                                    {new Date(lastMsg.timestamp).toLocaleDateString()}
+                                  </span>
+                                  <div className="w-7 h-7 rounded-full simcha-event-pill border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 6. QUICK STOREFRONT & CALENDAR SHORTCUTS */}
+                    <div className="space-y-2">
+                      <div className="px-4 flex items-center justify-between">
+                        <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                          Storefront & Availability Controls
+                        </span>
+                        <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                          Tap to view
+                        </span>
+                      </div>
+
+                      <div className="bg-[#111] rounded-[2rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('profile');
+                            setActiveProfileSettingModal('locations');
+                          }}
+                          className="w-full px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3.5 text-left hover:bg-white/[0.04] transition-all cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-3.5 min-w-0">
+                            <div className="w-10 h-10 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/35 flex items-center justify-center text-[#D4AF37] shrink-0">
+                              <Layers className="w-4.5 h-4.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-white truncate">Locations, Base Packages & Add-ons</div>
+                              <div className="text-[11px] text-zinc-400 truncate mt-0.5">
+                                Manage service areas, hourly rates & optional upgrades
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="w-7 h-7 rounded-full bg-black/50 border border-white/10 group-hover:border-[#D4AF37]/40 flex items-center justify-center text-zinc-400 group-hover:text-[#D4AF37] transition-all">
+                              <ChevronRight className="w-4 h-4" />
+                            </div>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('profile');
+                            setActiveProfileSettingModal('media');
+                          }}
+                          className="w-full px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3.5 text-left hover:bg-white/[0.04] transition-all cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-3.5 min-w-0">
+                            <div className="w-10 h-10 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/35 flex items-center justify-center text-[#D4AF37] shrink-0">
+                              <Film className="w-4.5 h-4.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-white truncate">Photos & Video Showcase</div>
+                              <div className="text-[11px] text-zinc-400 truncate mt-0.5">
+                                Upload high-impact gallery photos & video links
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="w-7 h-7 rounded-full bg-black/50 border border-white/10 group-hover:border-[#D4AF37]/40 flex items-center justify-center text-zinc-400 group-hover:text-[#D4AF37] transition-all">
+                              <ChevronRight className="w-4 h-4" />
+                            </div>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('calendar')}
+                          className="w-full px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3.5 text-left hover:bg-white/[0.04] transition-all cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-3.5 min-w-0">
+                            <div className="w-10 h-10 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/35 flex items-center justify-center text-[#D4AF37] shrink-0">
+                              <CalendarDays className="w-4.5 h-4.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-white truncate">Availability Calendar & Google Sync</div>
+                              <div className="text-[11px] text-zinc-400 truncate mt-0.5">
+                                Block unavailable dates & sync Google Calendar events
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="w-7 h-7 rounded-full bg-black/50 border border-white/10 group-hover:border-[#D4AF37]/40 flex items-center justify-center text-zinc-400 group-hover:text-[#D4AF37] transition-all">
+                              <ChevronRight className="w-4 h-4" />
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+            );
+          })()}
 
           {activeTab === 'bookings' && (() => {
             const reqCalYear = requestCalendarMonth.getFullYear();
@@ -4070,8 +5135,22 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     document.body
                   )}
 
-                {/* Centered Pill-Shaped Bookings List */}
-                <div className="space-y-3 w-full max-w-3xl mx-auto">
+                {/* Centered Pill-Shaped Bookings List with 'Tap to view' Header */}
+                <div className="space-y-2.5 w-full max-w-3xl mx-auto">
+                  <div className="px-4 flex items-center justify-between">
+                    <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                      {statusFilter === 'pending'
+                        ? 'New Booking Requests'
+                        : statusFilter === 'offers'
+                        ? 'Client Price Offers'
+                        : statusFilter === 'confirmed'
+                        ? 'Confirmed Celebrations'
+                        : 'Cancelled Requests'}
+                    </span>
+                    <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                      Tap to view
+                    </span>
+                  </div>
                   {filteredBookings.length === 0 ? (
                     <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center w-full">
                       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">
@@ -4179,7 +5258,15 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           })()}
 
           {activeTab === 'messages' && (
-            <div className="space-y-3 animate-in fade-in duration-500">
+            <div className="space-y-2.5 animate-in fade-in duration-500 max-w-3xl mx-auto w-full">
+              <div className="px-4 flex items-center justify-between">
+                <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
+                  Client Conversations
+                </span>
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                  Tap to view
+                </span>
+              </div>
               {messageThreads.length === 0 ? (
                 <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
                   <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No Active Chats</p>
@@ -4345,10 +5432,12 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                   );
                 })
               )}
+            </div>
+          )}
 
-              {selectedThreadEmail && (() => {
-                const activeThread = messageThreads.find(([tKey, tData]) => {
-                  if (tKey === selectedThreadEmail) return true;
+          {selectedThreadEmail && (() => {
+            const activeThread = messageThreads.find(([tKey, tData]) => {
+              if (tKey === selectedThreadEmail) return true;
                   if (selectedThreadContext?.clientUid && tData.clientUid === selectedThreadContext.clientUid) return true;
                   if (selectedThreadContext?.email && tData.email && tData.email.toLowerCase() === selectedThreadContext.email.toLowerCase()) return true;
                   return false;
@@ -4507,8 +5596,6 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                   />
                 );
               })()}
-            </div>
-          )}
 
           {activeTab === 'calendar' && (
             <div className="animate-in fade-in duration-500">
@@ -4554,27 +5641,27 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                 <Wrapper
                   type={onClick ? 'button' : undefined}
                   onClick={onClick}
-                  className={`w-full px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3.5 text-left transition-all ${
+                  className={`w-full px-4 py-3 flex items-center justify-between gap-3 text-left transition-all ${
                     onClick ? 'hover:bg-white/[0.04] active:scale-[0.995] cursor-pointer group' : ''
                   }`}
                 >
-                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                    <div className="w-10 h-10 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/35 flex items-center justify-center text-[#D4AF37] shrink-0 transition-transform group-hover:scale-105">
-                      <RowIcon className="w-4.5 h-4.5" />
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-9 h-9 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/35 flex items-center justify-center text-[#D4AF37] shrink-0 transition-transform group-hover:scale-105">
+                      <RowIcon className="w-4 h-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-bold text-white leading-snug truncate">{title}</div>
-                      <div className="text-[11px] text-zinc-400 font-medium leading-snug truncate mt-0.5">{subtitle}</div>
+                      <div className="text-xs sm:text-sm font-bold text-white leading-tight truncate">{title}</div>
+                      <div className="text-[10px] sm:text-[11px] text-zinc-400 font-medium leading-tight truncate mt-0.5">{subtitle}</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2.5 shrink-0">
+                  <div className="flex items-center justify-end gap-2 shrink-0">
                     {rightNode ? (
                       rightNode
                     ) : (
                       <>
                         {badge && (
                           <span
-                            className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                            className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all ${
                               badgeActive
                                 ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-sm'
                                 : 'bg-black/60 text-zinc-300 border-white/10 group-hover:border-[#D4AF37]/40'
@@ -4583,8 +5670,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             {badge}
                           </span>
                         )}
-                        <div className="w-7 h-7 rounded-full bg-black/50 border border-white/10 group-hover:border-[#D4AF37]/40 flex items-center justify-center text-zinc-400 group-hover:text-[#D4AF37] transition-all">
-                          <ChevronRight className="w-4 h-4" />
+                        <div className="w-6 h-6 rounded-full bg-black/50 border border-white/10 group-hover:border-[#D4AF37]/40 flex items-center justify-center text-zinc-400 group-hover:text-[#D4AF37] transition-all">
+                          <ChevronRight className="w-3.5 h-3.5" />
                         </div>
                       </>
                     )}
@@ -4593,46 +5680,74 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               );
             };
 
+            const VendorToggleSwitch = ({
+              checked,
+              onChange,
+              label,
+            }: {
+              checked: boolean;
+              onChange: () => void;
+              label: string;
+            }) => (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={checked}
+                aria-label={label}
+                onClick={onChange}
+                className={`relative inline-flex items-center h-5 w-9 shrink-0 cursor-pointer rounded-full border transition-all duration-200 ease-in-out outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                  checked
+                    ? 'bg-[#D4AF37] border-[#D4AF37] shadow-[0_0_10px_rgba(212,175,55,0.3)]'
+                    : 'bg-zinc-900 border-white/15'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full shadow-sm transition-transform duration-200 ease-in-out ${
+                    checked ? 'translate-x-4 bg-black' : 'translate-x-0.5 bg-zinc-400'
+                  }`}
+                />
+              </button>
+            );
+
             const renderServicesManager = (activeCategory: 'location' | 'amenities') => {
               const items = activeCategory === 'location' ? locationItems : addonItems;
               const isAddingHere = showAddForm && newServiceCategoryType === activeCategory;
 
               return (
                 <div className="space-y-4">
-                  {/* Category Pill Switcher + Add Option Pill */}
-                  <div className="flex flex-wrap items-center justify-between gap-2.5 bg-black/60 p-2 rounded-full border border-[#D4AF37]/25">
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAddForm(false);
-                          setActiveProfileSettingModal('locations');
-                        }}
-                        className={`h-9 px-4 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 cursor-pointer ${
-                          activeCategory === 'location'
-                            ? 'bg-[#D4AF37] text-black shadow-md'
-                            : 'text-zinc-300 hover:text-white'
-                        }`}
-                      >
-                        <MapPin className="w-3.5 h-3.5" />
-                        <span>Locations ({locationItems.length})</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAddForm(false);
-                          setActiveProfileSettingModal('addons');
-                        }}
-                        className={`h-9 px-4 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 cursor-pointer ${
-                          activeCategory === 'amenities'
-                            ? 'bg-[#D4AF37] text-black shadow-md'
-                            : 'text-zinc-300 hover:text-white'
-                        }`}
-                      >
-                        <Layers className="w-3.5 h-3.5" />
-                        <span>Add-ons ({addonItems.length})</span>
-                      </button>
-                    </div>
+                  {/* Category Pill Switcher + Add Option Pill (Single-Row Contained Pill Box) */}
+                  <div className="grid grid-cols-3 items-center gap-1.5 sm:gap-2 bg-black/60 p-1.5 rounded-full border border-[#D4AF37]/30 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddForm(false);
+                        setActiveProfileSettingModal('locations');
+                      }}
+                      className={`h-8 sm:h-9 px-2.5 sm:px-3 rounded-full text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer min-w-0 truncate ${
+                        activeCategory === 'location'
+                          ? 'bg-[#D4AF37] text-black shadow-md'
+                          : 'text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10'
+                      }`}
+                    >
+                      <MapPin className="w-3 h-3 shrink-0" />
+                      <span className="truncate">Locations</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddForm(false);
+                        setActiveProfileSettingModal('addons');
+                      }}
+                      className={`h-8 sm:h-9 px-2.5 sm:px-3 rounded-full text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer min-w-0 truncate ${
+                        activeCategory === 'amenities'
+                          ? 'bg-[#D4AF37] text-black shadow-md'
+                          : 'text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10'
+                      }`}
+                    >
+                      <Layers className="w-3 h-3 shrink-0" />
+                      <span className="truncate">Add-ons</span>
+                    </button>
 
                     <button
                       type="button"
@@ -4651,14 +5766,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           setShowAddForm(true);
                         }
                       }}
-                      className={`h-9 px-4 rounded-full border transition-all cursor-pointer flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest ${
+                      className={`h-8 sm:h-9 px-2.5 sm:px-3 rounded-full border transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 text-[9px] font-black uppercase tracking-wider min-w-0 truncate ${
                         isAddingHere
                           ? 'bg-zinc-900 text-zinc-200 border-zinc-500'
                           : 'bg-[#D4AF37]/15 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border-[#D4AF37]/50'
                       }`}
                     >
-                      {isAddingHere ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
-                      <span>{isAddingHere ? 'Cancel' : `New ${activeCategory === 'location' ? 'Location' : 'Add-on'}`}</span>
+                      {isAddingHere ? <X className="w-3 h-3 shrink-0" /> : <Plus className="w-3 h-3 stroke-[2.5] shrink-0" />}
+                      <span className="truncate">{isAddingHere ? 'Cancel' : `New ${activeCategory === 'location' ? 'Location' : 'Add-on'}`}</span>
                     </button>
                   </div>
 
@@ -5064,7 +6179,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             };
 
             return (
-              <div className="animate-in fade-in duration-500 max-w-2xl mx-auto pb-24 space-y-5">
+              <div className="animate-in fade-in duration-500 max-w-2xl mx-auto pb-24 space-y-4">
                 {/* Hidden File Inputs so uploads work from any modal or header */}
                 <input
                   type="file"
@@ -5091,78 +6206,75 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       setActiveProfileSettingModal('basic');
                     }
                   }}
-                  className="bg-[#111] rounded-[2rem] border border-[#D4AF37]/30 shadow-2xl p-4 sm:p-5 flex items-center justify-between gap-4 hover:border-[#D4AF37]/60 transition-all cursor-pointer group"
+                  className="bg-[#111] rounded-[2rem] border border-[#D4AF37]/30 shadow-2xl p-4 flex items-center justify-between gap-3.5 hover:border-[#D4AF37]/60 transition-all cursor-pointer group"
                 >
-                  <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
                     <div
                       onClick={(e) => {
                         e.stopPropagation();
                         logoFileInputRef.current?.click();
                       }}
-                      className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden bg-black border-2 border-[#D4AF37]/50 shrink-0 shadow-lg group/avatar"
+                      className="relative w-13 h-13 sm:w-14 sm:h-14 rounded-full overflow-hidden bg-black border-2 border-[#D4AF37]/50 shrink-0 shadow-lg group/avatar"
                       title="Tap to change portrait"
                     >
                       <img src={editForm.image} className="w-full h-full object-cover" alt={editForm.name} />
                       {typeof uploadProgresses['logo'] === 'number' ? (
                         <div className="absolute inset-0 bg-black/75 flex items-center justify-center">
-                          <Loader2 className="w-5 h-5 text-[#D4AF37] animate-spin" />
+                          <Loader2 className="w-4 h-4 text-[#D4AF37] animate-spin" />
                         </div>
                       ) : (
                         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center">
-                          <Camera className="w-4 h-4 text-[#D4AF37]" />
+                          <Camera className="w-3.5 h-3.5 text-[#D4AF37]" />
                         </div>
                       )}
                     </div>
 
                     <div className="min-w-0 flex-1 text-left">
                       <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-[0.2em] bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
-                          <ShieldCheck className="w-2.5 h-2.5" /> Vendor Station
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-[0.18em] bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
+                          <ShieldCheck className="w-2.5 h-2.5" /> Vendor Profile
                         </span>
                       </div>
-                      <h2 className="text-base sm:text-lg font-bold font-[Cinzel] text-white truncate mt-1">
+                      <h2 className="text-sm sm:text-base font-bold font-[Cinzel] text-white truncate mt-1">
                         {editForm.name || 'Vendor Business'}
                       </h2>
                       <p className="text-[11px] text-zinc-400 font-medium truncate">
-                        {editForm.contactEmail || 'No public email set'} {editForm.location ? `• ${editForm.location}` : ''}
+                        {editForm.contactEmail || 'No email set'} {editForm.location ? `• ${editForm.location}` : ''}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="hidden sm:inline-flex px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-black/60 text-[#D4AF37] border border-[#D4AF37]/30 group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
-                      Edit Profile
+                    <span className="hidden sm:inline-flex px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-black/60 text-[#D4AF37] border border-[#D4AF37]/30 group-hover:bg-[#D4AF37] group-hover:text-black transition-all">
+                      Edit
                     </span>
-                    <div className="w-8 h-8 rounded-full bg-black/60 border border-white/10 group-hover:border-[#D4AF37]/50 flex items-center justify-center text-[#D4AF37] transition-all">
-                      <ChevronRight className="w-4 h-4" />
+                    <div className="w-7 h-7 rounded-full bg-black/60 border border-white/10 group-hover:border-[#D4AF37]/50 flex items-center justify-center text-[#D4AF37] transition-all">
+                      <ChevronRight className="w-3.5 h-3.5" />
                     </div>
                   </div>
                 </div>
 
-                {/* GROUP 1: STOREFRONT & PACKAGES */}
-                <div className="space-y-2">
+                {/* GROUP 1: STOREFRONT & PRICING */}
+                <div className="space-y-1.5">
                   <div className="px-4 flex items-center justify-between">
                     <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
                       Storefront & Pricing
                     </span>
                     <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
-                      Tap to configure
+                      Tap to view
                     </span>
                   </div>
-                  <div className="bg-[#111] rounded-[2rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
+                  <div className="bg-[#111] rounded-[1.75rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
                     <SettingRow
                       icon={User}
-                      title="Business Identity & Bio"
-                      subtitle="Trading name, portrait, contact email, location & bio"
-                      badge={editForm.location ? editForm.location.split(',')[0] : 'Edit'}
+                      title="Business Info & Bio"
+                      subtitle="Name, photo, email, city & bio"
                       onClick={() => setActiveProfileSettingModal('basic')}
                     />
                     <SettingRow
                       icon={MapPin}
-                      title="Locations & Base Packages"
-                      subtitle="Service areas, base rates, included hours & overtime"
-                      badge={`${locationItems.length} ${locationItems.length === 1 ? 'Location' : 'Locations'}`}
-                      badgeActive={locationItems.length > 0}
+                      title="Locations & Packages"
+                      subtitle="Service areas, base rates & hours"
                       onClick={() => {
                         setShowAddForm(false);
                         setActiveProfileSettingModal('locations');
@@ -5171,9 +6283,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     <SettingRow
                       icon={Layers}
                       title="Add-ons & Extras"
-                      subtitle="Optional upgrades, showcase photos & quantity controls"
-                      badge={`${addonItems.length} ${addonItems.length === 1 ? 'Add-on' : 'Add-ons'}`}
-                      badgeActive={addonItems.length > 0}
+                      subtitle="Upgrades, photos & quantities"
                       onClick={() => {
                         setShowAddForm(false);
                         setActiveProfileSettingModal('addons');
@@ -5181,39 +6291,40 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     />
                     <SettingRow
                       icon={Film}
-                      title="Photos & Video Showcase"
-                      subtitle="Manage portfolio images & videos on your card"
-                      badge={`${galleryCount} ${galleryCount === 1 ? 'Item' : 'Items'}`}
-                      badgeActive={galleryCount > 0}
+                      title="Media Showcase"
+                      subtitle="Portfolio photos & video links"
                       onClick={() => setActiveProfileSettingModal('media')}
                     />
                   </div>
                 </div>
 
                 {/* GROUP 2: BOOKING RULES & PRIVACY */}
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <div className="px-4 flex items-center justify-between">
                     <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
-                      Booking Rules & Privacy
+                      Rules & Privacy
+                    </span>
+                    <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                      Tap to view
                     </span>
                   </div>
-                  <div className="bg-[#111] rounded-[2rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
+                  <div className="bg-[#111] rounded-[1.75rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
                     <SettingRow
                       icon={DollarSign}
-                      title="Client Offer System"
-                      subtitle="Control whether clients can propose custom price offers"
-                      badge={editForm.allowOffers ? 'Active' : 'Disabled'}
+                      title="Custom Price Offers"
+                      subtitle="Allow clients to propose offers"
+                      badge={editForm.allowOffers ? 'On' : 'Off'}
                       badgeActive={Boolean(editForm.allowOffers)}
                       onClick={() => setActiveProfileSettingModal('offers')}
                     />
                     <SettingRow
                       icon={editForm.enableDateCheckLimit !== false ? Lock : Unlock}
-                      title="Availability Privacy Lock"
-                      subtitle="Anti-spying date check limit & cooldown reset period"
+                      title="Date Check Limit"
+                      subtitle="Anti-spying date check cap"
                       badge={
                         editForm.enableDateCheckLimit !== false
                           ? `${editForm.maxDateChecks ?? 5} / ${editForm.dateCheckResetHours ?? 24}h`
-                          : 'Unlimited'
+                          : 'Off'
                       }
                       badgeActive={editForm.enableDateCheckLimit !== false}
                       onClick={() => setActiveProfileSettingModal('privacy')}
@@ -5222,18 +6333,21 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                 </div>
 
                 {/* GROUP 3: SYSTEM & PREFERENCES */}
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <div className="px-4 flex items-center justify-between">
                     <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
                       System & Preferences
                     </span>
+                    <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                      Tap to view
+                    </span>
                   </div>
-                  <div className="bg-[#111] rounded-[2rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
+                  <div className="bg-[#111] rounded-[1.75rem] border border-[#D4AF37]/25 shadow-xl overflow-hidden divide-y divide-white/5">
                     {onToggleThemeMode && (
                       <SettingRow
                         icon={Eye}
-                        title="Display Appearance"
-                        subtitle="Switch between luxury dark and light mode"
+                        title="Appearance"
+                        subtitle="Dark or light luxury theme"
                         rightNode={
                           <ThemeModeSwitch
                             themeMode={themeMode}
@@ -5244,16 +6358,16 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     )}
                     <SettingRow
                       icon={Mail}
-                      title="Email Delivery Debugger"
-                      subtitle="Send a test email to verify automated notifications"
-                      badge="Test SMTP"
+                      title="Test Email"
+                      subtitle="Verify notification delivery"
+                      badge="Test"
                       onClick={() => setActiveProfileSettingModal('email')}
                     />
                     <SettingRow
                       icon={LogOut}
-                      title="Sign Out of Vendor Station"
-                      subtitle="Safely terminate your active vendor portal session"
-                      badge="Sign Out"
+                      title="Sign Out"
+                      subtitle="End current vendor session"
+                      badge="Exit"
                       onClick={onLogout}
                     />
                   </div>
@@ -5584,47 +6698,50 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
                 {activeProfileSettingModal === 'offers' && (
                   <VendorSettingSheetModal
-                    title="Client Offer System"
-                    subtitle="Control how clients can negotiate pricing on your listing"
-                    badgeText="Negotiation Rules"
+                    title="Offers & Down Payment"
+                    subtitle="Configure custom offers & optional booking deposit"
+                    badgeText="Offers & Deposit"
                     icon={DollarSign}
-                    onClose={() => setActiveProfileSettingModal(null)}
+                    onClose={() => {
+                      flushAutoSave();
+                      setActiveProfileSettingModal(null);
+                    }}
                   >
-                    <div className="bg-black/60 rounded-[1.75rem] border border-[#D4AF37]/30 p-5 space-y-5 text-left">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="space-y-1">
-                          <h4 className="text-sm font-bold text-white">Enable "Make an Offer"</h4>
-                          <p className="text-xs text-zinc-400 leading-relaxed">
-                            Allow clients to propose a custom price when requesting a booking date.
+                    <div className="bg-black/60 rounded-[1.5rem] border border-[#D4AF37]/30 divide-y divide-white/10 overflow-hidden text-left">
+                      <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs sm:text-sm font-bold text-white truncate">Enable "Make an Offer"</h4>
+                          <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                            Clients can propose a custom price when booking
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
+                        <VendorToggleSwitch
+                          label="Enable Make an Offer"
+                          checked={Boolean(editForm.allowOffers)}
+                          onChange={() => {
                             applyImmediateVendorUpdate(prev => ({ ...prev, allowOffers: !prev.allowOffers }));
                           }}
-                          className={`h-11 px-6 rounded-full text-[10px] font-black uppercase tracking-[0.2em] transition-all border shrink-0 cursor-pointer flex items-center gap-2 ${
-                            editForm.allowOffers
-                              ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-lg shadow-[#D4AF37]/15'
-                              : 'bg-black text-zinc-300 border-white/15 hover:border-[#D4AF37]/40'
-                          }`}
-                        >
-                          {editForm.allowOffers ? (
-                            <>
-                              <CheckCircle className="w-4 h-4" />
-                              <span>Active</span>
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-4 h-4" />
-                              <span>Disabled</span>
-                            </>
-                          )}
-                        </button>
+                        />
                       </div>
 
-                      <div className="p-4 rounded-2xl bg-[#111] border border-white/5 text-xs text-zinc-300 leading-relaxed">
-                        When enabled, a <span className="text-[#D4AF37] font-bold">Make an Offer</span> option appears in your booking sheet. You receive instant notifications for every offer and can accept, decline, or send a counter-offer.
+                      <div className="px-4 py-3.5 space-y-1.5">
+                        <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-[0.18em] block">
+                          Down Payment Amount ($) — Optional
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editForm.downPayment ?? ''}
+                          onChange={(e) =>
+                            applyAutoSaveVendorUpdate((prev) => ({
+                              ...prev,
+                              downPayment: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)),
+                            }))
+                          }
+                          onBlur={flushAutoSave}
+                          placeholder="0 (No down payment required)"
+                          className="w-full h-10 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-xs sm:text-sm font-bold text-white outline-none transition-all"
+                        />
                       </div>
                     </div>
                   </VendorSettingSheetModal>
@@ -5632,26 +6749,27 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
                 {activeProfileSettingModal === 'privacy' && (
                   <VendorSettingSheetModal
-                    title="Availability Privacy Lock"
+                    title="Date Check Limit"
                     subtitle="Protect your calendar from competitor date spying"
-                    badgeText="Privacy & Security"
+                    badgeText="Privacy"
                     icon={editForm.enableDateCheckLimit !== false ? Lock : Unlock}
                     onClose={() => {
                       flushAutoSave();
                       setActiveProfileSettingModal(null);
                     }}
                   >
-                    <div className="bg-black/60 rounded-[1.75rem] border border-[#D4AF37]/30 p-5 space-y-5 text-left">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="space-y-1">
-                          <h4 className="text-sm font-bold text-white">Date Check Limit</h4>
-                          <p className="text-xs text-zinc-400 leading-relaxed">
-                            Limit how many dates a visitor can check before a cooldown reset.
+                    <div className="bg-black/60 rounded-[1.5rem] border border-[#D4AF37]/30 p-4 space-y-4 text-left">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs sm:text-sm font-bold text-white truncate">Date Check Limit</h4>
+                          <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                            Cap how many dates a visitor can check before cooldown
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
+                        <VendorToggleSwitch
+                          label="Date Check Limit"
+                          checked={editForm.enableDateCheckLimit !== false}
+                          onChange={() => {
                             const nextEnabled = editForm.enableDateCheckLimit === false;
                             applyImmediateVendorUpdate(prev => ({ ...prev, enableDateCheckLimit: nextEnabled }));
                             showNotification(
@@ -5659,63 +6777,44 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                               'info'
                             );
                           }}
-                          className={`h-11 px-6 rounded-full text-[10px] font-black uppercase tracking-[0.2em] transition-all border shrink-0 cursor-pointer flex items-center gap-2 ${
-                            editForm.enableDateCheckLimit !== false
-                              ? 'bg-[#D4AF37] text-black border-[#D4AF37] shadow-lg shadow-[#D4AF37]/15'
-                              : 'bg-black text-zinc-300 border-white/15 hover:border-[#D4AF37]/40'
-                          }`}
-                        >
-                          {editForm.enableDateCheckLimit !== false ? (
-                            <>
-                              <CheckCircle className="w-4 h-4" />
-                              <span>Active</span>
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-4 h-4" />
-                              <span>Off</span>
-                            </>
-                          )}
-                        </button>
+                        />
                       </div>
 
                       <div
-                        className={`grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-white/10 transition-opacity ${
+                        className={`grid grid-cols-2 gap-3 pt-3 border-t border-white/10 transition-opacity ${
                           editForm.enableDateCheckLimit === false ? 'opacity-40 pointer-events-none select-none' : ''
                         }`}
                       >
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em] pl-2 block">
-                            Max Date Checks Allowed
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-[0.18em] pl-2 block">
+                            Max Checks
                           </label>
                           <input
                             type="number"
                             min="1"
                             disabled={editForm.enableDateCheckLimit === false}
-                            className="w-full h-11 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-sm font-bold text-white outline-none transition-all"
+                            className="w-full h-10 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-xs sm:text-sm font-bold text-white outline-none transition-all"
                             value={editForm.maxDateChecks ?? 5}
                             onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, maxDateChecks: parseInt(e.target.value) || 0 }))}
                             onBlur={flushAutoSave}
                             placeholder="5"
                           />
-                          <p className="text-[10px] text-zinc-400 pl-2">Checks allowed per client before lock.</p>
                         </div>
 
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em] pl-2 block">
-                            Reset Period (Hours)
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-[#D4AF37] uppercase tracking-[0.18em] pl-2 block">
+                            Reset (Hours)
                           </label>
                           <input
                             type="number"
                             min="1"
                             disabled={editForm.enableDateCheckLimit === false}
-                            className="w-full h-11 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-sm font-bold text-white outline-none transition-all"
+                            className="w-full h-10 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-xs sm:text-sm font-bold text-white outline-none transition-all"
                             value={editForm.dateCheckResetHours ?? 24}
                             onChange={e => applyAutoSaveVendorUpdate(prev => ({ ...prev, dateCheckResetHours: parseInt(e.target.value) || 0 }))}
                             onBlur={flushAutoSave}
                             placeholder="24"
                           />
-                          <p className="text-[10px] text-zinc-400 pl-2">Hours until check counter resets.</p>
                         </div>
                       </div>
                     </div>
@@ -5724,24 +6823,27 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
                 {activeProfileSettingModal === 'email' && (
                   <VendorSettingSheetModal
-                    title="Email Delivery Debugger"
-                    subtitle="Test your SMTP configuration & notification delivery"
-                    badgeText="System Diagnostics"
+                    title="Test Email Delivery"
+                    subtitle="Verify automated email notifications"
+                    badgeText="Email"
                     icon={Mail}
                     onClose={() => setActiveProfileSettingModal(null)}
                   >
-                    <div className="bg-black/60 rounded-[1.75rem] border border-[#D4AF37]/30 p-5 space-y-4 text-left">
-                      <p className="text-xs text-zinc-300 leading-relaxed">
-                        Send a live test email to verify that booking notifications and client alerts are delivering properly.
-                      </p>
+                    <div className="bg-black/60 rounded-[1.5rem] border border-[#D4AF37]/30 p-4 space-y-3 text-left">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">
+                          Send Test Email
+                        </span>
+                        <span className="text-[10px] text-zinc-400">SMTP check</span>
+                      </div>
 
-                      <div className="flex flex-col sm:flex-row gap-2.5">
-                        <div className="flex-1 relative">
-                          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#D4AF37]" />
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 relative min-w-0">
+                          <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#D4AF37]" />
                           <input
                             type="email"
                             placeholder="recipient@example.com"
-                            className="w-full h-11 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full pl-11 pr-4 text-sm text-white outline-none transition-all"
+                            className="w-full h-9 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full pl-9 pr-3 text-xs text-white outline-none transition-all"
                             value={testEmail}
                             onChange={(e) => setTestEmail(e.target.value)}
                           />
@@ -5750,29 +6852,26 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                           type="button"
                           onClick={handleSendTestEmail}
                           disabled={isSendingTest}
-                          className="h-11 px-6 bg-[#D4AF37] hover:bg-[#E5C76B] text-black rounded-full font-black text-[10px] uppercase tracking-widest border border-[#D4AF37] transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shrink-0"
+                          className="h-9 px-4 bg-[#D4AF37] hover:bg-[#E5C76B] text-black rounded-full font-black text-[9px] uppercase tracking-widest border border-[#D4AF37] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer shrink-0"
                         >
-                          {isSendingTest ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                          <span>{isSendingTest ? 'Sending...' : 'Send Test'}</span>
+                          {isSendingTest ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3 h-3" />}
+                          <span>{isSendingTest ? 'Sending' : 'Send'}</span>
                         </button>
                       </div>
 
                       {testEmailStatus?.success && (
-                        <div className="bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-4 py-3 rounded-full flex items-center gap-2.5">
-                          <CheckCircle className="w-4 h-4 text-[#D4AF37] shrink-0" />
-                          <p className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-widest">
-                            Test email sent! Check your inbox.
+                        <div className="bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-3.5 py-2 rounded-full flex items-center gap-2">
+                          <CheckCircle className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                          <p className="text-[9px] font-bold text-[#D4AF37] uppercase tracking-widest">
+                            Test email sent!
                           </p>
                         </div>
                       )}
 
                       {testEmailStatus?.error && (
-                        <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-2xl flex items-start gap-2.5">
-                          <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
-                          <div>
-                            <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest">Email Failed</p>
-                            <p className="text-[10px] text-zinc-300 mt-1 font-mono break-all">{testEmailStatus.error}</p>
-                          </div>
+                        <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-xl flex items-start gap-2">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-400 mt-0.5 shrink-0" />
+                          <p className="text-[10px] text-red-300 font-mono break-all">{testEmailStatus.error}</p>
                         </div>
                       )}
                     </div>

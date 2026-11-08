@@ -155,10 +155,17 @@ const AnimatedRoleSwitcher: React.FC<{
   }, [isVendorView, pillX, runSlideWiggle]);
 
   useEffect(() => {
+    const syncRolePill = () => {
+      pillX.set(lastRoleRef.current ? getVendorOffsetX() : 0);
+    };
+    window.addEventListener('resize', syncRolePill);
+    window.addEventListener('orientationchange', syncRolePill);
     return () => {
+      window.removeEventListener('resize', syncRolePill);
+      window.removeEventListener('orientationchange', syncRolePill);
       activeControlsRef.current.forEach(ctrl => ctrl.stop());
     };
-  }, []);
+  }, [pillX]);
 
   const handleSelectRole = useCallback((targetVendor: boolean) => {
     if (lastRoleRef.current === targetVendor) return;
@@ -4882,7 +4889,7 @@ function App() {
                         <div className="flex items-center justify-between mb-5">
                           <div>
                             <h3 className="text-xl sm:text-2xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider">
-                              Available Vendors ({filteredVendors.length})
+                              Available Vendors
                             </h3>
                             <p className="text-xs text-zinc-400 mt-1">
                               Showing only vendors available on your selected {selectedSearchDates.length === 1 ? 'date' : 'dates'}. Select any category below to narrow by service.
@@ -4933,16 +4940,17 @@ function App() {
                               className="transform-gpu will-change-transform"
                             >
                               <motion.button 
-                                whileHover={{ scale: 1.02, y: -4 }}
-                                whileTap={{ scale: 0.97 }}
-                                transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                                whileHover={{ scale: 1.06, y: -8 }}
+                                whileTap={{ scale: 0.96 }}
+                                transition={{ type: "spring", stiffness: 340, damping: 18 }}
                                 onClick={() => { setActiveCategory(cat); setActiveSubCategoryGroup(null); setActiveSubSubCategory(null); }} 
-                                className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
+                                className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
                               >
-                                  {renderMedia(categoryImages[cat], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", undefined, true)}
+                                  {renderMedia(categoryImages[cat], "absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-80 group-hover:scale-115 transition-all duration-500 ease-out transform-gpu", undefined, true)}
                                   <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
+                                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                   <div className="absolute inset-0 flex items-center justify-center p-3.5 sm:p-4 text-center">
-                                    <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{cat}</h3>
+                                    <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white group-hover:scale-105 group-hover:-translate-y-0.5 transition-all duration-300 drop-shadow-md">{cat}</h3>
                                   </div>
                               </motion.button>
                             </motion.div>
@@ -4954,16 +4962,17 @@ function App() {
                           className="transform-gpu will-change-transform"
                         >
                           <motion.button 
-                            whileHover={{ scale: 1.02, y: -4 }}
-                            whileTap={{ scale: 0.97 }}
-                            transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                            whileHover={{ scale: 1.06, y: -8 }}
+                            whileTap={{ scale: 0.96 }}
+                            transition={{ type: "spring", stiffness: 340, damping: 18 }}
                             onClick={() => setShowAllCategoriesGrid(true)} 
-                            className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
+                            className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
                           >
-                              {renderMedia("https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", undefined, true)}
+                              {renderMedia("https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-80 group-hover:scale-115 transition-all duration-500 ease-out transform-gpu", undefined, true)}
                               <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
+                              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                               <div className="absolute inset-0 flex items-center justify-center p-3.5 sm:p-4 text-center">
-                                <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">View All</h3>
+                                <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white group-hover:scale-105 group-hover:-translate-y-0.5 transition-all duration-300 drop-shadow-md">View All</h3>
                               </div>
                           </motion.button>
                         </motion.div>
@@ -5035,22 +5044,23 @@ function App() {
                           className="transform-gpu will-change-transform"
                         >
                           <motion.button
-                            whileHover={{ scale: 1.02, y: -4 }}
-                            whileTap={{ scale: 0.97 }}
-                            transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                            whileHover={{ scale: 1.06, y: -8 }}
+                            whileTap={{ scale: 0.96 }}
+                            transition={{ type: "spring", stiffness: 340, damping: 18 }}
                             onClick={() => { setActiveSubCategoryGroup(group); setActiveSubSubCategory(null); }}
-                            className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
+                            className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
                           >
                              {subCategoryImages[group] ? (
-                               <>{renderMedia(subCategoryImages[group], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", group, true)}</>
+                               <>{renderMedia(subCategoryImages[group], "absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-80 group-hover:scale-115 transition-all duration-500 ease-out transform-gpu", group, true)}</>
                              ) : (
-                               <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-transform duration-500 transform-gpu">
+                               <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-115 transition-transform duration-500 ease-out transform-gpu">
                                  <span className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No Image</span>
                                </div>
                              )}
                              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
+                             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                              <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
-                               <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{group}</h3>
+                               <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white group-hover:scale-105 group-hover:-translate-y-0.5 transition-all duration-300 drop-shadow-md">{group}</h3>
                              </div>
                           </motion.button>
                         </motion.div>
@@ -5062,16 +5072,17 @@ function App() {
                         className="transform-gpu will-change-transform"
                       >
                         <motion.button
-                          whileHover={{ scale: 1.02, y: -4 }}
-                          whileTap={{ scale: 0.97 }}
-                          transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                          whileHover={{ scale: 1.06, y: -8 }}
+                          whileTap={{ scale: 0.96 }}
+                          transition={{ type: "spring", stiffness: 340, damping: 18 }}
                           onClick={() => { setActiveSubCategoryGroup('__ALL__'); setActiveSubSubCategory(null); }}
-                          className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
+                          className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
                         >
-                           {renderMedia("https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", undefined, true)}
+                           {renderMedia("https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-80 group-hover:scale-115 transition-all duration-500 ease-out transform-gpu", undefined, true)}
                            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
+                           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                            <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
-                             <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">View All</h3>
+                             <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white group-hover:scale-105 group-hover:-translate-y-0.5 transition-all duration-300 drop-shadow-md">View All</h3>
                            </div>
                         </motion.button>
                       </motion.div>
@@ -5095,22 +5106,23 @@ function App() {
                           className="transform-gpu will-change-transform"
                         >
                           <motion.button
-                            whileHover={{ scale: 1.02, y: -4 }}
-                            whileTap={{ scale: 0.97 }}
-                            transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                            whileHover={{ scale: 1.06, y: -8 }}
+                            whileTap={{ scale: 0.96 }}
+                            transition={{ type: "spring", stiffness: 340, damping: 18 }}
                             onClick={() => setActiveSubSubCategory(sub)}
-                            className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
+                            className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
                           >
                             {subCategoryImages[sub] ? (
-                              <>{renderMedia(subCategoryImages[sub], "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", sub, true)}</>
+                              <>{renderMedia(subCategoryImages[sub], "absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-80 group-hover:scale-115 transition-all duration-500 ease-out transform-gpu", sub, true)}</>
                             ) : (
-                              <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-110 transition-transform duration-500 transform-gpu">
+                              <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-115 transition-transform duration-500 ease-out transform-gpu">
                                 <span className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No Image</span>
                               </div>
                             )}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
+                            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                             <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
-                              <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">{sub}</h3>
+                              <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white group-hover:scale-105 group-hover:-translate-y-0.5 transition-all duration-300 drop-shadow-md">{sub}</h3>
                             </div>
                           </motion.button>
                         </motion.div>
@@ -5122,16 +5134,17 @@ function App() {
                         className="transform-gpu will-change-transform"
                       >
                         <motion.button
-                          whileHover={{ scale: 1.02, y: -4 }}
-                          whileTap={{ scale: 0.97 }}
-                          transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                          whileHover={{ scale: 1.06, y: -8 }}
+                          whileTap={{ scale: 0.96 }}
+                          transition={{ type: "spring", stiffness: 340, damping: 18 }}
                           onClick={() => setActiveSubSubCategory('__ALL__')}
-                          className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#D4AF37]/80 focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-colors duration-300 cursor-pointer shadow-lg transform-gpu"
+                          className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
                         >
-                          {renderMedia("https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-500 transform-gpu", undefined, true)}
+                          {renderMedia("https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-80 group-hover:scale-115 transition-all duration-500 ease-out transform-gpu", undefined, true)}
                           <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
+                          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                           <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
-                            <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white transition-colors drop-shadow-md">View All</h3>
+                            <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white group-hover:scale-105 group-hover:-translate-y-0.5 transition-all duration-300 drop-shadow-md">View All</h3>
                           </div>
                         </motion.button>
                       </motion.div>
