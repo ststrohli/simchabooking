@@ -1833,22 +1833,18 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
       {/* Main Content */}
       <main className="flex-1 bg-[#050505] px-4 pt-9 pb-36 md:px-8 md:pt-10 md:pb-10">
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-3 max-w-4xl mx-auto w-full flex items-center justify-between gap-3">
           <h1 className="text-xl sm:text-2xl font-bold font-[Cinzel] text-white capitalize tracking-tight">{activeTab}</h1>
+          {activeTab !== 'profile' && (
+            <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+              Tap to view
+            </span>
+          )}
         </div>
 
         {activeTab === 'overview' && (
           <div className="max-w-4xl mx-auto w-full space-y-5 animate-in fade-in duration-500">
-            <div className="space-y-2">
-              <div className="px-4 flex items-center justify-between">
-                <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
-                  Planner Overview
-                </span>
-                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
-                  Tap to view
-                </span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <button
                   type="button"
                   onClick={() => handleTabChange('plan')}
@@ -1917,20 +1913,11 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                   </div>
                 </button>
               </div>
-            </div>
           </div>
         )}
 
         {activeTab === 'plan' && (
           <div className="max-w-4xl mx-auto w-full space-y-2.5 animate-in slide-in-from-bottom-5 duration-500">
-            <div className="px-4 flex items-center justify-between">
-              <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
-                Planned Vendors
-              </span>
-              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
-                Tap to view
-              </span>
-            </div>
             {cart.length === 0 ? (
               <div className="text-center py-14 bg-[#0a0a0a] rounded-full border border-dashed border-white/10 px-6">
                 <ShoppingBag className="w-10 h-10 mx-auto mb-2 text-[#D4AF37]" />
@@ -2075,14 +2062,6 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
                 })}
               </div>
             </div>
-            <div className="px-4 flex items-center justify-between pt-0.5">
-              <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
-                {selectedEventCategory === 'All' ? 'Event Reservations' : `${selectedEventCategory} Reservations`}
-              </span>
-              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
-                Tap to view
-              </span>
-            </div>
 
             {filteredClientBookings.length === 0 ? (
               <div className="py-14 text-center bg-[#0a0a0a] rounded-full border border-dashed border-white/10 px-6">
@@ -2205,14 +2184,6 @@ const ClientPortal: React.FC<ClientPortalProps> = ({
 
         {activeTab === 'chats' && (
           <div className="space-y-2.5 animate-in fade-in duration-500 max-w-4xl mx-auto w-full">
-            <div className="px-4 flex items-center justify-between">
-              <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
-                Direct Conversations
-              </span>
-              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
-                Tap to view
-              </span>
-            </div>
             {chatThreads.length === 0 ? (
               <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
                 <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No Active Chats</p>

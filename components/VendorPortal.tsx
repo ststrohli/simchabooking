@@ -4175,12 +4175,17 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       {/* Main Container */}
       <main className="flex-1 bg-[#050505] relative pb-36 md:pb-10 min-w-0">
         {activeTab !== 'calendar' && (
-          <div className="px-4 pt-9 pb-1 md:px-10 md:pt-10 md:pb-2">
+          <div className="px-4 pt-9 pb-1 md:px-10 md:pt-10 md:pb-2 max-w-3xl mx-auto w-full">
             <div className="flex justify-between items-center">
               <div>
                 <h1 className="text-lg md:text-2xl font-bold font-[Cinzel] text-white capitalize tracking-tight leading-none">{activeTab === 'bookings' ? 'Bookings' : activeTab}</h1>
                 <p className="text-[#D4AF37]/60 text-[9px] font-black uppercase tracking-[0.4em] mt-1">{vendor.name}</p>
               </div>
+              {activeTab === 'messages' && (
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                  Tap to view
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -5259,14 +5264,6 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
           {activeTab === 'messages' && (
             <div className="space-y-2.5 animate-in fade-in duration-500 max-w-3xl mx-auto w-full">
-              <div className="px-4 flex items-center justify-between">
-                <span className="text-[10px] font-black font-[Cinzel] text-[#D4AF37] uppercase tracking-[0.22em]">
-                  Client Conversations
-                </span>
-                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
-                  Tap to view
-                </span>
-              </div>
               {messageThreads.length === 0 ? (
                 <div className="bg-[#0a0a0a] rounded-full border border-dashed border-white/10 py-12 px-6 text-center">
                   <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">No Active Chats</p>
