@@ -62,6 +62,133 @@ export interface SelectedService {
   hourlyRate?: number;
 }
 
+export type SocialPlatformId = 'instagram' | 'tiktok' | 'youtube' | 'facebook' | 'website';
+
+export interface VendorSocialLinks {
+  instagram?: string;
+  tiktok?: string;
+  youtube?: string;
+  facebook?: string;
+  website?: string;
+}
+
+export interface NormalizedSocialItem {
+  platform: SocialPlatformId;
+  label: string;
+  handleDisplay: string;
+  url: string;
+  raw: string;
+}
+
+export const normalizeVendorSocialLink = (
+  platform: SocialPlatformId,
+  rawInput?: string | null
+): NormalizedSocialItem | null => {
+  if (!rawInput || typeof rawInput !== 'string') return null;
+  const trimmed = rawInput.trim();
+  if (!trimmed) return null;
+
+  const platformLabels: Record<SocialPlatformId, string> = {
+    instagram: 'Instagram',
+    tiktok: 'TikTok',
+    youtube: 'YouTube',
+    facebook: 'Facebook',
+    website: 'Website',
+  };
+
+  const isUrlLike =
+    /^https?:\/\//i.test(trimmed) ||
+    /^(www\.)?(instagram\.com|instagr\.am|tiktok\.com|youtube\.com|youtu\.be|facebook\.com|fb\.com)\//i.test(trimmed) ||
+    (platform === 'website' && trimmed.includes('.'));
+
+  if (isUrlLike) {
+    const url = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    let handleDisplay = platformLabels[platform];
+    try {
+      const parsed = new URL(url);
+      const parts = parsed.pathname.split('/').filter(Boolean);
+      if (platform === 'website') {
+        handleDisplay = parsed.hostname.replace(/^www\./i, '');
+      } else if (parts.length > 0) {
+        const lastPart = decodeURIComponent(parts[parts.length - 1]);
+        if (lastPart && !['watch', 'channel', 'profile.php'].includes(lastPart.toLowerCase())) {
+          handleDisplay = lastPart.startsWith('@') ? lastPart : `@${lastPart}`;
+        }
+      }
+    } catch {
+      handleDisplay = platformLabels[platform];
+    }
+    return {
+      platform,
+      label: platformLabels[platform],
+      handleDisplay,
+      url,
+      raw: trimmed,
+    };
+  }
+
+  // Otherwise treat as a username / handle or page name
+  const cleanHandle = trimmed.replace(/^@+/, '').trim();
+  if (!cleanHandle) return null;
+  const compactHandle = cleanHandle.replace(/\s+/g, '');
+
+  switch (platform) {
+    case 'instagram':
+      return {
+        platform,
+        label: 'Instagram',
+        handleDisplay: `@${compactHandle}`,
+        url: `https://www.instagram.com/${encodeURIComponent(compactHandle)}`,
+        raw: trimmed,
+      };
+    case 'tiktok':
+      return {
+        platform,
+        label: 'TikTok',
+        handleDisplay: `@${compactHandle}`,
+        url: `https://www.tiktok.com/@${encodeURIComponent(compactHandle)}`,
+        raw: trimmed,
+      };
+    case 'youtube':
+      return {
+        platform,
+        label: 'YouTube',
+        handleDisplay: `@${compactHandle}`,
+        url: `https://www.youtube.com/@${encodeURIComponent(compactHandle)}`,
+        raw: trimmed,
+      };
+    case 'facebook':
+      return {
+        platform,
+        label: 'Facebook',
+        handleDisplay: cleanHandle.startsWith('@') ? cleanHandle : `@${compactHandle}`,
+        url: `https://www.facebook.com/${encodeURIComponent(compactHandle)}`,
+        raw: trimmed,
+      };
+    case 'website': {
+      const domain = compactHandle.includes('.') ? compactHandle : `${compactHandle.toLowerCase()}.com`;
+      return {
+        platform,
+        label: 'Website',
+        handleDisplay: domain.replace(/^https?:\/\/(www\.)?/i, ''),
+        url: /^https?:\/\//i.test(domain) ? domain : `https://${domain}`,
+        raw: trimmed,
+      };
+    }
+  }
+};
+
+export const getVendorSocialItems = (socialLinks?: VendorSocialLinks | null): NormalizedSocialItem[] => {
+  if (!socialLinks) return [];
+  const order: SocialPlatformId[] = ['instagram', 'tiktok', 'youtube', 'facebook', 'website'];
+  const items: NormalizedSocialItem[] = [];
+  for (const platform of order) {
+    const normalized = normalizeVendorSocialLink(platform, socialLinks[platform]);
+    if (normalized) items.push(normalized);
+  }
+  return items;
+};
+
 export interface Vendor {
   id: string;
   name: string;
@@ -76,6 +203,7 @@ export interface Vendor {
   video?: string; 
   location: string;
   contactEmail?: string;
+  socialLinks?: VendorSocialLinks;
   isKosher?: boolean;
   isVerified?: boolean; 
   username?: string; 

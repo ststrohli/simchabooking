@@ -7,7 +7,8 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, RefreshCw, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, CheckCheck, Volume2, Camera, FileText, Download, Search, ArrowLeft, Paperclip, Mic, StopCircle
 } from 'lucide-react';
 import { Vendor, Booking, Message, SelectedService, VendorService, ServiceCategoryType } from '../types';
-import { db, storage, auth } from '../services/firebase';
+import { db, storage, auth, firebaseConfig } from '../services/firebase';
+import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { markChatAsRead, deleteMessage, sendNewMessage } from '../services/messagingService';
 import { doc, updateDoc, writeBatch, onSnapshot, collection, query, where } from 'firebase/firestore';
@@ -1413,13 +1414,16 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     showNotification("Authenticating... Opening Google sign-in popup.", "info");
 
     try {
-      const firebaseAuth = auth || getAuth();
+      const apps = getApps();
+      const existingCalApp = apps.find(a => a.name === 'google-calendar-sync-auth');
+      const calApp = existingCalApp || initializeApp(firebaseConfig, 'google-calendar-sync-auth');
+      const calendarAuth = getAuth(calApp);
       const provider = new GoogleAuthProvider();
       provider.addScope('https://www.googleapis.com/auth/calendar.events');
-      provider.setCustomParameters({ prompt: 'consent', access_type: 'offline' });
+      provider.setCustomParameters({ prompt: 'select_account' });
 
-      // Cleanly await sign-in popup
-      const result = await signInWithPopup(firebaseAuth, provider);
+      // Cleanly await sign-in popup on isolated auth instance so main app session is preserved
+      const result = await signInWithPopup(calendarAuth, provider);
       
       setSyncStep('fetching');
       showNotification('Authenticated! Connecting to Google Calendar API...', 'info');
@@ -1502,7 +1506,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             }
           }
 
-          const res = await fetch(`https://www.googleapis.com/calendar/v3/primary/events`.replace('/primary/events', '/calendars/primary/events'), {
+          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -1519,7 +1523,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           if (res.ok) {
             pushedCount++;
           } else {
-            console.error(`Failed to push gig ${gig.id} to Google Calendar:`, await res.text());
+            console.warn(`Failed to push gig ${gig.id} to Google Calendar:`, await res.text());
           }
         }
       }
@@ -1590,7 +1594,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       const newDatesCount = mergedDates.length - currentUnavailable.length;
       
       // Ensure we use the exact vendor ID from current session
-      const sessionVendorId = vendor.id || firebaseAuth.currentUser?.uid;
+      const sessionVendorId = vendor.id || auth?.currentUser?.uid;
       if (!sessionVendorId) {
         throw new Error("No active session or vendor ID found.");
       }
@@ -1616,21 +1620,27 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       showNotification(successMsg, 'success');
       setCalendarSyncError(null);
     } catch (error: any) {
-      console.error('Error during Google Calendar authentication/fetch:', error);
-      
-      let userMessage = 'Authentication failed. Please try again.';
-      if (error.code === 'auth/popup-closed-by-user') {
-        userMessage = 'The sign-in window was closed before completion. Try opening the app in a new tab if the popup was blocked.';
-      } else if (error.code === 'auth/popup-blocked') {
-        userMessage = 'The auth popup was blocked by your browser. Please allow popups or open the app in a new tab.';
-      } else if (error.code === 'auth/cancelled-popup-request') {
-        userMessage = 'Another login popup is already open or the request was cancelled. Please complete the sign-in in that window.';
-      } else if (error.message && error.message.includes('popup')) {
-        userMessage = 'Authentication popup closed or blocked. Try opening the application in a new tab.';
-      } else {
-        userMessage = error.message || userMessage;
+      const errorCode = error?.code || '';
+      if (errorCode === 'auth/popup-closed-by-user' || errorCode === 'auth/cancelled-popup-request') {
+        setCalendarSyncError(null);
+        setSyncStep('idle');
+        showNotification('Google Calendar sign-in was cancelled.', 'info');
+        return;
       }
-      
+
+      console.warn('Google Calendar sync issue:', error);
+
+      let userMessage = 'Authentication failed. Please try again.';
+      if (errorCode === 'auth/popup-blocked') {
+        userMessage = 'The sign-in popup was blocked by your browser. Please allow popups for this site.';
+      } else if (errorCode === 'auth/unauthorized-domain') {
+        userMessage = 'This domain is not yet authorized in Firebase Authentication settings.';
+      } else if (error?.message && error.message.includes('popup')) {
+        userMessage = 'Sign-in popup could not be completed. Please allow popups and try again.';
+      } else {
+        userMessage = error?.message || userMessage;
+      }
+
       setCalendarSyncError(userMessage);
       showNotification(userMessage, 'info');
       setSyncStep('idle');

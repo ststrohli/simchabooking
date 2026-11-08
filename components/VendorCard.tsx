@@ -38,7 +38,7 @@ const VendorCard: React.FC<VendorCardProps> = React.memo(({ vendor, onQuickView,
       whileHover={{ y: -10, scale: 1.045 }}
       whileTap={{ scale: 0.97 }}
       transition={{ type: "spring", stiffness: 340, damping: 18 }}
-      className={`relative w-full aspect-[4/5] bg-[#111] rounded-2xl shadow-2xl border-2 border-[#D4AF37]/15 overflow-hidden hover:border-[#FFE885] hover:shadow-[0_22px_48px_rgba(212,175,55,0.34),0_0_24px_rgba(255,232,133,0.22)] transition-[border-color,box-shadow] duration-300 group flex flex-col justify-end text-left cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transform-gpu will-change-transform ${isCurrentlySelectedDateBlocked ? 'opacity-70' : ''}`} 
+      className={`simcha-vendor-card relative w-full aspect-[4/5] bg-[#111] rounded-2xl shadow-2xl border-2 border-[#D4AF37]/15 overflow-hidden hover:border-[#FFE885] hover:shadow-[0_22px_48px_rgba(212,175,55,0.34),0_0_24px_rgba(255,232,133,0.22)] transition-[border-color,box-shadow] duration-300 group flex flex-col justify-end text-left cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] transform-gpu will-change-transform ${isCurrentlySelectedDateBlocked ? 'opacity-70' : ''}`} 
       aria-labelledby={`vendor-name-${vendor.id}`}
     >
       {isCurrentlySelectedDateBlocked && (

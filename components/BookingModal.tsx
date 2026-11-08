@@ -1,9 +1,44 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Star, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, CheckCircle, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon, Sparkles } from 'lucide-react';
-import { Vendor, SelectedService, VendorCategory, VendorService, ServiceCategoryType } from '../types';
+import { X, Star, Calendar, User, Mail, MessageSquare, PartyPopper, MapPin, Clock, Tag, Check, CheckCircle, AlertTriangle, Hash, ChevronLeft, ChevronRight, Image as ImageIcon, Sparkles, ExternalLink, Globe } from 'lucide-react';
+import { Vendor, SelectedService, VendorCategory, VendorService, ServiceCategoryType, getVendorSocialItems, SocialPlatformId } from '../types';
 import LocationAutocomplete from './LocationAutocomplete';
 import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
+
+const BookingSocialIcon: React.FC<{ platform: SocialPlatformId; className?: string }> = ({ platform, className = 'w-3 h-3' }) => {
+  switch (platform) {
+    case 'instagram':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+          <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+          <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+        </svg>
+      );
+    case 'tiktok':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+          <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+        </svg>
+      );
+    case 'youtube':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+          <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17" />
+          <path d="m10 15 5-3-5-3z" />
+        </svg>
+      );
+    case 'facebook':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+          <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+        </svg>
+      );
+    case 'website':
+    default:
+      return <Globe className={className} />;
+  }
+};
 
 const inferServiceCategory = (service: VendorService): ServiceCategoryType => {
   if (service.categoryType) return service.categoryType;
@@ -1320,10 +1355,32 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
           ref={formScrollRef}
           className={`flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y px-6 pt-7 pb-6 space-y-5 ${isSubmitting ? 'pointer-events-none' : ''}`}
         >
-          <div className="text-center pb-0.5">
+          <div className="text-center pb-0.5 space-y-2">
             <h2 id="modal-title" className="text-xl sm:text-2xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider leading-tight">
               {vendor.name}
             </h2>
+            {(() => {
+              const socialItems = getVendorSocialItems(vendor.socialLinks);
+              if (socialItems.length === 0) return null;
+              return (
+                <div className="flex flex-wrap items-center justify-center gap-1.5 pt-0.5">
+                  {socialItems.map((item) => (
+                    <a
+                      key={item.platform}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`${item.label}: ${item.handleDisplay}`}
+                      className="h-7 px-2.5 rounded-full bg-black/60 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/35 hover:border-[#D4AF37] text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                    >
+                      <BookingSocialIcon platform={item.platform} className="w-3 h-3 shrink-0" />
+                      <span className="truncate max-w-[120px]">{item.handleDisplay}</span>
+                      <ExternalLink className="w-2.5 h-2.5 opacity-70 shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           {vendor.enableDateCheckLimit !== false && (
@@ -1379,8 +1436,8 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                 <span className="text-[10px] uppercase font-bold tracking-wider text-[#D4AF37]/60 block" style={{ textShadow: "0 0 4px rgba(212,175,55,0.1)" }}>Selected Celebration Date</span>
                 <motion.span
                   key={`date-val-${localDate}-${datePopKey}`}
-                  initial={datePopKey > 0 ? { scale: 1.15, color: '#FFE885' } : false}
-                  animate={{ scale: 1, color: '#f4f4f5' }}
+                  initial={datePopKey > 0 ? { scale: 1.15 } : false}
+                  animate={{ scale: 1 }}
                   transition={{ type: 'spring', stiffness: 380, damping: 18 }}
                   className="text-sm font-black text-zinc-100 font-[Cinzel] tracking-wide block truncate origin-left"
                 >
@@ -1437,7 +1494,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                     return (
                       <div
                         key={group.type}
-                        className={`w-full relative overflow-hidden rounded-2xl border transition-all p-3.5 ${
+                        className={`simcha-package-card w-full relative overflow-hidden rounded-2xl border transition-all p-3.5 ${
                           hasSelectedInGroup
                             ? 'border-[#D4AF37] shadow-[0_0_18px_rgba(212,175,55,0.16)] bg-black'
                             : 'border-[#D4AF37]/25 hover:border-[#D4AF37]/50 bg-black'
@@ -1449,7 +1506,7 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                             <img
                               src={bgImage}
                               alt=""
-                              className="w-full h-full object-cover object-center opacity-35 scale-105"
+                              className="simcha-package-bg-img w-full h-full object-cover object-center opacity-35 scale-105"
                             />
                             <div className="absolute inset-0 simcha-package-fader" />
                           </div>
@@ -1508,9 +1565,9 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                                       toggleService(service.id);
                                     }
                                   }}
-                                  className={`w-full relative h-11 rounded-full border transition-all px-4 flex items-center justify-between gap-3 cursor-pointer select-none ${
+                                  className={`simcha-package-option-row w-full relative h-11 rounded-full border transition-all px-4 flex items-center justify-between gap-3 cursor-pointer select-none ${
                                     isSelected
-                                      ? 'bg-[#D4AF37]/12 border-[#D4AF37] shadow-[0_0_10px_rgba(212,175,55,0.12)]'
+                                      ? 'simcha-package-option-selected bg-[#D4AF37]/12 border-[#D4AF37] shadow-[0_0_10px_rgba(212,175,55,0.12)]'
                                       : 'bg-black/60 border-[#D4AF37]/15 hover:border-[#D4AF37]/45'
                                   }`}
                                 >
@@ -1729,8 +1786,8 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                 </span>
                 <motion.span
                   key={`time-val-${formData.eventTime}-${timePopKey}`}
-                  initial={timePopKey > 0 ? { scale: 1.22, color: '#FFE885' } : false}
-                  animate={{ scale: 1, color: '#f4f4f5' }}
+                  initial={timePopKey > 0 ? { scale: 1.22 } : false}
+                  animate={{ scale: 1 }}
                   transition={{ type: 'spring', stiffness: 380, damping: 18 }}
                   className="text-xs sm:text-sm font-black font-[Cinzel] tracking-wide text-zinc-100 truncate block min-h-[1.25rem] origin-left"
                 >
@@ -2068,8 +2125,8 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
                     </div>
 
                     {/* Center Metallic Gold Jewel Pivot */}
-                    <div className="pointer-events-none relative z-20 w-4 h-4 rounded-full bg-gradient-to-br from-[#FFF3B0] via-[#D4AF37] to-[#99731C] border border-black shadow-[0_0_12px_rgba(212,175,55,0.9)] flex items-center justify-center">
-                      <div className="w-1.5 h-1.5 rounded-full bg-black" />
+                    <div className="pointer-events-none relative z-20 w-4 h-4 rounded-full bg-gradient-to-br from-[#FFF3B0] via-[#D4AF37] to-[#99731C] border border-[#7B5800] shadow-[0_0_12px_rgba(212,175,55,0.9)] flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#18181b]" />
                     </div>
 
                     {/* 12 Radial Interactive Hour / Minute Numerals */}

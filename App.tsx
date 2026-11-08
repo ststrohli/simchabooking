@@ -2945,10 +2945,11 @@ function App() {
 
   const handleUpdateVendor = async (updated: Vendor) => {
     try {
-      await setDoc(doc(db, 'vendors', updated.id), clean(updated));
+      await setDoc(doc(db, 'vendors', updated.id), clean(updated), { merge: true });
       showNotification('Vendor updated successfully!');
-    } catch (err) {
-      console.error("Error updating vendor:", err);
+    } catch (err: any) {
+      console.warn("Vendor update failed:", err);
+      showNotification(err?.message || 'Unable to save vendor changes.', 'error');
     }
   };
 
@@ -4116,11 +4117,15 @@ function App() {
     isInteractiveSignInRef.current = true;
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
       const userCredential = await signInWithPopup(auth, provider);
       await completeAuthenticatedSignIn(userCredential.user);
     } catch (err: any) {
       isInteractiveSignInRef.current = false;
       setIsAuthLoading(false);
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        return;
+      }
       setAuthError(err.message || 'An error occurred during Google Sign-In.');
     }
   };
