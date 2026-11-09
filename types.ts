@@ -89,6 +89,19 @@ export interface Vendor {
     location?: string;
     description?: string;
     isCustom?: boolean;
+    iCalUID?: string;
+    recurringEventId?: string;
+    calendarId?: string;
+    accountEmail?: string;
+    origin?: 'google' | 'simcha_booking' | 'custom';
+    sourceBookingId?: string;
+    updated?: string;
+  }>;
+  googleCalendarSyncMap?: Record<string, {
+    googleEventId: string;
+    calendarId: string;
+    lastSyncedHash?: string;
+    updatedAt: string;
   }>;
   reviews?: Review[];
   services?: VendorService[];
@@ -101,7 +114,60 @@ export interface Vendor {
   enableDateCheckLimit?: boolean;
   maxDateChecks?: number;
   dateCheckResetHours?: number;
+  socialLinks?: VendorSocialLinks;
 }
+
+export type SocialPlatformId = 'instagram' | 'tiktok' | 'youtube' | 'facebook' | 'website';
+
+export interface VendorSocialLinks {
+  instagram?: string;
+  tiktok?: string;
+  youtube?: string;
+  facebook?: string;
+  website?: string;
+}
+
+export interface VendorSocialItem {
+  platform: SocialPlatformId;
+  label: string;
+  url: string;
+  handleDisplay: string;
+}
+
+export const getVendorSocialItems = (links?: VendorSocialLinks): VendorSocialItem[] => {
+  if (!links) return [];
+  const items: VendorSocialItem[] = [];
+  const add = (platform: SocialPlatformId, label: string, raw?: string, baseUrl?: string) => {
+    const val = (raw || '').trim();
+    if (!val) return;
+    let url = val;
+    let handleDisplay = val;
+    if (/^https?:\/\//i.test(val)) {
+      try {
+        const u = new URL(val);
+        const pathClean = u.pathname.replace(/^\/+|\/+$/g, '');
+        handleDisplay = pathClean ? `@${pathClean.replace(/^@/, '')}` : u.hostname.replace(/^www\./, '');
+      } catch {
+        handleDisplay = val;
+      }
+    } else if (baseUrl) {
+      const cleanHandle = val.replace(/^@/, '');
+      url = `${baseUrl}${cleanHandle}`;
+      handleDisplay = `@${cleanHandle}`;
+    } else {
+      url = `https://${val.replace(/^\/+/, '')}`;
+      handleDisplay = val;
+    }
+    items.push({ platform, label, url, handleDisplay });
+  };
+
+  add('instagram', 'Instagram', links.instagram, 'https://instagram.com/');
+  add('tiktok', 'TikTok', links.tiktok, 'https://tiktok.com/@');
+  add('youtube', 'YouTube', links.youtube, 'https://youtube.com/@');
+  add('facebook', 'Facebook', links.facebook, 'https://facebook.com/');
+  add('website', 'Website', links.website);
+  return items;
+};
 
 export interface HeroImage {
   id: string;

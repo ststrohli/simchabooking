@@ -169,7 +169,7 @@ const AccordionSection: React.FC<{
   children: React.ReactNode;
   badge?: string | number;
 }> = ({ title, icon: Icon, isOpen, onToggle, children, badge }) => (
-  <div className="bg-zinc-900/50 rounded-2xl border border-white/5 overflow-hidden transition-all duration-300">
+  <div className="simcha-scope-accordion bg-zinc-900/50 rounded-2xl border border-white/5 overflow-hidden transition-all duration-300">
     <button
       type="button"
       onClick={onToggle}
@@ -333,7 +333,7 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
     }
   };
 
-  return (
+  const scopeModalNode = (
     <motion.div
       role="dialog"
       aria-modal="true"
@@ -343,7 +343,7 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
       onClick={(e) => {
         if (e.target === e.currentTarget) dismissWithSlideOut();
       }}
-      className={`fixed inset-0 z-[260] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-xl overflow-hidden ${
+      className={`simcha-scope-backdrop fixed inset-0 z-[260] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-xl overflow-hidden ${
         isDismissing ? 'pointer-events-none' : ''
       }`}
     >
@@ -368,7 +368,7 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
           type="button"
           onClick={() => dismissWithSlideOut()}
           aria-label="Close Event Details"
-          className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-30 p-2 bg-black/70 backdrop-blur-md hover:bg-[#D4AF37] text-white hover:text-black rounded-full transition-all border border-white/15 cursor-pointer shadow-lg"
+          className="simcha-scope-close-btn absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-30 p-2 bg-black/70 backdrop-blur-md hover:bg-[#D4AF37] text-white hover:text-black rounded-full transition-all border border-white/15 cursor-pointer shadow-lg"
         >
           <X className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
@@ -376,7 +376,7 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
         {/* Modal Header (Draggable) */}
         <div
           {...dragHandleProps}
-          className="px-4 sm:px-6 pt-1 pb-3 border-b border-white/5 flex items-center justify-between bg-gradient-to-b from-[#151515] to-[#0d0d0d] shrink-0 cursor-grab active:cursor-grabbing select-none touch-none"
+          className="simcha-scope-header px-4 sm:px-6 pt-1 pb-3 border-b border-white/5 flex items-center justify-between bg-gradient-to-b from-[#151515] to-[#0d0d0d] shrink-0 cursor-grab active:cursor-grabbing select-none touch-none"
         >
           <div className="flex items-center gap-3 min-w-0 pr-10">
             <div className="w-11 h-11 rounded-full overflow-hidden border border-[#D4AF37]/40 bg-[#D4AF37]/15 shrink-0 flex items-center justify-center text-[#D4AF37] font-[Cinzel] font-bold">
@@ -445,7 +445,7 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
           className="p-4 sm:p-6 overflow-y-auto space-y-3 custom-scrollbar flex-1 overscroll-contain"
         >
           {/* Quick Summary Strip */}
-          <div className="grid grid-cols-3 gap-2 bg-black/50 p-3 rounded-2xl border border-white/5">
+          <div className="simcha-scope-summary-strip grid grid-cols-3 gap-2 bg-black/50 p-3 rounded-2xl border border-white/5">
             <div className="text-center px-2 py-1 border-r border-white/5">
               <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">Total Value</p>
               <p className="text-sm sm:text-base font-bold text-[#D4AF37] font-[Cinzel] mt-0.5">
@@ -475,7 +475,7 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
                 exit={{ height: 0, opacity: 0 }}
                 className="overflow-hidden"
               >
-                <div className="p-4 rounded-2xl bg-[#14120a] border border-[#D4AF37]/45 space-y-3 shadow-xl">
+                <div className="simcha-scope-offer-box p-4 rounded-2xl bg-[#14120a] border border-[#D4AF37]/45 space-y-3 shadow-xl">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <DollarSign className="w-4 h-4 text-[#D4AF37]" />
@@ -718,7 +718,7 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
               )}
 
               {/* Financial & Offer Breakdown Box */}
-              <div className="p-3.5 bg-gradient-to-br from-[#D4AF37]/15 to-black rounded-xl border border-[#D4AF37]/30 space-y-2 mt-2">
+              <div className="simcha-scope-financial-box p-3.5 bg-gradient-to-br from-[#D4AF37]/15 to-black rounded-xl border border-[#D4AF37]/30 space-y-2 mt-2">
                 {currentIsOffer && (
                   <div className="flex items-center justify-between text-xs border-b border-white/10 pb-2">
                     <span className="text-[9px] font-black text-[#D4AF37] uppercase tracking-widest">
@@ -756,24 +756,24 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
             onToggle={() => toggleSection('vendorInfo')}
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
-              <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+              <div className="simcha-scope-field p-3 bg-black/40 rounded-xl border border-white/5">
                 <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Vendor</p>
                 <p className="text-xs font-bold text-white">{vendor.name}</p>
                 <p className="text-[10px] text-[#D4AF37] uppercase tracking-wider mt-0.5">{vendor.category}</p>
               </div>
-              <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+              <div className="simcha-scope-field p-3 bg-black/40 rounded-xl border border-white/5">
                 <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Vendor Base Area</p>
                 <p className="text-xs font-bold text-white">{vendor.location || 'Tri-State / Worldwide'}</p>
                 {vendor.contactEmail && (
                   <p className="text-[10px] text-zinc-400 truncate mt-0.5">{vendor.contactEmail}</p>
                 )}
               </div>
-              <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+              <div className="simcha-scope-field p-3 bg-black/40 rounded-xl border border-white/5">
                 <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Reserved By</p>
                 <p className="text-xs font-bold text-white">{clientName}</p>
                 <p className="text-[10px] text-zinc-400 truncate mt-0.5">{contactEmail}</p>
               </div>
-              <div className="p-3 bg-black/40 rounded-xl border border-white/5">
+              <div className="simcha-scope-field p-3 bg-black/40 rounded-xl border border-white/5">
                 <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Reference</p>
                 <p className="text-xs font-bold text-white font-mono">
                   {isBooking ? `#${booking!.id.slice(-8).toUpperCase()}` : 'DRAFT-PLAN'}
@@ -791,7 +791,7 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
             onToggle={() => toggleSection('notes')}
           >
             <div className="pt-2 space-y-2">
-              <div className="p-3.5 bg-black/40 rounded-xl border border-white/5">
+              <div className="simcha-scope-field p-3.5 bg-black/40 rounded-xl border border-white/5">
                 <p className="text-xs text-zinc-300 leading-relaxed italic whitespace-pre-line">
                   {notesText ? `"${notesText}"` : 'No additional notes or special requests were included.'}
                 </p>
@@ -835,7 +835,7 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
         </div>
 
         {/* Modal Footer - Compact Single-Row Centered Pill Action Buttons */}
-        <div className="px-3 sm:px-5 py-2.5 bg-[#121212] border-t border-white/5 shrink-0">
+        <div className="simcha-scope-footer px-3 sm:px-5 py-2.5 bg-[#121212] border-t border-white/5 shrink-0">
           {isBooking ? (
             <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 w-full max-w-md mx-auto">
               {/* Only show Offer button if the booking was actually booked as an offer */}
@@ -865,7 +865,7 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
                     onClose();
                   });
                 }}
-                className="min-w-0 flex-1 max-w-[190px] px-3 sm:px-4 py-2 sm:py-2.5 bg-white/5 hover:bg-[#D4AF37] text-white hover:text-black font-black rounded-full border border-[#D4AF37]/40 transition-all text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap group"
+                className="simcha-scope-secondary-btn min-w-0 flex-1 max-w-[190px] px-3 sm:px-4 py-2 sm:py-2.5 bg-white/5 hover:bg-[#D4AF37] text-white hover:text-black font-black rounded-full border border-[#D4AF37]/40 transition-all text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap group"
               >
                 <MessageSquare className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#D4AF37] group-hover:text-black shrink-0" />
                 <span className="truncate">Message</span>
@@ -916,7 +916,7 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
                     onClose();
                   });
                 }}
-                className="min-w-0 flex-1 max-w-[170px] px-2.5 sm:px-4 py-2 sm:py-2.5 bg-white/5 hover:bg-white/10 text-white font-black rounded-full border border-white/15 transition-all text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap"
+                className="simcha-scope-secondary-btn min-w-0 flex-1 max-w-[170px] px-2.5 sm:px-4 py-2 sm:py-2.5 bg-white/5 hover:bg-white/10 text-white font-black rounded-full border border-white/15 transition-all text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap"
               >
                 <MessageSquare className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#D4AF37] shrink-0" />
                 <span className="truncate">Message</span>
@@ -959,6 +959,8 @@ const ClientEventScopeModal: React.FC<ClientEventScopeModalProps> = ({
       </motion.div>
     </motion.div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(scopeModalNode, document.body) : scopeModalNode;
 };
 
 interface ClientPortalProps {

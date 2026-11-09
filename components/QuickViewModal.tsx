@@ -1,10 +1,45 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Star, MapPin, ShieldCheck, Play, Pause, Volume2, VolumeX, Download, PictureInPicture2, ListVideo, Film, Image as ImageIcon, Maximize2, Minimize2, ChevronLeft, ChevronRight, Clock, ChevronDown, ChevronUp } from 'lucide-react';
-import { Vendor, Review } from '../types';
+import { X, Star, MapPin, ShieldCheck, Play, Pause, Volume2, VolumeX, Download, PictureInPicture2, ListVideo, Film, Image as ImageIcon, Maximize2, Minimize2, ChevronLeft, ChevronRight, Clock, ChevronDown, ChevronUp, ExternalLink, Globe } from 'lucide-react';
+import { Vendor, Review, getVendorSocialItems, SocialPlatformId } from '../types';
 import { MOCK_BOOKINGS } from '../services/mockData';
 import BookingModal from './BookingModal';
 import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
+
+const SocialPlatformIcon: React.FC<{ platform: SocialPlatformId; className?: string }> = ({ platform, className = 'w-3.5 h-3.5' }) => {
+  switch (platform) {
+    case 'instagram':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+          <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+          <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+        </svg>
+      );
+    case 'tiktok':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+          <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+        </svg>
+      );
+    case 'youtube':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+          <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17" />
+          <path d="m10 15 5-3-5-3z" />
+        </svg>
+      );
+    case 'facebook':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+          <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+        </svg>
+      );
+    case 'website':
+    default:
+      return <Globe className={className} />;
+  }
+};
 
 const MODAL_TRANSITION = { duration: 1.15, ease: [0.25, 0.85, 0.35, 1] as const };
 const EMPTY_INITIAL_DETAILS = { clientName: '', contactEmail: '', eventName: '' };
@@ -55,6 +90,8 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
   const [isNestedBookingDismissing, setIsNestedBookingDismissing] = useState(false);
   const [nestedBookingKey, setNestedBookingKey] = useState(0);
   const isQuickViewDismissingRef = React.useRef(false);
+  const reviewsSectionRef = useRef<HTMLDivElement | null>(null);
+  const socialItems = useMemo(() => getVendorSocialItems(vendor.socialLinks), [vendor.socialLinks]);
 
   useEffect(() => {
     if (bookingVendor) {
@@ -324,7 +361,22 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
   }, [currentMedia?.url, vendor.name, currentMediaIndex]);
 
   const handleToggleReviews = useCallback(() => {
-    setShowReviews((prev) => !prev);
+    setShowReviews((prev) => {
+      const next = !prev;
+      if (next) {
+        setTimeout(() => {
+          reviewsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 90);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleScrollToReviews = useCallback(() => {
+    setShowReviews(true);
+    setTimeout(() => {
+      reviewsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 90);
   }, []);
 
   const handleAuthorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -505,7 +557,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
                           {/* Custom Luxury Simcha Video Controls Bar */}
                           <div 
                             onClick={(e) => e.stopPropagation()}
-                            className="pointer-events-auto w-full bg-gradient-to-t from-black/95 via-black/80 to-transparent pt-8 pb-3.5 px-4 sm:px-6 flex flex-col gap-2.5"
+                            className="simcha-video-controls-bar pointer-events-auto w-full bg-gradient-to-t from-black/95 via-black/80 to-transparent pt-8 pb-3.5 px-4 sm:px-6 flex flex-col gap-2.5"
                           >
                             {/* Custom Interactive Gold Timestamp Scrubber */}
                             <div className="flex items-center gap-3 w-full">
@@ -801,19 +853,54 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
             </div>
             <h2 id="quick-view-title" className="text-3xl font-bold text-white font-[Cinzel] mb-2">{vendor.name}</h2>
             
-            <div className="flex items-center gap-4 mb-6">
-              <div className="flex items-center gap-1.5 text-[#D4AF37]">
-                <Star className="w-4 h-4 fill-current" />
-                <span className="text-sm font-black">{vendor.rating.toFixed(1)}</span>
-                <span className="text-[10px] text-zinc-300 font-bold uppercase tracking-wider ml-1">
+            <div className="flex flex-wrap items-center gap-3 mb-5">
+              <button
+                type="button"
+                onClick={handleScrollToReviews}
+                title="Click to view reviews"
+                className="flex items-center gap-1.5 text-[#D4AF37] bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/30 hover:border-[#D4AF37] px-3 py-1 rounded-full transition-all cursor-pointer active:scale-95 group"
+              >
+                <div className="flex items-center gap-0.5 text-[#D4AF37]">
+                  {[1, 2, 3, 4, 5].map((starIdx) => (
+                    <Star
+                      key={starIdx}
+                      className={`w-3.5 h-3.5 ${
+                        starIdx <= Math.round(vendor.rating || 5)
+                          ? 'fill-current text-[#D4AF37]'
+                          : 'text-[#D4AF37]/35'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs font-black ml-0.5">{vendor.rating.toFixed(1)}</span>
+                <span className="text-[10px] text-zinc-300 group-hover:text-white font-bold uppercase tracking-wider">
                   ({vendor.reviews?.length || 0} Reviews)
                 </span>
-              </div>
+              </button>
               <div className="flex items-center gap-1.5 text-zinc-300">
                 <MapPin className="w-4 h-4 text-[#D4AF37]" />
                 <span className="text-sm font-medium">{vendor.location}</span>
               </div>
             </div>
+
+            {socialItems.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 mb-6">
+                {socialItems.map((item) => (
+                  <a
+                    key={item.platform}
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`${item.label}: ${item.handleDisplay}`}
+                    className="h-8 px-3 rounded-full bg-black/60 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/35 hover:border-[#D4AF37] text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                  >
+                    <SocialPlatformIcon platform={item.platform} className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate max-w-[140px]">{item.handleDisplay}</span>
+                    <ExternalLink className="w-2.5 h-2.5 opacity-70 shrink-0" />
+                  </a>
+                ))}
+              </div>
+            )}
 
             <div className="space-y-6 flex-1 mb-8">
               <div>
@@ -834,7 +921,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
               )}
 
               {/* Reviews Section */}
-              <div className="border-t border-[#D4AF37]/10 pt-6">
+              <div ref={reviewsSectionRef} className="border-t border-[#D4AF37]/10 pt-6 scroll-mt-4">
                 <button 
                   onClick={handleToggleReviews} 
                   className="w-full flex items-center justify-between text-zinc-300 hover:text-[#D4AF37] text-[10px] font-black uppercase tracking-[0.2em] transition-colors outline-none cursor-pointer"

@@ -2945,10 +2945,11 @@ function App() {
 
   const handleUpdateVendor = async (updated: Vendor) => {
     try {
-      await setDoc(doc(db, 'vendors', updated.id), clean(updated));
+      await setDoc(doc(db, 'vendors', updated.id), clean(updated), { merge: true });
       showNotification('Vendor updated successfully!');
-    } catch (err) {
-      console.error("Error updating vendor:", err);
+    } catch (err: any) {
+      console.warn("Vendor update failed:", err);
+      showNotification(err?.message || 'Unable to save vendor changes.', 'error');
     }
   };
 
@@ -4116,11 +4117,15 @@ function App() {
     isInteractiveSignInRef.current = true;
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
       const userCredential = await signInWithPopup(auth, provider);
       await completeAuthenticatedSignIn(userCredential.user);
     } catch (err: any) {
       isInteractiveSignInRef.current = false;
       setIsAuthLoading(false);
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        return;
+      }
       setAuthError(err.message || 'An error occurred during Google Sign-In.');
     }
   };
@@ -4944,11 +4949,11 @@ function App() {
                                 whileTap={{ scale: 0.96 }}
                                 transition={{ type: "spring", stiffness: 340, damping: 18 }}
                                 onClick={() => { setActiveCategory(cat); setActiveSubCategoryGroup(null); setActiveSubSubCategory(null); }} 
-                                className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
+                                className="simcha-category-card group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
                               >
                                   {renderMedia(categoryImages[cat], "absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-80 group-hover:scale-115 transition-all duration-500 ease-out transform-gpu", undefined, true)}
                                   <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
-                                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                                  <div className="simcha-card-radial-glow pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                   <div className="absolute inset-0 flex items-center justify-center p-3.5 sm:p-4 text-center">
                                     <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white group-hover:scale-105 group-hover:-translate-y-0.5 transition-all duration-300 drop-shadow-md">{cat}</h3>
                                   </div>
@@ -4966,11 +4971,11 @@ function App() {
                             whileTap={{ scale: 0.96 }}
                             transition={{ type: "spring", stiffness: 340, damping: 18 }}
                             onClick={() => setShowAllCategoriesGrid(true)} 
-                            className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
+                            className="simcha-category-card group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
                           >
                               {renderMedia("https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-80 group-hover:scale-115 transition-all duration-500 ease-out transform-gpu", undefined, true)}
                               <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
-                              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                              <div className="simcha-card-radial-glow pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                               <div className="absolute inset-0 flex items-center justify-center p-3.5 sm:p-4 text-center">
                                 <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white group-hover:scale-105 group-hover:-translate-y-0.5 transition-all duration-300 drop-shadow-md">View All</h3>
                               </div>
@@ -5048,17 +5053,17 @@ function App() {
                             whileTap={{ scale: 0.96 }}
                             transition={{ type: "spring", stiffness: 340, damping: 18 }}
                             onClick={() => { setActiveSubCategoryGroup(group); setActiveSubSubCategory(null); }}
-                            className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
+                            className="simcha-category-card group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
                           >
                              {subCategoryImages[group] ? (
                                <>{renderMedia(subCategoryImages[group], "absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-80 group-hover:scale-115 transition-all duration-500 ease-out transform-gpu", group, true)}</>
                              ) : (
-                               <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-115 transition-transform duration-500 ease-out transform-gpu">
+                               <div className="simcha-category-empty-bg absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-115 transition-transform duration-500 ease-out transform-gpu">
                                  <span className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No Image</span>
                                </div>
                              )}
                              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
-                             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                             <div className="simcha-card-radial-glow pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                              <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
                                <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white group-hover:scale-105 group-hover:-translate-y-0.5 transition-all duration-300 drop-shadow-md">{group}</h3>
                              </div>
@@ -5076,11 +5081,11 @@ function App() {
                           whileTap={{ scale: 0.96 }}
                           transition={{ type: "spring", stiffness: 340, damping: 18 }}
                           onClick={() => { setActiveSubCategoryGroup('__ALL__'); setActiveSubSubCategory(null); }}
-                          className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
+                          className="simcha-category-card group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
                         >
                            {renderMedia("https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-80 group-hover:scale-115 transition-all duration-500 ease-out transform-gpu", undefined, true)}
                            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
-                           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                           <div className="simcha-card-radial-glow pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                            <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
                              <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white group-hover:scale-105 group-hover:-translate-y-0.5 transition-all duration-300 drop-shadow-md">View All</h3>
                            </div>
@@ -5110,17 +5115,17 @@ function App() {
                             whileTap={{ scale: 0.96 }}
                             transition={{ type: "spring", stiffness: 340, damping: 18 }}
                             onClick={() => setActiveSubSubCategory(sub)}
-                            className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
+                            className="simcha-category-card group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
                           >
                             {subCategoryImages[sub] ? (
                               <>{renderMedia(subCategoryImages[sub], "absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-80 group-hover:scale-115 transition-all duration-500 ease-out transform-gpu", sub, true)}</>
                             ) : (
-                              <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-115 transition-transform duration-500 ease-out transform-gpu">
+                              <div className="simcha-category-empty-bg absolute inset-0 bg-zinc-900 flex items-center justify-center opacity-60 group-hover:scale-115 transition-transform duration-500 ease-out transform-gpu">
                                 <span className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No Image</span>
                               </div>
                             )}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
-                            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                            <div className="simcha-card-radial-glow pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                             <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
                               <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white group-hover:scale-105 group-hover:-translate-y-0.5 transition-all duration-300 drop-shadow-md">{sub}</h3>
                             </div>
@@ -5138,11 +5143,11 @@ function App() {
                           whileTap={{ scale: 0.96 }}
                           transition={{ type: "spring", stiffness: 340, damping: 18 }}
                           onClick={() => setActiveSubSubCategory('__ALL__')}
-                          className="group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
+                          className="simcha-category-card group relative w-full h-32 sm:h-36 rounded-xl overflow-hidden border-2 border-[#D4AF37]/30 hover:border-[#FFE885] hover:shadow-[0_16px_36px_rgba(212,175,55,0.35),0_0_20px_rgba(255,232,133,0.22)] focus-visible:ring-2 focus-visible:ring-[#D4AF37] outline-none transition-[border-color,box-shadow] duration-300 cursor-pointer shadow-lg transform-gpu will-change-transform"
                         >
                           {renderMedia("https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=600", "absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-80 group-hover:scale-115 transition-all duration-500 ease-out transform-gpu", undefined, true)}
                           <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-black/30 simcha-image-fader-card"></div>
-                          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                          <div className="simcha-card-radial-glow pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.24)_0%,transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                           <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 sm:p-4 text-center">
                             <h3 className="text-[#D4AF37] font-black text-base sm:text-lg font-[Cinzel] tracking-wider group-hover:text-white group-hover:scale-105 group-hover:-translate-y-0.5 transition-all duration-300 drop-shadow-md">View All</h3>
                           </div>

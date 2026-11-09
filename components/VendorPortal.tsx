@@ -18,6 +18,15 @@ import LocationAutocomplete from './LocationAutocomplete';
 import { ThemeModeSwitch } from './ThemeModeSwitch';
 import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
 import ChatModal from './ChatModal';
+import {
+  extractDatesFromEventRange,
+  buildBookingSyncHash,
+  buildGoogleCalendarPayloadForBooking,
+  extractSimchaBookingIdFromEvent,
+  findMatchingGoogleEventsForBooking,
+  reconcileVendorGoogleEvents,
+  GoogleCalendarSyncMap,
+} from '../services/calendarSyncService';
 
 interface VendorPortalProps {
   vendor: Vendor;
@@ -1399,13 +1408,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const isSyncingRef = useRef(false);
   const [syncStep, setSyncStep] = useState<'idle' | 'auth' | 'fetching' | 'saving' | 'success'>('idle');
   const [calendarSyncError, setCalendarSyncError] = useState<string | null>(null);
+  const inFlightBookingPushIdsRef = useRef<Set<string>>(new Set());
 
   const handleCalendarSync = async () => {
     if (isSyncingRef.current || isSyncing) {
-      showNotification("Calendar authentication is already in progress.", "info");
+      showNotification("Calendar sync is already in progress.", "info");
       return;
     }
-    
+
     isSyncingRef.current = true;
     setIsSyncing(true);
     setSyncStep('auth');
@@ -1418,206 +1428,250 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       provider.addScope('https://www.googleapis.com/auth/calendar.events');
       provider.setCustomParameters({ prompt: 'consent', access_type: 'offline' });
 
-      // Cleanly await sign-in popup
       const result = await signInWithPopup(firebaseAuth, provider);
-      
+
       setSyncStep('fetching');
       showNotification('Authenticated! Connecting to Google Calendar API...', 'info');
-      
-      // Extract Google Access Token
+
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const token = credential?.accessToken;
-      
+
       if (!token) {
         throw new Error("Could not retrieve Google Access Token from login credential.");
       }
-      
-      // Fetch primary calendar events from today onwards
-      const timeMin = new Date().toISOString();
-      const response = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&singleEvents=true&orderBy=startTime&maxResults=250`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Google Calendar API error: ${response.status} - ${errorText}`);
-      }
-      
-      const data = await response.json();
-      const events = data.items || [];
-      const activeEvents = events.filter((e: any) => e.status !== 'cancelled');
-      
-      setSyncStep('saving');
-      showNotification(`Found ${activeEvents.length} events on Google. Syncing Simcha Bookings...`, 'info');
 
-      // TWO-WAY SYNC: Push native confirmed Simcha bookings to Google Calendar
-      const confirmedGigs = bookings.filter(b => b.status === 'confirmed');
-      const gigsToPush = confirmedGigs.filter(gig => {
-        const alreadyExists = activeEvents.some((ge: any) => {
-          const hasId = ge.description && ge.description.includes(gig.id);
-          const hasTitle = ge.summary && (ge.summary.includes(gig.eventName) || ge.summary.includes(gig.id));
-          return hasId || (hasTitle && (ge.start?.dateTime?.startsWith(gig.date) || ge.start?.date === gig.date));
-        });
-        return !alreadyExists;
-      });
-
-      let pushedCount = 0;
-      if (gigsToPush.length > 0) {
-        showNotification(`Syncing ${gigsToPush.length} confirmed bookings back to Google Calendar...`, 'info');
-        for (const gig of gigsToPush) {
-          let startVal: any = { date: gig.date };
-          let endVal: any = { date: gig.date };
-
-          if (gig.eventTime) {
-            try {
-              const trimmed = gig.eventTime.trim();
-              let h24 = -1;
-              let mins = '00';
-              const ampm = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-              if (ampm) {
-                let h = parseInt(ampm[1], 10) % 12;
-                if (ampm[3].toUpperCase() === 'PM') h += 12;
-                h24 = h;
-                mins = ampm[2];
-              } else {
-                const m24 = trimmed.match(/^(\d{1,2}):(\d{2})/);
-                if (m24) {
-                  h24 = parseInt(m24[1], 10);
-                  mins = m24[2];
-                }
-              }
-              if (h24 >= 0 && h24 <= 23) {
-                const startD = new Date(`${gig.date}T${String(h24).padStart(2, '0')}:${mins}:00`);
-                startVal = { dateTime: startD.toISOString() };
-                const endD = new Date(startD.getTime() + 4 * 60 * 60 * 1000); // 4 hours duration
-                endVal = { dateTime: endD.toISOString() };
-              }
-            } catch (e) {
-              console.warn("Error parsing event time, falling back to all-day event", e);
-            }
-          }
-
-          const res = await fetch(`https://www.googleapis.com/calendar/v3/primary/events`.replace('/primary/events', '/calendars/primary/events'), {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              summary: `Simcha Booking: ${gig.eventName}`,
-              description: `Simcha Booking Detail\nClient: ${gig.clientName}\nBooking ID: ${gig.id}\nLocation: ${gig.eventLocation || 'Not specified'}\nNotes: ${gig.notes || ''}`,
-              start: startVal,
-              end: endVal
-            })
-          });
-
-          if (res.ok) {
-            pushedCount++;
-          } else {
-            console.error(`Failed to push gig ${gig.id} to Google Calendar:`, await res.text());
-          }
-        }
-      }
-
-      // ONE-WAY SYNC: Build detailed list of googleEvents to save to Firestore while preserving custom vendor events
-      const existingCustomEvents = (latestEditFormRef.current.googleEvents || vendor.googleEvents || []).filter(
-        (ce) => ce.isCustom || String(ce.id).startsWith('custom_')
-      );
-      const parsedGoogleEvents = [
-        ...existingCustomEvents,
-        ...activeEvents.map((e: any) => ({
-          id: e.id,
-          summary: e.summary || 'Busy (Google Calendar)',
-          start: e.start?.dateTime || e.start?.date || '',
-          end: e.end?.dateTime || e.end?.date || '',
-          location: e.location || '',
-          description: e.description || '',
-        })),
-      ];
-      
-      const currentUnavailable = vendor.unavailableDates || [];
-      const googleDates: string[] = [];
-      
-      // Helper function to extract YYYY-MM-DD local dates for an event
-      const getDatesForEvent = (event: any): string[] => {
-        const dates: string[] = [];
-        const startVal = event.start?.dateTime || event.start?.date;
-        const endVal = event.end?.dateTime || event.end?.date;
-        
-        if (!startVal) return [];
-        
-        const start = new Date(startVal);
-        let end = endVal ? new Date(endVal) : new Date(start);
-        
-        if (event.start?.date && event.end?.date) {
-          // All day event end is exclusive, subtract 1 day to make inclusive
-          end = new Date(end.getTime() - 1000 * 60 * 60 * 24);
-        }
-        
-        const formatDate = (d: Date) => {
-          const year = d.getFullYear();
-          const month = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return `${year}-${month}-${day}`;
-        };
-        
-        const startStr = formatDate(start);
-        const endStr = formatDate(end);
-        
-        let cur = new Date(startStr + 'T00:00:00');
-        const targetEnd = new Date(endStr + 'T00:00:00');
-        
-        while (cur <= targetEnd) {
-          dates.push(formatDate(cur));
-          cur.setDate(cur.getDate() + 1);
-        }
-        
-        return dates;
-      };
-      
-      activeEvents.forEach((event: any) => {
-        const eventDates = getDatesForEvent(event);
-        googleDates.push(...eventDates);
-      });
-      
-      // Deduplicate and sort dates
-      const mergedDates = Array.from(new Set([...currentUnavailable, ...googleDates])).sort();
-      const newDatesCount = mergedDates.length - currentUnavailable.length;
-      
-      // Ensure we use the exact vendor ID from current session
       const sessionVendorId = vendor.id || firebaseAuth.currentUser?.uid;
       if (!sessionVendorId) {
         throw new Error("No active session or vendor ID found.");
       }
 
-      // Save to Firestore using verified vendor ID in current session
-      onUpdateVendor({
+      // Query from 1 year in the past so bookings earlier today or in recent months are always matched
+      // and never re-pushed as duplicates due to a narrow timeMin window.
+      const timeMin = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+      const response = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&singleEvents=true&orderBy=startTime&maxResults=2500`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Google Calendar API error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      const events = Array.isArray(data.items) ? data.items : [];
+      let activeEvents = events.filter((e: any) => e && e.status !== 'cancelled');
+
+      setSyncStep('saving');
+      showNotification(`Found ${activeEvents.length} events on Google. Reconciling Simcha Bookings...`, 'info');
+
+      const updatedSyncMap: GoogleCalendarSyncMap = {
+        ...(latestEditFormRef.current.googleCalendarSyncMap || vendor.googleCalendarSyncMap || {}),
+      };
+
+      const confirmedGigs = bookings.filter((b) => b.status === 'confirmed');
+      let pushedCount = 0;
+      let updatedCount = 0;
+      const removedDuplicateGoogleIds = new Set<string>();
+
+      for (const gig of confirmedGigs) {
+        if (!gig.id) continue;
+        const payload = buildGoogleCalendarPayloadForBooking(gig, sessionVendorId);
+        const currentHash = buildBookingSyncHash(gig);
+        const matches = findMatchingGoogleEventsForBooking(gig, activeEvents, updatedSyncMap);
+        const storedEntry = updatedSyncMap[gig.id];
+
+        if (matches.length > 0 || storedEntry?.googleEventId) {
+          const primaryMatch = matches[0];
+          const targetGoogleId = primaryMatch?.id || storedEntry.googleEventId;
+
+          // Clean up any extra duplicate "Simcha Booking: ..." copies on Google Calendar
+          // ONLY when provenance for this exact booking ID is 100% certain.
+          if (matches.length > 1) {
+            for (const dup of matches.slice(1)) {
+              const provenBookingId = extractSimchaBookingIdFromEvent(dup, confirmedGigs, updatedSyncMap);
+              const isProvenSimchaCopy =
+                provenBookingId === gig.id &&
+                typeof dup.summary === 'string' &&
+                dup.summary.startsWith('Simcha Booking:') &&
+                typeof dup.description === 'string' &&
+                dup.description.includes('Simcha Booking Detail');
+
+              if (isProvenSimchaCopy && dup.id && dup.id !== targetGoogleId) {
+                removedDuplicateGoogleIds.add(dup.id);
+                try {
+                  await fetch(
+                    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(dup.id)}`,
+                    {
+                      method: 'DELETE',
+                      headers: { Authorization: `Bearer ${token}` },
+                    }
+                  );
+                } catch (delErr) {
+                  console.warn(`Could not remove duplicate Google event ${dup.id}:`, delErr);
+                }
+              }
+            }
+          }
+
+          const needsUpdate =
+            !storedEntry ||
+            storedEntry.lastSyncedHash !== currentHash ||
+            (primaryMatch &&
+              (primaryMatch.summary !== payload.summary ||
+                (primaryMatch.location || '') !== (payload.location || '') ||
+                (primaryMatch.description || '') !== payload.description));
+
+          if (needsUpdate && targetGoogleId) {
+            const patchRes = await fetch(
+              `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(targetGoogleId)}`,
+              {
+                method: 'PATCH',
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+              }
+            );
+
+            if (patchRes.ok) {
+              updatedCount++;
+              updatedSyncMap[gig.id] = {
+                googleEventId: targetGoogleId,
+                calendarId: 'primary',
+                lastSyncedHash: currentHash,
+                updatedAt: new Date().toISOString(),
+              };
+              continue;
+            } else if (patchRes.status !== 404) {
+              // Keep existing mapping on transient error rather than creating a duplicate
+              updatedSyncMap[gig.id] = {
+                googleEventId: targetGoogleId,
+                calendarId: 'primary',
+                lastSyncedHash: storedEntry?.lastSyncedHash || currentHash,
+                updatedAt: new Date().toISOString(),
+              };
+              continue;
+            }
+            // If 404 (deleted on Google Calendar), fall through to POST a fresh event
+          } else if (targetGoogleId) {
+            updatedSyncMap[gig.id] = {
+              googleEventId: targetGoogleId,
+              calendarId: 'primary',
+              lastSyncedHash: currentHash,
+              updatedAt: storedEntry?.updatedAt || new Date().toISOString(),
+            };
+            continue;
+          }
+        }
+
+        // Guard against concurrent/retry duplicate POSTs in the same session
+        if (inFlightBookingPushIdsRef.current.has(gig.id)) {
+          continue;
+        }
+        inFlightBookingPushIdsRef.current.add(gig.id);
+
+        try {
+          const postRes = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+          });
+
+          if (postRes.ok) {
+            const createdEv = await postRes.json();
+            pushedCount++;
+            if (createdEv?.id) {
+              updatedSyncMap[gig.id] = {
+                googleEventId: createdEv.id,
+                calendarId: 'primary',
+                lastSyncedHash: currentHash,
+                updatedAt: new Date().toISOString(),
+              };
+            }
+          } else {
+            console.error(`Failed to push gig ${gig.id} to Google Calendar:`, await postRes.text());
+          }
+        } finally {
+          inFlightBookingPushIdsRef.current.delete(gig.id);
+        }
+      }
+
+      if (removedDuplicateGoogleIds.size > 0) {
+        activeEvents = activeEvents.filter((e: any) => !removedDuplicateGoogleIds.has(e.id));
+      }
+
+      // Reconcile vendor.googleEvents:
+      // - Preserve custom vendor events
+      // - Exclude Simcha-origin exported bookings so they are never duplicated on top of native bookings
+      // - Deduplicate and upsert external Google Calendar events by (calendarId, id)
+      const parsedGoogleEvents = reconcileVendorGoogleEvents({
+        existingVendorEvents: latestEditFormRef.current.googleEvents || vendor.googleEvents || [],
+        fetchedGoogleEvents: activeEvents,
+        bookings,
+        syncMap: updatedSyncMap,
+        calendarId: 'primary',
+        accountEmail: result.user?.email || undefined,
+      });
+
+      const currentUnavailable = latestEditFormRef.current.unavailableDates || vendor.unavailableDates || [];
+      const googleDates: string[] = [];
+
+      // Lock dates only from genuine external Google events (only today or future dates)
+      const todayYMD = new Date().toLocaleDateString('en-CA');
+      parsedGoogleEvents.forEach((event) => {
+        if (event.isCustom) return;
+        const eventDates = extractDatesFromEventRange(event.start, event.end);
+        eventDates.forEach((d) => {
+          if (d >= todayYMD) {
+            googleDates.push(d);
+          }
+        });
+      });
+
+      const mergedDates = Array.from(new Set([...currentUnavailable, ...googleDates])).sort();
+      const newDatesCount = Math.max(0, mergedDates.length - currentUnavailable.length);
+
+      const updatedVendorPayload: Vendor = {
         ...vendor,
+        ...latestEditFormRef.current,
         id: sessionVendorId,
         unavailableDates: mergedDates,
-        googleEvents: parsedGoogleEvents
-      });
-      
+        googleEvents: parsedGoogleEvents,
+        googleCalendarSyncMap: updatedSyncMap,
+      };
+
+      setEditForm(updatedVendorPayload);
+      latestEditFormRef.current = updatedVendorPayload;
+      onUpdateVendor(updatedVendorPayload);
+
       setSyncStep('success');
-      
-      let successMsg = `Two-way sync complete! Imported ${activeEvents.length} events from Google.`;
+
+      const importedExternalCount = parsedGoogleEvents.filter((e) => !e.isCustom).length;
+      let successMsg = `Calendar synced! ${importedExternalCount} Google events up to date.`;
       if (pushedCount > 0) {
-        successMsg += ` Exported ${pushedCount} bookings/events to Google Calendar.`;
+        successMsg += ` Exported ${pushedCount} new booking${pushedCount === 1 ? '' : 's'}.`;
+      }
+      if (updatedCount > 0) {
+        successMsg += ` Updated ${updatedCount} existing booking${updatedCount === 1 ? '' : 's'}.`;
       }
       if (newDatesCount > 0) {
-        successMsg += ` Blocked ${newDatesCount} new dates.`;
+        successMsg += ` Locked ${newDatesCount} new date${newDatesCount === 1 ? '' : 's'}.`;
       }
-      
+
       showNotification(successMsg, 'success');
       setCalendarSyncError(null);
     } catch (error: any) {
       console.error('Error during Google Calendar authentication/fetch:', error);
-      
+
       let userMessage = 'Authentication failed. Please try again.';
       if (error.code === 'auth/popup-closed-by-user') {
         userMessage = 'The sign-in window was closed before completion. Try opening the app in a new tab if the popup was blocked.';
@@ -1630,7 +1684,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       } else {
         userMessage = error.message || userMessage;
       }
-      
+
       setCalendarSyncError(userMessage);
       showNotification(userMessage, 'info');
       setSyncStep('idle');
@@ -2060,35 +2114,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
   const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
 
   const getDatesForEventRange = (startVal: string, endVal: string): string[] => {
-    if (!startVal) return [];
-    const start = new Date(startVal);
-    let end = endVal ? new Date(endVal) : new Date(start);
-    
-    const isAllDay = startVal.length <= 10 && (!endVal || endVal.length <= 10);
-    if (isAllDay && endVal) {
-      // Subtract 1 day for end date since Google end dates for all day are exclusive
-      end = new Date(end.getTime() - 1000 * 60 * 60 * 24);
-    }
-
-    const formatDate = (d: Date) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
-    const startStr = formatDate(start);
-    const endStr = formatDate(end);
-    
-    const dates: string[] = [];
-    let cur = new Date(startStr + 'T00:00:00');
-    const targetEnd = new Date(endStr + 'T00:00:00');
-    
-    while (cur <= targetEnd) {
-      dates.push(formatDate(cur));
-      cur.setDate(cur.getDate() + 1);
-    }
-    return dates;
+    return extractDatesFromEventRange(startVal, endVal);
   };
 
   const formatGoogleEventTime = (startStr: string, endStr: string) => {
@@ -3087,6 +3113,28 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     }
   };
 
+  // Memoized clean Google events (excludes any legacy imported "Simcha Booking: ..." duplicates)
+  const reconciledCalendarGoogleEvents = useMemo(() => {
+    const rawEvents = editForm.googleEvents || vendor.googleEvents || [];
+    const syncMap = editForm.googleCalendarSyncMap || vendor.googleCalendarSyncMap;
+    return reconcileVendorGoogleEvents({
+      existingVendorEvents: rawEvents,
+      bookings,
+      syncMap,
+    });
+  }, [editForm.googleEvents, vendor.googleEvents, editForm.googleCalendarSyncMap, vendor.googleCalendarSyncMap, bookings]);
+
+  // Automatically persist cleaned googleEvents if legacy Simcha Booking duplicate entries exist in state
+  useEffect(() => {
+    const rawEvents = editForm.googleEvents || vendor.googleEvents || [];
+    if (rawEvents.length > 0 && reconciledCalendarGoogleEvents.length < rawEvents.length) {
+      applyImmediateVendorUpdate((prev) => ({
+        ...prev,
+        googleEvents: reconciledCalendarGoogleEvents,
+      }));
+    }
+  }, [reconciledCalendarGoogleEvents.length]);
+
   const renderCalendar = () => {
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
@@ -3095,7 +3143,6 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     const monthName = viewDate.toLocaleString('default', { month: 'long' });
     const todayStr = new Date().toLocaleDateString('en-CA');
 
-    // Calculate start and end dates for Week View
     const startOfWeek = new Date(viewDate);
     startOfWeek.setDate(viewDate.getDate() - viewDate.getDay());
     const endOfWeek = new Date(startOfWeek);
@@ -3105,15 +3152,25 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
     const weekEndName = endOfWeek.toLocaleString('default', { month: 'short', day: 'numeric', year: 'numeric' });
 
     const currentUnavailableDates = editForm.unavailableDates || vendor.unavailableDates || [];
-    const allCalendarGoogleEvents = editForm.googleEvents || vendor.googleEvents || [];
+    const allCalendarGoogleEvents = reconciledCalendarGoogleEvents;
 
-    // Render Month days
-    const calendarDays = [];
+    // Calculate trailing pad cells so the month grid always forms complete 7-column weeks
+    const totalCells = firstDay + daysInMonth;
+    const trailingPadCount = (7 - (totalCells % 7)) % 7;
+
+    const calendarDays: React.ReactNode[] = [];
+
     for (let i = 0; i < firstDay; i++) {
       calendarDays.push(
-        <div key={`pad-${i}`} className="min-h-[104px] sm:min-h-[126px] md:min-h-[138px] bg-[#070707] border-b border-r border-white/5 opacity-35" />
+        <div
+          key={`pad-start-${i}`}
+          aria-hidden="true"
+          className="simcha-cal-pad min-h-[76px] sm:min-h-[96px] md:min-h-[112px] bg-[#080808] border-b border-r border-white/[0.06]"
+        />
       );
     }
+
+    const MAX_MONTH_VISIBLE_EVENTS = 3;
 
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month, day);
@@ -3127,7 +3184,18 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         const eventDates = getDatesForEventRange(e.start, e.end);
         return eventDates.includes(dateStr);
       });
-      const totalDayItems = dailyBookings.length + dailyGoogleEvents.length;
+
+      type UnifiedDayItem =
+        | { kind: 'booking'; id: string; booking: Booking }
+        | { kind: 'google'; id: string; event: (typeof allCalendarGoogleEvents)[number] };
+
+      const combinedItems: UnifiedDayItem[] = [
+        ...dailyBookings.map((b) => ({ kind: 'booking' as const, id: `b-${b.id}`, booking: b })),
+        ...dailyGoogleEvents.map((e) => ({ kind: 'google' as const, id: `g-${e.id}`, event: e })),
+      ];
+
+      const visibleItems = combinedItems.slice(0, MAX_MONTH_VISIBLE_EVENTS);
+      const overflowCount = Math.max(0, combinedItems.length - MAX_MONTH_VISIBLE_EVENTS);
 
       calendarDays.push(
         <div
@@ -3135,111 +3203,124 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           onClick={() => openCalendarDateSheet(dateStr, false)}
           role="button"
           tabIndex={0}
+          aria-label={`${monthName} ${day}, ${year}${isBlocked ? ', Date locked' : ''}${
+            combinedItems.length > 0 ? `, ${combinedItems.length} event${combinedItems.length === 1 ? '' : 's'}` : ''
+          }`}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               openCalendarDateSheet(dateStr, false);
             }
           }}
-          className={`min-h-[104px] sm:min-h-[126px] md:min-h-[138px] border-b border-r p-1.5 sm:p-2.5 transition-all cursor-pointer relative group flex flex-col justify-between select-none ${
-            isBlocked
-              ? 'bg-red-950/[0.08] border-white/10 hover:bg-red-950/[0.14] hover:border-[#D4AF37]/45'
-              : 'bg-[#0a0a0a] border-white/5 hover:bg-[#121212] hover:border-[#D4AF37]/45'
-          } ${isToday ? 'ring-1 ring-[#D4AF37] ring-inset bg-[#D4AF37]/[0.05]' : ''} ${
-            isSelectedDay ? 'ring-2 ring-[#D4AF37] ring-inset' : ''
-          }`}
+          className={`simcha-cal-day min-h-[76px] sm:min-h-[96px] md:min-h-[112px] border-b border-r border-white/[0.07] p-1 sm:p-1.5 transition-colors cursor-pointer relative group flex flex-col justify-start select-none outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-inset ${
+            isToday
+              ? 'simcha-cal-day-today bg-[#141109] hover:bg-[#19150b]'
+              : 'bg-[#0b0b0b] hover:bg-[#121212]'
+          } ${isSelectedDay ? 'simcha-cal-day-selected ring-1 ring-[#D4AF37] ring-inset' : ''}`}
         >
-          {/* Top Row: Day Number + Status Pill */}
-          <div className="flex items-center justify-between gap-1 mb-1">
+          {/* Day Header: Number + Unframed Understated Lock Indicator */}
+          <div className="flex items-center justify-between gap-1 px-0.5 mb-1">
             <span
-              className={`inline-flex items-center justify-center text-[10px] sm:text-[11px] font-black transition-all ${
+              className={`inline-flex items-center justify-center text-[11px] sm:text-xs font-semibold leading-none transition-colors ${
                 isToday
-                  ? 'w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#D4AF37] text-black shadow-md'
-                  : isBlocked
-                  ? 'text-zinc-400'
-                  : 'text-zinc-200 group-hover:text-[#D4AF37]'
+                  ? 'simcha-cal-today-num w-5 h-5 sm:w-5.5 sm:h-5.5 rounded-full bg-[#D4AF37] text-black font-bold'
+                  : 'simcha-cal-day-num text-zinc-200 group-hover:text-[#D4AF37]'
               }`}
             >
               {day}
             </span>
 
-            <div className="flex items-center gap-1">
-              {isBlocked && (
-                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-[7px] sm:text-[8px] font-black uppercase tracking-wider text-red-300">
-                  <Lock className="w-2.5 h-2.5" />
-                  <span className="hidden sm:inline">Locked</span>
-                </span>
-              )}
-            </div>
+            {isBlocked && (
+              <span
+                className="simcha-cal-lock-icon inline-flex items-center gap-0.5 text-zinc-400"
+                title="Date locked"
+                aria-label="Date locked"
+              >
+                <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 shrink-0" />
+              </span>
+            )}
           </div>
 
-          {/* Middle Event Stack (Google Calendar Pill Bars — Tapping an event pops up details immediately) */}
-          <div className="flex-1 space-y-1 overflow-y-auto custom-scrollbar max-h-[82px] z-10">
-            {dailyBookings.map((b) => {
-              const isConfirmed = b.status === 'confirmed';
-              const timeStr = b.eventTime ? formatBookingTime12h(b.eventTime) : '';
-              return (
-                <div
-                  key={b.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSimchaBookingClick(b);
-                  }}
-                  className={`px-2 py-1 rounded-full border text-left text-[9px] sm:text-[10px] leading-tight transition-all truncate flex items-center gap-1.5 shadow-sm ${
-                    isConfirmed
-                      ? 'bg-[#D4AF37]/20 border-[#D4AF37]/60 text-white hover:bg-[#D4AF37]/30'
-                      : 'bg-[#171717] border-[#D4AF37]/40 text-zinc-100 hover:border-[#D4AF37]'
-                  }`}
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                      isConfirmed ? 'bg-emerald-400' : 'bg-[#D4AF37] animate-pulse'
+          {/* Flat Event Rows */}
+          <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+            {visibleItems.map((item) => {
+              if (item.kind === 'booking') {
+                const b = item.booking;
+                const isConfirmed = b.status === 'confirmed';
+                const statusTag = isConfirmed ? 'Conf' : 'Pend';
+                const timeStr = b.eventTime ? formatBookingTime12h(b.eventTime) : '';
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      handleSimchaBookingClick(b);
+                    }}
+                    className={`simcha-cal-event w-full text-left px-1 sm:px-1.5 py-0.5 rounded-[3px] border-l-2 text-[9px] sm:text-[10px] leading-tight truncate transition-colors cursor-pointer ${
+                      isConfirmed
+                        ? 'simcha-cal-event-confirmed bg-emerald-950/40 hover:bg-emerald-900/50 border-emerald-500 text-zinc-100'
+                        : 'simcha-cal-event-pending bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 border-[#D4AF37] text-zinc-100'
                     }`}
-                  />
-                  {timeStr && <span className="font-mono text-[8px] text-[#D4AF37] shrink-0 hidden sm:inline">{timeStr}</span>}
-                  <span className="font-bold truncate">{b.eventName || b.clientName}</span>
-                </div>
-              );
-            })}
+                    title={`${statusTag}: ${b.eventName || b.clientName}${timeStr ? ` (${timeStr})` : ''}`}
+                  >
+                    <span className="font-bold uppercase tracking-tight mr-1 opacity-85">{statusTag}</span>
+                    {timeStr && <span className="hidden md:inline font-mono text-[8px] opacity-80 mr-1">{timeStr}</span>}
+                    <span className="font-medium">{b.eventName || b.clientName}</span>
+                  </button>
+                );
+              }
 
-            {dailyGoogleEvents.map((e) => {
+              const e = item.event;
+              const isCustom = Boolean(e.isCustom || String(e.id).startsWith('custom_'));
               const timeLabel = formatGoogleEventTime(e.start, e.end);
-              const shortTime = timeLabel ? timeLabel.split(' - ')[0] : '';
+              const shortTime = timeLabel && timeLabel !== 'All Day' ? timeLabel.split(' - ')[0] : '';
+
               return (
-                <div
-                  key={e.id}
+                <button
+                  key={item.id}
+                  type="button"
                   onClick={(ev) => {
                     ev.stopPropagation();
                     handleGoogleEventClick(e);
                   }}
-                  className="px-2 py-1 rounded-full bg-black/80 border border-white/15 hover:border-[#D4AF37]/50 text-left text-[9px] sm:text-[10px] leading-tight transition-all truncate flex items-center gap-1.5 text-zinc-200"
+                  className="simcha-cal-event simcha-cal-event-ext w-full text-left px-1 sm:px-1.5 py-0.5 rounded-[3px] border-l-2 border-[#D4AF37]/70 bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200 text-[9px] sm:text-[10px] leading-tight truncate transition-colors cursor-pointer"
+                  title={`${isCustom ? 'Event' : 'Google'}: ${e.summary || 'Busy'}${timeLabel ? ` (${timeLabel})` : ''}`}
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] shrink-0" />
-                  {shortTime && <span className="font-mono text-[8px] text-zinc-400 shrink-0 hidden sm:inline">{shortTime}</span>}
-                  <span className="font-semibold truncate">{e.summary || 'Busy'}</span>
-                </div>
+                  {shortTime ? (
+                    <span className="hidden sm:inline font-mono text-[8px] opacity-75 mr-1">{shortTime}</span>
+                  ) : (
+                    <span className="font-semibold uppercase tracking-tight mr-1 opacity-75">
+                      {isCustom ? 'Evt' : 'Cal'}
+                    </span>
+                  )}
+                  <span className="font-medium">{e.summary || 'Busy'}</span>
+                </button>
               );
             })}
 
-            {isBlocked && totalDayItems === 0 && (
-              <div className="h-full flex items-center justify-center py-2">
-                <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500">
-                  Locked
-                </span>
-              </div>
+            {overflowCount > 0 && (
+              <span className="simcha-cal-more px-1 text-[9px] font-bold text-[#D4AF37] leading-tight truncate">
+                +{overflowCount} more
+              </span>
             )}
-          </div>
-
-          {/* Subtle Bottom Hint on Hover */}
-          <div className="pt-1 flex items-center justify-end text-[7px] font-black uppercase tracking-widest text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity">
-            <span>Tap</span>
           </div>
         </div>
       );
     }
 
-    // Render Week columns
-    const weekDays = [];
+    for (let i = 0; i < trailingPadCount; i++) {
+      calendarDays.push(
+        <div
+          key={`pad-end-${i}`}
+          aria-hidden="true"
+          className="simcha-cal-pad min-h-[76px] sm:min-h-[96px] md:min-h-[112px] bg-[#080808] border-b border-r border-white/[0.06]"
+        />
+      );
+    }
+
+    // Week View Columns
+    const weekDays: Date[] = [];
     for (let i = 0; i < 7; i++) {
       const dayDate = new Date(startOfWeek);
       dayDate.setDate(startOfWeek.getDate() + i);
@@ -3250,6 +3331,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       const dateStr = dayDate.toLocaleDateString('en-CA');
       const isBlocked = currentUnavailableDates.includes(dateStr);
       const isToday = dateStr === todayStr;
+      const isSelectedDay = selectedCalendarDate === dateStr;
       const dayBookings = bookings.filter((b) => b.date === dateStr && b.status !== 'cancelled');
       const dailyGoogleEvents = allCalendarGoogleEvents.filter((e) => {
         const eventDates = getDatesForEventRange(e.start, e.end);
@@ -3264,147 +3346,147 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
           onClick={() => openCalendarDateSheet(dateStr, false)}
           role="button"
           tabIndex={0}
+          aria-label={`${dayName} ${dayNum}${isBlocked ? ', Date locked' : ''}`}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               openCalendarDateSheet(dateStr, false);
             }
           }}
-          className={`min-h-[340px] border-r border-white/5 flex flex-col transition-all cursor-pointer relative group select-none ${
-            isToday ? 'bg-[#D4AF37]/[0.04]' : isBlocked ? 'bg-red-950/[0.06]' : 'bg-[#0a0a0a]'
-          } hover:bg-[#121212]`}
+          className={`simcha-cal-day min-h-[260px] sm:min-h-[320px] border-r border-b border-white/[0.07] flex flex-col transition-colors cursor-pointer relative group select-none outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-inset ${
+            isToday
+              ? 'simcha-cal-day-today bg-[#141109] hover:bg-[#19150b]'
+              : 'bg-[#0b0b0b] hover:bg-[#121212]'
+          } ${isSelectedDay ? 'simcha-cal-day-selected ring-1 ring-[#D4AF37] ring-inset' : ''}`}
         >
           {/* Weekday Column Header */}
-          <div className="p-2.5 border-b border-white/5 text-center flex flex-col items-center justify-center sticky top-0 bg-[#0d0d0d] z-20 gap-1">
-            <span className="text-[9px] font-black uppercase text-zinc-400 tracking-widest">{dayName}</span>
-            <span
-              className={`w-6 h-6 flex items-center justify-center text-xs font-black rounded-full transition-all ${
-                isToday ? 'bg-[#D4AF37] text-black shadow-md' : 'text-white group-hover:text-[#D4AF37]'
-              }`}
-            >
-              {dayNum}
-            </span>
+          <div className="simcha-cal-week-col-header px-1.5 py-2 border-b border-white/[0.07] flex items-center justify-between bg-[#0f0f0f]">
+            <div className="flex items-center gap-1 min-w-0">
+              <span className="text-[9px] font-bold uppercase text-zinc-400 tracking-wider">{dayName}</span>
+              <span
+                className={`inline-flex items-center justify-center text-[11px] font-bold ${
+                  isToday
+                    ? 'simcha-cal-today-num w-5 h-5 rounded-full bg-[#D4AF37] text-black'
+                    : 'simcha-cal-day-num text-zinc-200'
+                }`}
+              >
+                {dayNum}
+              </span>
+            </div>
             {isBlocked && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-[8px] font-black uppercase tracking-widest text-red-300">
-                <Lock className="w-2.5 h-2.5" /> Locked
+              <span
+                className="simcha-cal-lock-icon text-zinc-400"
+                title="Date locked"
+                aria-label="Date locked"
+              >
+                <Lock className="w-3 h-3 shrink-0" />
               </span>
             )}
           </div>
 
-          {/* Weekday Body */}
-          <div className="flex-1 p-2 space-y-2 relative flex flex-col justify-start">
-            {dayBookings.map((b) => (
-              <div
-                key={b.id}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSimchaBookingClick(b);
-                }}
-                className="bg-[#161616] border border-[#D4AF37]/35 hover:border-[#D4AF37] p-2.5 rounded-2xl shadow-lg transition-all text-left cursor-pointer space-y-1"
-              >
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-[8px] font-black uppercase tracking-widest text-[#D4AF37]">
-                    {b.status}
-                  </span>
-                  {b.eventTime && (
-                    <span className="text-[8px] font-mono text-zinc-400">{formatBookingTime12h(b.eventTime)}</span>
-                  )}
-                </div>
-                <h5 className="text-xs font-bold text-white truncate">{b.eventName || 'Celebration'}</h5>
-                <p className="text-[10px] text-zinc-400 truncate">{b.clientName}</p>
-              </div>
-            ))}
+          {/* Weekday Events List */}
+          <div className="flex-1 p-1 sm:p-1.5 space-y-1 flex flex-col justify-start">
+            {dayBookings.map((b) => {
+              const isConfirmed = b.status === 'confirmed';
+              const statusTag = isConfirmed ? 'Conf' : 'Pend';
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSimchaBookingClick(b);
+                  }}
+                  className={`simcha-cal-event w-full text-left p-1.5 rounded-[4px] border-l-2 transition-colors cursor-pointer space-y-0.5 ${
+                    isConfirmed
+                      ? 'simcha-cal-event-confirmed bg-emerald-950/40 hover:bg-emerald-900/50 border-emerald-500 text-zinc-100'
+                      : 'simcha-cal-event-pending bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 border-[#D4AF37] text-zinc-100'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1 text-[8px] font-bold uppercase tracking-wider opacity-85">
+                    <span>{statusTag}</span>
+                    {b.eventTime && <span className="font-mono">{formatBookingTime12h(b.eventTime)}</span>}
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] font-semibold truncate">{b.eventName || 'Celebration'}</div>
+                  <div className="text-[9px] opacity-75 truncate">{b.clientName}</div>
+                </button>
+              );
+            })}
 
             {dailyGoogleEvents.map((e) => {
               const timeLabel = formatGoogleEventTime(e.start, e.end);
+              const isCustom = Boolean(e.isCustom || String(e.id).startsWith('custom_'));
               return (
-                <div
+                <button
                   key={e.id}
+                  type="button"
                   onClick={(ev) => {
                     ev.stopPropagation();
                     handleGoogleEventClick(e);
                   }}
-                  className="bg-black/80 border border-white/15 hover:border-[#D4AF37]/50 p-2.5 rounded-2xl shadow-lg transition-all text-left cursor-pointer space-y-1"
+                  className="simcha-cal-event simcha-cal-event-ext w-full text-left p-1.5 rounded-[4px] border-l-2 border-[#D4AF37]/70 bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200 transition-colors cursor-pointer space-y-0.5"
                 >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[8px] font-black uppercase tracking-widest text-[#D4AF37] flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]" />
-                      {e.isCustom || String(e.id).startsWith('custom_') ? 'Custom' : 'Google'}
-                    </span>
-                    {timeLabel && <span className="text-[8px] font-mono text-zinc-400 truncate">{timeLabel}</span>}
+                  <div className="flex items-center justify-between gap-1 text-[8px] font-bold uppercase tracking-wider opacity-75">
+                    <span>{isCustom ? 'Event' : 'Google'}</span>
+                    {timeLabel && <span className="font-mono truncate">{timeLabel}</span>}
                   </div>
-                  <h5 className="text-xs font-bold text-zinc-200 truncate">{e.summary || 'Busy'}</h5>
-                </div>
+                  <div className="text-[10px] sm:text-[11px] font-semibold truncate">{e.summary || 'Busy'}</div>
+                </button>
               );
             })}
-
-            {dayBookings.length === 0 && dailyGoogleEvents.length === 0 && (
-              <div className="flex-1 flex flex-col items-center justify-center py-8 opacity-30 group-hover:opacity-70 transition-opacity">
-                {isBlocked ? (
-                  <>
-                    <Lock className="w-3.5 h-3.5 text-red-400 mb-1" />
-                    <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Locked</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-3.5 h-3.5 text-[#D4AF37] mb-1" />
-                    <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Open</span>
-                  </>
-                )}
-              </div>
-            )}
           </div>
         </div>
       );
     });
 
     return (
-      <div className="bg-[#0b0b0b] rounded-[2rem] border border-[#D4AF37]/25 shadow-2xl overflow-hidden animate-in fade-in duration-500 w-full">
-        {/* Compact Luxury Upper Toolbar — Smaller, Streamlined Controls Without Clutter */}
-        <div className="px-3.5 py-2.5 sm:px-5 sm:py-3 bg-[#111] border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
-          {/* Left: Month/Year Title + Compact Prev/Today/Next */}
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm sm:text-base font-bold font-[Cinzel] text-white tracking-wide leading-none">
-              {calendarViewMode === 'month' ? `${monthName} ${year}` : `${weekStartName} – ${weekEndName}`}
-            </h2>
-            <div className="h-7 bg-black/80 rounded-full px-0.5 border border-[#D4AF37]/25 flex items-center">
-              <button
-                type="button"
-                onClick={() => changeMonth(-1)}
-                className="w-6 h-6 rounded-full hover:bg-[#D4AF37] text-zinc-300 hover:text-black flex items-center justify-center transition-all cursor-pointer"
-                title="Previous"
-              >
-                <ChevronLeft className="w-3 h-3" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewDate(new Date())}
-                className="px-2 h-6 rounded-full text-[8px] font-black uppercase tracking-widest text-[#D4AF37] hover:bg-[#D4AF37]/15 transition-colors cursor-pointer"
-              >
-                Today
-              </button>
-              <button
-                type="button"
-                onClick={() => changeMonth(1)}
-                className="w-6 h-6 rounded-full hover:bg-[#D4AF37] text-zinc-300 hover:text-black flex items-center justify-center transition-all cursor-pointer"
-                title="Next"
-              >
-                <ChevronRight className="w-3 h-3" />
-              </button>
+      <div className="simcha-cal-shell bg-[#0b0b0b] rounded-xl border border-white/10 shadow-xl overflow-hidden w-full">
+        {/* Top Calendar Toolbar: Aligned Rows on Mobile, Single Cohesive Toolbar on Desktop */}
+        <div className="simcha-cal-toolbar px-2.5 py-2 sm:px-4 sm:py-2.5 bg-[#111] border-b border-white/10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+          {/* Row 1 on Mobile / Left Group on Desktop: Title + Prev/Today/Next + Month/Week */}
+          <div className="flex items-center justify-between lg:justify-start gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="simcha-cal-title text-sm sm:text-base md:text-lg font-bold font-[Cinzel] text-white tracking-tight truncate">
+                {calendarViewMode === 'month' ? `${monthName} ${year}` : `${weekStartName} – ${weekEndName}`}
+              </h2>
+              <div className="simcha-cal-control-group h-7 sm:h-8 bg-black/70 rounded-full p-0.5 border border-white/10 flex items-center shrink-0">
+                <button
+                  type="button"
+                  onClick={() => changeMonth(-1)}
+                  className="simcha-cal-nav-btn w-6 h-6 sm:w-7 sm:h-7 rounded-full hover:bg-[#D4AF37] text-zinc-300 hover:text-black flex items-center justify-center transition-colors cursor-pointer"
+                  aria-label="Previous period"
+                  title="Previous"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewDate(new Date())}
+                  className="simcha-cal-today-btn px-2.5 h-6 sm:h-7 rounded-full text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-[#D4AF37] hover:bg-[#D4AF37]/15 transition-colors cursor-pointer"
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => changeMonth(1)}
+                  className="simcha-cal-nav-btn w-6 h-6 sm:w-7 sm:h-7 rounded-full hover:bg-[#D4AF37] text-zinc-300 hover:text-black flex items-center justify-center transition-colors cursor-pointer"
+                  aria-label="Next period"
+                  title="Next"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
 
-          {/* Right: Compact Pill Controls (Month/Week | + Event | Sync) */}
-          <div className="flex items-center gap-1.5">
-            {/* Month / Week Switcher Pill */}
-            <div className="h-7 bg-black/80 rounded-full p-0.5 border border-[#D4AF37]/25 flex items-center">
+            {/* Month / Week Segmented Switch */}
+            <div className="simcha-cal-control-group h-7 sm:h-8 bg-black/70 rounded-full p-0.5 border border-white/10 flex items-center shrink-0">
               <button
                 type="button"
                 onClick={() => setCalendarViewMode('month')}
-                className={`px-2.5 h-6 rounded-full text-[8px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                className={`px-3 h-6 sm:h-7 rounded-full text-[9px] sm:text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
                   calendarViewMode === 'month'
-                    ? 'bg-[#D4AF37] text-black shadow-sm'
-                    : 'text-zinc-400 hover:text-white'
+                    ? 'bg-[#D4AF37] text-black font-black'
+                    : 'simcha-cal-seg-inactive text-zinc-400 hover:text-white'
                 }`}
               >
                 Month
@@ -3412,58 +3494,59 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               <button
                 type="button"
                 onClick={() => setCalendarViewMode('week')}
-                className={`px-2.5 h-6 rounded-full text-[8px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                className={`px-3 h-6 sm:h-7 rounded-full text-[9px] sm:text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
                   calendarViewMode === 'week'
-                    ? 'bg-[#D4AF37] text-black shadow-sm'
-                    : 'text-zinc-400 hover:text-white'
+                    ? 'bg-[#D4AF37] text-black font-black'
+                    : 'simcha-cal-seg-inactive text-zinc-400 hover:text-white'
                 }`}
               >
                 Week
               </button>
             </div>
+          </div>
 
-            {/* + Event Compact Pill Button */}
+          {/* Row 2 on Mobile / Right Group on Desktop: Add Event + Google Sync */}
+          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={() => openCalendarDateSheet(selectedCalendarDate || todayStr, true)}
-              className="h-7 px-2.5 rounded-full bg-black/80 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/30 font-black text-[8px] uppercase tracking-widest flex items-center justify-center gap-1 transition-all cursor-pointer shadow-sm"
+              className="simcha-cal-action-btn flex-1 sm:flex-initial h-7 sm:h-8 px-3.5 rounded-full bg-black/70 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/40 font-bold text-[9px] sm:text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Plus className="w-3 h-3 stroke-[2.5] shrink-0" />
-              <span>Event</span>
+              <Plus className="w-3.5 h-3.5 stroke-[2.25] shrink-0" />
+              <span>Add Event</span>
             </button>
 
-            {/* Sync Compact Pill Button */}
             <button
               type="button"
               onClick={handleCalendarSync}
               disabled={isSyncing}
-              className={`h-7 px-2.5 rounded-full font-black flex items-center justify-center gap-1 text-[8px] uppercase tracking-widest transition-all cursor-pointer shadow-sm border ${
+              className={`flex-1 sm:flex-initial h-7 sm:h-8 px-3.5 rounded-full font-bold flex items-center justify-center gap-1.5 text-[9px] sm:text-[10px] uppercase tracking-wider transition-colors cursor-pointer border ${
                 syncStep === 'success'
                   ? 'bg-emerald-500 text-black border-emerald-400'
                   : 'bg-[#D4AF37] hover:bg-[#E5C76B] text-black border-[#D4AF37]'
               } ${isSyncing ? 'opacity-70 pointer-events-none' : ''}`}
             >
               {isSyncing ? (
-                <Loader2 className="w-3 h-3 animate-spin text-black shrink-0" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-black shrink-0" />
               ) : syncStep === 'success' ? (
-                <Check className="w-3 h-3 text-black shrink-0" />
+                <Check className="w-3.5 h-3.5 text-black shrink-0" />
               ) : (
-                <RefreshCw className="w-3 h-3 shrink-0" />
+                <RefreshCw className="w-3.5 h-3.5 shrink-0" />
               )}
               <span>
-                {syncStep === 'idle' && 'Sync'}
-                {syncStep === 'auth' && 'Auth'}
-                {syncStep === 'fetching' && 'Syncing'}
-                {syncStep === 'saving' && 'Saving'}
+                {syncStep === 'idle' && 'Google Sync'}
+                {syncStep === 'auth' && 'Authenticating...'}
+                {syncStep === 'fetching' && 'Syncing...'}
+                {syncStep === 'saving' && 'Saving...'}
                 {syncStep === 'success' && 'Synced'}
               </span>
             </button>
           </div>
         </div>
 
-        {/* Dismissible Auth Error Banner */}
+        {/* Dismissible Sync Error Banner */}
         {calendarSyncError && (
-          <div className="mx-4 my-2.5 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-full flex items-center justify-between gap-3">
+          <div className="mx-3 my-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
               <span className="text-[11px] text-red-200 font-medium truncate">{calendarSyncError}</span>
@@ -3471,22 +3554,22 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             <button
               type="button"
               onClick={() => setCalendarSyncError(null)}
-              className="text-[9px] font-black uppercase tracking-widest text-zinc-300 hover:text-white px-2.5 py-1 rounded-full bg-white/5 shrink-0 cursor-pointer"
+              className="text-[9px] font-bold uppercase tracking-wider text-zinc-300 hover:text-white px-2 py-1 rounded bg-white/5 shrink-0 cursor-pointer"
             >
               Dismiss
             </button>
           </div>
         )}
 
-        {/* Calendar Grid Container */}
-        <div className="overflow-x-auto custom-scrollbar">
-          <div className={calendarViewMode === 'week' ? 'min-w-[740px] lg:min-w-0' : 'w-full'}>
+        {/* 7-Column Calendar Grid */}
+        <div className="w-full overflow-x-auto custom-scrollbar">
+          <div className="w-full min-w-[300px]">
             {calendarViewMode === 'month' && (
-              <div className="grid grid-cols-7 bg-[#111] border-b border-white/10">
+              <div className="simcha-cal-weekdays grid grid-cols-7 bg-[#111] border-b border-white/10 divide-x divide-white/[0.06]">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
                   <div
                     key={d}
-                    className="py-2 text-center text-[9px] font-black uppercase text-[#D4AF37]/80 tracking-[0.2em]"
+                    className="simcha-cal-weekday py-1.5 text-center text-[10px] font-bold uppercase text-[#D4AF37] tracking-wider"
                   >
                     {d}
                   </div>
@@ -3494,31 +3577,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               </div>
             )}
 
-            <div className="grid grid-cols-7">
+            <div className="simcha-cal-grid grid grid-cols-7 border-l border-white/[0.07]">
               {calendarViewMode === 'month' ? calendarDays : weekDaysGrid}
             </div>
           </div>
-        </div>
-
-        {/* Compact Legend Bar */}
-        <div className="px-4 py-2.5 sm:px-5 bg-[#111] flex flex-wrap items-center justify-between gap-2 border-t border-white/10">
-          <div className="flex flex-wrap items-center gap-3.5">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Confirmed</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#D4AF37]" />
-              <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Event</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-red-400/80" />
-              <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">Locked</span>
-            </div>
-          </div>
-          <span className="text-[8px] font-bold text-zinc-400 uppercase tracking-widest">
-            Tap date to manage
-          </span>
         </div>
       </div>
     );
@@ -3566,7 +3628,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         const currentUnavailable = editForm.unavailableDates || vendor.unavailableDates || [];
         const isDateLocked = currentUnavailable.includes(selectedCalendarDate);
         const dayBookings = bookings.filter((b) => b.date === selectedCalendarDate);
-        const allGoogleEvents = editForm.googleEvents || vendor.googleEvents || [];
+        const allGoogleEvents = reconciledCalendarGoogleEvents;
         const dayGoogleEvents = allGoogleEvents.filter((e) => {
           const eventDates = getDatesForEventRange(e.start, e.end);
           return eventDates.includes(selectedCalendarDate);
@@ -4193,7 +4255,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
         <div
           className={
             activeTab === 'calendar'
-              ? 'px-2 pt-11 pb-8 sm:px-4 sm:pt-12 md:px-6 md:pt-10 w-full max-w-none space-y-4'
+              ? 'px-1 sm:px-2.5 md:px-4 pt-9 sm:pt-10 md:pt-6 pb-28 md:pb-10 w-full max-w-none'
               : 'px-4 pt-2 pb-4 md:px-10 md:pt-4 md:pb-10 max-w-7xl mx-auto space-y-6'
           }
         >

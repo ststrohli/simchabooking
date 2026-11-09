@@ -516,9 +516,11 @@ body.light-mode,
   ) !important;
 }
 
-/* Light Mode: Bright, sharp hero media with no blur */
-.light-mode .group > .opacity-50 {
-  opacity: 0.92 !important;
+/* Light Mode: Bright, sharp hero and card media with no white wash or glare */
+.light-mode .group > .opacity-50,
+.light-mode .group > .opacity-55,
+.light-mode .group .opacity-55 {
+  opacity: 1 !important;
 }
 
 .light-mode .simcha-hero-section {
@@ -586,21 +588,27 @@ body.light-mode,
 }
 
 .light-mode .simcha-image-fader-card {
+  background: transparent !important;
   background-image: linear-gradient(
     to top,
-    rgba(255, 255, 255, 0.42) 0%,
-    rgba(255, 255, 255, 0.12) 35%,
-    rgba(255, 255, 255, 0) 75%
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0) 28%
   ) !important;
 }
 
 .light-mode .simcha-image-fader-vendor {
+  background: transparent !important;
   background-image: linear-gradient(
     to top,
-    rgba(255, 255, 255, 0.48) 0%,
-    rgba(255, 255, 255, 0.12) 32%,
-    rgba(255, 255, 255, 0) 68%
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0) 30%
   ) !important;
+}
+
+/* Prevent opacity-55 on category/subcategory/sub-subcategory images from bleaching into a white glare in Light Mode */
+.light-mode button:has(.simcha-image-fader-card) img,
+.light-mode button:has(.simcha-image-fader-card) video {
+  opacity: 1 !important;
 }
 
 .light-mode .simcha-image-fader-post {
@@ -1003,4 +1011,224 @@ body.light-mode,
   border: 0 !important;
   box-shadow: none !important;
 }
+
+/* ==========================================================================
+   VENDOR CALENDAR — LIGHT MODE SURFACES, LOCK STATES & EVENT BARS
+   Locked days keep the exact same clean light/ivory surface (#ffffff / #faf8f2),
+   never gray, pink, or dark.
+   ========================================================================== */
+.light-mode .simcha-cal-shell {
+  background-color: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05) !important;
+}
+
+.light-mode .simcha-cal-toolbar,
+.light-mode .simcha-cal-weekdays,
+.light-mode .simcha-cal-week-col-header {
+  background-color: #faf9f5 !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.light-mode .simcha-cal-weekdays > * {
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+.light-mode .simcha-cal-weekday {
+  color: #8A6914 !important;
+}
+
+.light-mode .simcha-cal-grid {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.light-mode .simcha-cal-pad {
+  background-color: #faf9f5 !important;
+  border-color: rgba(0, 0, 0, 0.06) !important;
+  opacity: 1 !important;
+}
+
+.light-mode .simcha-cal-day {
+  background-color: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: #18181b !important;
+}
+
+.light-mode .simcha-cal-day:hover,
+.light-mode .simcha-cal-day:focus-visible {
+  background-color: #faf8f2 !important;
+}
+
+.light-mode .simcha-cal-day-today {
+  background-color: #fffdf5 !important;
+}
+
+.light-mode .simcha-cal-day-today:hover,
+.light-mode .simcha-cal-day-today:focus-visible {
+  background-color: #fdf9ea !important;
+}
+
+.light-mode .simcha-cal-day-selected {
+  background-color: #fdf9ea !important;
+  box-shadow: inset 0 0 0 1.5px #D4AF37 !important;
+}
+
+.light-mode .simcha-cal-day-num {
+  color: #18181b !important;
+}
+
+.light-mode .simcha-cal-today-num {
+  background-color: #D4AF37 !important;
+  color: #09090b !important;
+}
+
+.light-mode .simcha-cal-lock-icon {
+  color: #71717a !important;
+}
+
+.light-mode .simcha-cal-event-confirmed {
+  background-color: rgba(22, 163, 74, 0.11) !important;
+  border-left-color: #16a34a !important;
+  color: #14532d !important;
+}
+
+.light-mode .simcha-cal-event-confirmed:hover {
+  background-color: rgba(22, 163, 74, 0.18) !important;
+}
+
+.light-mode .simcha-cal-event-pending {
+  background-color: rgba(212, 175, 55, 0.16) !important;
+  border-left-color: #B8860B !important;
+  color: #422006 !important;
+}
+
+.light-mode .simcha-cal-event-pending:hover {
+  background-color: rgba(212, 175, 55, 0.25) !important;
+}
+
+.light-mode .simcha-cal-event-ext {
+  background-color: #f4f3ef !important;
+  border-left-color: #9A7B1C !important;
+  color: #27272a !important;
+}
+
+.light-mode .simcha-cal-event-ext:hover {
+  background-color: #eae8e1 !important;
+}
+
+.light-mode .simcha-cal-more {
+  color: #8A6914 !important;
+}
+
+.light-mode .simcha-cal-control-group {
+  background-color: #f2f0ea !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+.light-mode .simcha-cal-nav-btn {
+  color: #27272a !important;
+}
+
+.light-mode .simcha-cal-today-btn {
+  color: #8A6914 !important;
+}
+
+.light-mode .simcha-cal-seg-inactive {
+  color: #52525b !important;
+}
+
+.light-mode .simcha-cal-action-btn {
+  background-color: #ffffff !important;
+  color: #8A6914 !important;
+  border-color: rgba(212, 175, 55, 0.5) !important;
+}
+
+.light-mode .simcha-cal-action-btn:hover {
+  background-color: #D4AF37 !important;
+  color: #09090b !important;
+}
+
+/* ==========================================================================
+   CLIENT MODE > EVENTS > VIEW EVENT (ClientEventScopeModal) LIGHT MODE
+   ========================================================================== */
+.light-mode .simcha-scope-backdrop {
+  background-color: rgba(15, 15, 20, 0.42) !important;
+}
+
+.light-mode .simcha-scope-sheet {
+  background-color: #ffffff !important;
+  border-color: rgba(212, 175, 55, 0.38) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.16) !important;
+  color: #09090b !important;
+}
+
+.light-mode .simcha-scope-header,
+.light-mode .from-\[\#151515\].to-\[\#0d0d0d\] {
+  background: linear-gradient(to bottom, #ffffff 0%, #faf8f2 100%) !important;
+  border-bottom-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.light-mode .simcha-scope-close-btn {
+  background-color: #f4f3ef !important;
+  color: #18181b !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+.light-mode .simcha-scope-close-btn:hover {
+  background-color: #D4AF37 !important;
+  color: #09090b !important;
+}
+
+.light-mode .simcha-scope-summary-strip {
+  background-color: #faf8f2 !important;
+  border-color: rgba(212, 175, 55, 0.28) !important;
+}
+
+.light-mode .simcha-scope-offer-box,
+.light-mode .bg-\[\#14120a\] {
+  background-color: #fdfaf0 !important;
+  border-color: rgba(212, 175, 55, 0.45) !important;
+}
+
+.light-mode .simcha-scope-accordion {
+  background-color: #f8f7f3 !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.light-mode .simcha-scope-field {
+  background-color: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.light-mode .simcha-scope-financial-box {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.14) 0%, #fdfaf0 100%) !important;
+  border-color: rgba(212, 175, 55, 0.38) !important;
+}
+
+.light-mode .simcha-scope-footer {
+  background-color: #faf9f5 !important;
+  border-top-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.light-mode .simcha-scope-secondary-btn {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+  border-color: rgba(212, 175, 55, 0.45) !important;
+}
+
+.light-mode .simcha-scope-secondary-btn:hover {
+  background-color: #D4AF37 !important;
+  color: #09090b !important;
+}
+
+.light-mode .text-green-300,
+.light-mode .text-emerald-300 {
+  color: #15803d !important;
+}
+
+.light-mode .text-red-300,
+.light-mode .text-red-200 {
+  color: #b91c1c !important;
+}
+
 
