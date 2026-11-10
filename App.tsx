@@ -3185,8 +3185,8 @@ function App() {
           setPendingPrioritySuggestions(true);
         } else {
           setPendingPrioritySuggestions(false);
+          setShowSuggestions(false);
         }
-        setShowSuggestions(false);
       } else {
         // Add to Plan ONLY (vendor does not receive until client clicks "Send All Booking Requests" in Plan)
         const newCartItem: CartItem = {
@@ -3225,8 +3225,8 @@ function App() {
           setPendingPrioritySuggestions(true);
         } else {
           setPendingPrioritySuggestions(false);
+          setShowSuggestions(false);
         }
-        setShowSuggestions(false);
         setPlanConfirmation({
           show: true,
           vendorName: bookingVendor.name
@@ -3240,24 +3240,76 @@ function App() {
     }
   };
 
-  const handleGoToPlan = () => {
+  const resetToMainHomeView = () => {
     setPlanConfirmation(null);
-    setQuickViewVendor(null);
-    setBookingVendor(null);
+    setShowSuggestions(false);
+    setPendingPrioritySuggestions(false);
+    setIsPriorityFromSuggestions(false);
+    setIsVendorView(false);
+    setView('marketplace');
+    setActiveCategory('All');
+    setShowAllCategoriesGrid(false);
+    setActiveSubCategoryGroup(null);
+    setActiveSubCategories([]);
+    setActiveSubSubCategory(null);
+    setSearchTerm('');
+    setSelectedSearchDates([]);
+    setEventDate('');
+    setSuggestionsEventDate('');
+    setActiveBottomTab('home');
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+    if (window.location.hash !== '') {
+      window.location.hash = '';
+    }
+  };
+
+  const handlePrepareGoToPlan = () => {
+    setPlanConfirmation(null);
+    setShowSuggestions(false);
+    setPendingPrioritySuggestions(false);
+    setIsPriorityFromSuggestions(false);
+    setIsVendorView(false);
     setPortalTab('client');
     setPortalInitialTab('plan');
     setActiveBottomTab('plan');
     setView('portal');
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   };
 
-  const handleGoToEvents = () => {
-    setPlanConfirmation(null);
+  const handleGoToPlan = () => {
+    handlePrepareGoToPlan();
     setQuickViewVendor(null);
     setBookingVendor(null);
+    setInitialBookingDetails(null);
+  };
+
+  const handlePrepareGoToEvents = () => {
+    setPlanConfirmation(null);
+    setShowSuggestions(false);
+    setPendingPrioritySuggestions(false);
+    setIsPriorityFromSuggestions(false);
+    setIsVendorView(false);
     setPortalTab('client');
     setPortalInitialTab('events');
     setActiveBottomTab('events');
     setView('portal');
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+  };
+
+  const handleGoToEvents = () => {
+    handlePrepareGoToEvents();
+    setQuickViewVendor(null);
+    setBookingVendor(null);
+    setInitialBookingDetails(null);
+  };
+
+  const handlePrepareBookingDone = (isPriority: boolean) => {
+    if (isPriority) {
+      setShowSuggestions(true);
+      setPendingPrioritySuggestions(false);
+    } else {
+      resetToMainHomeView();
+    }
   };
 
   const handleAddToPlan = (vendor: Vendor) => {
@@ -5354,22 +5406,27 @@ function App() {
 
       <SuggestionModal 
         isOpen={showSuggestions} 
+        onDismissStart={() => {
+          setIsPriorityFromSuggestions(false);
+          setPendingPrioritySuggestions(false);
+          setIsVendorView(false);
+          setView('marketplace');
+          setActiveCategory('All');
+          setShowAllCategoriesGrid(false);
+          setActiveSubCategoryGroup(null);
+          setActiveSubCategories([]);
+          setActiveSubSubCategory(null);
+          setSearchTerm('');
+          setSelectedSearchDates([]);
+          setEventDate('');
+          setActiveBottomTab('home');
+          window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+        }}
         onClose={() => {
-          setShowSuggestions(false);
           setBookingVendor(null);
           setQuickViewVendor(null);
           setInitialBookingDetails(null);
-          setIsPriorityFromSuggestions(false);
-          setPendingPrioritySuggestions(false);
-          setView('marketplace');
-          setActiveCategory('All');
-          setActiveSubCategoryGroup('');
-          setActiveSubCategories([]);
-          setActiveSubSubCategory('');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-          if (window.location.hash !== '') {
-            window.location.hash = '';
-          }
+          resetToMainHomeView();
         }} 
         sourceVendor={sourceVendorForSuggestions} 
         recommendations={suggestedVendors} 
@@ -5388,13 +5445,16 @@ function App() {
           });
           setIsPriorityFromSuggestions(true);
           setPendingPrioritySuggestions(true);
+          setQuickViewVendor(null);
+          setBookingOpenCount(c => c + 1);
           setBookingVendor(v);
-          setShowSuggestions(false);
+          // Keep showSuggestions true so SuggestionModal stays mounted behind BookingModal for a seamless slide-up / slide-down transition
         }} 
         cartItems={cart.map(i => i.vendor.id)} 
         isPriorityLock={isPriorityLockForSuggestions}
         eventDate={suggestionsEventDate}
         allVendors={vendors}
+        onAddReview={handleAddReview}
       />
       
       <AnimatePresence>
@@ -5459,7 +5519,7 @@ function App() {
             setBookingVendor(prev => (prev?.id === closingId ? null : prev)); 
             setInitialBookingDetails(null); 
             setPendingPrioritySuggestions(false);
-            document.body.style.overflow = '';
+            document.body.style.overflow = showSuggestions ? 'hidden' : '';
             document.body.style.position = '';
             document.body.style.top = '';
             document.body.style.width = '';
@@ -5468,11 +5528,12 @@ function App() {
               setShowSuggestions(true);
             }
           }} 
+          onPrepareDone={handlePrepareBookingDone}
           onDone={(isPriority: boolean) => {
             setIsBookingModalSuccess(false);
             setBookingVendor(null);
             setInitialBookingDetails(null);
-            document.body.style.overflow = '';
+            document.body.style.overflow = isPriority ? 'hidden' : '';
             document.body.style.position = '';
             document.body.style.top = '';
             document.body.style.width = '';
@@ -5480,17 +5541,13 @@ function App() {
               setShowSuggestions(true);
               setPendingPrioritySuggestions(false);
             } else {
-              setShowSuggestions(false);
-              setPendingPrioritySuggestions(false);
-              setIsPriorityFromSuggestions(false);
-              setView('marketplace');
-              setActiveCategory('All');
-              setSearchTerm('');
-              setActiveBottomTab('home');
+              resetToMainHomeView();
             }
           }}
           onConfirm={handleConfirmBooking} 
+          onPrepareGoToPlan={handlePrepareGoToPlan}
           onGoToPlan={handleGoToPlan}
+          onPrepareGoToEvents={handlePrepareGoToEvents}
           onGoToEvents={handleGoToEvents}
           initialDetails={initialBookingDetails || { clientName: currentAuthenticatedUser.name || '', contactEmail: currentAuthenticatedUser.username || '', eventName: '' }} 
         />
@@ -5519,7 +5576,7 @@ function App() {
             setQuickViewVendor(prev => (prev?.id === closingId ? null : prev));
             setBookingVendor(prev => (prev?.id === closingId ? null : prev));
             setInitialBookingDetails(null);
-            document.body.style.overflow = '';
+            document.body.style.overflow = showSuggestions ? 'hidden' : '';
             document.body.style.position = '';
             document.body.style.top = '';
             document.body.style.width = '';
@@ -5535,14 +5592,17 @@ function App() {
           onConfirmBooking={handleConfirmBooking}
           isInPlan={quickViewVendor ? cart.some(c => c.vendor.id === quickViewVendor.id) : false}
           onAddToPlan={handleAddToPlan}
+          onPrepareGoToPlan={handlePrepareGoToPlan}
           onGoToPlan={handleGoToPlan}
+          onPrepareGoToEvents={handlePrepareGoToEvents}
           onGoToEvents={handleGoToEvents}
+          onPrepareBookingDone={handlePrepareBookingDone}
           onBookingDone={(isPriority) => {
             setIsBookingModalSuccess(false);
             setQuickViewVendor(null);
             setBookingVendor(null);
             setInitialBookingDetails(null);
-            document.body.style.overflow = '';
+            document.body.style.overflow = isPriority ? 'hidden' : '';
             document.body.style.position = '';
             document.body.style.top = '';
             document.body.style.width = '';
@@ -5550,13 +5610,7 @@ function App() {
               setShowSuggestions(true);
               setPendingPrioritySuggestions(false);
             } else {
-              setShowSuggestions(false);
-              setPendingPrioritySuggestions(false);
-              setIsPriorityFromSuggestions(false);
-              setView('marketplace');
-              setActiveCategory('All');
-              setSearchTerm('');
-              setActiveBottomTab('home');
+              resetToMainHomeView();
             }
           }}
         />

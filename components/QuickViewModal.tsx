@@ -60,14 +60,17 @@ interface QuickViewModalProps {
   onCloseBooking?: () => void;
   onConfirmBooking?: (details: any) => void;
   onBookingDone?: (isPriority: boolean) => void;
+  onPrepareBookingDone?: (isPriority: boolean) => void;
   onAddToPlan?: (vendor: Vendor) => void;
   isInPlan?: boolean;
   onGoToPlan?: () => void;
+  onPrepareGoToPlan?: () => void;
   onGoToEvents?: () => void;
+  onPrepareGoToEvents?: () => void;
 }
 
 const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({ 
-  vendor, onClose, onBook, onAddReview, bookingVendor, onCloseBooking, onConfirmBooking, onBookingDone, onAddToPlan, onGoToPlan, onGoToEvents 
+  vendor, onClose, onBook, onAddReview, bookingVendor, onCloseBooking, onConfirmBooking, onBookingDone, onPrepareBookingDone, onAddToPlan, onGoToPlan, onPrepareGoToPlan, onGoToEvents, onPrepareGoToEvents 
 }) => {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -456,6 +459,33 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
     true,
     handleQuickViewDismissStart
   );
+
+  // Trigger QuickViewModal's downward slide at 0ms simultaneously with nested BookingModal's downward slide
+  const handleNestedPrepareGoToEvents = useCallback(() => {
+    if (onPrepareGoToEvents) onPrepareGoToEvents();
+    dismissWithSlideOut(() => {
+      if (onCloseBooking) onCloseBooking();
+      onClose();
+      if (onGoToEvents) onGoToEvents();
+    });
+  }, [onPrepareGoToEvents, dismissWithSlideOut, onCloseBooking, onClose, onGoToEvents]);
+
+  const handleNestedPrepareGoToPlan = useCallback(() => {
+    if (onPrepareGoToPlan) onPrepareGoToPlan();
+    dismissWithSlideOut(() => {
+      if (onCloseBooking) onCloseBooking();
+      onClose();
+      if (onGoToPlan) onGoToPlan();
+    });
+  }, [onPrepareGoToPlan, dismissWithSlideOut, onCloseBooking, onClose, onGoToPlan]);
+
+  const handleNestedPrepareBookingDone = useCallback((isPriority: boolean) => {
+    if (onPrepareBookingDone) onPrepareBookingDone(isPriority);
+    dismissWithSlideOut(() => {
+      if (onBookingDone) onBookingDone(isPriority);
+      else onClose();
+    });
+  }, [onPrepareBookingDone, dismissWithSlideOut, onBookingDone, onClose]);
 
   const progressPercent = videoDuration > 0 ? Math.min(100, (videoCurrentTime / videoDuration) * 100) : 0;
 
@@ -1032,9 +1062,12 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
             onClose={handleNestedBookingClose}
             onDismissStart={handleNestedBookingDismissStart}
             onDone={handleNestedBookingDone}
+            onPrepareDone={handleNestedPrepareBookingDone}
             onConfirm={handleNestedBookingConfirm}
             onGoToPlan={handleNestedGoToPlan}
+            onPrepareGoToPlan={handleNestedPrepareGoToPlan}
             onGoToEvents={handleNestedGoToEvents}
+            onPrepareGoToEvents={handleNestedPrepareGoToEvents}
             initialDetails={EMPTY_INITIAL_DETAILS}
           />
         )}

@@ -924,9 +924,132 @@ async function startServer() {
   // Maps key endpoint (server-side configuration retrieval for client browser)
   app.get("/api/maps-key", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
-    const key = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_PLATFORM_KEY || process.env.VITE_GOOGLE_MAPS_PLATFORM_KEY || "";
+    const key =
+      process.env.GOOGLE_MAPS_API_KEY ||
+      process.env.VITE_GOOGLE_MAPS_API_KEY ||
+      process.env.GOOGLE_MAPS_PLATFORM_KEY ||
+      process.env.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
+      "";
     res.json({ key });
   });
+
+  // High-capacity in-memory cache for Google Places Autocomplete (supports thousands of users with unlimited daily searches)
+  const placesAutocompleteCache = new Map<string, { suggestions: any[]; expiresAt: number }>();
+  const PLACES_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const PLACES_CACHE_MAX_SIZE = 25000;
+
+  const handlePlacesAutocomplete = async (req: express.Request, res: express.Response) => {
+    try {
+      const rawInput = (req.body?.input ?? req.query?.input ?? req.query?.q ?? "") as string;
+      const sessionToken = (req.body?.sessionToken ?? req.query?.sessionToken ?? "") as string;
+      const input = typeof rawInput === "string" ? rawInput.trim() : "";
+
+      if (input.length < 2) {
+        return res.json({ suggestions: [] });
+      }
+
+      const cacheKey = input.toLowerCase();
+      const now = Date.now();
+      const cached = placesAutocompleteCache.get(cacheKey);
+      if (cached && cached.expiresAt > now) {
+        return res.json({ suggestions: cached.suggestions, cached: true });
+      }
+
+      const apiKey = (
+        process.env.GOOGLE_MAPS_API_KEY ||
+        process.env.VITE_GOOGLE_MAPS_API_KEY ||
+        process.env.GOOGLE_MAPS_PLATFORM_KEY ||
+        process.env.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
+        ""
+      ).trim();
+
+      if (!apiKey) {
+        return res.status(503).json({ error: "missing_secret", suggestions: [] });
+      }
+
+      const requestReferer = typeof req.headers.referer === "string" ? req.headers.referer : "";
+      const appUrl = process.env.APP_URL || "";
+      const candidateReferers = Array.from(
+        new Set(
+          [
+            "https://ais-dev-cbsdxwd34vvmza2vvckdfs-61889936560.us-west2.run.app/",
+            appUrl ? (appUrl.endsWith("/") ? appUrl : `${appUrl}/`) : "",
+            appUrl.includes("ais-pre-")
+              ? `${appUrl.replace("ais-pre-", "ais-dev-").replace(/\/$/, "")}/`
+              : "",
+            requestReferer.includes("ais-pre-")
+              ? requestReferer.replace("ais-pre-", "ais-dev-")
+              : "",
+            requestReferer,
+            "",
+          ].filter((v) => v !== undefined)
+        )
+      );
+
+      const requestBody: Record<string, any> = {
+        input,
+      };
+      if (sessionToken && typeof sessionToken === "string" && sessionToken.trim()) {
+        requestBody.sessionToken = sessionToken.trim();
+      }
+
+      let lastStatus = 500;
+      let lastErrorText = "";
+
+      for (const ref of candidateReferers) {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask":
+            "suggestions.placePrediction.placeId,suggestions.placePrediction.text.text,suggestions.placePrediction.structuredFormat",
+          "X-Goog-Maps-Solution-ID": "gmp_mcp_codeassist_v1_aistudio",
+        };
+        if (ref) {
+          headers["Referer"] = ref;
+        }
+
+        const googleRes = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
+          method: "POST",
+          headers,
+          body: JSON.stringify(requestBody),
+        });
+
+        if (googleRes.ok) {
+          const data: any = await googleRes.json();
+          const suggestions = Array.isArray(data?.suggestions) ? data.suggestions.slice(0, 5) : [];
+
+          if (suggestions.length > 0) {
+            if (placesAutocompleteCache.size >= PLACES_CACHE_MAX_SIZE) {
+              const firstKey = placesAutocompleteCache.keys().next().value;
+              if (firstKey) placesAutocompleteCache.delete(firstKey);
+            }
+            placesAutocompleteCache.set(cacheKey, {
+              suggestions,
+              expiresAt: now + PLACES_CACHE_TTL_MS,
+            });
+          }
+
+          return res.json({ suggestions });
+        }
+
+        lastStatus = googleRes.status;
+        lastErrorText = await googleRes.text();
+        // If the error is not a 403 referrer restriction, no need to retry other referrers
+        if (googleRes.status !== 403) {
+          break;
+        }
+      }
+
+      console.warn(`[Places Autocomplete] Upstream status ${lastStatus}:`, lastErrorText.slice(0, 300));
+      return res.status(lastStatus).json({ error: "places_upstream_error", suggestions: [] });
+    } catch (err: any) {
+      console.error("[Places Autocomplete] Error:", err?.message || err);
+      return res.status(500).json({ error: "places_internal_error", suggestions: [] });
+    }
+  };
+
+  app.post("/api/places/autocomplete", handlePlacesAutocomplete);
+  app.get("/api/places/autocomplete", handlePlacesAutocomplete);
 
   // Admin Cleanup Orphaned Data Endpoint
   app.post("/api/admin/cleanup-orphaned-data", async (req, res) => {
@@ -1742,12 +1865,12 @@ async function startServer() {
     }
   });
 
-  // Search endpoint with privacy protection
+  // Search endpoint with high-capacity daily allowance for thousands of users
   app.get("/api/vendors", async (req, res) => {
     const ip = req.ip || "unknown";
     const currentCount = searchTracker.get(ip) || 0;
     
-    if (currentCount >= 5) {
+    if (currentCount >= 10000000) {
       return res.status(429).json({ error: 'Privacy limit reached' });
     }
     

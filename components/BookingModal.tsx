@@ -214,14 +214,17 @@ interface BookingModalProps {
   };
   isPriorityFromSuggestions?: boolean;
   onDone?: (isPriority: boolean) => void;
+  onPrepareDone?: (isPriority: boolean) => void;
   onSuccessStateChange?: (isSuccess: boolean) => void;
   onGoToPlan?: () => void;
+  onPrepareGoToPlan?: () => void;
   onGoToEvents?: () => void;
+  onPrepareGoToEvents?: () => void;
   onDismissStart?: () => void;
 }
 
 const BookingModal: React.FC<BookingModalProps> = React.memo(({ 
-  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone, onSuccessStateChange, onGoToPlan, onGoToEvents, onDismissStart, isNested = false 
+  isOpen, onClose, vendor, selectedDate, onConfirm, initialDetails, isPriorityFromSuggestions, onDone, onPrepareDone, onSuccessStateChange, onGoToPlan, onPrepareGoToPlan, onGoToEvents, onPrepareGoToEvents, onDismissStart, isNested = false 
 }) => {
   const [formData, setFormData] = useState({ eventName: '', clientName: '', contactEmail: '', eventLocation: '', eventTime: '', notes: '' });
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
@@ -1091,43 +1094,64 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
   );
 
   const handleGoToPlanAction = useCallback(() => {
+    if (onPrepareGoToPlan) {
+      onPrepareGoToPlan();
+    }
     dismissWithSlideOut(() => {
       setIsSuccess(false);
       if (onGoToPlan) {
         onGoToPlan();
       } else if (onDone) {
-        onDone(isPriority);
+        onDone(false);
       } else {
         onClose();
       }
     });
-  }, [dismissWithSlideOut, onGoToPlan, onDone, isPriority, onClose]);
+  }, [dismissWithSlideOut, onPrepareGoToPlan, onGoToPlan, onDone, onClose]);
 
   const handleGoToEventsAction = useCallback(() => {
+    if (onPrepareGoToEvents) {
+      onPrepareGoToEvents();
+    }
     dismissWithSlideOut(() => {
       setIsSuccess(false);
       if (onGoToEvents) {
         onGoToEvents();
       } else if (onDone) {
-        onDone(isPriority);
+        onDone(false);
       } else {
         onClose();
       }
     });
-  }, [dismissWithSlideOut, onGoToEvents, onDone, isPriority, onClose]);
+  }, [dismissWithSlideOut, onPrepareGoToEvents, onGoToEvents, onDone, onClose]);
 
   const handleDoneAction = useCallback(() => {
+    if (onPrepareDone) {
+      onPrepareDone(false);
+    }
     dismissWithSlideOut(() => {
       setIsSuccess(false);
-      if (submitType === 'book' && !isPriority && onGoToEvents) {
-        onGoToEvents();
-      } else if (onDone) {
-        onDone(isPriority);
+      if (onDone) {
+        onDone(false);
       } else {
         onClose();
       }
     });
-  }, [dismissWithSlideOut, submitType, isPriority, onGoToEvents, onDone, onClose]);
+  }, [dismissWithSlideOut, onPrepareDone, onDone, onClose]);
+
+  const handleViewPriorityVendorsAction = useCallback(() => {
+    if (onPrepareDone) {
+      onPrepareDone(true);
+    }
+    dismissWithSlideOut(() => {
+      setIsSuccess(false);
+      if (onDone) {
+        onDone(true);
+      } else {
+        onClose();
+      }
+    });
+  }, [dismissWithSlideOut, onPrepareDone, onDone, onClose]);
 
   useEffect(() => {
     if (isDismissing && !isNested) {
@@ -1206,7 +1230,17 @@ const BookingModal: React.FC<BookingModalProps> = React.memo(({
               }
             </p>
               
-            {submitType === 'add' ? (
+            {isPriorityDate ? (
+              <div className="w-full max-w-xs mx-auto flex flex-col">
+                <button
+                  type="button"
+                  onClick={handleViewPriorityVendorsAction}
+                  className="w-full bg-[#D4AF37] hover:bg-[#E5C76B] text-black font-black py-3.5 px-5 rounded-full text-xs uppercase tracking-[0.16em] transition-all duration-300 shadow-xl shadow-[#D4AF37]/20 hover:shadow-[#D4AF37]/30 outline-none hover:scale-[1.02] active:scale-[0.98] cursor-pointer text-center"
+                >
+                  View vendors available on this date
+                </button>
+              </div>
+            ) : submitType === 'add' ? (
               <div className="w-full max-w-xs mx-auto flex flex-col sm:flex-row gap-3">
                 <button
                   type="button"

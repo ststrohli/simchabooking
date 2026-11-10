@@ -16,24 +16,37 @@ interface LocationAutocompleteProps {
 }
 
 let placesModulePromise: Promise<any> | null = null;
+const clientSuggestionCache = new Map<string, any[]>();
+
+const createSessionTokenString = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `st_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+};
 
 const getPlacesModule = async () => {
   if (placesModulePromise) return placesModulePromise;
   placesModulePromise = (async () => {
-    const res = await fetch('/api/maps-key');
-    if (!res.ok) throw new Error('endpoint_error');
-    const data = await res.json();
-    if (!data || typeof data.key !== 'string' || !data.key.trim()) {
-      throw new Error('missing_secret');
+    try {
+      const res = await fetch('/api/maps-key');
+      if (!res.ok) throw new Error('endpoint_error');
+      const data = await res.json();
+      if (!data || typeof data.key !== 'string' || !data.key.trim()) {
+        throw new Error('missing_secret');
+      }
+
+      setOptions({
+        key: data.key.trim(),
+        v: 'weekly',
+        libraries: ['places'],
+      });
+
+      return await importLibrary('places');
+    } catch (err) {
+      placesModulePromise = null;
+      throw err;
     }
-
-    setOptions({
-      key: data.key.trim(),
-      v: 'weekly',
-      libraries: ['places'],
-    });
-
-    return await importLibrary('places');
   })();
   return placesModulePromise;
 };
@@ -58,34 +71,84 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
   const [activeIndex, setActiveIndex] = useState<number>(-1);
 
   const sessionTokenRef = useRef<any>(null);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const sessionTokenStrRef = useRef<string>('');
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const requestIdRef = useRef<number>(0);
 
   const isFilled = value !== '';
 
-  // Handle outside click to close suggestion list
+  // Handle outside pointer/mouse click to close suggestion list
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent | PointerEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     };
+    document.addEventListener('pointerdown', handleClickOutside);
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('pointerdown', handleClickOutside);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   const fetchSuggestions = async (query: string, reqId: number) => {
-    if (!query || query.trim().length < 3) {
+    const trimmed = query.trim();
+    if (!trimmed || trimmed.length < 2) {
       setSuggestions([]);
       setIsOpen(false);
       setLoading(false);
       return;
     }
 
+    const cacheKey = trimmed.toLowerCase();
+    if (clientSuggestionCache.has(cacheKey)) {
+      const cachedList = clientSuggestionCache.get(cacheKey) || [];
+      setSuggestions(cachedList);
+      setIsOpen(cachedList.length > 0);
+      setLoading(false);
+      setStatusMessage(null);
+      return;
+    }
+
     setLoading(true);
     setStatusMessage(null);
 
+    if (!sessionTokenStrRef.current) {
+      sessionTokenStrRef.current = createSessionTokenString();
+    }
+
+    // 1. Primary path: Server-side Places API (New) proxy (/api/places/autocomplete)
+    // Works reliably across both the AI Studio preview iframe AND the standalone URL preview / deployed site
+    try {
+      const proxyRes = await fetch('/api/places/autocomplete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input: trimmed,
+          sessionToken: sessionTokenStrRef.current,
+        }),
+      });
+
+      if (proxyRes.ok) {
+        const proxyData = await proxyRes.json();
+        if (requestIdRef.current !== reqId) return;
+
+        const list = Array.isArray(proxyData?.suggestions) ? proxyData.suggestions.slice(0, 5) : [];
+        if (list.length > 0) {
+          clientSuggestionCache.set(cacheKey, list);
+        }
+        setSuggestions(list);
+        setIsOpen(list.length > 0);
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Fall through to client-side Maps JS SDK if server route is unreachable
+    }
+
+    // 2. Fallback path: Client-side Google Maps JS API Places library (New)
     try {
       const places = await getPlacesModule();
       if (!places?.AutocompleteSuggestion) {
@@ -97,7 +160,8 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
       }
 
       const requestOptions: any = {
-        input: query.trim(),
+        input: trimmed,
+        internalUsageAttributionIds: ['gmp_mcp_codeassist_v1_aistudio'],
       };
       if (sessionTokenRef.current) {
         requestOptions.sessionToken = sessionTokenRef.current;
@@ -111,6 +175,9 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
 
       const list = response?.suggestions || [];
       const capped = list.slice(0, 5);
+      if (capped.length > 0) {
+        clientSuggestionCache.set(cacheKey, capped);
+      }
 
       setSuggestions(capped);
       setIsOpen(capped.length > 0);
@@ -139,7 +206,7 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
       clearTimeout(debounceTimerRef.current);
     }
 
-    if (!newVal || newVal.trim().length < 3) {
+    if (!newVal || newVal.trim().length < 2) {
       setSuggestions([]);
       setIsOpen(false);
       setLoading(false);
@@ -150,13 +217,14 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
     const currentReqId = ++requestIdRef.current;
     debounceTimerRef.current = setTimeout(() => {
       fetchSuggestions(newVal, currentReqId);
-    }, 300);
+    }, 180);
   };
 
   const handleSelectSuggestion = (suggestion: any) => {
     const addressText =
       suggestion.placePrediction?.text?.text ||
       suggestion.placePrediction?.text ||
+      suggestion.placePrediction?.structuredFormat?.mainText?.text ||
       '';
 
     if (addressText) {
@@ -166,8 +234,9 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
     setIsOpen(false);
     setActiveIndex(-1);
 
-    // Reset session token on selection finish
+    // Reset session tokens on selection finish
     sessionTokenRef.current = null;
+    sessionTokenStrRef.current = '';
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -193,6 +262,58 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
       setIsOpen(false);
       setActiveIndex(-1);
     }
+  };
+
+  const renderSuggestionsDropdown = () => {
+    if (!isOpen || suggestions.length === 0) return null;
+    return (
+      <ul
+        id={`${id}-listbox`}
+        role="listbox"
+        onPointerDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        className="absolute left-0 right-0 top-full mt-1.5 bg-zinc-950 border border-[#D4AF37]/40 rounded-2xl shadow-[0_18px_45px_rgba(0,0,0,0.95),0_0_20px_rgba(212,175,55,0.18)] z-[110] max-h-60 overflow-y-auto py-1 divide-y divide-zinc-900"
+      >
+        {suggestions.map((suggestion, index) => {
+          const mainText =
+            suggestion.placePrediction?.structuredFormat?.mainText?.text ||
+            suggestion.placePrediction?.text?.text ||
+            suggestion.placePrediction?.text ||
+            '';
+          const secondaryText =
+            suggestion.placePrediction?.structuredFormat?.secondaryText?.text || '';
+          const isActive = index === activeIndex;
+
+          return (
+            <li
+              key={suggestion.placePrediction?.placeId || index}
+              role="option"
+              aria-selected={isActive}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSelectSuggestion(suggestion);
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSelectSuggestion(suggestion);
+              }}
+              onMouseEnter={() => setActiveIndex(index)}
+              className={`px-4 py-2.5 cursor-pointer text-left transition-colors flex items-start gap-2.5 ${
+                isActive ? 'bg-[#D4AF37]/20 text-zinc-100' : 'text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100'
+              }`}
+            >
+              <MapPin className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-semibold text-zinc-100 truncate">{mainText}</span>
+                {secondaryText && <span className="text-[10px] text-zinc-400 truncate">{secondaryText}</span>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    );
   };
 
   const inputComponent = (
@@ -223,8 +344,11 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
         onKeyDown={handleKeyDown}
         onFocus={() => {
           setFocused(true);
-          if (suggestions.length > 0 && value.trim().length >= 3) {
+          if (suggestions.length > 0 && value.trim().length >= 2) {
             setIsOpen(true);
+          } else if (value.trim().length >= 2) {
+            const currentReqId = ++requestIdRef.current;
+            fetchSuggestions(value, currentReqId);
           }
         }}
         onBlur={() => setFocused(false)}
@@ -258,51 +382,13 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
         </div>
       )}
 
-      {isOpen && suggestions.length > 0 && (
-        <ul
-          id={`${id}-listbox`}
-          role="listbox"
-          className="absolute left-0 right-0 top-full mt-1.5 bg-zinc-950 border border-[#D4AF37]/30 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto py-1 divide-y divide-zinc-900"
-        >
-          {suggestions.map((suggestion, index) => {
-            const mainText =
-              suggestion.placePrediction?.text?.text ||
-              suggestion.placePrediction?.text ||
-              '';
-            const secondaryText =
-              suggestion.placePrediction?.structuredFormat?.secondaryText?.text || '';
-            const isActive = index === activeIndex;
-
-            return (
-              <li
-                key={suggestion.placePrediction?.placeId || index}
-                role="option"
-                aria-selected={isActive}
-                onMouseDown={(e) => {
-                  e.preventDefault(); // Prevent input blur before click registers
-                  handleSelectSuggestion(suggestion);
-                }}
-                onMouseEnter={() => setActiveIndex(index)}
-                className={`px-4 py-2.5 cursor-pointer text-left transition-colors flex items-start gap-2.5 ${
-                  isActive ? 'bg-[#D4AF37]/20 text-zinc-100' : 'text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100'
-                }`}
-              >
-                <MapPin className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-semibold text-zinc-100 truncate">{mainText}</span>
-                  {secondaryText && <span className="text-[10px] text-zinc-400 truncate">{secondaryText}</span>}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      {renderSuggestionsDropdown()}
     </div>
   );
 
   if (floating) {
     return (
-      <div className="relative w-full">
+      <div className={`relative w-full ${isOpen || focused ? 'z-[90]' : 'z-20'}`}>
         {inputComponent}
         {statusMessage && (
           <p className="mt-1 text-[11px] text-amber-400/95 flex items-center gap-1 px-1">
@@ -314,8 +400,8 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
   }
 
   return (
-    <div className="relative w-full">
-      <div className="relative flex items-center bg-black border border-[#D4AF37]/30 rounded-xl transition-all">
+    <div className={`relative w-full ${isOpen || focused ? 'z-[90]' : 'z-20'}`}>
+      <div ref={containerRef} className="relative flex items-center bg-black border border-[#D4AF37]/30 rounded-xl transition-all">
         {Icon && <Icon className="absolute left-3.5 w-4 h-4 text-[#D4AF37]/50 pointer-events-none z-10" />}
         <input
           id={id}
@@ -325,8 +411,12 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onFocus={() => {
-            if (suggestions.length > 0 && value.trim().length >= 3) {
+            setFocused(true);
+            if (suggestions.length > 0 && value.trim().length >= 2) {
               setIsOpen(true);
+            } else if (value.trim().length >= 2) {
+              const currentReqId = ++requestIdRef.current;
+              fetchSuggestions(value, currentReqId);
             }
           }}
           onBlur={() => setFocused(false)}
@@ -343,45 +433,7 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
             <Loader2 className="w-4 h-4 text-[#D4AF37] animate-spin" />
           </div>
         )}
-        {isOpen && suggestions.length > 0 && (
-          <ul
-            id={`${id}-listbox`}
-            role="listbox"
-            className="absolute left-0 right-0 top-full mt-1.5 bg-zinc-950 border border-[#D4AF37]/30 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto py-1 divide-y divide-zinc-900"
-          >
-            {suggestions.map((suggestion, index) => {
-              const mainText =
-                suggestion.placePrediction?.text?.text ||
-                suggestion.placePrediction?.text ||
-                '';
-              const secondaryText =
-                suggestion.placePrediction?.structuredFormat?.secondaryText?.text || '';
-              const isActive = index === activeIndex;
-
-              return (
-                <li
-                  key={suggestion.placePrediction?.placeId || index}
-                  role="option"
-                  aria-selected={isActive}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    handleSelectSuggestion(suggestion);
-                  }}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  className={`px-4 py-2.5 cursor-pointer text-left transition-colors flex items-start gap-2.5 ${
-                    isActive ? 'bg-[#D4AF37]/20 text-zinc-100' : 'text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100'
-                  }`}
-                >
-                  <MapPin className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-semibold text-zinc-100 truncate">{mainText}</span>
-                    {secondaryText && <span className="text-[10px] text-zinc-400 truncate">{secondaryText}</span>}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        {renderSuggestionsDropdown()}
       </div>
       {statusMessage && (
         <p className="mt-1 text-[11px] text-amber-400/95 flex items-center gap-1 px-1">

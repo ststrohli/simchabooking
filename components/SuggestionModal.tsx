@@ -1,10 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { X, Check, Star, MapPin, Users, Crown } from 'lucide-react';
-import { Vendor } from '../types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { motion } from 'motion/react';
+import { X, Check, Calendar } from 'lucide-react';
+import { Vendor, Review } from '../types';
+import VendorCard from './VendorCard';
+import { useModalDragDismiss, ModalDragIndicator } from './useModalDragDismiss';
+
+const MODAL_TRANSITION = { duration: 1.15, ease: [0.25, 0.85, 0.35, 1] as const };
 
 interface SuggestionModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onDismissStart?: () => void;
   sourceVendor: Vendor | null;
   recommendations: Vendor[];
   onBook: (vendor: Vendor) => void;
@@ -12,34 +18,44 @@ interface SuggestionModalProps {
   isPriorityLock?: boolean;
   eventDate?: string;
   allVendors?: Vendor[];
+  onAddReview?: (vendorId: string, review: Omit<Review, 'id' | 'date'>) => void;
 }
 
-const SuggestionModal: React.FC<SuggestionModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  sourceVendor, 
-  recommendations, 
+const SuggestionModalInner: React.FC<SuggestionModalProps> = ({
+  onClose,
+  onDismissStart,
+  sourceVendor,
+  recommendations,
   onBook,
   cartItems,
-  isPriorityLock,
   eventDate,
-  allVendors = []
+  allVendors = [],
+  onAddReview,
 }) => {
   const [activeTab, setActiveTab] = useState<string>('Venue');
 
+  const handleDismissStartInternal = useCallback(() => {
+    document.body.style.overflow = '';
+    if (onDismissStart) {
+      onDismissStart();
+    }
+  }, [onDismissStart]);
+
+  const { backdropOpacity, isDismissing, dragModalProps, dragHandleProps, dismissWithSlideOut } = useModalDragDismiss(
+    onClose,
+    true,
+    handleDismissStartInternal
+  );
+
   // Lock background scroll when the modal is open
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = '';
     };
-  }, [isOpen]);
+  }, []);
 
-  if (!isOpen || !sourceVendor) return null;
+  if (!sourceVendor) return null;
 
   const categories = ['Venue', 'Music', 'Photography', 'Videography', 'Catering'];
 
@@ -60,7 +76,7 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
   // 2. Exclude the current source vendor we just booked
   // 3. Filter by availability (the selected date should not be inside unavailableDates)
   const vendorsToUse = allVendors && allVendors.length > 0 ? allVendors : recommendations;
-  
+
   const filteredCategoryVendors = vendorsToUse.filter((vendor) => {
     const isCategoryMatch = vendor.category.toLowerCase() === activeTab.toLowerCase();
     if (!isCategoryMatch) return false;
@@ -79,168 +95,141 @@ const SuggestionModal: React.FC<SuggestionModalProps> = ({
     .sort((a, b) => b.rating - a.rating)
     .slice(0, 4);
 
+  const formattedDate = formatDate(eventDate);
+
   return (
-    <div 
+    <motion.div
+      style={{ opacity: backdropOpacity }}
+      transition={MODAL_TRANSITION}
       role="dialog"
       aria-modal="true"
       aria-labelledby="suggestion-modal-title"
-      className="fixed inset-0 z-[100] w-full h-screen bg-black overflow-y-auto flex flex-col items-center justify-start p-0 md:p-6 animate-in fade-in duration-200 min-h-screen"
+      className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu fixed inset-0 z-[145] flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 bg-black/85 backdrop-blur-md overflow-hidden ${
+        isDismissing ? 'pointer-events-none' : ''
+      }`}
     >
-      {/* Background overlay click handler */}
-      <div className="fixed inset-0 bg-black/90 backdrop-blur-md" onClick={onClose} aria-hidden="true" />
-      
-      {/* Main modal container */}
-      <div 
-        className="bg-[#0a0a0a] w-full max-w-4xl min-h-screen md:min-h-0 md:max-h-[92vh] md:rounded-3xl shadow-2xl overflow-hidden border border-[#D4AF37]/30 flex flex-col relative z-10 my-auto"
+      <motion.div
+        {...dragModalProps}
+        transition={MODAL_TRANSITION}
+        className={`simcha-modal-gpu-wrapper will-change-transform transform-gpu bg-[#0c0c0c] w-full sm:max-w-4xl h-[95dvh] sm:h-[90vh] sm:max-h-[90vh] rounded-t-[2.5rem] rounded-b-none sm:rounded-[2.5rem] border-t-2 border-r border-l sm:border border-[#D4AF37]/35 shadow-[0_24px_64px_rgba(0,0,0,0.95)] overflow-hidden relative flex flex-col mt-auto sm:mt-0 ${
+          isDismissing ? 'pointer-events-none' : ''
+        }`}
       >
-        
-        {/* Fixed/Absolute Close Button */}
-        <button 
-          onClick={onClose}
-          className="absolute top-4 right-4 text-zinc-400 hover:text-[#D4AF37] bg-black/80 border border-[#D4AF37]/30 hover:border-[#D4AF37] p-3 rounded-full transition-all cursor-pointer z-[9999] hover:scale-110 active:scale-95 shadow-2xl"
-          aria-label="Close priority page and return home"
-          title="Return to Home Screen"
+        {/* Top bar drag handle with centered gold drag indicator pill */}
+        <div
+          {...dragHandleProps}
+          data-drag-handle="true"
+          title="Drag down to close"
+          className="absolute top-0 left-0 right-14 z-[70] pt-1.5 pb-3 flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
         >
-          <X className="w-6 h-6 text-[#D4AF37]" />
-        </button>
-
-        {/* Scrollable container for the modal contents */}
-        <div className="overflow-y-auto flex-1 no-scrollbar">
-          
-          {/* Header */}
-          <div className="bg-black p-6 md:p-8 text-white relative overflow-hidden border-b border-[#D4AF37]/20 flex flex-col items-center justify-center text-center w-full px-4 break-words whitespace-normal">
-            
-            <div className="flex items-center gap-3 mb-2 relative z-10 justify-center">
-              <div className="bg-[#D4AF37] p-1 rounded-full">
-                <Check className="w-4 h-4 text-black" />
-              </div>
-              <span className="font-bold text-[#D4AF37] uppercase text-xs tracking-wider">
-                {isPriorityLock ? 'Priority Date Lock Active' : 'Added to plan'}
-              </span>
-            </div>
-            
-            <h2 id="suggestion-modal-title" className="text-2xl font-bold font-[Cinzel] relative z-10 text-[#D4AF37] flex items-center justify-center text-center flex-wrap leading-tight">
-              {isPriorityLock ? <><Crown className="w-6 h-6 mr-2 animate-bounce text-[#D4AF37]" /> Priority Date Lock Active!</> : 'Excellent Choice!'}
-            </h2>
-            
-            <p className="text-zinc-300 mt-2 relative z-10 max-w-lg leading-relaxed text-sm text-center break-words whitespace-normal">
-              {isPriorityLock ? (
-                <>
-                  You have secured your priority celebration date for <span className="text-white font-bold">{formatDate(eventDate)}</span> with <span className="font-bold text-white">{sourceVendor.name}</span>. Below are the other elite vendors who are verified <span className="text-green-400 font-bold">AVAILABLE</span> on this exact same date:
-                </>
-              ) : (
-                <>
-                  You've booked <span className="font-bold text-white">{sourceVendor.name}</span>. Others who booked this vendor also considered these professionals.
-                </>
-              )}
-            </p>
-          </div>
-
-          {/* Recommendations Content Area */}
-          <div className="p-4 md:p-6 bg-[#111] flex flex-col items-center justify-center text-center w-full break-words whitespace-normal">
-            
-            {/* Centered Premium Header */}
-            <div className="text-center font-bold font-[Cinzel] text-sm md:text-base text-[#D4AF37] px-4 py-1 tracking-wide leading-snug break-words whitespace-normal w-full max-w-lg mx-auto">
-              Top vendors verified available on this exact date
-            </div>
-            
-            {/* Distinct Gold Divider Line */}
-            <hr className="border-[#D4AF37] my-4 w-full opacity-80" />
-
-            {/* Horizontally Scrolling Interactive Category Tabs */}
-            <div className="w-full mb-6">
-              <div className="flex overflow-x-auto whitespace-nowrap gap-3 pb-2 no-scrollbar scroll-smooth w-full">
-                {categories.map((cat) => {
-                  const isActive = activeTab === cat;
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setActiveTab(cat)}
-                      aria-pressed={isActive}
-                      className={`px-6 py-3.5 rounded-full text-xs font-black uppercase tracking-widest transition-all cursor-pointer flex-shrink-0 shadow-sm ${
-                        isActive
-                          ? 'bg-[#D4AF37] text-black shadow-lg shadow-[#D4AF37]/20 font-black border-2 border-[#D4AF37]'
-                          : 'border-2 border-[#D4AF37]/40 text-white hover:border-[#D4AF37] hover:bg-[#D4AF37]/10'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Column Layout on Mobile & 2x2 Grid on Desktop */}
-            {displayedVendors.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
-                {displayedVendors.map((vendor) => {
-                  const isAdded = cartItems.includes(vendor.id);
-                  return (
-                    <div 
-                      key={vendor.id} 
-                      className="bg-black border border-[#D4AF37]/10 rounded-xl p-4 shadow-sm hover:border-[#D4AF37]/40 transition-all flex flex-col items-center text-center justify-between w-full break-words whitespace-normal"
-                    >
-                      <div className="flex flex-col sm:flex-row gap-3 mb-3 items-center text-center w-full">
-                        <img 
-                          src={vendor.image} 
-                          alt={vendor.name} 
-                          className="w-16 h-16 rounded-lg object-cover bg-zinc-900 border border-[#D4AF37]/10 flex-shrink-0"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="flex-1 min-w-0 flex flex-col items-center text-center w-full">
-                          <div className="flex flex-col items-center gap-1.5 justify-center w-full">
-                            <h4 className="font-bold text-zinc-100 text-sm truncate max-w-[180px] font-[Cinzel] text-center break-words whitespace-normal">{vendor.name}</h4>
-                            <div className="flex items-center text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded border border-[#D4AF37]/20 flex-shrink-0">
-                              <Star className="w-2.5 h-2.5 fill-[#D4AF37] mr-0.5" />
-                              {vendor.rating}
-                            </div>
-                          </div>
-                          <p className="text-[10px] text-[#D4AF37]/60 font-bold uppercase tracking-widest mt-0.5 text-center">{vendor.category}</p>
-                          <div className="flex items-center text-[10px] text-zinc-400 mt-1 justify-center w-full">
-                            <MapPin className="w-2.5 h-2.5 mr-1 flex-shrink-0" />
-                            <span className="truncate max-w-[150px]">{vendor.location}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <p className="text-xs text-zinc-400 line-clamp-2 mb-4 flex-1 font-light text-center break-words whitespace-normal">
-                        {vendor.description}
-                      </p>
-
-                      <button
-                        onClick={() => !isAdded && onBook(vendor)}
-                        disabled={isAdded}
-                        className={`w-full py-2.5 rounded-full text-[10px] font-black transition-all flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer ${
-                          isAdded
-                            ? 'bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20'
-                            : 'bg-[#D4AF37] text-black hover:bg-[#E5C76B] shadow-lg shadow-[#D4AF37]/5'
-                        }`}
-                      >
-                        {isAdded ? (
-                          <>
-                            <Check className="w-3 h-3" /> Added to Plan
-                          </>
-                        ) : (
-                          <>
-                            Select & see price
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-zinc-400 py-10 text-center text-xs tracking-wider uppercase font-[Cinzel]">
-                No top {activeTab} vendors found available on {formatDate(eventDate)}
-              </div>
-            )}
+          <div className="pl-14">
+            <ModalDragIndicator />
           </div>
         </div>
 
-      </div>
-    </div>
+        {/* Standard luxury circular close button matching BookingModal & QuickViewModal */}
+        <button
+          type="button"
+          onClick={dismissWithSlideOut}
+          className="absolute top-4 right-4 z-[120] w-8 h-8 flex items-center justify-center bg-[#1a1a1a] hover:bg-[#262626] border border-[#D4AF37]/40 rounded-full text-[#D4AF37] transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] shadow-xl cursor-pointer"
+          aria-label="Close priority page and return home"
+          title="Return to Home Screen"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Scrollable content area */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y custom-scrollbar px-4 sm:px-8 pt-9 pb-8">
+          {/* Single concise luxury header — no repetitive phrases */}
+          <div className="flex flex-col items-center text-center max-w-xl mx-auto mb-6">
+            {formattedDate && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] text-[10px] font-black uppercase tracking-[0.2em] mb-2.5">
+                <Calendar className="w-3 h-3" />
+                <span>{formattedDate}</span>
+              </div>
+            )}
+
+            <h2
+              id="suggestion-modal-title"
+              className="text-xl sm:text-2xl md:text-3xl font-bold font-[Cinzel] text-[#D4AF37] tracking-wider leading-tight"
+            >
+              Available on Your Date
+            </h2>
+
+            <p className="text-zinc-300 mt-2 text-xs sm:text-sm font-light leading-relaxed">
+              Showing professionals verified open on{' '}
+              <span className="text-white font-semibold">{formattedDate || 'your selected date'}</span> alongside{' '}
+              <span className="text-white font-semibold">{sourceVendor.name}</span> so you can book the rest of your celebration in one place.
+            </p>
+          </div>
+
+          {/* Compact Luxury Category Capsules */}
+          <div className="w-full mb-6 border-y border-[#D4AF37]/15 py-3">
+            <div className="flex items-center justify-start sm:justify-center overflow-x-auto whitespace-nowrap gap-2 no-scrollbar scroll-smooth px-1">
+              {categories.map((cat) => {
+                const isActive = activeTab === cat;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setActiveTab(cat)}
+                    aria-pressed={isActive}
+                    className={`px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.18em] transition-all duration-200 cursor-pointer flex-shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                      isActive
+                        ? 'bg-[#D4AF37] text-black border border-[#D4AF37] shadow-[0_0_14px_rgba(212,175,55,0.3)] scale-[1.02]'
+                        : 'bg-black/70 border border-[#D4AF37]/35 text-zinc-300 hover:border-[#D4AF37] hover:text-[#D4AF37]'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Standard Marketplace VendorCard Grid */}
+          {displayedVendors.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
+              {displayedVendors.map((vendor) => {
+                const isAdded = cartItems.includes(vendor.id);
+                return (
+                  <div key={vendor.id} className="relative">
+                    {isAdded && (
+                      <div className="absolute top-3 right-3 z-20 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/85 border border-[#D4AF37] text-[#D4AF37] text-[9px] font-black uppercase tracking-widest shadow-lg pointer-events-none">
+                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        <span>In Plan</span>
+                      </div>
+                    )}
+                    <VendorCard
+                      vendor={vendor}
+                      onBook={(v) => {
+                        if (!isAdded) onBook(v);
+                      }}
+                      onMessage={() => {}}
+                      onQuickView={(v) => {
+                        if (!isAdded) onBook(v);
+                      }}
+                      selectedDate={eventDate || ''}
+                      onAddReview={onAddReview || (() => {})}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-zinc-400 py-14 text-center text-xs tracking-widest uppercase font-[Cinzel]">
+              No {activeTab} vendors available on {formattedDate || 'this date'}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
   );
+};
+
+const SuggestionModal: React.FC<SuggestionModalProps> = (props) => {
+  if (!props.isOpen || !props.sourceVendor) return null;
+  return <SuggestionModalInner {...props} />;
 };
 
 export default SuggestionModal;
