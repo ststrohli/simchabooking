@@ -29,6 +29,12 @@ const SocialPlatformIcon: React.FC<{ platform: SocialPlatformId; className?: str
           <path d="m10 15 5-3-5-3z" />
         </svg>
       );
+    case 'twentyfoursix':
+      return (
+        <span className="font-sans font-black text-[8.5px] leading-none tracking-tighter select-none">
+          24/6
+        </span>
+      );
     case 'facebook':
       return (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -112,11 +118,21 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
   }, []);
 
   const mediaItems = useMemo(() => {
-    const items: Array<{ type: 'image' | 'video', url: string, isNative?: boolean, label?: string }> = [];
+    const items: Array<{ type: 'image' | 'video' | 'twentyfoursix' | 'audio', url: string, isNative?: boolean, label?: string }> = [];
+    const is24SixUrl = (u: string) =>
+      /24six\.(app|com)/i.test(u) || u.includes('simcha_24six=1');
+    const isAudioUrl = (u: string) =>
+      !is24SixUrl(u) && (
+        u.startsWith('data:audio/') ||
+        /\.(mp3|wav|m4a|aac|flac|oga)(?:\?|$|#|%)/i.test(u) ||
+        u.includes('audio%2F') ||
+        u.includes('audio/') ||
+        u.includes('simcha_audio=1')
+      );
     const isEmbedVideoUrl = (u: string) =>
       /youtube\.com\/embed\/|player\.vimeo\.com\/video\//i.test(u);
     const isDirectVideoUrl = (u: string) =>
-      !isEmbedVideoUrl(u) && (
+      !isEmbedVideoUrl(u) && !is24SixUrl(u) && !isAudioUrl(u) && (
         u.startsWith('data:video/') ||
         /\.(mp4|webm|ogg|mov|m4v|avi|ogv)(?:\?|$|#|%)/i.test(u) ||
         u.includes('video%2F') ||
@@ -126,12 +142,24 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
       );
 
     if (vendor.video) {
-      const isNativeVideo = isDirectVideoUrl(vendor.video);
-      items.push({ type: 'video', url: vendor.video, isNative: !!isNativeVideo, label: `${vendor.name} Feature Film` });
+      if (is24SixUrl(vendor.video)) {
+        items.push({ type: 'twentyfoursix', url: vendor.video.replace(/[#?&]simcha_24six=1/g, ''), label: `${vendor.name} on 24/6` });
+      } else if (isAudioUrl(vendor.video)) {
+        items.push({ type: 'audio', url: vendor.video, label: `${vendor.name} Audio Track` });
+      } else {
+        const isNativeVideo = isDirectVideoUrl(vendor.video);
+        items.push({ type: 'video', url: vendor.video, isNative: !!isNativeVideo, label: `${vendor.name} Feature Film` });
+      }
     }
     if (vendor.gallery && vendor.gallery.length > 0) {
       items.push(...vendor.gallery.map((url, idx) => {
         if (!url) return null;
+        if (is24SixUrl(url)) {
+          return { type: 'twentyfoursix' as const, url: url.replace(/[#?&]simcha_24six=1/g, ''), label: `24/6 Music & Video ${idx + 1}` };
+        }
+        if (isAudioUrl(url)) {
+          return { type: 'audio' as const, url, label: `Music Track ${idx + 1}` };
+        }
         if (isDirectVideoUrl(url)) {
           return { type: 'video' as const, url, isNative: true, label: `Showcase Video ${idx + 1}` };
         }
@@ -731,6 +759,64 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
                   />
                 )}
               </div>
+            ) : currentMedia.type === 'twentyfoursix' ? (
+              <div className="w-full h-full relative bg-zinc-950 flex flex-col items-center justify-center overflow-hidden rounded-t-[2.5rem]">
+                <iframe
+                  key={currentMedia.url}
+                  src={currentMedia.url}
+                  title={currentMedia.label || `${vendor.name} on 24/6`}
+                  className="w-full h-full border-0 absolute inset-0 bg-zinc-950"
+                  allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                />
+                {mediaItems.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setIsPlaylistOpen(prev => !prev); }}
+                    className="absolute bottom-4 right-4 z-20 h-8 px-3 rounded-full bg-black/75 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/40 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all shadow-lg cursor-pointer"
+                  >
+                    <ListVideo className="w-3.5 h-3.5" />
+                    <span>{currentMediaIndex + 1}/{mediaItems.length}</span>
+                  </button>
+                )}
+              </div>
+            ) : currentMedia.type === 'audio' ? (
+              <div className="w-full h-full relative bg-zinc-950 flex flex-col items-center justify-center p-6 text-center overflow-hidden rounded-t-[2.5rem]">
+                <img
+                  src={vendor.image || 'https://picsum.photos/800/600'}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover opacity-35 blur-sm scale-105 select-none pointer-events-none"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/65 to-black/45 pointer-events-none" />
+                <div className="relative z-10 max-w-md w-full bg-black/80 backdrop-blur-xl border-2 border-[#D4AF37]/50 rounded-3xl p-6 sm:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.9),0_0_30px_rgba(212,175,55,0.22)] flex flex-col items-center gap-4">
+                  <div className="w-16 h-16 rounded-full bg-[#D4AF37]/15 border-2 border-[#D4AF37] flex items-center justify-center text-[#D4AF37] shadow-[0_0_24px_rgba(212,175,55,0.35)]">
+                    <Volume2 className="w-7 h-7" />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black uppercase tracking-[0.28em] text-[#D4AF37] block">
+                      Featured Audio Track
+                    </span>
+                    <h4 className="text-lg font-bold font-[Cinzel] text-white">
+                      {currentMedia.label || `${vendor.name} Audio`}
+                    </h4>
+                  </div>
+                  <audio
+                    key={currentMedia.url}
+                    src={currentMedia.url}
+                    controls
+                    className="w-full mt-1"
+                  />
+                </div>
+                {mediaItems.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setIsPlaylistOpen(prev => !prev); }}
+                    className="absolute bottom-4 right-4 z-20 h-8 px-3 rounded-full bg-black/75 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/40 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all shadow-lg cursor-pointer"
+                  >
+                    <ListVideo className="w-3.5 h-3.5" />
+                    <span>{currentMediaIndex + 1}/{mediaItems.length}</span>
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="w-full h-full relative bg-zinc-950 flex items-center justify-center overflow-hidden rounded-t-[2.5rem]">
                 {!imageLoaded && (
@@ -806,17 +892,21 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
                           <div className="w-10 h-10 rounded-lg overflow-hidden bg-zinc-900 border border-[#D4AF37]/30 flex items-center justify-center shrink-0 relative">
                             {item.type === 'video' ? (
                               <Film className="w-4 h-4 text-[#D4AF37]" />
+                            ) : item.type === 'twentyfoursix' ? (
+                              <span className="font-sans font-black text-[9px] text-[#D4AF37]">24/6</span>
+                            ) : item.type === 'audio' ? (
+                              <Volume2 className="w-4 h-4 text-[#D4AF37]" />
                             ) : (
                               <img src={item.url} alt="" className="w-full h-full object-cover" />
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-[11px] font-bold truncate text-white">
-                              {item.label || (item.type === 'video' ? `Video ${idx + 1}` : `Photo ${idx + 1}`)}
+                              {item.label || (item.type === 'video' ? `Video ${idx + 1}` : item.type === 'twentyfoursix' ? `24/6 Content ${idx + 1}` : item.type === 'audio' ? `Audio ${idx + 1}` : `Photo ${idx + 1}`)}
                             </p>
                             <p className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37]/80 flex items-center gap-1 mt-0.5">
-                              {item.type === 'video' ? <Film className="w-2.5 h-2.5" /> : <ImageIcon className="w-2.5 h-2.5" />}
-                              <span>{item.type === 'video' ? 'Video Showcase' : 'Gallery Photo'}</span>
+                              {item.type === 'video' ? <Film className="w-2.5 h-2.5" /> : item.type === 'twentyfoursix' ? <Play className="w-2.5 h-2.5" /> : item.type === 'audio' ? <Volume2 className="w-2.5 h-2.5" /> : <ImageIcon className="w-2.5 h-2.5" />}
+                              <span>{item.type === 'video' ? 'Video Showcase' : item.type === 'twentyfoursix' ? '24/6 Music & Video' : item.type === 'audio' ? 'Audio Track' : 'Gallery Photo'}</span>
                             </p>
                           </div>
                           {isCurrent && (
@@ -883,28 +973,17 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
             </div>
             <h2 id="quick-view-title" className="text-3xl font-bold text-white font-[Cinzel] mb-2">{vendor.name}</h2>
             
-            <div className="flex flex-wrap items-center gap-3 mb-5">
+            <div className="flex flex-wrap items-center gap-4 mb-4">
               <button
                 type="button"
                 onClick={handleScrollToReviews}
                 title="Click to view reviews"
-                className="flex items-center gap-1.5 text-[#D4AF37] bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/30 hover:border-[#D4AF37] px-3 py-1 rounded-full transition-all cursor-pointer active:scale-95 group"
+                className="flex items-center gap-1.5 text-[#D4AF37] hover:opacity-85 transition-opacity cursor-pointer active:scale-95 group"
               >
-                <div className="flex items-center gap-0.5 text-[#D4AF37]">
-                  {[1, 2, 3, 4, 5].map((starIdx) => (
-                    <Star
-                      key={starIdx}
-                      className={`w-3.5 h-3.5 ${
-                        starIdx <= Math.round(vendor.rating || 5)
-                          ? 'fill-current text-[#D4AF37]'
-                          : 'text-[#D4AF37]/35'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <span className="text-xs font-black ml-0.5">{vendor.rating.toFixed(1)}</span>
-                <span className="text-[10px] text-zinc-300 group-hover:text-white font-bold uppercase tracking-wider">
-                  ({vendor.reviews?.length || 0} Reviews)
+                <Star className="w-4 h-4 fill-current text-[#D4AF37]" />
+                <span className="text-sm font-black">{vendor.rating.toFixed(1)}</span>
+                <span className="text-xs text-zinc-400 group-hover:text-zinc-200 font-medium">
+                  ({vendor.reviews?.length || 0} {vendor.reviews?.length === 1 ? 'Review' : 'Reviews'})
                 </span>
               </button>
               <div className="flex items-center gap-1.5 text-zinc-300">
@@ -914,19 +993,18 @@ const QuickViewModal: React.FC<QuickViewModalProps> = React.memo(({
             </div>
 
             {socialItems.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 mb-6">
+              <div className="w-full flex flex-wrap items-center justify-center gap-2.5 mb-6">
                 {socialItems.map((item) => (
                   <a
                     key={item.platform}
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    title={`${item.label}: ${item.handleDisplay}`}
-                    className="h-8 px-3 rounded-full bg-black/60 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/35 hover:border-[#D4AF37] text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                    title={item.label}
+                    aria-label={`${vendor.name} on ${item.label}`}
+                    className="simcha-social-logo-btn w-9 h-9 rounded-full bg-black/70 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/45 hover:border-[#D4AF37] inline-flex items-center justify-center transition-all duration-200 shadow-md cursor-pointer active:scale-95"
                   >
-                    <SocialPlatformIcon platform={item.platform} className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate max-w-[140px]">{item.handleDisplay}</span>
-                    <ExternalLink className="w-2.5 h-2.5 opacity-70 shrink-0" />
+                    <SocialPlatformIcon platform={item.platform} className="w-4 h-4 shrink-0" />
                   </a>
                 ))}
               </div>

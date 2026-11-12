@@ -16,7 +16,81 @@ interface LocationAutocompleteProps {
 }
 
 let placesModulePromise: Promise<any> | null = null;
+let clientPlacesQuotaExhaustedUntil = 0;
 const clientSuggestionCache = new Map<string, any[]>();
+
+// Default proximity center: NY/NJ Tri-State metro (covers Brooklyn, Lakewood, Monsey, Five Towns, Manhattan, NJ)
+const DEFAULT_BIAS_COORDS = { lat: 40.55, lon: -74.15 };
+let resolvedUserCoords: { lat: number; lon: number } | null = null;
+let resolvingCoordsPromise: Promise<{ lat: number; lon: number }> | null = null;
+
+const getUserBiasCoords = (): Promise<{ lat: number; lon: number }> => {
+  if (resolvedUserCoords) return Promise.resolve(resolvedUserCoords);
+  if (resolvingCoordsPromise) return resolvingCoordsPromise;
+
+  resolvingCoordsPromise = (async () => {
+    try {
+      const cached = sessionStorage.getItem('simcha_user_geo_bias');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (typeof parsed?.lat === 'number' && typeof parsed?.lon === 'number') {
+          resolvedUserCoords = parsed;
+          return parsed;
+        }
+      }
+    } catch {}
+
+    // 1. Check if browser geolocation permission is already granted (no popup prompt)
+    try {
+      if (typeof navigator !== 'undefined' && navigator.permissions && navigator.geolocation) {
+        const perm = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+        if (perm.state === 'granted') {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              maximumAge: 600000,
+              timeout: 1500,
+              enableHighAccuracy: false,
+            });
+          });
+          const coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          resolvedUserCoords = coords;
+          try {
+            sessionStorage.setItem('simcha_user_geo_bias', JSON.stringify(coords));
+          } catch {}
+          return coords;
+        }
+      }
+    } catch {}
+
+    // 2. Fast client-side IP geolocation (uses the user's real browser IP, not the backend server IP)
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch('https://get.geojs.io/v1/ip/geo.json', { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const data = await res.json();
+        const lat = parseFloat(data?.latitude);
+        const lon = parseFloat(data?.longitude);
+        const country = String(data?.country_code || '').toUpperCase();
+        // Use IP coords if in US, CA, IL, GB, AU, etc.
+        if (!isNaN(lat) && !isNaN(lon) && ['US', 'CA', 'IL', 'GB', 'AU', 'FR', 'BE', 'MX'].includes(country)) {
+          const coords = { lat, lon };
+          resolvedUserCoords = coords;
+          try {
+            sessionStorage.setItem('simcha_user_geo_bias', JSON.stringify(coords));
+          } catch {}
+          return coords;
+        }
+      }
+    } catch {}
+
+    resolvedUserCoords = DEFAULT_BIAS_COORDS;
+    return DEFAULT_BIAS_COORDS;
+  })();
+
+  return resolvingCoordsPromise;
+};
 
 const createSessionTokenString = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -78,6 +152,11 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
 
   const isFilled = value !== '';
 
+  // Warm up user location bias coordinates on mount
+  useEffect(() => {
+    getUserBiasCoords();
+  }, []);
+
   // Handle outside pointer/mouse click to close suggestion list
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent | PointerEvent) => {
@@ -102,7 +181,8 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
       return;
     }
 
-    const cacheKey = trimmed.toLowerCase();
+    const biasCoords = resolvedUserCoords || DEFAULT_BIAS_COORDS;
+    const cacheKey = `${trimmed.toLowerCase()}|${biasCoords.lat.toFixed(2)},${biasCoords.lon.toFixed(2)}`;
     if (clientSuggestionCache.has(cacheKey)) {
       const cachedList = clientSuggestionCache.get(cacheKey) || [];
       setSuggestions(cachedList);
@@ -119,15 +199,17 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
       sessionTokenStrRef.current = createSessionTokenString();
     }
 
-    // 1. Primary path: Server-side Places API (New) proxy (/api/places/autocomplete)
-    // Works reliably across both the AI Studio preview iframe AND the standalone URL preview / deployed site
+    // 1. Primary path: Server-side proximity-biased address autocomplete (/api/places/autocomplete)
     try {
+      const coords = await getUserBiasCoords();
       const proxyRes = await fetch('/api/places/autocomplete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input: trimmed,
           sessionToken: sessionTokenStrRef.current,
+          lat: coords.lat,
+          lon: coords.lon,
         }),
       });
 
@@ -138,18 +220,28 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
         const list = Array.isArray(proxyData?.suggestions) ? proxyData.suggestions.slice(0, 5) : [];
         if (list.length > 0) {
           clientSuggestionCache.set(cacheKey, list);
+          setSuggestions(list);
+          setIsOpen(true);
+          setLoading(false);
+          return;
         }
-        setSuggestions(list);
-        setIsOpen(list.length > 0);
-        setLoading(false);
-        return;
       }
     } catch {
       // Fall through to client-side Maps JS SDK if server route is unreachable
     }
 
-    // 2. Fallback path: Client-side Google Maps JS API Places library (New)
+    // 2. Fallback path: Client-side Google Maps JS API Places library (New) with locationBias & region filter
+    if (Date.now() < clientPlacesQuotaExhaustedUntil) {
+      if (requestIdRef.current === reqId) {
+        setLoading(false);
+        setSuggestions([]);
+        setIsOpen(false);
+      }
+      return;
+    }
+
     try {
+      const coords = await getUserBiasCoords();
       const places = await getPlacesModule();
       if (!places?.AutocompleteSuggestion) {
         throw new Error('library_error');
@@ -161,7 +253,11 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
 
       const requestOptions: any = {
         input: trimmed,
-        internalUsageAttributionIds: ['gmp_mcp_codeassist_v1_aistudio'],
+        includedRegionCodes: ['us', 'ca', 'il', 'gb'],
+        locationBias: {
+          center: { lat: coords.lat, lng: coords.lon },
+          radius: 50000,
+        },
       };
       if (sessionTokenRef.current) {
         requestOptions.sessionToken = sessionTokenRef.current;
@@ -183,17 +279,14 @@ export const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
       setIsOpen(capped.length > 0);
       setLoading(false);
     } catch (err: any) {
+      const msg = String(err?.message || err || '');
+      if (msg.includes('Quota') || msg.includes('quota') || msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED')) {
+        clientPlacesQuotaExhaustedUntil = Date.now() + 15 * 60 * 1000;
+      }
       if (requestIdRef.current !== reqId) return;
       setLoading(false);
       setSuggestions([]);
       setIsOpen(false);
-
-      const msg = String(err?.message || err || '');
-      if (msg.includes('Quota') || msg.includes('quota') || msg.includes('rate limit')) {
-        setStatusMessage('⚠️ Maps quota reached. Standard input active.');
-      } else if (msg.includes('ApiNotActivated') || msg.includes('RefererNotAllowed') || msg.includes('KeyInvalid')) {
-        setStatusMessage('⚠️ Maps configuration error. Standard input active.');
-      }
     }
   };
 

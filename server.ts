@@ -933,10 +933,23 @@ async function startServer() {
     res.json({ key });
   });
 
-  // High-capacity in-memory cache for Google Places Autocomplete (supports thousands of users with unlimited daily searches)
+  // High-capacity in-memory cache for Address Autocomplete (supports thousands of users with unlimited daily searches)
   const placesAutocompleteCache = new Map<string, { suggestions: any[]; expiresAt: number }>();
   const PLACES_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
   const PLACES_CACHE_MAX_SIZE = 25000;
+  let googleAutocompleteQuotaCooldownUntil = 0;
+
+  const saveSuggestionsToCache = (cacheKey: string, suggestions: any[]) => {
+    if (!suggestions || suggestions.length === 0) return;
+    if (placesAutocompleteCache.size >= PLACES_CACHE_MAX_SIZE) {
+      const firstKey = placesAutocompleteCache.keys().next().value;
+      if (firstKey) placesAutocompleteCache.delete(firstKey);
+    }
+    placesAutocompleteCache.set(cacheKey, {
+      suggestions,
+      expiresAt: Date.now() + PLACES_CACHE_TTL_MS,
+    });
+  };
 
   const handlePlacesAutocomplete = async (req: express.Request, res: express.Response) => {
     try {
@@ -948,7 +961,13 @@ async function startServer() {
         return res.json({ suggestions: [] });
       }
 
-      const cacheKey = input.toLowerCase();
+      // Resolve user's proximity coordinates (defaults to NY/NJ metro 40.55, -74.15)
+      const rawLat = parseFloat(req.body?.lat ?? req.query?.lat);
+      const rawLon = parseFloat(req.body?.lon ?? req.query?.lon);
+      const biasLat = !isNaN(rawLat) && rawLat >= -90 && rawLat <= 90 ? rawLat : 40.55;
+      const biasLon = !isNaN(rawLon) && rawLon >= -180 && rawLon <= 180 ? rawLon : -74.15;
+
+      const cacheKey = `${input.toLowerCase()}|${biasLat.toFixed(2)},${biasLon.toFixed(2)}`;
       const now = Date.now();
       const cached = placesAutocompleteCache.get(cacheKey);
       if (cached && cached.expiresAt > now) {
@@ -962,10 +981,6 @@ async function startServer() {
         process.env.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
         ""
       ).trim();
-
-      if (!apiKey) {
-        return res.status(503).json({ error: "missing_secret", suggestions: [] });
-      }
 
       const requestReferer = typeof req.headers.referer === "string" ? req.headers.referer : "";
       const appUrl = process.env.APP_URL || "";
@@ -981,70 +996,147 @@ async function startServer() {
               ? requestReferer.replace("ais-pre-", "ais-dev-")
               : "",
             requestReferer,
-            "",
-          ].filter((v) => v !== undefined)
+          ].filter(Boolean)
         )
       );
 
-      const requestBody: Record<string, any> = {
-        input,
-      };
-      if (sessionToken && typeof sessionToken === "string" && sessionToken.trim()) {
-        requestBody.sessionToken = sessionToken.trim();
-      }
-
-      let lastStatus = 500;
-      let lastErrorText = "";
-
-      for (const ref of candidateReferers) {
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": apiKey,
-          "X-Goog-FieldMask":
-            "suggestions.placePrediction.placeId,suggestions.placePrediction.text.text,suggestions.placePrediction.structuredFormat",
-          "X-Goog-Maps-Solution-ID": "gmp_mcp_codeassist_v1_aistudio",
+      // Tier 1: Google Places API (New) - places:autocomplete with proximity locationBias & region filter
+      if (apiKey && now >= googleAutocompleteQuotaCooldownUntil) {
+        const requestBody: Record<string, any> = {
+          input,
+          includedRegionCodes: ["us", "ca", "il", "gb"],
+          locationBias: {
+            circle: {
+              center: { latitude: biasLat, longitude: biasLon },
+              radius: 50000.0,
+            },
+          },
         };
-        if (ref) {
-          headers["Referer"] = ref;
+        if (sessionToken && typeof sessionToken === "string" && sessionToken.trim()) {
+          requestBody.sessionToken = sessionToken.trim();
         }
 
-        const googleRes = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
-          method: "POST",
-          headers,
-          body: JSON.stringify(requestBody),
+        for (const ref of candidateReferers) {
+          try {
+            const headers: Record<string, string> = {
+              "Content-Type": "application/json",
+              "X-Goog-Api-Key": apiKey,
+              "X-Goog-FieldMask":
+                "suggestions.placePrediction.placeId,suggestions.placePrediction.text.text,suggestions.placePrediction.structuredFormat",
+              Referer: ref,
+            };
+
+            const googleRes = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
+              method: "POST",
+              headers,
+              body: JSON.stringify(requestBody),
+            });
+
+            if (googleRes.ok) {
+              const data: any = await googleRes.json();
+              const suggestions = Array.isArray(data?.suggestions) ? data.suggestions.slice(0, 5) : [];
+              if (suggestions.length > 0) {
+                saveSuggestionsToCache(cacheKey, suggestions);
+                return res.json({ suggestions });
+              }
+              break;
+            }
+
+            if (googleRes.status === 429) {
+              googleAutocompleteQuotaCooldownUntil = Date.now() + 15 * 60 * 1000;
+              break;
+            }
+
+            if (googleRes.status !== 403) {
+              break;
+            }
+          } catch {
+            break;
+          }
+        }
+      }
+
+      // Tier 2: Esri ArcGIS World Geocoder suggest — proximity-ranked street addresses, cities & venues (USA, CAN, ISR, GBR)
+      try {
+        const startsWithNumber = /^\d/.test(input);
+        const primaryCategories = startsWithNumber
+          ? "Address,Subaddress,Point Address,Street Address,Street Name,Postal"
+          : "Address,Postal,Populated Place";
+
+        const arcUrl = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/suggest?f=json&text=${encodeURIComponent(
+          input
+        )}&maxSuggestions=5&countryCode=USA,CAN,ISR,GBR&location=${biasLon},${biasLat}&distance=65000&category=${encodeURIComponent(
+          primaryCategories
+        )}`;
+
+        const arcRes = await fetch(arcUrl, {
+          headers: { Accept: "application/json" },
         });
 
-        if (googleRes.ok) {
-          const data: any = await googleRes.json();
-          const suggestions = Array.isArray(data?.suggestions) ? data.suggestions.slice(0, 5) : [];
+        if (arcRes.ok) {
+          const arcData: any = await arcRes.json();
+          let rawSuggestions = Array.isArray(arcData?.suggestions) ? arcData.suggestions : [];
 
-          if (suggestions.length > 0) {
-            if (placesAutocompleteCache.size >= PLACES_CACHE_MAX_SIZE) {
-              const firstKey = placesAutocompleteCache.keys().next().value;
-              if (firstKey) placesAutocompleteCache.delete(firstKey);
-            }
-            placesAutocompleteCache.set(cacheKey, {
-              suggestions,
-              expiresAt: now + PLACES_CACHE_TTL_MS,
+          // If user typed a venue/hall name (not starting with a number) and fewer than 3 street/city matches came back, blend nearby POIs
+          if (!startsWithNumber && rawSuggestions.length < 3) {
+            try {
+              const poiUrl = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/suggest?f=json&text=${encodeURIComponent(
+                input
+              )}&maxSuggestions=5&countryCode=USA,CAN,ISR,GBR&location=${biasLon},${biasLat}&distance=65000&category=${encodeURIComponent(
+                "Address,Postal,Populated Place,POI"
+              )}`;
+              const poiRes = await fetch(poiUrl, { headers: { Accept: "application/json" } });
+              if (poiRes.ok) {
+                const poiData: any = await poiRes.json();
+                if (Array.isArray(poiData?.suggestions) && poiData.suggestions.length > rawSuggestions.length) {
+                  rawSuggestions = poiData.suggestions;
+                }
+              }
+            } catch {}
+          }
+
+          const seenLabels = new Set<string>();
+          const suggestions: any[] = [];
+
+          for (let i = 0; i < rawSuggestions.length && suggestions.length < 5; i++) {
+            const item = rawSuggestions[i];
+            const rawText = String(item?.text || "").trim();
+            if (!rawText) continue;
+
+            // Clean trailing ", USA" for cleaner domestic display while keeping full state & zip
+            const cleanFullText = rawText.replace(/,\s*USA$/i, "");
+            const dedupeKey = cleanFullText.toLowerCase();
+            if (seenLabels.has(dedupeKey)) continue;
+            seenLabels.add(dedupeKey);
+
+            const parts = cleanFullText.split(",").map((p) => p.trim()).filter(Boolean);
+            const mainText = parts[0] || cleanFullText;
+            const secondaryText = parts.slice(1).join(", ");
+
+            suggestions.push({
+              placePrediction: {
+                placeId: item?.magicKey || `arc_${i}_${Date.now()}`,
+                text: { text: cleanFullText },
+                structuredFormat: {
+                  mainText: { text: mainText },
+                  secondaryText: { text: secondaryText },
+                },
+              },
             });
           }
 
-          return res.json({ suggestions });
+          if (suggestions.length > 0) {
+            saveSuggestionsToCache(cacheKey, suggestions);
+            return res.json({ suggestions });
+          }
         }
-
-        lastStatus = googleRes.status;
-        lastErrorText = await googleRes.text();
-        // If the error is not a 403 referrer restriction, no need to retry other referrers
-        if (googleRes.status !== 403) {
-          break;
-        }
+      } catch {
+        // Ignore fallback error
       }
 
-      console.warn(`[Places Autocomplete] Upstream status ${lastStatus}:`, lastErrorText.slice(0, 300));
-      return res.status(lastStatus).json({ error: "places_upstream_error", suggestions: [] });
-    } catch (err: any) {
-      console.error("[Places Autocomplete] Error:", err?.message || err);
-      return res.status(500).json({ error: "places_internal_error", suggestions: [] });
+      return res.json({ suggestions: [] });
+    } catch {
+      return res.json({ suggestions: [] });
     }
   };
 

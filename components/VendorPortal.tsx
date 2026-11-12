@@ -4,9 +4,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, CalendarDays, Settings, LogOut, DollarSign, Users, User, TrendingUp, CheckCircle, XCircle, Clock, Save, Trash2, 
   ImageIcon, Menu, X, Plus, Tag, CreditCard, ArrowRight, Video, Film, ShieldCheck, MapPin, Eye, Upload, Mail, AlertTriangle, 
-  ChevronLeft, ChevronRight, ChevronDown, RefreshCw, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, CheckCheck, Volume2, Camera, FileText, Download, Search, ArrowLeft, Paperclip, Mic, StopCircle
+  ChevronLeft, ChevronRight, ChevronDown, RefreshCw, History, Loader2, Play, Calendar, Lock, Unlock, MessageSquare, Send, AlertCircle, Bell, BellRing, Info, ClipboardList, Edit3, Hash, Layers, Package, HelpCircle, ExternalLink, Check, CheckCheck, Volume2, Camera, FileText, Download, Search, ArrowLeft, Paperclip, Mic, StopCircle, Globe
 } from 'lucide-react';
-import { Vendor, Booking, Message, SelectedService, VendorService, ServiceCategoryType } from '../types';
+import { Vendor, Booking, Message, SelectedService, VendorService, ServiceCategoryType, getVendorSocialItems, SocialPlatformId } from '../types';
+import { VendorSocialLogoIcon } from './VendorCard';
 import { db, storage, auth } from '../services/firebase';
 import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { markChatAsRead, deleteMessage, sendNewMessage } from '../services/messagingService';
@@ -45,13 +46,29 @@ interface VendorPortalProps {
   onToggleThemeMode?: (mode: 'dark' | 'light') => void;
 }
 
+const is24SixMedia = (url?: string | null) => {
+  if (!url) return false;
+  return /24six\.(app|com)/i.test(url) || url.includes('simcha_24six=1');
+};
+
+const isAudioMedia = (url?: string | null) => {
+  if (!url || is24SixMedia(url)) return false;
+  return !!(
+    url.startsWith('data:audio/') ||
+    url.match(/\.(mp3|wav|m4a|aac|flac|oga)(?:\?|$|#|%)/i) ||
+    url.includes('audio%2F') ||
+    url.includes('audio/') ||
+    url.includes('simcha_audio=1')
+  );
+};
+
 const isEmbedVideo = (url?: string | null) => {
   if (!url) return false;
   return /youtube\.com\/embed\/|player\.vimeo\.com\/video\//i.test(url);
 };
 
 const isVideo = (url?: string | null) => {
-  if (!url) return false;
+  if (!url || is24SixMedia(url) || isAudioMedia(url)) return false;
   return !!(
     isEmbedVideo(url) ||
     url.startsWith('data:video/') ||
@@ -73,7 +90,7 @@ const validateAndNormalizeVideoUrl = (rawInput: string): {
   if (!trimmed) {
     return {
       isValid: false,
-      error: 'Please paste a video link before adding it to your showcase.',
+      error: 'Please paste a 24/6, YouTube, Vimeo, or video/music link before adding it to your showcase.',
     };
   }
 
@@ -92,25 +109,38 @@ const validateAndNormalizeVideoUrl = (rawInput: string): {
   } catch {
     return {
       isValid: false,
-      error: 'That does not look like a valid web address. Please paste a full https:// video link.',
+      error: 'That does not look like a valid web address. Please paste a full https:// link.',
     };
   }
 
   if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname.includes('.')) {
     return {
       isValid: false,
-      error: 'Please enter a valid https:// video URL (e.g., YouTube, Vimeo, Dropbox, or direct .mp4 link).',
+      error: 'Please enter a valid https:// URL (e.g., 24six.app, YouTube, Vimeo, Dropbox, or direct .mp4 / .mp3 link).',
     };
   }
 
   const host = parsed.hostname.toLowerCase();
   const pathname = parsed.pathname;
 
-  // Reject obvious non-video file extensions (images, documents, webpages)
+  // 0. Validate & Normalize 24/6 (24Six) Links for Music, Videos & Content
+  if (host === '24six.app' || host.endsWith('.24six.app') || host === '24six.com' || host.endsWith('.24six.com')) {
+    const clean24Six = parsed.toString();
+    const tagged24Six = clean24Six.includes('#')
+      ? `${clean24Six}&simcha_24six=1`
+      : `${clean24Six}#simcha_24six=1`;
+    return {
+      isValid: true,
+      normalizedUrl: tagged24Six,
+      shouldProbeVideo: false,
+    };
+  }
+
+  // Reject obvious non-media file extensions (images, documents, webpages)
   if (/\.(jpe?g|png|gif|webp|svg|bmp|ico|pdf|docx?|xlsx?|zip|rar|html?|php|asp)(?:\?|$|#)/i.test(pathname)) {
     return {
       isValid: false,
-      error: 'This link points to an image or webpage rather than a video. Please paste a video link (.mp4, .mov, .webm, YouTube, or Vimeo).',
+      error: 'This link points to an image or document rather than media. Please paste a 24/6, YouTube, Vimeo, video (.mp4, .mov), or music (.mp3, .wav, .m4a) link.',
     };
   }
 
@@ -160,24 +190,25 @@ const validateAndNormalizeVideoUrl = (rawInput: string): {
     if (pathname === '/' || pathname.length < 4) {
       return {
         isValid: false,
-        error: 'Invalid Dropbox link. Please paste a shared link to a specific video file.',
+        error: 'Invalid Dropbox link. Please paste a shared link to a specific video or music file.',
       };
     }
     let directDropbox = withProtocol
       .replace(/^https?:\/\/(www\.)?dropbox\.com\//i, 'https://dl.dropboxusercontent.com/')
       .replace(/[?&]dl=0/i, '')
       .replace(/[?&]dl=1/i, '');
+    const isAudioExt = /\.(mp3|wav|m4a|aac|flac|oga)(?:\?|$|#)/i.test(pathname);
     directDropbox = directDropbox.includes('#')
-      ? `${directDropbox}&simcha_video=1`
-      : `${directDropbox}#t=0.001&simcha_video=1`;
+      ? `${directDropbox}&${isAudioExt ? 'simcha_audio=1' : 'simcha_video=1'}`
+      : `${directDropbox}#t=0.001&${isAudioExt ? 'simcha_audio=1' : 'simcha_video=1'}`;
     return {
       isValid: true,
       normalizedUrl: directDropbox,
-      shouldProbeVideo: true,
+      shouldProbeVideo: !isAudioExt,
     };
   }
 
-  // 4. Validate & Normalize Google Drive Video Links
+  // 4. Validate & Normalize Google Drive Video / Audio Links
   if (host === 'drive.google.com') {
     const driveMatch = withProtocol.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/i) || [null, parsed.searchParams.get('id')];
     if (!driveMatch?.[1]) {
@@ -193,7 +224,20 @@ const validateAndNormalizeVideoUrl = (rawInput: string): {
     };
   }
 
-  // 5. Direct Video File Extensions (.mp4, .mov, .webm, .m4v, .ogg, .ogv) or Known Video Storage / CDN Hosts
+  // 5. Direct Audio File Extensions (.mp3, .wav, .m4a, .aac, .flac, .oga)
+  const hasAudioExtension = /\.(mp3|wav|m4a|aac|flac|oga)(?:\?|$|#)/i.test(withProtocol);
+  if (hasAudioExtension) {
+    const taggedAudio = withProtocol.includes('#')
+      ? `${withProtocol}&simcha_audio=1`
+      : `${withProtocol}#simcha_audio=1`;
+    return {
+      isValid: true,
+      normalizedUrl: taggedAudio,
+      shouldProbeVideo: false,
+    };
+  }
+
+  // 6. Direct Video File Extensions (.mp4, .mov, .webm, .m4v, .ogg, .ogv) or Known Video Storage / CDN Hosts
   const hasVideoExtension = /\.(mp4|webm|ogg|mov|m4v|ogv|m3u8)(?:\?|$|#)/i.test(withProtocol);
   const isKnownVideoStorageHost =
     /firebasestorage\.googleapis\.com|storage\.googleapis\.com|cloudinary\.com|mux\.com|b-cdn\.net|cloudfront\.net|r2\.dev|amazonaws\.com|digitaloceanspaces\.com|supabase\.co|vimeo|jwplatform\.com/i.test(
@@ -216,7 +260,7 @@ const validateAndNormalizeVideoUrl = (rawInput: string): {
   return {
     isValid: false,
     error:
-      'Unsupported video link. Please paste a valid YouTube, Vimeo, Dropbox, Google Drive, or direct video file (.mp4, .mov, .webm) URL.',
+      'Unsupported link. Please paste a valid 24/6 (24six.app), YouTube, Vimeo, Dropbox, Google Drive, or direct video/music (.mp4, .mov, .mp3) URL.',
   };
 };
 
@@ -549,7 +593,7 @@ const VendorEventScopeModal: React.FC<{
   return typeof document !== 'undefined' ? createPortal(eventModalNode, document.body) : eventModalNode;
 };
 
-type ProfileSettingModalType = 'basic' | 'locations' | 'addons' | 'media' | 'offers' | 'privacy' | 'email' | null;
+type ProfileSettingModalType = 'basic' | 'social' | 'locations' | 'addons' | 'media' | 'offers' | 'privacy' | 'email' | null;
 
 const VendorSettingSheetModal: React.FC<{
   title: string;
@@ -1458,8 +1502,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Google Calendar API error: ${response.status} - ${errorText}`);
+        let errReason = `HTTP ${response.status}`;
+        try {
+          const errJson = await response.json();
+          errReason = errJson?.error?.message || errReason;
+        } catch {
+          // Ignore JSON parse error
+        }
+        throw new Error(`Google Calendar API error (${response.status}): ${errReason}`);
       }
 
       const data = await response.json();
@@ -1598,7 +1648,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
               };
             }
           } else {
-            console.error(`Failed to push gig ${gig.id} to Google Calendar:`, await postRes.text());
+            console.warn(`Could not push gig ${gig.id} to Google Calendar (HTTP ${postRes.status})`);
           }
         } finally {
           inFlightBookingPushIdsRef.current.delete(gig.id);
@@ -6331,6 +6381,18 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                       onClick={() => setActiveProfileSettingModal('basic')}
                     />
                     <SettingRow
+                      icon={Globe}
+                      title="Social Media Links"
+                      subtitle="Instagram, TikTok, YouTube & website"
+                      badge={
+                        getVendorSocialItems(editForm.socialLinks).length > 0
+                          ? `${getVendorSocialItems(editForm.socialLinks).length} Linked`
+                          : 'Add'
+                      }
+                      badgeActive={getVendorSocialItems(editForm.socialLinks).length > 0}
+                      onClick={() => setActiveProfileSettingModal('social')}
+                    />
+                    <SettingRow
                       icon={MapPin}
                       title="Locations & Packages"
                       subtitle="Service areas, base rates & hours"
@@ -6350,8 +6412,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                     />
                     <SettingRow
                       icon={Film}
-                      title="Media Showcase"
-                      subtitle="Portfolio photos & video links"
+                      title="Media & Showcase"
+                      subtitle="Photos, videos & showcase gallery"
                       onClick={() => setActiveProfileSettingModal('media')}
                     />
                   </div>
@@ -6535,6 +6597,112 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                   </VendorSettingSheetModal>
                 )}
 
+                {activeProfileSettingModal === 'social' && (
+                  <VendorSettingSheetModal
+                    title="Social Media Links"
+                    subtitle="Add your social media profiles & website"
+                    badgeText="Social Links"
+                    icon={Globe}
+                    onClose={() => {
+                      flushAutoSave();
+                      setActiveProfileSettingModal(null);
+                    }}
+                  >
+                    {(() => {
+                      const platforms: Array<{
+                        key: SocialPlatformId;
+                        label: string;
+                        placeholder: string;
+                      }> = [
+                        {
+                          key: 'youtube',
+                          label: 'YouTube',
+                          placeholder: 'https://youtube.com/@yourchannel',
+                        },
+                        {
+                          key: 'instagram',
+                          label: 'Instagram',
+                          placeholder: 'https://instagram.com/yourhandle',
+                        },
+                        {
+                          key: 'tiktok',
+                          label: 'TikTok',
+                          placeholder: 'https://tiktok.com/@yourhandle',
+                        },
+                        {
+                          key: 'twentyfoursix',
+                          label: '24/6',
+                          placeholder: 'https://24six.app/...',
+                        },
+                        {
+                          key: 'facebook',
+                          label: 'Facebook',
+                          placeholder: 'https://facebook.com/yourpage',
+                        },
+                        {
+                          key: 'website',
+                          label: 'Website',
+                          placeholder: 'https://yourwebsite.com',
+                        },
+                      ];
+
+                      return (
+                        <div className="bg-black/50 rounded-[1.75rem] border border-white/10 p-4 sm:p-5 space-y-4 text-left">
+                          {platforms.map(({ key, label, placeholder }) => {
+                            const currentVal = editForm.socialLinks?.[key] || '';
+                            return (
+                              <div key={key} className="space-y-1.5">
+                                <div className="flex items-center justify-between pl-1">
+                                  <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em] flex items-center gap-2">
+                                    <span className="w-6 h-6 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 inline-flex items-center justify-center text-[#D4AF37]">
+                                      <VendorSocialLogoIcon platform={key} className="w-3 h-3" />
+                                    </span>
+                                    <span>{label}</span>
+                                  </label>
+                                  {currentVal.trim() && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        applyImmediateVendorUpdate((prev) => ({
+                                          ...prev,
+                                          socialLinks: {
+                                            ...(prev.socialLinks || {}),
+                                            [key]: '',
+                                          },
+                                        }));
+                                      }}
+                                      className="text-[9px] font-bold text-zinc-400 hover:text-red-400 uppercase tracking-wider cursor-pointer transition-colors"
+                                    >
+                                      Clear
+                                    </button>
+                                  )}
+                                </div>
+                                <input
+                                  type="text"
+                                  value={currentVal}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    applyAutoSaveVendorUpdate((prev) => ({
+                                      ...prev,
+                                      socialLinks: {
+                                        ...(prev.socialLinks || {}),
+                                        [key]: val,
+                                      },
+                                    }));
+                                  }}
+                                  onBlur={flushAutoSave}
+                                  placeholder={placeholder}
+                                  className="w-full h-11 bg-black border border-[#D4AF37]/30 focus:border-[#D4AF37] rounded-full px-4 text-xs sm:text-sm font-bold text-white outline-none transition-all placeholder:text-zinc-600"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </VendorSettingSheetModal>
+                )}
+
                 {activeProfileSettingModal === 'locations' && (
                   <VendorSettingSheetModal
                     title="Locations & Base Packages"
@@ -6569,13 +6737,13 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
                 {activeProfileSettingModal === 'media' && (
                   <VendorSettingSheetModal
-                    title="Photos & Video Showcase"
-                    subtitle="Manage portfolio media displayed on your vendor card"
-                    badgeText="Media Gallery"
+                    title="Media & Showcase"
+                    subtitle="Upload photos, videos, or add video links"
+                    badgeText="Media Showcase"
                     icon={Film}
                     onClose={() => setActiveProfileSettingModal(null)}
                   >
-                    {/* Even Pill Upload Controls: Add Photo, Upload Video, Paste Video URL */}
+                    {/* Even Pill Upload Controls: Add Photo, Add Video, Add Video URL */}
                     <div className="grid grid-cols-3 gap-2 bg-black/60 p-2 rounded-full border border-[#D4AF37]/30">
                       <button
                         type="button"
@@ -6594,14 +6762,14 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         type="button"
                         onClick={() => {
                           if (fileInputRef.current) {
-                            fileInputRef.current.accept = 'video/*';
+                            fileInputRef.current.accept = 'video/*,audio/*';
                             fileInputRef.current.click();
                           }
                         }}
                         className="h-10 px-3 rounded-full bg-white/5 hover:bg-white/10 text-white text-[9px] sm:text-[10px] font-black uppercase tracking-widest border border-white/15 flex items-center justify-center gap-1.5 cursor-pointer transition-all truncate"
                       >
                         <Film className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
-                        <span className="truncate">Upload Video</span>
+                        <span className="truncate">Add Video</span>
                       </button>
                       <button
                         type="button"
@@ -6616,7 +6784,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                         }`}
                       >
                         <Video className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">{showVideoUrlBar ? 'Close URL' : 'Video URL'}</span>
+                        <span className="truncate">{showVideoUrlBar ? 'Close URL' : 'Add URL'}</span>
                       </button>
                     </div>
 
@@ -6650,7 +6818,7 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                                   handleAddVideoUrl();
                                 }
                               }}
-                              placeholder="Paste YouTube, Vimeo, Dropbox, or .mp4 video link..."
+                              placeholder="Paste video or media URL..."
                               className="flex-1 min-w-0 bg-transparent text-xs sm:text-sm font-semibold text-white placeholder:text-zinc-500 outline-none"
                             />
                             <button
@@ -6698,30 +6866,57 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
                       {editForm.gallery?.map((url, idx) => {
+                        const is24Six = is24SixMedia(url);
+                        const isAud = isAudioMedia(url);
                         const isVid = isVideo(url);
                         const isEmbed = isEmbedVideo(url);
+                        const clean24SixUrl = url.replace(/[#?&]simcha_24six=1/g, '');
                         return (
                           <div
                             key={idx}
                             className="relative aspect-square bg-black rounded-[1.5rem] overflow-hidden border border-[#D4AF37]/25 group shadow-xl"
                           >
-                            <div
-                              onClick={() => setFullscreenMedia({ url, type: isVid ? 'video' : 'image' })}
-                              className="w-full h-full cursor-pointer relative"
-                            >
-                              {isEmbed ? (
+                            {is24Six ? (
+                              <div
+                                onClick={() => setFullscreenMedia({ url: clean24SixUrl, type: 'video' })}
+                                className="w-full h-full cursor-pointer relative bg-zinc-950"
+                              >
                                 <iframe
-                                  src={url}
-                                  title={`Showcase video ${idx + 1}`}
-                                  className="w-full h-full border-0 pointer-events-none"
-                                  allow="autoplay; fullscreen"
+                                  src={clean24SixUrl}
+                                  title={`Showcase media ${idx + 1}`}
+                                  className="w-full h-full border-0"
+                                  allow="autoplay; encrypted-media; fullscreen"
                                 />
-                              ) : isVid ? (
-                                <video autoPlay muted loop playsInline preload="metadata" src={url} className="w-full h-full object-cover" />
-                              ) : (
-                                <img src={url} className="w-full h-full object-cover" alt="" />
-                              )}
-                            </div>
+                              </div>
+                            ) : isAud ? (
+                              <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-gradient-to-b from-zinc-900 to-black">
+                                <div className="w-10 h-10 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37] flex items-center justify-center text-[#D4AF37] mb-2">
+                                  <Volume2 className="w-4 h-4" />
+                                </div>
+                                <span className="text-[9px] font-black uppercase tracking-widest text-[#D4AF37] mb-2">
+                                  Music Track
+                                </span>
+                                <audio src={url} controls className="w-full h-7" />
+                              </div>
+                            ) : (
+                              <div
+                                onClick={() => setFullscreenMedia({ url, type: isVid ? 'video' : 'image' })}
+                                className="w-full h-full cursor-pointer relative"
+                              >
+                                {isEmbed ? (
+                                  <iframe
+                                    src={url}
+                                    title={`Showcase video ${idx + 1}`}
+                                    className="w-full h-full border-0 pointer-events-none"
+                                    allow="autoplay; fullscreen"
+                                  />
+                                ) : isVid ? (
+                                  <video autoPlay muted loop playsInline preload="metadata" src={url} className="w-full h-full object-cover" />
+                                ) : (
+                                  <img src={url} className="w-full h-full object-cover" alt="" />
+                                )}
+                              </div>
+                            )}
                             <button
                               type="button"
                               onClick={(e) => {
@@ -6734,9 +6929,10 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
-                            {isVid && (
+                            {(isVid || is24Six || isAud) && (
                               <div className="absolute bottom-2.5 left-2.5 bg-black/80 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[8px] font-black text-[#D4AF37] border border-[#D4AF37]/30 flex items-center gap-1">
-                                <Video className="w-2.5 h-2.5" /> {url.includes('simcha_video=1') || isEmbed ? 'VIDEO LINK' : 'VIDEO'}
+                                <Video className="w-2.5 h-2.5" />{' '}
+                                {is24Six ? '24/6' : isAud ? 'MUSIC' : url.includes('simcha_video=1') || isEmbed ? 'VIDEO LINK' : 'VIDEO'}
                               </div>
                             )}
                           </div>
@@ -6968,8 +7164,8 @@ const VendorPortal: React.FC<VendorPortalProps> = ({ vendor, bookings, messages,
             </button>
             {fullscreenMedia.type === 'image' ? (
               <img src={fullscreenMedia.url} alt="Fullscreen View" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
-            ) : isEmbedVideo(fullscreenMedia.url) ? (
-              <iframe src={fullscreenMedia.url} className="w-full max-w-4xl aspect-video rounded-xl shadow-2xl border-0 bg-black" allow="autoplay; fullscreen" />
+            ) : isEmbedVideo(fullscreenMedia.url) || is24SixMedia(fullscreenMedia.url) ? (
+              <iframe src={fullscreenMedia.url} className="w-full max-w-4xl aspect-video rounded-xl shadow-2xl border-0 bg-black" allow="autoplay; encrypted-media; fullscreen" />
             ) : (
               <video src={fullscreenMedia.url} controls autoPlay className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl bg-black" />
             )}

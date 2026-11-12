@@ -596,13 +596,59 @@ body.light-mode,
   ) !important;
 }
 
+/* Subtle bottom-only white shader in Light Mode so black vendor names are legible over dark/black vendor images without putting a glare over the rest of the card */
 .light-mode .simcha-image-fader-vendor {
+  opacity: 1 !important;
   background: transparent !important;
   background-image: linear-gradient(
     to top,
-    rgba(255, 255, 255, 0.08) 0%,
-    rgba(255, 255, 255, 0) 30%
+    rgba(255, 255, 255, 0.86) 0%,
+    rgba(255, 255, 255, 0.62) 18%,
+    rgba(255, 255, 255, 0.24) 34%,
+    rgba(255, 255, 255, 0) 48%
   ) !important;
+}
+
+.light-mode .simcha-vendor-card-title {
+  color: #09090b !important;
+}
+
+.light-mode .simcha-vendor-card:hover .simcha-vendor-card-title {
+  color: #9A7209 !important;
+}
+
+.light-mode .simcha-vendor-card-category {
+  color: #9A7209 !important;
+}
+
+/* Rich metallic gold hover glow (never pale yellow) for categories, subcategories, sub-subcategories & vendor cards */
+.simcha-category-card:hover,
+.simcha-vendor-card:hover {
+  border-color: #D4AF37 !important;
+  box-shadow:
+    0 18px 40px rgba(184, 134, 11, 0.42),
+    0 0 22px rgba(212, 175, 55, 0.36) !important;
+}
+
+.light-mode .simcha-category-card:hover,
+.light-mode .simcha-vendor-card:hover {
+  border-color: #C59B27 !important;
+  box-shadow:
+    0 18px 38px rgba(184, 134, 11, 0.32),
+    0 0 20px rgba(212, 175, 55, 0.3) !important;
+}
+
+.light-mode .simcha-social-logo-btn {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  color: #9A7209 !important;
+  border-color: rgba(197, 155, 39, 0.55) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
+}
+
+.light-mode .simcha-social-logo-btn:hover {
+  background-color: #D4AF37 !important;
+  color: #09090b !important;
+  border-color: #D4AF37 !important;
 }
 
 /* Prevent opacity-55 on category/subcategory/sub-subcategory images from bleaching into a white glare in Light Mode */

@@ -117,12 +117,13 @@ export interface Vendor {
   socialLinks?: VendorSocialLinks;
 }
 
-export type SocialPlatformId = 'instagram' | 'tiktok' | 'youtube' | 'facebook' | 'website';
+export type SocialPlatformId = 'instagram' | 'tiktok' | 'youtube' | 'twentyfoursix' | 'facebook' | 'website';
 
 export interface VendorSocialLinks {
   instagram?: string;
   tiktok?: string;
   youtube?: string;
+  twentyfoursix?: string;
   facebook?: string;
   website?: string;
 }
@@ -150,10 +151,19 @@ export const getVendorSocialItems = (links?: VendorSocialLinks): VendorSocialIte
       } catch {
         handleDisplay = val;
       }
+    } else if (/^(www\.|instagram\.com|tiktok\.com|youtube\.com|youtu\.be|24six\.app|24six\.com|facebook\.com|fb\.com)/i.test(val)) {
+      url = `https://${val.replace(/^\/+/, '')}`;
+      try {
+        const u = new URL(url);
+        const pathClean = u.pathname.replace(/^\/+|\/+$/g, '');
+        handleDisplay = pathClean ? `@${pathClean.replace(/^@/, '')}` : u.hostname.replace(/^www\./, '');
+      } catch {
+        handleDisplay = val;
+      }
     } else if (baseUrl) {
-      const cleanHandle = val.replace(/^@/, '');
+      const cleanHandle = val.replace(/^@/, '').replace(/^\/+/, '');
       url = `${baseUrl}${cleanHandle}`;
-      handleDisplay = `@${cleanHandle}`;
+      handleDisplay = platform === 'twentyfoursix' ? cleanHandle : `@${cleanHandle}`;
     } else {
       url = `https://${val.replace(/^\/+/, '')}`;
       handleDisplay = val;
@@ -162,8 +172,9 @@ export const getVendorSocialItems = (links?: VendorSocialLinks): VendorSocialIte
   };
 
   add('instagram', 'Instagram', links.instagram, 'https://instagram.com/');
-  add('tiktok', 'TikTok', links.tiktok, 'https://tiktok.com/@');
   add('youtube', 'YouTube', links.youtube, 'https://youtube.com/@');
+  add('tiktok', 'TikTok', links.tiktok, 'https://tiktok.com/@');
+  add('twentyfoursix', '24/6', links.twentyfoursix, 'https://24six.app/');
   add('facebook', 'Facebook', links.facebook, 'https://facebook.com/');
   add('website', 'Website', links.website);
   return items;

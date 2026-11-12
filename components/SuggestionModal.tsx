@@ -202,6 +202,7 @@ const SuggestionModalInner: React.FC<SuggestionModalProps> = ({
                     )}
                     <VendorCard
                       vendor={vendor}
+                      isPriorityAccess={true}
                       onBook={(v) => {
                         if (!isAdded) onBook(v);
                       }}
